@@ -1,8 +1,10 @@
-"""Bot commands (§10.3): /status, /donate, /report, /gear.
+"""Bot commands (§10.3): /status, /donate, /report, /gear, /plan.
 
 All data reads go through app/queries (§8.2 — one implementation per read,
 shared with the future agent tools and report tasks). /report is the
-templated daily summary: deliberately NO LLM call (§9.2).
+templated daily summary: deliberately NO LLM call (§9.2). /plan is the
+§11b fallback delivery path — the confirmed plan reaches the user in
+Telegram while prescription-push awaits the real Technogym access tier.
 """
 
 import logging
@@ -14,6 +16,7 @@ from app.models.user import User
 from app.queries import (
     activities_on_local_date,
     get_donation_status,
+    get_plan_sessions_for_day,
     gear_overview,
     integrations_overview,
     latest_daily_feature,
@@ -154,3 +157,39 @@ def _fmt_duration(seconds: int | None) -> str:
     h, rem = divmod(int(seconds), 3600)
     m = rem // 60
     return f"{h}h{m:02d}" if h else f"{m}m"
+
+
+NO_PLAN_TODAY = (
+    "No confirmed plan sessions for today."
+    "\n\nNote: prescription-push to Technogym equipment (§11b) awaits the "
+    "access-tier confirmation (§24) — until then follow the plan manually."
+)
+
+
+async def cmd_plan(ctx, chat_id: int, user_id: int) -> str:
+    """§11b fallback delivery: the day's CONFIRMED-plan sessions. '/plan' and
+    '/plan today' are the same (the day-boundary rule makes 'today' local)."""
+    async with ctx.sessionmaker() as session:
+        user = await session.get(User, user_id)
+        local_today = datetime.now(ZoneInfo(user.timezone)).date()
+        sessions = await get_plan_sessions_for_day(session, user_id, local_today)
+    if not sessions:
+        return NO_PLAN_TODAY
+
+    lines = [f"Plan for today — {local_today.isoformat()}:"]
+    for s in sessions:
+        detail = []
+        if s["session_type"]:
+            detail.append(s["session_type"])
+        if s["target_duration_min"]:
+            detail.append(f"{s['target_duration_min']} min")
+        if s["target_load"] is not None:
+            detail.append(f"load {s['target_load']:.0f}")
+        if s["description"]:
+            detail.append(s["description"])
+        lines.append(f"- " + " · ".join(detail))
+    lines.append(
+        "\nPrescription-push to Technogym equipment (§11b) awaits the "
+        "access-tier confirmation (§24) — follow the session manually."
+    )
+    return "\n".join(lines)

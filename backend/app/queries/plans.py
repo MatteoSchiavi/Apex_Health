@@ -81,6 +81,40 @@ def normalize_week_start(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
+async def get_plan_sessions_for_day(
+    session: AsyncSession, user_id: int, day: date
+) -> list[dict]:
+    """Sessions scheduled for `day` under the account's CONFIRMED/ACTIVE plans
+    (§11b fallback: '/plan today' in Telegram is how the plan reaches the user
+    while prescription-push awaits the real Technogym access tier, §24).
+    Latest plan wins per plan id ordering; sessions ordered by id."""
+    rows = (
+        await session.execute(
+            select(TrainingPlan, PlannedSession)
+            .join(PlannedSession, PlannedSession.training_plan_id == TrainingPlan.id)
+            .where(
+                TrainingPlan.user_id == user_id,
+                TrainingPlan.status.in_(("confirmed", "active")),
+                PlannedSession.date == day,
+            )
+            .order_by(TrainingPlan.week_start.desc(), PlannedSession.id)
+        )
+    ).all()
+    return [
+        {
+            "plan_id": plan.id,
+            "plan_status": plan.status,
+            "session_id": ps.id,
+            "discipline_id": ps.discipline_id,
+            "session_type": ps.session_type,
+            "target_duration_min": ps.target_duration_min,
+            "target_load": float(ps.target_load) if ps.target_load is not None else None,
+            "description": ps.description,
+        }
+        for plan, ps in rows
+    ]
+
+
 async def create_plan_draft(
     session: AsyncSession,
     user_id: int,
