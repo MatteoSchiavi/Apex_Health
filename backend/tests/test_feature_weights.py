@@ -7,7 +7,6 @@ weights that were active then.
 """
 
 from datetime import UTC, date, datetime
-from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -55,7 +54,7 @@ async def test_v1_seed_rows(db_session: AsyncSession):
             db_session, feature_name, cutoff_for_local_day(date(2025, 3, 16), ROME)
         )
         assert got == {
-            c: Decimal(w) for c, w in expected_components.items()
+            c: float(w) for c, w in expected_components.items()
         }, feature_name
 
 
@@ -88,19 +87,19 @@ async def test_selection_rule_latest_effective_from_wins(db_session: AsyncSessio
     before = await load_weights(
         db_session, "recovery_score", cutoff_for_local_day(date(2025, 3, 31), ROME)
     )
-    assert before["hrv_deviation"] == Decimal("0.35")  # v1 — weights active then
-    assert before["sleep_quality"] == Decimal("0.25")
+    assert before["hrv_deviation"] == 0.35  # v1 — weights active then
+    assert before["sleep_quality"] == 0.25
 
     after = await load_weights(
         db_session, "recovery_score", cutoff_for_local_day(date(2025, 4, 1), ROME)
     )
-    assert after["hrv_deviation"] == Decimal("0.90")  # v2
-    assert after["prior_day_strain"] == Decimal("0.02")
+    assert after["hrv_deviation"] == 0.90  # v2
+    assert after["prior_day_strain"] == 0.02
 
     untouched = await load_weights(
         db_session, "illness_risk_score", cutoff_for_local_day(date(2025, 4, 5), ROME)
     )
-    assert untouched["hrv_drop"] == Decimal("0.40")  # other features unaffected
+    assert untouched["hrv_drop"] == 0.40  # other features unaffected
 
 
 async def test_future_only_weights_never_appear(db_session: AsyncSession):
@@ -117,7 +116,7 @@ async def test_future_only_weights_never_appear(db_session: AsyncSession):
     got = await load_weights(
         db_session, "readiness_score", cutoff_for_local_day(date(2025, 4, 11), ROME)
     )
-    assert got["recovery"] == Decimal("0.45")
+    assert got["recovery"] == 0.45
 
 
 async def test_road_cycling_ftp_model_declared(db_session: AsyncSession):

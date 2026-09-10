@@ -13,7 +13,6 @@ the user's timezone). Consequences that are deliberate:
 """
 
 from datetime import date, datetime
-from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -29,11 +28,11 @@ def cutoff_for_local_day(day: date, tz: ZoneInfo) -> datetime:
 
 async def load_weights(
     session: AsyncSession, feature_name: str, cutoff: datetime
-) -> dict[str, Decimal]:
+) -> dict[str, float]:
     """Active component weights for `feature_name` as of `cutoff` — per
     component the row with the latest effective_from <= cutoff (id breaks
-    ties for same-instant rows). Components with no qualifying row are
-    absent from the result."""
+    ties for same-instant rows). Returned as floats: the engine computes in
+    float and pins its numerics via the golden-dataset regression tests."""
     rows = await session.execute(
         text(
             "SELECT DISTINCT ON (component_name) "
@@ -45,4 +44,4 @@ async def load_weights(
         ),
         {"feature_name": feature_name, "cutoff": cutoff},
     )
-    return {component: Decimal(str(weight)) for component, weight in rows.fetchall()}
+    return {component: float(weight) for component, weight in rows.fetchall()}
