@@ -1,0 +1,68 @@
+"""Identity & auth models (MASTER_SPEC §6.4 — users, auth_credentials, sessions).
+
+Remaining §6.4 tables are mapped by their owning phases (integrations in
+Phase 1, telegram_links in Phase 3, invites with onboarding work); the full
+schema itself is created by the Alembic migration regardless.
+"""
+
+from datetime import datetime
+
+from sqlalchemy import BigInteger, Boolean, DateTime, SmallInteger, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    dob: Mapped[str | None] = mapped_column(nullable=True)
+    sex: Mapped[str | None] = mapped_column(Text, nullable=True)
+    height_cm: Mapped[float | None] = mapped_column(nullable=True)
+    weight_goal_direction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, default="Europe/Rome", server_default="Europe/Rome"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
+
+
+class AuthCredential(Base):
+    __tablename__ = "auth_credentials"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(
+        Text, nullable=False, default="friend", server_default="friend"
+    )
+    ai_access_tier: Mapped[str] = mapped_column(
+        Text, nullable=False, default="cheap_only", server_default="cheap_only"
+    )
+    share_segments: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    failed_login_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
+
+
+class UserSession(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
