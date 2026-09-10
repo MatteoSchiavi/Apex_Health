@@ -13,7 +13,10 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import os
+
 import pytest
+from httpx import AsyncClient
 from sqlalchemy import func, select, text
 
 from app.connectors.garmin.sync import run_user_sync_with_escalation
@@ -34,6 +37,10 @@ from tests.helpers.telegram import (
 )
 
 ROME_NOW = datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
+
+CSRF = {"X-CSRF-Token": "test"}
+OWNER_EMAIL = os.environ["OWNER_EMAIL"]
+OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 
 async def gear_world(db_session):
@@ -397,3 +404,49 @@ async def test_gear_overview_uses_orm_models(db_session):
     assert len(items) == 1
     assert items[0]["name"] == "Indoor trainer"
     assert items[0]["usage_pct"] == pytest.approx(100.0)
+
+
+# ------------------------------------------------------------ §18 /gear API
+
+
+async def test_gear_api_endpoints(client: AsyncClient, db_session):
+    """§18 /gear: session-protected list + CSRF-gated service logging that
+    resets counters (§13)."""
+    world = await gear_world(db_session)
+    await _add_linked_activity(db_session, world, days_ago=2.0, duration_s=8 * 3600)
+    await _add_linked_activity(db_session, world, days_ago=1.0, duration_s=7 * 3600)
+    await db_session.commit()
+    gear = await _fresh_gear(db_session, world["gear"].id)
+    await accumulate_gear_usage(db_session, gear)
+    await db_session.commit()
+
+    resp = await client.get("/gear")
+    assert resp.status_code == 401  # §17: no route without a session
+
+    login = await client.post(
+        "/auth/login",
+        json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
+        headers=CSRF,
+    )
+    assert login.status_code == 200
+
+    listed = await client.get("/gear")
+    assert listed.status_code == 200
+    assert listed.json()[0]["hours_since_service"] == 15.0
+
+    service = await client.post(
+        f"/gear/{world['gear'].id}/service",
+        json={"service_type": "full overhaul", "notes": "chain"},
+        headers=CSRF,
+    )
+    assert service.status_code == 200
+    body = service.json()
+    assert body["hours_since_service"] == 0.0
+
+    after = (await client.get("/gear")).json()[0]
+    assert after["hours_since_service"] == 0.0
+
+    missing = await client.post(
+        "/gear/99999/service", json={"service_type": "x"}, headers=CSRF
+    )
+    assert missing.status_code == 404
