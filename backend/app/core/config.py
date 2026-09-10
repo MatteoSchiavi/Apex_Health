@@ -75,6 +75,22 @@ class Settings(BaseSettings):
     # informational budget_warning alert (not a hard stop). <=0 disables.
     daily_token_budget_usd: float = 0.25
 
+    # --- Weather connector (§5, §14, §23 Phase 7) ---
+    # Open-Meteo is free and keyless; the only configuration it needs is WHERE
+    # to ask about. Home coordinates are env-tunables (same §24 pattern as the
+    # Technogym endpoints) — set WEATHER_HOME_LAT/WEATHER_HOME_LON in .env and
+    # the forecast refresh starts producing rows; unset (0) disables the
+    # scheduled refresh with a logged note instead of failing a beat tick.
+    weather_home_lat: float = 0.0
+    weather_home_lon: float = 0.0
+    # §14: the cache exists to answer "when is a good training window" — seven
+    # days of daily rows per refresh is the useful horizon.
+    weather_forecast_days: int = 7
+    # §14 nudge ("worth building once the pieces exist"): tomorrow's forecast
+    # crosses the good-window test AND latest readiness >= threshold → one
+    # proactive Telegram nudge per user per day. <=0 disables the nudge.
+    weather_nudge_readiness_threshold: float = 70.0
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.
