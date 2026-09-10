@@ -5,6 +5,7 @@ first, .env second). The Alembic migration chain is re-applied once per test
 session so every test sees a fresh, complete schema.
 """
 
+import asyncio
 import os
 import subprocess
 from collections.abc import AsyncIterator
@@ -51,6 +52,25 @@ def _run_alembic(*args: str) -> None:
     )
 
 
+async def _wipe_domain_tables() -> None:
+    """Truncate every table the migration downgrade needs empty.
+
+    `alembic downgrade base` deletes seeded rows (disciplines, weights) and
+    fails on any leftover referencing data (e.g. activities from a previous
+    test session). Truncating the FK roots + global config tables first makes
+    the downgrade deterministic; CASCADE clears everything hanging off
+    users/disciplines. Without this, a swallowed downgrade error turns the
+    following `upgrade head` into a no-op and stale rows (old weight
+    versions!) leak across sessions.
+    """
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("TRUNCATE users, disciplines, feature_weights RESTART IDENTITY CASCADE")
+        )
+    await engine.dispose()
+
+
 def _alembic_downgrade_tolerant() -> None:
     """Best-effort teardown: a fresh database has nothing to downgrade."""
     subprocess.run(
@@ -64,6 +84,7 @@ def _alembic_downgrade_tolerant() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database() -> None:
     """Rebuild the schema from scratch for the whole session."""
+    asyncio.run(_wipe_domain_tables())
     _alembic_downgrade_tolerant()
     _run_alembic("upgrade", "head")
 
