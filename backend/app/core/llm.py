@@ -1,14 +1,17 @@
 """LLM client abstraction (§8.1).
 
-One interface — `complete(messages, system, tier)` — implemented per
+One interface — `complete(messages, tools, system, tier)` — implemented per
 provider; nothing else touches a provider SDK. That is what makes the
 tier/provider choice in §9 an env-var change, not a code change.
 
-Phase 3 scope: the voice pipeline's structured extraction (free tier) and
-the bot's free-text entrypoint (cheap tier) call this with plain
-completions. The full tool-using agent loop, routing and token accounting
-are Phase 5 (§8.3–8.6, §23) and will extend this client with `tools` —
-the call sites already go through this module, so nothing else moves.
+Phase 5 extends the Phase 3 client with OpenAI-style tool calling (§8.3/8.4):
+`tools` carries the tool registry's JSON schemas; a response that requests
+tool calls surfaces as `LLMResponse.tool_calls` for the agent loop to
+execute. Token accounting (§8.6) is written by call sites from the response's
+usage fields (`tokens_in/out`, `cached_tokens`).
+
+Tier → model mapping (§9.1): free and cheap both ride the flash model (free
+tier routing hardcodes it per the §8.1 note), powerful comes from settings.
 
 §0/§20: tests never hit a live provider — they inject a fixture client.
 """
@@ -28,11 +31,26 @@ TIERS = ("free", "cheap", "powerful")
 
 
 @dataclass
+class ToolCallRequest:
+    """One tool the model wants executed (OpenAI-compatible shape)."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]  # parsed from the JSON arguments string
+
+
+@dataclass
 class LLMResponse:
-    content: str
+    content: str | None
     model: str
     tokens_in: int = 0
     tokens_out: int = 0
+    cached_tokens: int = 0
+    tool_calls: list[ToolCallRequest] | None = None
+
+    @property
+    def wants_tools(self) -> bool:
+        return bool(self.tool_calls)
 
 
 class LLMError(Exception):
@@ -42,9 +60,10 @@ class LLMError(Exception):
 class LLMClient(Protocol):
     async def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         system: str | None = None,
         tier: str = "cheap",
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse: ...
 
 
@@ -52,8 +71,9 @@ class LiveGLMClient:
     """GLM family via an OpenAI-compatible chat-completions endpoint (§2).
 
     Model per tier comes from settings (LLM_PROVIDER_CHEAP /
-    LLM_PROVIDER_POWERFUL); the free tier in §9 is the cheap/flash model —
-    free-tier routing hardcodes it at the call site, not here.
+    LLM_PROVIDER_POWERFUL); the §9.1 free tier rides the flash model, so
+    "free" resolves to model_cheap here and free-tier call sites simply pass
+    tier="free" for honest token_usage accounting.
     """
 
     def __init__(self, api_key: str, api_base: str, model_cheap: str, model_powerful: str) -> None:
@@ -61,38 +81,74 @@ class LiveGLMClient:
             raise LLMError("GLM_API_KEY is not set — live LLM calls are unavailable")
         self._api_key = api_key
         self._api_base = api_base.rstrip("/")
-        self._models = {"cheap": model_cheap, "powerful": model_powerful}
+        # §9.1: the free tier IS the flash model — free-tier call sites pass
+        # tier="free" and ride the same model as cheap.
+        self._models = {"free": model_cheap, "cheap": model_cheap, "powerful": model_powerful}
         self._client = httpx.AsyncClient(timeout=120.0)
 
     async def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         system: str | None = None,
         tier: str = "cheap",
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         if tier not in self._models:
             raise LLMError(f"unknown tier {tier!r} (expected one of {sorted(self._models)})")
-        payload_messages: list[dict[str, str]] = []
+        payload_messages: list[dict[str, Any]] = []
         if system:
             payload_messages.append({"role": "system", "content": system})
         payload_messages.extend(messages)
+        payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages}
+        if tools:
+            payload["tools"] = tools
         try:
             resp = await self._client.post(
                 f"{self._api_base}/chat/completions",
                 headers={"Authorization": f"Bearer {self._api_key}"},
-                json={"model": self._models[tier], "messages": payload_messages},
+                json=payload,
             )
             resp.raise_for_status()
             body = resp.json()
         except httpx.HTTPError as exc:
             raise LLMError(f"GLM completion failed: {exc}") from exc
-        usage = body.get("usage") or {}
-        return LLMResponse(
-            content=body["choices"][0]["message"]["content"],
-            model=body.get("model", self._models[tier]),
-            tokens_in=int(usage.get("prompt_tokens", 0)),
-            tokens_out=int(usage.get("completion_tokens", 0)),
-        )
+        return parse_completion(body, fallback_model=self._models[tier])
+
+
+def parse_completion(body: dict[str, Any], fallback_model: str) -> LLMResponse:
+    """Shape an OpenAI-compatible chat-completions body into an LLMResponse.
+
+    Pure function so the live client's parsing is unit-testable without HTTP.
+    Tool calls parse defensively: unparsable JSON arguments raise LLMError —
+    the agent loop converts that into a tool-error result, never a crash."""
+    usage = body.get("usage") or {}
+    message = body["choices"][0]["message"]
+    cached = 0
+    details = usage.get("prompt_tokens_details") or {}
+    if isinstance(details, dict):
+        cached = int(details.get("cached_tokens") or 0)
+    tool_calls = None
+    raw_calls = message.get("tool_calls") or []
+    if raw_calls:
+        tool_calls = []
+        for call in raw_calls:
+            fn = call.get("function") or {}
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                arguments = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except json.JSONDecodeError as exc:
+                raise LLMError(f"tool call {fn.get('name')!r}: unparsable arguments: {exc}") from exc
+            tool_calls.append(
+                ToolCallRequest(id=call.get("id") or "", name=fn.get("name") or "", arguments=arguments)
+            )
+    return LLMResponse(
+        content=message.get("content"),
+        model=body.get("model", fallback_model),
+        tokens_in=int(usage.get("prompt_tokens", 0)),
+        tokens_out=int(usage.get("completion_tokens", 0)),
+        cached_tokens=cached,
+        tool_calls=tool_calls,
+    )
 
 
 def extract_json_object(content: str) -> dict[str, Any]:
