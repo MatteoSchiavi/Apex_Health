@@ -37,10 +37,20 @@ def _run_alembic(*args: str) -> None:
     )
 
 
+def _alembic_downgrade_tolerant() -> None:
+    """Best-effort teardown: a fresh database has nothing to downgrade."""
+    subprocess.run(
+        ["uv", "run", "alembic", "downgrade", "base"],
+        cwd=BACKEND_DIR,
+        check=False,
+        capture_output=True,
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database() -> None:
     """Rebuild the schema from scratch for the whole session."""
-    _run_alembic("downgrade", "base")
+    _alembic_downgrade_tolerant()
     _run_alembic("upgrade", "head")
 
 
