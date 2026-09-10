@@ -1,0 +1,43 @@
+{
+  "hrvSummary": {
+    "lastNightAvg": 48.5,
+    "lastNight5MinHigh": 52,
+    "lastNight5MinLow": 43,
+    "weeklyAvg": 48.9,
+    "baseline": {
+      "avg": 47.0,
+      "lower": 43.0,
+      "upper": 53.0
+    }
+  },
+  "hrvReadings": [
+    {
+      "timestamp": 1741561200000,
+      "hrvValue": 44
+    },
+    {
+      "timestamp": 1741564800000,
+      "hrvValue": 52
+    },
+    {
+      "timestamp": 1741568400000,
+      "hrvValue": 49
+    },
+    {
+      "timestamp": 1741572000000,
+      "hrvValue": 47
+    },
+    {
+      "timestamp": 1741575600000,
+      "hrvValue": 51
+    },
+    {
+      "timestamp": 1741579200000,
+      "hrvValue": 46
+    },
+    {
+      "timestamp": 1741582800000,
+      "hrvValue": 43
+    }
+  ]
+}

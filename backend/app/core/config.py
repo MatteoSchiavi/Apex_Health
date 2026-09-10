@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     owner_email: str
     owner_password: str
 
+    # --- Garmin connector (§5, §23 Phase 1) ---
+    garmin_email: str = ""
+    garmin_password: str = ""
+    # §19 note: an unofficial client polled continuously raises ban risk —
+    # every paginated remote call is paced by this delay.
+    garmin_page_delay_seconds: float = 2.0
+    garmin_activity_page_size: int = 50
+    # §6.3: backfill walks wellness history backwards until this many
+    # consecutive data-empty days — the source's real history boundary.
+    garmin_backfill_empty_gap_days: int = 10
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.

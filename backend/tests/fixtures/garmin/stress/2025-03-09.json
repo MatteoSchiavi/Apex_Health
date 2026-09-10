@@ -1,0 +1,23 @@
+{
+  "stressGraph": [
+    {
+      "timestamp": 1741510800000,
+      "stressLevel": 31
+    },
+    {
+      "timestamp": 1741525200000,
+      "stressLevel": 58
+    }
+  ],
+  "bodyBatteryChart": [
+    {
+      "timestamp": 1741510800000,
+      "value": 52
+    },
+    {
+      "timestamp": 1741525200000,
+      "value": 71
+    }
+  ],
+  "bodyBatteryMostRecentValue": 71
+}

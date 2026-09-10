@@ -1,0 +1,59 @@
+[
+  {
+    "timestamp": 1741415400000,
+    "heartRate": 148,
+    "cadence": 172.0,
+    "speed": 3.4,
+    "altitude": 812.0,
+    "positionLat": 543468459,
+    "positionLong": 109330779
+  },
+  {
+    "timestamp": 1741415460000,
+    "heartRate": 152,
+    "cadence": 175.0,
+    "speed": 3.6,
+    "altitude": 815.0,
+    "positionLat": 543473231,
+    "positionLong": 109337937
+  },
+  {
+    "timestamp": 1741415520000,
+    "heartRate": 155,
+    "cadence": 171.0,
+    "speed": 3.7,
+    "altitude": 820.0,
+    "positionLat": 543478003,
+    "positionLong": 109345095
+  },
+  {
+    "heartRate": 156
+  },
+  {
+    "timestamp": 1741415580000,
+    "heartRate": 158,
+    "cadence": 176.0,
+    "speed": 3.5,
+    "altitude": 826.0,
+    "positionLat": 543482776,
+    "positionLong": 109352253
+  },
+  {
+    "timestamp": 1741415640000,
+    "heartRate": 157,
+    "cadence": 170.0,
+    "speed": 3.3,
+    "altitude": 833.0,
+    "positionLat": 543487548,
+    "positionLong": 109359412
+  },
+  {
+    "timestamp": 1741415700000,
+    "heartRate": 154,
+    "cadence": 169.0,
+    "speed": 3.1,
+    "altitude": 838.0,
+    "positionLat": 543492320,
+    "positionLong": 109366570
+  }
+]

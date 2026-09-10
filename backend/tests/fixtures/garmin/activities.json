@@ -1,0 +1,72 @@
+[
+  {
+    "activityId": 7103,
+    "activityName": "Gym Session",
+    "startTimeGMT": "2025-03-09 17:30:00",
+    "duration": 3600.0,
+    "activityType": {
+      "typeId": 1,
+      "typeKey": "strength_training",
+      "parentTypeId": 1
+    },
+    "manual": false,
+    "averageHR": 121,
+    "maxHR": 146,
+    "calories": 420,
+    "activityTrainingLoad": 64.0
+  },
+  {
+    "activityId": 7102,
+    "activityName": "Alpine Ride",
+    "startTimeGMT": "2025-03-09 08:15:00",
+    "duration": 7200.0,
+    "activityType": {
+      "typeId": 1,
+      "typeKey": "road_biking",
+      "parentTypeId": 1
+    },
+    "manual": false,
+    "distance": 48200.0,
+    "elevationGain": 640.0,
+    "averageHR": 142,
+    "maxHR": 168,
+    "averagePower": 214.5,
+    "normalizedPower": 231.0,
+    "calories": 1120,
+    "activityTrainingLoad": 145.0,
+    "vO2MaxValue": 52.4
+  },
+  {
+    "activityId": 7104,
+    "activityName": "Late Night Walk",
+    "startTimeGMT": "2025-03-08 23:30:00",
+    "duration": 2400.0,
+    "activityType": {
+      "typeId": 1,
+      "typeKey": "walking",
+      "parentTypeId": 1
+    },
+    "manual": true,
+    "distance": 2100.0,
+    "calories": 96
+  },
+  {
+    "activityId": 7101,
+    "activityName": "Morning Trail Run",
+    "startTimeGMT": "2025-03-08 06:30:00",
+    "duration": 5400.0,
+    "activityType": {
+      "typeId": 1,
+      "typeKey": "trail_running",
+      "parentTypeId": 1
+    },
+    "manual": false,
+    "distance": 12400.0,
+    "elevationGain": 310.0,
+    "averageHR": 151,
+    "maxHR": 173,
+    "calories": 780,
+    "activityTrainingLoad": 82.0,
+    "vO2MaxValue": 49.3
+  }
+]

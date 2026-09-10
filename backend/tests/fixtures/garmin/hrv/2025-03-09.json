@@ -1,0 +1,31 @@
+{
+  "hrvSummary": {
+    "lastNightAvg": 45.2,
+    "lastNight5MinHigh": 49,
+    "lastNight5MinLow": 41,
+    "weeklyAvg": 45.6,
+    "baseline": {
+      "avg": 46.5,
+      "lower": 42.5,
+      "upper": 52.5
+    }
+  },
+  "hrvReadings": [
+    {
+      "timestamp": 1741476600000,
+      "hrvValue": 41
+    },
+    {
+      "timestamp": 1741480200000,
+      "hrvValue": 49
+    },
+    {
+      "timestamp": 1741487400000,
+      "hrvValue": 46
+    },
+    {
+      "timestamp": 1741494600000,
+      "hrvValue": 44
+    }
+  ]
+}

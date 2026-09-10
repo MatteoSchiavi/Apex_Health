@@ -16,6 +16,10 @@ dependencies = [
     "pydantic-settings>=2.3",
     "email-validator>=2.1",
     "python-json-logger>=3.1",
+    # §17: app-layer encryption for credentials/lab data
+    "cryptography>=42.0",
+    # §3: unofficial Garmin client — lazily imported, never exercised by tests (§0, §16.7)
+    "garminconnect>=0.1.36",
 ]
 
 [dependency-groups]
