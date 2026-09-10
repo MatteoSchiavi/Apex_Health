@@ -221,6 +221,55 @@ against recorded fixtures only (§0/§20).
   user_id). Without `OPENAI_API_KEY` the tool degrades to a readable
   "unavailable" result.
 
+## Technogym connector (Phase 6)
+
+- **Stage 11a (built regardless, §11):** OAuth2 authorization-code flow per
+  the enduser-to-enduser sample on developer.technogym.com — authorize URL
+  with a single-use Redis-backed `state`, code exchange, single-flight token
+  refresh on sync (rotated tokens are re-encrypted back into
+  `integrations.credentials_encrypted`). Workout pulls go raw-first into
+  `raw_ingest` (`workout` + `workout_detail:{id}` payload types), then the
+  normalizer upserts `activities` keyed on `(source='technogym',
+  external_id)` — full history backfill on first sync, ±10 min-window
+  incremental afterwards, every remote call paced like Garmin (§19).
+- **Multi-source reconciliation (§12, Phase 6 AC):** when an ingested
+  session lands within ±10 minutes of an existing row for the same user and
+  the SAME seeded discipline, no duplicate `activities` row is created — the
+  new source is attached via `activity_source_links` and fields merge per
+  the richer-source-per-field rule (Garmin for HR/GPS-derived, Technogym for
+  machine power), and a populated field is NEVER overwritten with NULL.
+  Candidates already linked to the incoming source are excluded, so two
+  Technogym machine sessions five minutes apart stay two workouts. The rule
+  runs symmetrically — Garmin arrivals reconcile into Technogym rows too.
+  Judgment calls are documented in `app/connectors/reconciliation.py`.
+- **Manual connection (§0/§16.7, Phase 6 AC):** the owner connects the real
+  account themselves — either `POST /settings/integrations/technogym/authorize`
+  then open the returned URL (provider redirects to
+  `/integrations/technogym/callback`, which the single-use state
+  authenticates), or the CLI:
+
+  ```bash
+  cd backend
+  TECHNOGYM_CLIENT_ID=... TECHNOGYM_CLIENT_SECRET=... \
+      uv run python tools/technogym_connect.py start   # prints URL + state
+  # provider redirect completes automatically; otherwise paste the code:
+  uv run python tools/technogym_connect.py complete <code> <state>
+  uv run python tools/technogym_connect.py sync [--backfill]
+  uv run python tools/technogym_connect.py status
+  ```
+- **Stage 11b (contingent, §24):** `sync_plan_to_technogym` still validates
+  the confirmed-plan precondition and returns the documented fallback until
+  the owner registers and confirms what the individual access tier grants.
+  The fallback delivery path is now real: `/plan today` in Telegram shows
+  the day's confirmed-plan sessions (drafts never show) with the
+  follow-manually note. Fixture payloads are recorded-shape placeholders —
+  the first real manual sync captures live payloads, and raw-first design
+  means any shape drift is a parser fix, never data loss (§3).
+- **Schedule (§19):** `technogym.sync_all` runs every 6 hours, staggered at
+  :10 off the Garmin :00 tick (load-spreading judgment call); §21
+  escalation (3 consecutive failures -> `sync_failure` alert) is now a
+  shared helper both connectors use.
+
 ## Reset dev state
 
 ```bash
@@ -258,5 +307,13 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
   summaries, powerful-tier weekly/monthly reports, §8.5 Telegram
   confirmation flow, pgvector `search_context`. Live LLM calls need
   `GLM_API_KEY`; embeddings need `OPENAI_API_KEY` (§6.2 pinned model).
+- Phase 6 (Technogym connector) — complete: Stage 11a OAuth2 flow with
+  manual owner connection (API + `tools/technogym_connect.py`), raw-first
+  workout ingestion with full-history backfill and 6-hourly sync, §12
+  multi-source reconciliation (no duplicates against same-window Garmin
+  entries), `/plan today` fallback for the contingent Stage 11b. Real
+  connection needs `TECHNOGYM_CLIENT_ID/SECRET`; endpoints tunable via env
+  until registration confirms the §24 access tier. Stage 11b
+  prescription-push stays behind the §24 human decision.
   Docker parity still unproven until `docker compose up -d --build` runs on
   the owner's host.

@@ -333,5 +333,23 @@
       "date": 1741600003,
       "text": "/gear"
     }
+  },
+  "text_plan_today": {
+    "update_id": 1053,
+    "message": {
+      "message_id": 39,
+      "from": {
+        "id": 42,
+        "is_bot": false,
+        "first_name": "Matteo"
+      },
+      "chat": {
+        "id": 42,
+        "type": "private",
+        "first_name": "Matteo"
+      },
+      "date": 1741600005,
+      "text": "/plan today"
+    }
   }
 }

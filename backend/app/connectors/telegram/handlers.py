@@ -12,7 +12,13 @@ handles are logged and dropped — the polling loop outlives any update.
 import logging
 
 from app.agent.entrypoint import run_agent_turn
-from app.connectors.telegram.commands import cmd_donate, cmd_gear, cmd_report, cmd_status
+from app.connectors.telegram.commands import (
+    cmd_donate,
+    cmd_gear,
+    cmd_plan,
+    cmd_report,
+    cmd_status,
+)
 from app.connectors.telegram.draft_actions import (
     handle_plan_callback,
     handle_supplement_callback,
@@ -58,7 +64,8 @@ UNKNOWN_COMMAND = (
     "/status — integrations & daily snapshot\n"
     "/donate — donation & iron status\n"
     "/report — templated daily report\n"
-    "/gear — gear usage vs service intervals"
+    "/gear — gear usage vs service intervals\n"
+    "/plan — today's confirmed plan sessions"
 )
 
 WELCOME = (
@@ -73,6 +80,7 @@ DATA_COMMANDS = {
     "/donate": cmd_donate,
     "/report": cmd_report,
     "/gear": cmd_gear,
+    "/plan": cmd_plan,
 }
 
 
