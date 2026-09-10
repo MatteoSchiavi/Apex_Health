@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agent.loop import AgentLoopResult, run_agent_loop
+from app.agent.routing import resolve_tier
 from app.core.llm import LLMClient
 from app.models.chat import AiChatMessage, AiChatSession
 from app.models.features import DailyFeature
@@ -63,11 +64,12 @@ async def run_agent_turn(
     user_id: int,
     text: str,
     now: datetime | None = None,
-    tier: str = "cheap",
+    tier: str | None = None,
     embedding_client: Any | None = None,
 ) -> AgentTurnResult:
-    """One free-text turn: log user message, build the §8.4 system block, run
-    the tool loop, log the assistant reply with referenced_data + model_tier."""
+    """One free-text turn: log user message, build the §8.4 system block,
+    resolve the tier (§9.2 routing — None = auto), run the tool loop, log
+    the assistant reply with referenced_data + model_tier."""
     now = now or datetime.now(UTC)
     async with sessionmaker() as session:
         chat_session = await _resolve_session(session, user_id, now)
@@ -75,6 +77,8 @@ async def run_agent_turn(
         await session.flush()
         snapshot = await _build_snapshot(session, user_id, now)
         system = _system_block(snapshot)
+        if tier is None:
+            tier = (await resolve_tier(session, user_id, text, llm)).tier
         await session.commit()  # persist session + user message before the loop runs
 
     loop_result = await run_agent_loop(
