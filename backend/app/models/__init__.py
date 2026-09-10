@@ -6,6 +6,7 @@ from app.models.activity import (
     ActivityStream,
     Discipline,
 )
+from app.models.ai import AgentToolCall, AiReport, Embedding, TokenUsage
 from app.models.alert import Alert
 from app.models.base import Base
 from app.models.chat import AiChatMessage, AiChatSession
@@ -30,6 +31,7 @@ from app.models.medical import (
     SupplementProtocol,
 )
 from app.models.telegram import TelegramLink, TelegramMessage
+from app.models.training import PlannedSession, TrainingPlan
 from app.models.user import AuthCredential, User, UserSession
 from app.models.wellness import (
     DailyBiometric,
@@ -43,8 +45,10 @@ __all__ = [
     "ActivityGearLink",
     "ActivitySourceLink",
     "ActivityStream",
+    "AgentToolCall",
     "AiChatMessage",
     "AiChatSession",
+    "AiReport",
     "Alert",
     "AuthCredential",
     "Base",
@@ -53,6 +57,7 @@ __all__ = [
     "Discipline",
     "DisciplineGearDefault",
     "DisciplineFeature",
+    "Embedding",
     "FeatureWeight",
     "Gear",
     "GearServiceLog",
@@ -62,6 +67,7 @@ __all__ = [
     "LabMetric",
     "LabPanel",
     "NutritionLog",
+    "PlannedSession",
     "RawIngest",
     "SleepSession",
     "StressReading",
@@ -69,6 +75,8 @@ __all__ = [
     "SupplementProtocol",
     "TelegramLink",
     "TelegramMessage",
+    "TokenUsage",
+    "TrainingPlan",
     "User",
     "UserSession",
 ]
