@@ -84,6 +84,18 @@ def assert_expected_row(row: DailyFeature, expected: dict, label: str) -> None:
         )
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def v1_weights_only(db_session):
+    """The §6.4 tests mutate the GLOBAL feature_weights config (v2/future
+    rows); delete everything above the seeded v1 after each test so later
+    tests — in this or any other module — see the migration's state."""
+    yield
+    from sqlalchemy import text
+
+    await db_session.execute(text("DELETE FROM feature_weights WHERE version > 1"))
+    await db_session.commit()
+
+
 async def test_golden_daily_rows(db_session, golden_world):
     """Every pinned date matches the hand-computed expectations."""
     user, fixture = golden_world
