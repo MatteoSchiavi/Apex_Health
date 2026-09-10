@@ -20,11 +20,23 @@ from app.connectors.telegram.context import BotContext
 from app.connectors.telegram.handlers import handle_update
 from app.core.config import get_settings
 from app.core.db import sessionmaker
+from app.core.embeddings import EmbeddingError, build_embedding_client
 from app.core.llm import build_llm_client
 from app.core.redis import get_redis
 from app.tasks.telegram_voice import process_voice_task
 
 logger = logging.getLogger("connectors.telegram.polling")
+
+
+def _embeddings_factory():
+    """Embedding client when OPENAI_API_KEY is configured (§6.2 pinned
+    model), else None — search_context degrades to a readable result."""
+    if not get_settings().openai_api_key:
+        return None
+    try:
+        return build_embedding_client()
+    except EmbeddingError:
+        return None
 
 
 async def _celery_voice_dispatch(**kwargs) -> None:
@@ -66,6 +78,7 @@ def main() -> None:
         redis=get_redis(),
         dispatch_voice=_celery_voice_dispatch,
         llm_factory=build_llm_client,
+        embeddings_factory=_embeddings_factory,
     )
     logger.info("bot polling started (long poll %ss)", LONG_POLL_TIMEOUT_S)
     try:

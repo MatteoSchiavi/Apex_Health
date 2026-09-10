@@ -104,9 +104,10 @@ async def embed_journal_entry(
     user_id: int,
     entry_id: int,
     text: str,
-) -> int:
-    """Write-time embedding for one journal entry: store + return the token
-    count (the caller writes the token_usage row — §8.6)."""
+):
+    """Write-time embedding for one journal entry: store the vector and
+    return the EmbeddingResult (the caller writes the token_usage row —
+    §8.6 — so the model name rides along)."""
     result = await embedding_client.embed([text])
     await store_embedding(
         session,
@@ -115,4 +116,4 @@ async def embed_journal_entry(
         vector=result.vectors[0],
         content_snippet=_snippet(text),
     )
-    return result.tokens_in
+    return result

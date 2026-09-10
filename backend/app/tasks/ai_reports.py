@@ -125,10 +125,18 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
 
         telegram = LiveTelegramClient(settings.telegram_bot_token)
 
+    embeddings_client = None
+    if settings.openai_api_key:
+        from app.core.embeddings import build_embedding_client
+
+        embeddings_client = build_embedding_client()
+
     for user, local_now in targets:
         start, end = _period_for(report_type, local_now)
         try:
-            row = await upsert_periodic_report(sessionmaker, llm, user, report_type, start, end)
+            row = await upsert_periodic_report(
+                sessionmaker, llm, user, report_type, start, end, embeddings_client=embeddings_client
+            )
             if row is None:
                 results[str(user.id)] = "no-data"
                 continue

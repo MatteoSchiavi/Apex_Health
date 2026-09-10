@@ -117,13 +117,19 @@ async def clean_bot_tables(db_session):
 
 
 @asynccontextmanager
-async def bot_context(telegram: FixtureTelegramClient, dispatch_voice=None, llm_factory=None):
+async def bot_context(
+    telegram: FixtureTelegramClient,
+    dispatch_voice=None,
+    llm_factory=None,
+    embeddings_factory=None,
+):
     """A BotContext wired to the app sessionmaker + a fresh Redis client.
 
     dispatch_voice defaults to an inline no-op recorder; voice tests pass a
     dispatcher that runs the real pipeline against fixture clients.
     llm_factory defaults to a lazy assertion failure — flows that should NOT
     call the model make the test fail loudly if they do.
+    embeddings_factory stays None unless a test opts in (§6.2 corpus).
     """
     from app.connectors.telegram.context import BotContext
     from app.core.db import sessionmaker
@@ -142,6 +148,7 @@ async def bot_context(telegram: FixtureTelegramClient, dispatch_voice=None, llm_
             redis=redis,
             dispatch_voice=dispatch_voice or _noop_dispatch,
             llm_factory=llm_factory or _no_llm,
+            embeddings_factory=embeddings_factory,
         )
     finally:
         await redis.aclose()

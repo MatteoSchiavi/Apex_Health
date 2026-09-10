@@ -13,14 +13,14 @@ from sqlalchemy import func, select
 from app.core.db import sessionmaker as app_sessionmaker
 from app.core.llm import LLMResponse
 from app.models.activity import Activity, Discipline
-from app.models.ai import AgentToolCall, AiReport
+from app.models.ai import AgentToolCall, AiReport, Embedding
 from app.models.features import DailyFeature
 from app.models.telegram import TelegramLink
 from app.models.user import AuthCredential
 from app.reports.daily import build_daily_summary, upsert_daily_report
 from app.reports.periodic import upsert_periodic_report
 from app.tasks.ai_reports import _dispatch_daily, _dispatch_periodic
-from tests.helpers.ai import FixtureAgentLLMClient
+from tests.helpers.ai import FixtureAgentLLMClient, FixtureEmbeddingClient
 from tests.helpers.telegram import FixtureTelegramClient
 
 
@@ -202,10 +202,14 @@ async def test_weekly_task_dispatch_and_push(db_session, monkeypatch):
     await _seed_user_and_data(db_session, owner)
 
     client = FixtureTelegramClient()
+    embeddings = FixtureEmbeddingClient()
     monkeypatch.setattr(
         "app.tasks.ai_reports.get_settings",
-        lambda: SimpleNamespace(glm_api_key="fixture", telegram_bot_token="fixture-token"),
+        lambda: SimpleNamespace(
+            glm_api_key="fixture", telegram_bot_token="fixture-token", openai_api_key="fixture"
+        ),
     )
+    monkeypatch.setattr("app.core.embeddings.build_embedding_client", lambda: embeddings)
     monkeypatch.setattr(
         "app.connectors.telegram.client.LiveTelegramClient", lambda bot_token: client
     )
@@ -225,6 +229,10 @@ async def test_weekly_task_dispatch_and_push(db_session, monkeypatch):
     assert result[str(owner)] == "weekly:2025-03-03"
     assert [m["chat_id"] for m in client.sent_messages] == [999]
     assert "Weekly: consistent block." in client.sent_messages[0]["text"]
+
+    # the report content was embedded into the search corpus (§6.2/§8.3)
+    report_rows = (await db_session.scalars(select(Embedding))).all()
+    assert len(report_rows) == 1 and report_rows[0].source_table == "ai_reports"
 
     # monthly on the 1st: 2025-04-01 06:00 Rome = 04:00 UTC → March
     llm2 = FixtureAgentLLMClient(

@@ -33,7 +33,7 @@ from app.queries import (
     get_journal_entries,
     get_metric_trend,
 )
-from app.queries.usage import log_llm_usage
+from app.queries.usage import log_embedding_usage, log_llm_usage
 
 logger = logging.getLogger("app.reports.periodic")
 
@@ -115,10 +115,12 @@ async def upsert_periodic_report(
     report_type: str,
     start: date,
     end: date,
+    embeddings_client=None,
 ) -> AiReport | None:
     """Generate (or refresh) the weekly/monthly ai_reports row: data pack →
-    one powerful-tier completion → persist → push to linked chats. None when
-    the period has no data at all."""
+    one powerful-tier completion → persist (+ embed the content for §8.3
+    search_context, best-effort) → push to linked chats. None when the
+    period has no data at all."""
     if report_type not in ("weekly", "monthly"):
         raise ValueError(f"unsupported report_type {report_type!r}")
 
@@ -187,6 +189,35 @@ async def upsert_periodic_report(
             tokens_out=response.tokens_out,
             cached_tokens=response.cached_tokens,
         )
+        await session.flush()  # assign row.id before anything references it
+
+        # §6.2/§8.3: report content joins the searchable corpus (best-effort,
+        # savepoint-isolated so an embedding failure cannot poison the commit).
+        if embeddings_client is not None and row.content_md:
+            try:
+                from app.queries.search import store_embedding
+
+                async with session.begin_nested():
+                    result = await embeddings_client.embed([row.content_md])
+                    await store_embedding(
+                        session,
+                        source_table="ai_reports",
+                        source_id=row.id,
+                        vector=result.vectors[0],
+                        content_snippet=row.content_md[:240],
+                    )
+                    await log_embedding_usage(
+                        session,
+                        user_id=user.id,
+                        model=result.model,
+                        tokens_in=result.tokens_in,
+                    )
+            except Exception:  # noqa: BLE001 — report must not fail on embeddings
+                logger.exception(
+                    "embedding %s report %s failed — report saved anyway",
+                    report_type,
+                    row.id,
+                )
         await session.commit()
         logger.info(
             "%s report persisted for user %s (%s..%s)", report_type, user.id, start, end

@@ -26,9 +26,18 @@ class BotContext:
     sessionmaker: async_sessionmaker
     redis: Redis  # one-time link codes + edit-flow state (§10.3)
     dispatch_voice: VoiceDispatcher
-    # LLM clients are built lazily (§8.1): only flows that actually call the
-    # model pay the construction cost, and tests inject fixtures.
+    # LLM/embedding clients are built lazily (§8.1): only flows that actually
+    # call the model pay the construction cost, and tests inject fixtures.
     llm_factory: Callable[[], Any] = lambda: _missing_llm()
+    embeddings_factory: Callable[[], Any] | None = None  # None = embeddings off
+
+    def embeddings_client(self) -> Any | None:
+        """Embedding client for this turn (§8.3 search_context, §6.2 pinned
+        model) — or None when the runtime has no OPENAI_API_KEY; the agent
+        loop degrades search_context to a readable result."""
+        if self.embeddings_factory is None:
+            return None
+        return self.embeddings_factory()
 
     async def enqueue_voice(self, **kwargs: Any) -> None:
         """Fire-and-forget voice hand-off so polling continues immediately."""

@@ -13,6 +13,11 @@ import logging
 
 from app.agent.entrypoint import run_agent_turn
 from app.connectors.telegram.commands import cmd_donate, cmd_gear, cmd_report, cmd_status
+from app.connectors.telegram.draft_actions import (
+    handle_plan_callback,
+    handle_supplement_callback,
+    keyboard_for_drafts,
+)
 from app.connectors.telegram.link_flow import (
     confirm_link_code,
     get_linked_user_id,
@@ -184,7 +189,8 @@ async def _handle_voice(ctx, message: dict, chat_id: int) -> None:
 
 
 async def _handle_callback(ctx, callback: dict) -> None:
-    """Inline button presses: voice draft ✅ Save / ✏️ Edit (§10.2)."""
+    """Inline button presses: voice draft ✅ Save / ✏️ Edit (§10.2) and the
+    §8.5 write-tool confirmations (plan/supplement drafts)."""
     chat_id = callback["message"]["chat"]["id"]
     async with ctx.sessionmaker() as session:
         linked_user_id = await get_linked_user_id(session, chat_id)
@@ -196,7 +202,9 @@ async def _handle_callback(ctx, callback: dict) -> None:
     if len(parts) == 3 and parts[0] == "voice" and parts[2].isdigit():
         action, row_id = parts[1], int(parts[2])
         if action == "confirm":
-            answer, follow_up = await confirm_draft(ctx.sessionmaker, chat_id, row_id)
+            answer, follow_up = await confirm_draft(
+                ctx.sessionmaker, chat_id, row_id, embeddings_client=ctx.embeddings_client()
+            )
             await ctx.telegram.answer_callback_query(callback["id"], answer)
             if follow_up:
                 await ctx.telegram.send_message(chat_id, follow_up)
@@ -207,16 +215,39 @@ async def _handle_callback(ctx, callback: dict) -> None:
             await ctx.telegram.send_message(chat_id, answer)
             return
 
+    if len(parts) == 3 and parts[0] in ("plan", "supp") and parts[2].isdigit():
+        action, draft_id = parts[1], int(parts[2])
+        if parts[0] == "plan":
+            answer, follow_up = await handle_plan_callback(
+                ctx.sessionmaker, linked_user_id, action, draft_id
+            )
+        else:
+            answer, follow_up = await handle_supplement_callback(
+                ctx.sessionmaker, linked_user_id, action, draft_id
+            )
+        await ctx.telegram.answer_callback_query(callback["id"], answer)
+        if follow_up:
+            await ctx.telegram.send_message(chat_id, follow_up)
+        return
+
     await ctx.telegram.answer_callback_query(callback["id"], "Unknown action.")
 
 
 async def _handle_free_text(ctx, message: dict, chat_id: int, text: str, user_id: int) -> None:
     """✏️ Edit corrections first (draft flow); everything else goes to the
-    agent entrypoint — a real, data-grounded response (§23 Phase 3 AC2)."""
+    agent harness — the full §8.4 loop with tools, §9.2 routing and, when a
+    write tool produced a draft this turn, the §8.5 confirm keyboard."""
     handled = await apply_edit_corrections(
         ctx.sessionmaker, ctx.redis, ctx.telegram, ctx.llm_factory, chat_id, text
     )
     if handled:
         return
-    result = await run_agent_turn(ctx.sessionmaker, ctx.llm_factory(), user_id, text)
-    await ctx.telegram.send_message(chat_id, result.reply)
+    result = await run_agent_turn(
+        ctx.sessionmaker,
+        ctx.llm_factory(),
+        user_id,
+        text,
+        embedding_client=ctx.embeddings_client(),
+    )
+    keyboard = keyboard_for_drafts(result.drafts)
+    await ctx.telegram.send_message(chat_id, result.reply, reply_markup=keyboard)
