@@ -28,6 +28,10 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.connectors.reconciliation import (
+    find_reconcilable_activity,
+    reconcile_activity,
+)
 from app.connectors.technogym import fetch
 from app.connectors.technogym.type_map import resolve_equipment
 from app.gear.service import auto_link_gear
@@ -157,25 +161,48 @@ async def _upsert_activity(
             ActivitySourceLink.external_id == external_id,
         )
     )
-    if link is None:
-        activity = Activity(**values)
-        session.add(activity)
-        await session.flush()
-        session.add(
-            ActivitySourceLink(
-                activity_id=activity.id,
+    if link is not None:
+        activity = await session.get(Activity, link.activity_id)
+        if activity is None:  # pragma: no cover - broken link implies data corruption
+            raise NormalizationError(f"activity link {external_id} points at missing row")
+        # §17 upsert law: this source's own row updates in place; a populated
+        # field is never degraded to NULL (§12 floor rule, applied to re-syncs).
+        for key, val in values.items():
+            if val is not None:
+                setattr(activity, key, val)
+        link.raw_ingest_id = raw.id
+    else:
+        # §12: reconcile against a same-window session from ANOTHER source
+        # (±10 min, same discipline) — merge into it instead of duplicating.
+        candidate = await find_reconcilable_activity(
+            session,
+            user_id=raw.user_id,
+            start_time=start_time,
+            discipline_id=discipline_id,
+            source=fetch.SOURCE,
+        )
+        if candidate is not None:
+            await reconcile_activity(
+                session,
+                existing=candidate,
+                incoming_values=values,
                 source=fetch.SOURCE,
                 external_id=external_id,
                 raw_ingest_id=raw.id,
             )
-        )
-    else:
-        activity = await session.get(Activity, link.activity_id)
-        if activity is None:  # pragma: no cover - broken link implies data corruption
-            raise NormalizationError(f"activity link {external_id} points at missing row")
-        for key, val in values.items():
-            setattr(activity, key, val)
-        link.raw_ingest_id = raw.id
+            activity = candidate  # the merged row continues the pipeline
+        else:
+            activity = Activity(**values)
+            session.add(activity)
+            await session.flush()
+            session.add(
+                ActivitySourceLink(
+                    activity_id=activity.id,
+                    source=fetch.SOURCE,
+                    external_id=external_id,
+                    raw_ingest_id=raw.id,
+                )
+            )
     stats.activities_upserted += 1
 
     # §13: auto-link the discipline's default gear at ingestion (idempotent
