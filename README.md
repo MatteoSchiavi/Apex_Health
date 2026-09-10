@@ -285,6 +285,47 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
 - Five failed logins per email per 15 minutes lock the account temporarily (§22.1).
 - `GET /health` is the only public route (§17).
 
+## Weather module (Phase 7)
+
+- **Source (§2, §14):** Open-Meteo — free, no API key, which is the spec's
+  exact reason for choosing it. Two endpoints: the forecast API (future days
+  plus up to 92 past days) and the archive API (full history, lagging a few
+  days behind real time). Raw-first per §3/§17: every upstream payload lands
+  in `raw_ingest` (`source='open-meteo'`, `payload_type='forecast' |
+  'archive'`) before normalization.
+- **Forecast cache (§19 AC):** `weather.refresh_all` runs every 6 hours on
+  beat (staggered at :20, right after both connector syncs) and upserts
+  `forecast_cache` on its `UNIQUE (lat, lon, date)` key. The cache key uses
+  the coordinates we asked for, not the grid-snapped values Open-Meteo
+  echoes back — echoed values drift a grid cell between refreshes and would
+  quietly multiply near-duplicate rows. Re-running rewrites the same rows:
+  the scheduled refresh never double-counts (§17).
+- **`weather_snapshot` on ingestion (§14 AC):** the same beat tick enriches
+  every activity whose `weather_snapshot` is still NULL — coordinates from
+  the activity's first positioned stream sample, falling back to the
+  configured home coordinates. Recent dates ride the forecast API's past
+  window; dates older than the archive lag go to the archive API. Only NULL
+  columns are ever written (the pass never overwrites, so it is idempotent);
+  the column is `none_as_null` so "not weathered yet" means SQL NULL for
+  every writer.
+- **Access points:** the `/forecast [days]` bot command (§14's primary access
+  point while the dashboard is deferred) and `GET /weather/forecast?days=N`
+  (§18) read the same cache through the same `get_forecast` query (§8.2 —
+  one implementation per read, one WMO code table shared by both).
+- **§14 nudge:** once per user per local day (07:00 local, hourly beat
+  dispatch), when TOMORROW's cached forecast is a good training window
+  (documented thresholds: max temp 5–28°C, rain probability ≤ 40%, wind
+  ≤ 35 km/h) AND the latest readiness is at least
+  `WEATHER_NUDGE_READINESS_THRESHOLD` (default 70), the user's linked chats
+  get one proactive message. Redis SETNX dedup — a re-run the same day stays
+  quiet.
+- **Configuration (env tunables):** `WEATHER_HOME_LAT` / `WEATHER_HOME_LON`
+  (unset/0 disables the refresh with a logged note instead of failing a beat
+  tick), `WEATHER_FORECAST_DAYS` (default 7), `WEATHER_NUDGE_READINESS_THRESHOLD`
+  (≤ 0 disables the nudge). Weather has no `integrations` row — the source is
+  keyless, there are no credentials to store and no §21 escalation path;
+  failures are logged and retried on the next tick.
+
 ## Status
 
 - Phase 0 (scaffold) — complete: schema + seed, `/health`, owner auth +
@@ -315,5 +356,12 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
   connection needs `TECHNOGYM_CLIENT_ID/SECRET`; endpoints tunable via env
   until registration confirms the §24 access tier. Stage 11b
   prescription-push stays behind the §24 human decision.
+- Phase 7 (weather module) — complete: Open-Meteo client (keyless), raw-first
+  forecast refresh upserting `forecast_cache` every 6 hours (idempotent on
+  lat/lon/date), §14 `activities.weather_snapshot` enrichment on ingestion
+  (stream coords → home fallback, NULL-only writes), `/forecast` bot command
+  + `GET /weather/forecast` over one shared query, §14 forecast × readiness
+  nudge with per-day Redis dedup. Needs `WEATHER_HOME_LAT`/`WEATHER_HOME_LON`
+  to produce data; tests/demos use recorded Open-Meteo fixtures only.
   Docker parity still unproven until `docker compose up -d --build` runs on
   the owner's host.
