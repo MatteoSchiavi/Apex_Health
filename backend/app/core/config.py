@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # consecutive data-empty days — the source's real history boundary.
     garmin_backfill_empty_gap_days: int = 10
 
+    # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
+    telegram_bot_token: str = ""
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.
