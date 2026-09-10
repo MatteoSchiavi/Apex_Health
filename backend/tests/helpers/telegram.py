@@ -34,6 +34,13 @@ def with_text(update: dict[str, Any], text: str) -> dict[str, Any]:
     return {**update, "message": {**update["message"], "text": text}}
 
 
+def with_callback_data(update: dict[str, Any], data: str) -> dict[str, Any]:
+    """Same recorded callback shape, with dynamic callback_data (row ids
+    only exist after the draft row is created)."""
+    assert "callback_query" in update
+    return {**update, "callback_query": {**update["callback_query"], "data": data}}
+
+
 class FixtureTelegramClient:
     """Serves recorded updates; records every outgoing Bot API call."""
 
@@ -101,17 +108,22 @@ async def clean_bot_tables(db_session):
 
 
 @asynccontextmanager
-async def bot_context(telegram: FixtureTelegramClient, dispatch_voice=None):
+async def bot_context(telegram: FixtureTelegramClient, dispatch_voice=None, llm_factory=None):
     """A BotContext wired to the app sessionmaker + a fresh Redis client.
 
     dispatch_voice defaults to an inline no-op recorder; voice tests pass a
     dispatcher that runs the real pipeline against fixture clients.
+    llm_factory defaults to a lazy assertion failure — flows that should NOT
+    call the model make the test fail loudly if they do.
     """
     from app.connectors.telegram.context import BotContext
     from app.core.db import sessionmaker
 
     async def _noop_dispatch(**kwargs: Any) -> None:
         return None
+
+    def _no_llm():
+        raise AssertionError("this test must not build an LLM client")
 
     redis = Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
     try:
@@ -120,6 +132,7 @@ async def bot_context(telegram: FixtureTelegramClient, dispatch_voice=None):
             sessionmaker=sessionmaker,
             redis=redis,
             dispatch_voice=dispatch_voice or _noop_dispatch,
+            llm_factory=llm_factory or _no_llm,
         )
     finally:
         await redis.aclose()

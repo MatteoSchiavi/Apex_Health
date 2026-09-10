@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
     telegram_bot_token: str = ""
 
+    # --- LLM providers (§5, §8.1, §9): env-var swappable, no code change ---
+    llm_provider_cheap: str = "glm-4.7-flash"
+    llm_provider_powerful: str = "glm-5.2"
+    glm_api_key: str = ""
+    # OpenAI-compatible chat-completions endpoint for the GLM family.
+    glm_api_base: str = "https://open.bigmodel.cn/api/paas/v4"
+
+    # --- STT (§2, §5: OpenAI Whisper — voice notes are short) ---
+    openai_api_key: str = ""
+    openai_api_base: str = "https://api.openai.com/v1"
+    whisper_model: str = "whisper-1"
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.

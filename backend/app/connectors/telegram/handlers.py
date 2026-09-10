@@ -4,10 +4,9 @@ Every update passes the unlinked guard FIRST — an unlinked chat is told how
 to link before anything else happens (§23 Phase 3 acceptance), except for
 the /link and /confirm commands that perform the linking themselves.
 
-Handlers grow with the phase: voice + callback handlers land with the voice
-pipeline, command set expands with /status /donate /report /gear, and free
-text routes to the agent entrypoint. Message kinds nobody handles are logged
-and dropped — never crash the polling loop.
+Free text is checked against the voice-draft edit state (✏️ Edit flow)
+before falling through to the agent entrypoint. Message kinds nobody
+handles are logged and dropped — the polling loop outlives any update.
 """
 
 import logging
@@ -16,6 +15,11 @@ from app.connectors.telegram.link_flow import (
     confirm_link_code,
     get_linked_user_id,
     issue_link_code,
+)
+from app.connectors.telegram.voice import (
+    apply_edit_corrections,
+    confirm_draft,
+    request_edit,
 )
 
 logger = logging.getLogger("connectors.telegram.handlers")
@@ -55,8 +59,12 @@ WELCOME = (
 
 
 async def handle_update(ctx, update: dict) -> None:
-    """Route one Telegram update. Never raises — the polling loop outlives
-    any single bad update."""
+    """Route one Telegram update."""
+    callback = update.get("callback_query")
+    if callback is not None:
+        await _handle_callback(ctx, callback)
+        return
+
     message = update.get("message")
     if message is None:
         logger.debug("update %s: no message — nothing routed", update.get("update_id"))
@@ -74,13 +82,13 @@ async def handle_update(ctx, update: dict) -> None:
         return
 
     if "voice" in message:
-        await _handle_voice(ctx, message, chat_id, linked_user_id)
+        await _handle_voice(ctx, message, chat_id)
         return
     if command is not None:
         await _handle_command(ctx, message, chat_id, text, linked_user_id)
         return
     if text:
-        await _handle_free_text(ctx, message, chat_id, text, linked_user_id)
+        await _handle_free_text(ctx, message, chat_id, text)
         return
     logger.debug("message %s: no text/voice — nothing routed", message.get("message_id"))
 
@@ -139,15 +147,57 @@ async def _handle_command(ctx, message: dict, chat_id: int, text: str, user_id: 
     await ctx.telegram.send_message(chat_id, UNKNOWN_COMMAND)
 
 
-async def _handle_voice(ctx, message: dict, chat_id: int, user_id: int | None) -> None:
-    """Voice pipeline hand-off — lands with the voice-pipeline commit."""
+async def _handle_voice(ctx, message: dict, chat_id: int) -> None:
+    """Acknowledge, then hand off to background processing (§10.2)."""
+    voice = message["voice"]
     logger.info(
-        "chat %s: voice message %s received — pipeline pending",
+        "chat %s: voice message %s (%ss) — dispatching pipeline",
         chat_id,
-        message.get("message_id"),
+        message["message_id"],
+        voice.get("duration"),
+    )
+    await ctx.telegram.send_message(chat_id, "Got your voice note — structuring it now…")
+    await ctx.dispatch_voice(
+        chat_id=chat_id,
+        message_id=message["message_id"],
+        voice_file_id=voice["file_id"],
+        message_ts=message["date"],
     )
 
 
-async def _handle_free_text(ctx, message: dict, chat_id: int, text: str, user_id: int | None) -> None:
-    """Free text → agent harness — lands with the agent commit."""
+async def _handle_callback(ctx, callback: dict) -> None:
+    """Inline button presses: voice draft ✅ Save / ✏️ Edit (§10.2)."""
+    chat_id = callback["message"]["chat"]["id"]
+    async with ctx.sessionmaker() as session:
+        linked_user_id = await get_linked_user_id(session, chat_id)
+    if linked_user_id is None:
+        await ctx.telegram.send_message(chat_id, LINK_INSTRUCTIONS)
+        return
+
+    parts = (callback.get("data") or "").split(":")
+    if len(parts) == 3 and parts[0] == "voice" and parts[2].isdigit():
+        action, row_id = parts[1], int(parts[2])
+        if action == "confirm":
+            answer, follow_up = await confirm_draft(ctx.sessionmaker, chat_id, row_id)
+            await ctx.telegram.answer_callback_query(callback["id"], answer)
+            if follow_up:
+                await ctx.telegram.send_message(chat_id, follow_up)
+            return
+        if action == "edit":
+            answer = await request_edit(ctx.redis, chat_id, row_id)
+            await ctx.telegram.answer_callback_query(callback["id"], answer)
+            await ctx.telegram.send_message(chat_id, answer)
+            return
+
+    await ctx.telegram.answer_callback_query(callback["id"], "Unknown action.")
+
+
+async def _handle_free_text(ctx, message: dict, chat_id: int, text: str) -> None:
+    """✏️ Edit corrections first (draft flow); the agent entrypoint takes
+    everything else once it lands (§8)."""
+    handled = await apply_edit_corrections(
+        ctx.sessionmaker, ctx.redis, ctx.telegram, ctx.llm_factory, chat_id, text
+    )
+    if handled:
+        return
     logger.info("chat %s: free text received — agent pending", chat_id)

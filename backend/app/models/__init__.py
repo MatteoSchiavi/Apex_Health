@@ -14,7 +14,8 @@ from app.models.features import (
     FeatureWeight,
 )
 from app.models.integration import Integration, RawIngest
-from app.models.telegram import TelegramLink
+from app.models.journal import JournalEntry
+from app.models.telegram import TelegramLink, TelegramMessage
 from app.models.user import AuthCredential, User, UserSession
 from app.models.wellness import (
     DailyBiometric,
@@ -37,10 +38,12 @@ __all__ = [
     "FeatureWeight",
     "HrvReading",
     "Integration",
+    "JournalEntry",
     "RawIngest",
     "SleepSession",
     "StressReading",
     "TelegramLink",
+    "TelegramMessage",
     "User",
     "UserSession",
 ]
