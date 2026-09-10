@@ -1,6 +1,7 @@
 """Celery application (MASTER_SPEC §2, §19). Beat carries the scheduled jobs
-that have landed so far: Garmin sync every 6 hours (Phase 1) and the nightly
-feature engine at 03:00 user-local (Phase 2)."""
+that have landed so far: Garmin sync every 6 hours (Phase 1), the nightly
+feature engine at 03:00 user-local (Phase 2), and nightly gear accumulation
+right after it (Phase 4)."""
 
 from celery import Celery
 from celery.schedules import crontab
@@ -17,6 +18,7 @@ celery_app = Celery(
         "app.tasks.health_tasks",
         "app.tasks.garmin_sync",
         "app.tasks.feature_engine",
+        "app.tasks.gear_tasks",
         "app.tasks.telegram_voice",
     ],
 )
@@ -42,6 +44,13 @@ celery_app.conf.update(
         "feature-engine-hourly-dispatch": {
             "task": "features.nightly",
             "schedule": crontab(minute=0),
+        },
+        # §19: gear accumulation "right after feature engine" — the :15 tick
+        # is still inside every user's 03:00-03:59 local window, so it runs
+        # after that day's feature pass, wherever the user lives.
+        "gear-accumulation-hourly-dispatch": {
+            "task": "gear.accumulate_all",
+            "schedule": crontab(minute=15),
         },
     },
 )
