@@ -47,7 +47,13 @@ class Activity(Base):
     data_completeness: Mapped[str] = mapped_column(
         Text, nullable=False, default="full", server_default="full"
     )
-    weather_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # §14: NULL means "not weathered yet" — the weather connector's enrichment
+    # pass selects on IS NULL. JSONB's default binds explicit Python None to
+    # JSON 'null' (not SQL NULL), which would make such rows invisible to that
+    # sweep forever; none_as_null pins the column to one unambiguous meaning.
+    weather_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )
