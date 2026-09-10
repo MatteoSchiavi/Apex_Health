@@ -14,6 +14,7 @@ import logging
 from app.agent.entrypoint import run_agent_turn
 from app.connectors.telegram.commands import (
     cmd_donate,
+    cmd_forecast,
     cmd_gear,
     cmd_plan,
     cmd_report,
@@ -65,7 +66,8 @@ UNKNOWN_COMMAND = (
     "/donate — donation & iron status\n"
     "/report — templated daily report\n"
     "/gear — gear usage vs service intervals\n"
-    "/plan — today's confirmed plan sessions"
+    "/plan — today's confirmed plan sessions\n"
+    "/forecast [days] — cached weather forecast (§14)"
 )
 
 WELCOME = (
@@ -81,7 +83,11 @@ DATA_COMMANDS = {
     "/report": cmd_report,
     "/gear": cmd_gear,
     "/plan": cmd_plan,
+    "/forecast": cmd_forecast,
 }
+
+# Data commands whose trailing argument is meaningful (e.g. "/forecast 3").
+ARG_COMMANDS = {"/forecast"}
 
 
 async def handle_update(ctx, update: dict) -> None:
@@ -172,7 +178,11 @@ async def _handle_command(ctx, message: dict, chat_id: int, text: str, user_id: 
 
     data_command = DATA_COMMANDS.get(command)
     if data_command is not None:
-        await ctx.telegram.send_message(chat_id, await data_command(ctx, chat_id, user_id))
+        if command in ARG_COMMANDS:
+            reply = await data_command(ctx, chat_id, user_id, arg)
+        else:
+            reply = await data_command(ctx, chat_id, user_id)
+        await ctx.telegram.send_message(chat_id, reply)
         return
 
     await ctx.telegram.send_message(chat_id, UNKNOWN_COMMAND)

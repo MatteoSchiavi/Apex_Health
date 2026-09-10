@@ -41,6 +41,7 @@ from app.queries.usage import (
     log_embedding_usage,
     log_llm_usage,
 )
+from app.queries.weather import describe_weather_code, get_forecast
 
 __all__ = [
     "activities_on_local_date",
@@ -49,12 +50,14 @@ __all__ = [
     "create_plan_draft",
     "create_supplement_draft",
     "day_spend",
+    "describe_weather_code",
     "discipline_id_by_slug",
     "estimate_embedding_cost_usd",
     "estimate_llm_cost_usd",
     "gear_overview",
     "get_activity_summary",
     "get_donation_status",
+    "get_forecast",
     "get_journal_entries",
     "get_lab_trend",
     "get_metric_trend",

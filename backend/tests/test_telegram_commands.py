@@ -17,6 +17,7 @@ from tests.helpers.telegram import (
     clean_bot_tables,  # noqa: F401 — autouse per-test truncate
     load_update,
     sent_texts,
+    with_text,
 )
 
 CHAT = 42
@@ -201,3 +202,104 @@ async def test_gear_empty():
         await _link_chat(ctx, CHAT)
         await handle_update(ctx, load_update("text_gear"))
     assert "No gear tracked yet" in sent_texts(client)[0]
+
+
+# --------------------------------------------------- /forecast (§14, Phase 7)
+
+
+def _cached_day(day) -> dict:
+    return {
+        "source": "open-meteo",
+        "time": day.isoformat(),
+        "daily": {
+            "temperature_2m_max": 16.1,
+            "temperature_2m_min": 7.1,
+            "temperature_2m_mean": 11.2,
+            "precipitation_sum": 0.4,
+            "precipitation_probability_max": 35,
+            "wind_speed_10m_max": 18.6,
+            "weather_code": 2.0,
+        },
+    }
+
+
+async def _seed_forecast_cache(ctx, owner: int, days: int = 3) -> None:
+    from decimal import Decimal
+
+    from app.models.weather import ForecastCache
+
+    async with ctx.sessionmaker() as session:
+        for offset in range(days):
+            day = date.today() + timedelta(days=offset)
+            session.add(
+                ForecastCache(
+                    lat=Decimal("45.075"),
+                    lon=Decimal("9.725"),
+                    date=day,
+                    payload=_cached_day(day),
+                    fetched_at=datetime.now(UTC),
+                )
+            )
+        await session.commit()
+
+
+def _with_home_configured(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "app.core.config.get_settings",
+        lambda: SimpleNamespace(weather_home_lat=45.075, weather_home_lon=9.725),
+    )
+
+
+async def test_forecast_renders_cached_days(monkeypatch):
+    client = FixtureTelegramClient()
+    async with bot_context(client) as ctx:
+        owner = await _link_chat(ctx, CHAT)
+        await _seed_forecast_cache(ctx, owner)
+        _with_home_configured(monkeypatch)
+        await handle_update(ctx, with_text(load_update("text_status"), "/forecast"))
+    out = sent_texts(client)[0]
+    assert out.startswith("Forecast (45.08, 9.72) — Europe/Rome")
+    assert "- " in out and "Partly cloudy" in out
+    assert "7.1–16.1°C" in out
+    assert "0.4mm, 35%" in out
+    assert "wind 18.6km/h" in out
+
+
+async def test_forecast_days_argument_limits_rows(monkeypatch):
+    client = FixtureTelegramClient()
+    async with bot_context(client) as ctx:
+        owner = await _link_chat(ctx, CHAT)
+        await _seed_forecast_cache(ctx, owner, days=5)
+        _with_home_configured(monkeypatch)
+        await handle_update(
+            ctx, with_text(load_update("text_status"), "/forecast 2")
+        )
+    out = sent_texts(client)[0]
+    assert out.count("\n- ") == 2
+
+
+async def test_forecast_without_configuration_is_honest(monkeypatch):
+    from types import SimpleNamespace
+
+    client = FixtureTelegramClient()
+    async with bot_context(client) as ctx:
+        owner = await _link_chat(ctx, CHAT)
+        monkeypatch.setattr(
+            "app.core.config.get_settings",
+            lambda: SimpleNamespace(weather_home_lat=0.0, weather_home_lon=0.0),
+        )
+        await handle_update(ctx, with_text(load_update("text_status"), "/forecast"))
+    out = sent_texts(client)[0]
+    assert "not configured" in out
+
+
+async def test_forecast_with_empty_cache_tells_the_truth(monkeypatch):
+    client = FixtureTelegramClient()
+    async with bot_context(client) as ctx:
+        owner = await _link_chat(ctx, CHAT)
+        _with_home_configured(monkeypatch)
+        await handle_update(ctx, with_text(load_update("text_status"), "/forecast"))
+    out = sent_texts(client)[0]
+    assert "No forecast cached yet" in out
