@@ -95,12 +95,21 @@ def sent_keyboards(client: FixtureTelegramClient) -> list[dict[str, Any] | None]
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_bot_tables(db_session):
-    """Bot-domain tables are shared across tests in one schema build —
-    truncate between tests (same convention as the sync-suite fixture)."""
+    """Command tests seed wide slices of the §6.4 schema (features,
+    integrations, labs, gear, wellness...) — truncate the full domain surface
+    between tests so nothing leaks. Same convention as the sync suite."""
     await db_session.execute(
         text(
-            "TRUNCATE telegram_links, telegram_messages, journal_entries, "
-            "ai_chat_sessions, ai_chat_messages RESTART IDENTITY CASCADE"
+            "TRUNCATE activities, activity_source_links, activity_streams, "
+            "activity_gear_links, alerts, ai_chat_messages, ai_chat_sessions, "
+            "daily_biometrics, daily_features, discipline_features, "
+            "discipline_gear_defaults, gear, gear_service_logs, hrv_readings, "
+            "integrations, journal_entries, lab_metrics, lab_panels, "
+            "nutrition_logs, segments, segment_efforts, sleep_sessions, "
+            "stress_readings, supplement_logs, supplement_protocols, "
+            "telegram_links, telegram_messages, training_plans, planned_sessions, "
+            "technogym_sync_log, watch_sync_log, weekly_rollups, monthly_rollups, "
+            "embeddings, token_usage, agent_tool_calls RESTART IDENTITY CASCADE"
         )
     )
     await db_session.commit()

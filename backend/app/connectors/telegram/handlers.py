@@ -11,6 +11,7 @@ handles are logged and dropped — the polling loop outlives any update.
 
 import logging
 
+from app.connectors.telegram.commands import cmd_donate, cmd_gear, cmd_report, cmd_status
 from app.connectors.telegram.link_flow import (
     confirm_link_code,
     get_linked_user_id,
@@ -48,14 +49,25 @@ UNKNOWN_COMMAND = (
     "Unknown command. Available:\n"
     "/link — link this chat\n"
     "/confirm <code> — finish linking\n"
-    "/status — integration & daily snapshot"
+    "/status — integrations & daily snapshot\n"
+    "/donate — donation & iron status\n"
+    "/report — templated daily report\n"
+    "/gear — gear usage vs service intervals"
 )
 
 WELCOME = (
     "Apex Health bot.\n"
     "/link — link this chat to your account\n"
-    "/status — integration & daily snapshot"
+    "/status — integrations & daily snapshot"
 )
+
+# Data commands: linked chats only, read via the shared query layer (§8.2).
+DATA_COMMANDS = {
+    "/status": cmd_status,
+    "/donate": cmd_donate,
+    "/report": cmd_report,
+    "/gear": cmd_gear,
+}
 
 
 async def handle_update(ctx, update: dict) -> None:
@@ -142,6 +154,11 @@ async def _handle_command(ctx, message: dict, chat_id: int, text: str, user_id: 
 
     if command == "/start":
         await ctx.telegram.send_message(chat_id, WELCOME)
+        return
+
+    data_command = DATA_COMMANDS.get(command)
+    if data_command is not None:
+        await ctx.telegram.send_message(chat_id, await data_command(ctx, chat_id, user_id))
         return
 
     await ctx.telegram.send_message(chat_id, UNKNOWN_COMMAND)
