@@ -80,6 +80,14 @@ async def _seed_data(ctx, owner: int) -> None:
         await session.commit()
 
 
+async def _cheap_owner(ctx) -> int:
+    """Owner id with the tier capped at cheap_only — loop mechanics are
+    tested here at the cheap tier; routing has its own test file."""
+    owner = await _owner_id(ctx)
+    await _cap_owner_at_cheap(ctx, owner)
+    return owner
+
+
 async def _link_chat(ctx, chat_id: int) -> int:
     async with ctx.sessionmaker() as session:
         owner = (
@@ -90,6 +98,16 @@ async def _link_chat(ctx, chat_id: int) -> int:
         session.add(TelegramLink(user_id=owner, chat_id=chat_id))
         await session.commit()
     return owner
+
+
+async def _cap_owner_at_cheap(ctx, user_id: int) -> None:
+    """ensure_owner bootstraps the OWNER with ai_access_tier='full' (§15);
+    the loop tests here exercise loop mechanics at the cheap tier — routing
+    itself is covered in test_agent_routing.py."""
+    async with ctx.sessionmaker() as session:
+        cred = await session.get(AuthCredential, user_id)
+        cred.ai_access_tier = "cheap_only"
+        await session.commit()
 
 
 async def _owner_id(ctx) -> int:
@@ -115,6 +133,7 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
             ]
         )
         owner = await _link_chat(ctx, CHAT)
+        await _cap_owner_at_cheap(ctx, owner)
         await _seed_data(ctx, owner)
 
         await handle_update(ctx, load_update("text_free"))
@@ -167,7 +186,7 @@ async def test_tool_error_returns_as_result_and_loop_continues():
                 final("That metric doesn't exist; recovery is 42."),
             ]
         )
-        owner = await _owner_id(ctx)
+        owner = await _cheap_owner(ctx)
         await _seed_data(ctx, owner)
 
         result = await run_agent_turn(
@@ -194,7 +213,7 @@ async def test_loop_gives_best_partial_after_eight_iterations():
             [tool_request(f"c{i}", "get_donation_status") for i in range(8)]
             + [final("never reached")]
         )
-        owner = await _owner_id(ctx)
+        owner = await _cheap_owner(ctx)
 
         result = await run_agent_turn(
             ctx.sessionmaker, llm, owner, "loop forever", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
@@ -220,7 +239,7 @@ async def test_unknown_tool_name_is_a_readable_error():
                 final("I don't actually have that tool."),
             ]
         )
-        owner = await _owner_id(ctx)
+        owner = await _cheap_owner(ctx)
 
         result = await run_agent_turn(
             ctx.sessionmaker, llm, owner, "do it", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
@@ -237,7 +256,7 @@ async def test_plain_completion_still_works_without_tools():
     client = FixtureTelegramClient()
     async with bot_context(client, llm_factory=lambda: llm) as ctx:
         llm = FixtureAgentLLMClient([final("Sleep more.")])
-        owner = await _owner_id(ctx)
+        owner = await _cheap_owner(ctx)
 
         result = await run_agent_turn(
             ctx.sessionmaker, llm, owner, "any advice?", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
