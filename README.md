@@ -150,6 +150,32 @@ cd backend && uv run python -m app.connectors.telegram.polling
 Automated tests and demos never touch the live Bot API, LLM, or STT — they run
 against recorded fixtures only (§0/§20).
 
+## Medical, lifestyle & gear (Phase 4)
+
+- **Lab panels (§6.4, §17):** `POST /labs` records a panel — standard markers
+  as structured columns, every marker mirrored into `lab_metrics` with unit
+  and the lab's reference range, free-text notes encrypted at the application
+  layer before they touch disk. `GET /labs` / `GET /labs/{id}` read panels
+  back (notes decrypted in the service layer only). Session-protected;
+  POST requires the CSRF header.
+- **Low-ferritin alert (§23 Phase 4 AC1):** a ferritin value below the
+  lab-provided reference low (or `LOW_FERRITIN_NG_ML`, default 30 ng/mL)
+  fires a `low_ferritin` alert row, then pushes to the linked chat (§21).
+- **Lifestyle:** nutrition logs and supplement protocols/intake ingest
+  through `app/medical/lifestyle.py`.
+- **Gear (§13):** ingested activities auto-inherit the discipline's default
+  gear (`discipline_gear_defaults`, idempotent via PK). The nightly
+  `gear.accumulate_all` task (beat :15, runs inside the 03:00-03:59 local
+  window right after the feature engine, §19) RECOMPUTES
+  `hours_since_service`/`km_since_service` from linked activities — a
+  recompute, never an increment, so re-runs never double-count (§17).
+  Crossing a configured interval fires ONE `gear_service_due` alert per gear
+  and pushes it; logging a service (`POST /gear/{id}/service` endpoint shape,
+  §18) resets the counters and resolves the open alert.
+- **Shared reads (§8.2):** `get_lab_trend`, `get_donation_status`,
+  `get_gear_status` now run on the Phase 4 ORM models — the same functions
+  the bot, future agent tools, and report tasks call.
+
 ## Reset dev state
 
 ```bash
