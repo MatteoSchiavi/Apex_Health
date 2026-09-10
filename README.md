@@ -176,6 +176,51 @@ against recorded fixtures only (§0/§20).
   `get_gear_status` now run on the Phase 4 ORM models — the same functions
   the bot, future agent tools, and report tasks call.
 
+## Agent harness & AI layer (Phase 5)
+
+- **Tool loop (§8.4):** free text now runs the full harness — the model sees
+  a cached system block (profile, active feature weights, a 14-day feature
+  window, open alerts) plus the §8.3 tool registry, and can call tools for
+  up to 8 iterations before returning the best partial answer. Tool errors
+  come back as results, never as crashes. Every tool execution is audited to
+  `agent_tool_calls` (with `session_id`; scheduled callers log NULL).
+- **Tool registry (§8.3):** all eleven tools — `get_metric_trend`,
+  `get_lab_trend`, `get_activity_summary`, `get_journal_entries`,
+  `search_context`, `get_training_plan`, `get_donation_status`,
+  `get_gear_status`, plus the write tools `propose_training_plan`,
+  `propose_supplement_change`, `sync_plan_to_technogym` — are thin wrappers
+  over the §8.2 query layer.
+- **Write-tool confirmation (§8.5):** propose tools only DRAFT (plan row at
+  `status='draft'`, supplement proposal at `active=false`); the bot attaches
+  inline ✅/❌ buttons and only a human tap confirms — confirming a plan
+  (prerequisite for §11b sync) or activating a supplement protocol (which
+  ends the one it replaces). Rejection deletes the draft.
+- **Routing (§9.2):** an account with `ai_access_tier='cheap_only'` can never
+  reach the powerful tier — the request is capped regardless of content.
+  `full` accounts get a free-tier classification call tagging the message
+  `lookup` (→ cheap) or `strategic` (→ powerful). Fail-closed everywhere:
+  missing credential rows cap, unparsable classifications downgrade to cheap.
+- **Cost governance (§8.6):** every LLM/embedding call writes `token_usage`
+  with a §9.1 rate-table cost estimate; the daily `budget.daily_check` task
+  (beat 23:45 UTC) sums each account's day and fires an informational
+  `budget_warning` alert (once per user per UTC day) over
+  `DAILY_TOKEN_BUDGET_USD`. Whisper STT is not an LLM/embedding call — its
+  per-minute cost is out of §8.6's letter and lands with the Phase 8
+  observability pass.
+- **Reports (§19, §9.2):** the daily summary is TEMPLATED — zero LLM cost,
+  `model_used` NULL (§6.4) — persisted at :45 inside each user's 03:00-03:59
+  local window (after the feature engine and gear accumulation; §19 does not
+  schedule it explicitly, this is the documented judgment call). Weekly
+  (Monday 06:00 local) and monthly (1st 06:00 local) reports are always
+  POWERFUL tier over a §8.2 data pack, audited with `session_id=NULL`, and
+  pushed to linked chats. All report rows upsert idempotently per period.
+- **Semantic search (§6.2, §8.3):** journal entries (on save) and report
+  content (on generation) are embedded with the PINNED
+  `text-embedding-3-small`; `search_context` runs pgvector cosine over them,
+  scoped to the caller via the source rows (§6.4's embeddings table has no
+  user_id). Without `OPENAI_API_KEY` the tool degrades to a readable
+  "unavailable" result.
+
 ## Reset dev state
 
 ```bash
@@ -204,3 +249,14 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
   pipeline with confirmable drafts, commands via the shared query layer,
   free-text agent entrypoint, alert push. Live bot needs `TELEGRAM_BOT_TOKEN`;
   fixtures only in tests/demos (§0).
+- Phase 4 (medical/lifestyle/gear) — complete: lab panels + low-ferritin
+  alert, nutrition/supplement ingestion, gear accumulation with
+  `gear_service_due`, `/labs` + `/gear` APIs.
+- Phase 5 (agent harness + AI layer) — complete: §8.3 tool registry, §8.4
+  loop with `agent_tool_calls` audit, §9.2 per-account routing + free-tier
+  classification, §8.6 `token_usage` + daily budget check, templated daily
+  summaries, powerful-tier weekly/monthly reports, §8.5 Telegram
+  confirmation flow, pgvector `search_context`. Live LLM calls need
+  `GLM_API_KEY`; embeddings need `OPENAI_API_KEY` (§6.2 pinned model).
+  Docker parity still unproven until `docker compose up -d --build` runs on
+  the owner's host.
