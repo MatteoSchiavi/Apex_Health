@@ -1,0 +1,41 @@
+"""Bot runtime context: dependency container passed to every handler.
+
+Production wiring lives in the polling entrypoint (live Telegram client +
+Celery voice dispatch); tests inject fixture clients and an inline voice
+dispatcher so the full handler pipeline runs deterministically (§0/§20).
+"""
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
+
+from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+logger = logging.getLogger("connectors.telegram.context")
+
+# VoiceDispatcher: hands a voice message off to background processing
+# (§10.2: handler acknowledges, hands off to Celery). Awaitable, fire-safe.
+VoiceDispatcher = Callable[..., Awaitable[None]]
+
+
+@dataclass
+class BotContext:
+    telegram: Any  # TelegramClient (Protocol; Any keeps dataclass lean)
+    sessionmaker: async_sessionmaker
+    redis: Redis  # one-time link codes + edit-flow state (§10.3)
+    dispatch_voice: VoiceDispatcher
+
+    async def enqueue_voice(self, **kwargs: Any) -> None:
+        """Fire-and-forget voice hand-off so polling continues immediately."""
+        task = asyncio.create_task(self.dispatch_voice(**kwargs))
+        task.add_done_callback(_log_task_failure)
+
+
+def _log_task_failure(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("voice pipeline task failed: %s", exc, exc_info=exc)

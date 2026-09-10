@@ -1,0 +1,147 @@
+{
+  "text_status_unlinked": {
+    "update_id": 1001,
+    "message": {
+      "message_id": 11,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526400,
+      "text": "/status"
+    }
+  },
+  "text_link": {
+    "update_id": 1002,
+    "message": {
+      "message_id": 12,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526401,
+      "text": "/link"
+    }
+  },
+  "text_confirm": {
+    "update_id": 1003,
+    "message": {
+      "message_id": 13,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526402,
+      "text": "/confirm ABC12345"
+    }
+  },
+  "text_confirm_no_arg": {
+    "update_id": 1004,
+    "message": {
+      "message_id": 14,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526403,
+      "text": "/confirm"
+    }
+  },
+  "text_confirm_wrong_chat": {
+    "update_id": 1005,
+    "message": {
+      "message_id": 15,
+      "from": {"id": 7, "is_bot": false, "first_name": "Someone"},
+      "chat": {"id": 7, "type": "private", "first_name": "Someone"},
+      "date": 1741526404,
+      "text": "/confirm ABC12345"
+    }
+  },
+  "text_start": {
+    "update_id": 1006,
+    "message": {
+      "message_id": 16,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526405,
+      "text": "/start"
+    }
+  },
+  "text_unknown_cmd": {
+    "update_id": 1007,
+    "message": {
+      "message_id": 17,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526406,
+      "text": "/nope"
+    }
+  },
+  "text_free": {
+    "update_id": 1008,
+    "message": {
+      "message_id": 18,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741526407,
+      "text": "how is my recovery looking this week?"
+    }
+  },
+  "voice_note": {
+    "update_id": 1009,
+    "message": {
+      "message_id": 19,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741530000,
+      "voice": {
+        "file_id": "VOICE_FILE_1",
+        "duration": 14,
+        "mime_type": "audio/ogg",
+        "file_size": 42118
+      }
+    }
+  },
+  "callback_confirm": {
+    "update_id": 1010,
+    "callback_query": {
+      "id": "CBQ1",
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "message": {
+        "message_id": 91,
+        "from": {"id": 99, "is_bot": true, "first_name": "ApexHealthBot"},
+        "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+        "date": 1741530010,
+        "text": "draft"
+      },
+      "data": "voice:confirm:19"
+    }
+  },
+  "callback_edit": {
+    "update_id": 1011,
+    "callback_query": {
+      "id": "CBQ2",
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "message": {
+        "message_id": 91,
+        "from": {"id": 99, "is_bot": true, "first_name": "ApexHealthBot"},
+        "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+        "date": 1741530011,
+        "text": "draft"
+      },
+      "data": "voice:edit:19"
+    }
+  },
+  "text_edit_correction": {
+    "update_id": 1012,
+    "message": {
+      "message_id": 20,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741530100,
+      "text": "actually soreness was 7 and add tag commuting"
+    }
+  },
+  "photo_message": {
+    "update_id": 1013,
+    "message": {
+      "message_id": 21,
+      "from": {"id": 42, "is_bot": false, "first_name": "Matteo"},
+      "chat": {"id": 42, "type": "private", "first_name": "Matteo"},
+      "date": 1741530200,
+      "photo": [{"file_id": "PHOTO_1", "width": 90, "height": 90}]
+    }
+  }
+}
