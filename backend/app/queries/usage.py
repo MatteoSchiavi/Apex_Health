@@ -95,11 +95,37 @@ async def log_embedding_usage(
 async def day_spend(session: AsyncSession, moment_utc: datetime) -> Decimal:
     """Platform-wide estimated cost for the UTC calendar day of moment_utc
     (§8.6 daily budget task)."""
-    start = datetime(moment_utc.year, moment_utc.month, moment_utc.day, tzinfo=UTC)
-    end = start + timedelta(days=1)
+    start, end = _utc_day_bounds(moment_utc)
     total = await session.scalar(
         select(func.coalesce(func.sum(TokenUsage.cost_estimate_usd), 0)).where(
             TokenUsage.created_at >= start, TokenUsage.created_at < end
         )
     )
     return Decimal(total or 0)
+
+
+async def day_spend_by_user(
+    session: AsyncSession, moment_utc: datetime
+) -> dict[int, Decimal]:
+    """Per-user estimated cost for the UTC day of moment_utc — the daily
+    budget check (§8.6) attributes spend to the account that caused it, so
+    each account's cost valve (§9.2/§15) reads its own number."""
+    start, end = _utc_day_bounds(moment_utc)
+    rows = await session.execute(
+        select(
+            TokenUsage.user_id,
+            func.coalesce(func.sum(TokenUsage.cost_estimate_usd), 0),
+        )
+        .where(
+            TokenUsage.user_id.is_not(None),
+            TokenUsage.created_at >= start,
+            TokenUsage.created_at < end,
+        )
+        .group_by(TokenUsage.user_id)
+    )
+    return {user_id: Decimal(total or 0) for user_id, total in rows.fetchall()}
+
+
+def _utc_day_bounds(moment_utc: datetime) -> tuple[datetime, datetime]:
+    start = datetime(moment_utc.year, moment_utc.month, moment_utc.day, tzinfo=UTC)
+    return start, start + timedelta(days=1)

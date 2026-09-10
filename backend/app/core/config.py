@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     openai_api_base: str = "https://api.openai.com/v1"
     whisper_model: str = "whisper-1"
 
+    # --- Cost governance (§8.6): the daily budget task sums the day's
+    # estimated token_usage cost per user; crossing this fires an
+    # informational budget_warning alert (not a hard stop). <=0 disables.
+    daily_token_budget_usd: float = 0.25
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.

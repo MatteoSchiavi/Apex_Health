@@ -2,8 +2,11 @@
 
 Flow: voice message -> handler acknowledges -> Celery hand-off -> download
 .ogg -> Whisper STT -> structured extraction (GLM flash — the §9.1 free-tier
-model; full 3-tier routing lands with the agent harness, Phase 5) -> a
-PENDING draft in telegram_messages with ✅ Save / ✏️ Edit inline buttons.
+model; per-account routing doesn't apply here because §9.2 hardcodes
+transcript structuring to the free tier) -> a PENDING draft in
+telegram_messages with ✅ Save / ✏️ Edit inline buttons.
+
+Every extraction completion logs a token_usage row (§8.6) with tier='free'.
 
 Never auto-commits: journal_entries is written only on the explicit Save
 callback (§10.2, §17 write discipline). ✏️ Edit rejects the draft and a new
@@ -23,7 +26,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.core.llm import LLMClient, extract_json_object
+from app.core.llm import LLMClient, LLMResponse, extract_json_object
 from app.models.activity import Activity, Discipline
 from app.models.journal import JournalEntry
 from app.models.telegram import TelegramMessage
@@ -114,15 +117,37 @@ def _extraction_user_message(transcript: str, activity_ctx: dict | None, correct
     return "\n\n".join(parts)
 
 
-async def _extract(llm: LLMClient, transcript: str, activity_ctx: dict | None, corrections: str | None) -> dict:
+async def _extract(
+    llm: LLMClient, transcript: str, activity_ctx: dict | None, corrections: str | None
+) -> tuple[dict, LLMResponse]:
     response = await llm.complete(
         messages=[{"role": "user", "content": _extraction_user_message(transcript, activity_ctx, corrections)}],
         system=EXTRACTION_SYSTEM_PROMPT,
-        # §9.1: transcript structuring is the free tier — the flash model.
-        # Per-account tier caps + provider routing arrive with Phase 5 (§23).
-        tier="cheap",
+        # §9.1: transcript structuring is the free tier — hardcoded, not
+        # routed (§9.2); the free tier rides the flash model.
+        tier="free",
     )
-    return extract_json_object(response.content)
+    return extract_json_object(response.content), response
+
+
+async def _log_extraction_usage(
+    sessionmaker: async_sessionmaker, user_id: int, response: LLMResponse
+) -> None:
+    """§8.6: every LLM call writes a token_usage row."""
+    from app.queries.usage import log_llm_usage
+
+    async with sessionmaker() as session:
+        await log_llm_usage(
+            session,
+            user_id=user_id,
+            call_type="voice_extraction",
+            tier="free",
+            model=response.model,
+            tokens_in=response.tokens_in,
+            tokens_out=response.tokens_out,
+            cached_tokens=response.cached_tokens,
+        )
+        await session.commit()
 
 
 async def _activity_context(session, user_id: int, message_ts: int) -> dict | None:
@@ -190,7 +215,8 @@ async def run_voice_pipeline(
         logger.info("chat %s: draft for message %s already pending — skipped", chat_id, message_id)
         return
 
-    extraction = await _extract(deps.llm, transcript, activity_ctx, corrections=None)
+    extraction, response = await _extract(deps.llm, transcript, activity_ctx, corrections=None)
+    await _log_extraction_usage(sessionmaker, user_id, response)
 
     async with sessionmaker() as session:
         draft = TelegramMessage(
@@ -297,9 +323,12 @@ async def apply_edit_corrections(
         message_ts = payload.get("message_ts")
         transcript = row.raw_transcript or ""
 
-    extraction = await _extract(llm_factory(), transcript, activity_ctx, corrections=corrections)
+    extraction, response = await _extract(llm_factory(), transcript, activity_ctx, corrections=corrections)
 
     async with sessionmaker() as session:
+        user_id = await _linked_user_id(session, chat_id)
+        if user_id is not None:
+            await _log_extraction_usage(sessionmaker, user_id, response)
         row = await session.get(TelegramMessage, row_id)
         row.status = "rejected"
         replacement = TelegramMessage(
