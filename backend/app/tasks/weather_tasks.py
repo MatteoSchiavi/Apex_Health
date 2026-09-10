@@ -35,9 +35,11 @@ def _client_factory(client: OpenMeteoClient | None) -> OpenMeteoClient:
     return client if client is not None else OpenMeteoClient()
 
 
-async def _refresh_all(client: OpenMeteoClient | None = None) -> dict:
+async def _refresh_all(
+    client: OpenMeteoClient | None = None, now: datetime | None = None
+) -> dict:
     settings = get_settings()
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     out: dict = {"forecast_days_cached": 0, "activities_enriched": 0, "users": {}}
 
     if settings.weather_home_lat == 0.0 and settings.weather_home_lon == 0.0:
