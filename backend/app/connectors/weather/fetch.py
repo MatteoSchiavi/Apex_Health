@@ -30,7 +30,10 @@ PAYLOAD_ARCHIVE = "archive"
 async def owner_user_id(session: AsyncSession) -> int | None:
     """The owner account id (auth_credentials.role = 'owner')."""
     row = await session.scalar(
-        text("SELECT user_id FROM auth_credentials WHERE role = 'owner' ORDER BY id LIMIT 1")
+        text(
+            "SELECT user_id FROM auth_credentials WHERE role = 'owner' "
+            "ORDER BY user_id LIMIT 1"
+        )
     )
     return int(row) if row is not None else None
 
