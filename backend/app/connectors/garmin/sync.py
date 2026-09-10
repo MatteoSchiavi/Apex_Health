@@ -366,42 +366,21 @@ async def run_user_sync_with_escalation(
 ) -> SyncReport | None:
     """§21: a failing sync increments consecutive_failures; every third
     consecutive failure fires a sync_failure alert. Success resets the
-    counter. Raises nothing — returns the report, or None on failure."""
-    try:
-        report = await sync_user_garmin(
-            session,
-            user,
-            integration,
-            client,
-            page_size=page_size,
-            page_delay_s=page_delay_s,
-            empty_gap_days=empty_gap_days,
-            now=now,
-        )
-    except Exception as exc:
-        integration.consecutive_failures = (integration.consecutive_failures or 0) + 1
-        if integration.consecutive_failures % 3 == 0:
-            from app.models.alert import Alert
+    counter. Raises nothing — returns the report, or None on failure.
 
-            session.add(
-                Alert(
-                    user_id=user.id,
-                    type="sync_failure",
-                    severity="warning",
-                    message=(
-                        f"Garmin sync failed {integration.consecutive_failures} "
-                        f"consecutive times: {exc}"
-                    ),
-                )
-            )
-        await session.commit()
-        logger.error(
-            "garmin sync failed for user %s (consecutive=%s): %s",
-            user.id,
-            integration.consecutive_failures,
-            exc,
-        )
-        return None
-    integration.consecutive_failures = 0
-    await session.commit()
-    return report
+    (Delegates to the connector-generic helper in app/connectors/escalation.py
+    — same behavior, shared with the Technogym connector since Phase 6.)"""
+    from app.connectors.escalation import run_sync_with_escalation
+
+    return await run_sync_with_escalation(
+        session,
+        user,
+        integration,
+        sync_user_garmin,
+        client,
+        source_label="Garmin",
+        page_size=page_size,
+        page_delay_s=page_delay_s,
+        empty_gap_days=empty_gap_days,
+        now=now,
+    )

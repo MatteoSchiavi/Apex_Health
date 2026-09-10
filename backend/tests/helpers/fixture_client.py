@@ -81,3 +81,46 @@ class FailingGarminClient:
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
         self._raise()
+
+
+class FixtureTechnogymClient:
+    """Fixture-backed Technogym client (§0/§16.7/§20): serves the recorded
+    workout corpus (newest first) and the machine detail for tg-wkt-003;
+    records its call pattern for pagination/boundary assertions."""
+
+    def __init__(self, fixtures_dir: Path | None = None) -> None:
+        self._dir = fixtures_dir or (FIXTURES_DIR.parent / "technogym")
+        self.workout_calls: list[tuple[int, int]] = []
+        self.detail_calls: list[str] = []
+        self._workouts: list[dict[str, Any]] = (
+            self._load("workouts_page1.json", {"items": []}).get("items", [])
+            + self._load("workouts_page2.json", {"items": []}).get("items", [])
+        )
+
+    def _load(self, rel: str, default: Any) -> Any:
+        path = self._dir / rel
+        if not path.exists():
+            return default
+        return json.loads(path.read_text())
+
+    async def get_workouts(self, start: int, limit: int) -> list[dict[str, Any]]:
+        self.workout_calls.append((start, limit))
+        return self._workouts[start : start + limit]
+
+    async def get_workout_detail(self, workout_id: str) -> dict[str, Any]:
+        self.detail_calls.append(workout_id)
+        detail = self._load("workout_detail.json", {})
+        return detail if detail.get("id") == workout_id else {}
+
+
+class FailingTechnogymClient:
+    """Every remote call raises — §21 escalation tests."""
+
+    def _raise(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("technogym unreachable (simulated outage)")
+
+    async def get_workouts(self, start: int, limit: int) -> list[dict[str, Any]]:
+        self._raise()
+
+    async def get_workout_detail(self, workout_id: str) -> dict[str, Any]:
+        self._raise()
