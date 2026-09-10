@@ -1,0 +1,8 @@
+{
+  "access_token": "tg_access_token_fixture",
+  "refresh_token": "tg_refresh_token_fixture",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "exercises.read",
+  "user_urn": "urn:mywellness:user:31416"
+}

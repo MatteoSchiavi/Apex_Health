@@ -1,0 +1,31 @@
+{
+  "_comment": "Recorded-shape placeholder per the apidocs.mywellness.com exercises resource. Replace with real captures at the owner's first manual sync (§0, §24); raw-first design means reprocessing never loses history. Items are NEWEST first.",
+  "items": [
+    {
+      "id": "tg-wkt-003",
+      "startDate": "2025-03-09T10:04:00+01:00",
+      "durationSeconds": 3720,
+      "equipment": "treadmill",
+      "totalDistanceMeters": 10250.0,
+      "avgHeartRate": 152,
+      "maxHeartRate": 171,
+      "avgPowerWatts": 210.0,
+      "calories": 640,
+      "elevationGainMeters": 12.0,
+      "inclineAvgPercent": 1.5,
+      "resistanceAvg": 7,
+      "equivalentCompleted": true
+    },
+    {
+      "id": "tg-wkt-002",
+      "startDate": "2025-03-08T18:00:00+01:00",
+      "durationSeconds": 2700,
+      "equipment": "kinesis",
+      "avgHeartRate": 118,
+      "avgPowerWatts": 95.0,
+      "calories": 310,
+      "resistanceAvg": 4,
+      "equivalentCompleted": true
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "_comment": "Second page of the paginated backfill (offset=2) — one older session.",
+  "items": [
+    {
+      "id": "tg-wkt-001",
+      "startDate": "2025-03-01T09:30:00+01:00",
+      "durationSeconds": 3600,
+      "equipment": "indoor_cycle",
+      "totalDistanceMeters": 26400.0,
+      "avgHeartRate": 138,
+      "maxHeartRate": 156,
+      "avgPowerWatts": 185.5,
+      "calories": 520,
+      "equivalentCompleted": true
+    }
+  ]
+}

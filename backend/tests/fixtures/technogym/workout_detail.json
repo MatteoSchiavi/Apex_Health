@@ -1,0 +1,28 @@
+{
+  "_comment": "Full-fidelity record for one session — machine data that Garmin cannot have (resistance/incline live here, machine power). §12 merging reads the normalized columns; this detail row stays the raw source of truth.",
+  "id": "tg-wkt-003",
+  "startDate": "2025-03-09T10:04:00+01:00",
+  "endDate": "2025-03-09T11:06:00+01:00",
+  "durationSeconds": 3720,
+  "equipment": "treadmill",
+  "equipmentName": "Run 7000 Treadmill",
+  "totalDistanceMeters": 10250.0,
+  "avgHeartRate": 152,
+  "maxHeartRate": 171,
+  "avgPowerWatts": 210.0,
+  "maxPowerWatts": 305.0,
+  "calories": 640,
+  "elevationGainMeters": 12.0,
+  "inclineAvgPercent": 1.5,
+  "inclineMaxPercent": 6.0,
+  "resistanceAvg": 7,
+  "resistanceMax": 12,
+  "speedAvgKph": 9.9,
+  "speedMaxKph": 13.2,
+  "equivalentCompleted": true,
+  "sequence": [
+    {"tOffsetS": 0, "speedKph": 8.0, "inclinePercent": 0.0, "watts": 120.0, "heartRate": 121},
+    {"tOffsetS": 60, "speedKph": 9.5, "inclinePercent": 1.0, "watts": 195.0, "heartRate": 142},
+    {"tOffsetS": 120, "speedKph": 10.5, "inclinePercent": 2.0, "watts": 225.0, "heartRate": 158}
+  ]
+}
