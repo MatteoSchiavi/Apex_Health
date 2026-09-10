@@ -110,6 +110,46 @@ asyncio.run(main())
 "
 ```
 
+## Telegram bot (Phase 3)
+
+Long polling (§10.1): the bot process asks Telegram for updates — outbound-only,
+no webhook, no public port, no tunnel. Added as the `bot` compose service.
+
+- **Linking (§10.3):** `/link` issues a one-time code (Redis, 15-minute TTL,
+  printed to the server log); `/confirm <code>` binds the chat to the owner
+  account in `telegram_links`. Every other update from an unlinked chat is
+  told to link first (§23 Phase 3 AC).
+- **Voice notes (§10.2):** ack → Celery hand-off (`telegram.process_voice`) →
+  `.ogg` download → Whisper STT → free-tier structured extraction → a
+  **pending draft** with ✅ Save / ✏️ Edit buttons. Save writes
+  `journal_entries` (source `telegram_voice`, §17 local date, activity-window
+  context); Edit re-extracts from a corrections text message. Never
+  auto-commits.
+- **Commands (§10.3):** `/status` (integrations + daily snapshot), `/donate`
+  (last donation, eligibility, iron flag), `/report` (templated daily summary
+  — deliberately no LLM, §9.2), `/gear` (usage vs service intervals). Reads go
+  through the shared query layer `app/queries` (§8.2).
+- **Free text:** routed to `app/agent/entrypoint.py` — a real, data-grounded
+  response built on a compact snapshot (latest features, 7-day trend, open
+  alerts), logged to `ai_chat_sessions`/`ai_chat_messages` with the §6.4
+  30-minute session boundary. The full tool-using harness, tier routing and
+  token accounting land in Phase 5 (§23) inside the same entrypoint.
+- **Alert push (§21):** alert-creating code paths commit the row then call
+  `push_alert` — delivered to the linked chat with severity icons.
+
+Running live needs `TELEGRAM_BOT_TOKEN` (§5); the voice pipeline additionally
+needs `OPENAI_API_KEY` (Whisper) and `GLM_API_KEY` on the worker, and the
+Celery worker must be running for voice drafts:
+
+```bash
+docker compose --project-directory infra up -d db redis worker bot
+# or without Docker:
+cd backend && uv run python -m app.connectors.telegram.polling
+```
+
+Automated tests and demos never touch the live Bot API, LLM, or STT — they run
+against recorded fixtures only (§0/§20).
+
 ## Reset dev state
 
 ```bash
@@ -134,3 +174,7 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
 - Phase 2 (feature engine) — complete: golden-dataset regression suite green;
   nightly task populates daily/discipline features respecting the day-boundary
   rule; `feature_weights` seeded (v1).
+- Phase 3 (Telegram bot) — complete: polling loop, `/link` flow, voice
+  pipeline with confirmable drafts, commands via the shared query layer,
+  free-text agent entrypoint, alert push. Live bot needs `TELEGRAM_BOT_TOKEN`;
+  fixtures only in tests/demos (§0).
