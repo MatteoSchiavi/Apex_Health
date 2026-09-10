@@ -37,6 +37,24 @@ class Settings(BaseSettings):
     # consecutive data-empty days — the source's real history boundary.
     garmin_backfill_empty_gap_days: int = 10
 
+    # --- Technogym connector (§5, §11, §23 Phase 6) ---
+    # §24: what the registered client may actually call (incl. prescription
+    # push, §11b) only resolves when the owner registers at
+    # developer.technogym.com and connects manually. Every endpoint is
+    # therefore env-tunable — fix the URLs from the developer console at
+    # registration time without touching code. Defaults follow the
+    # enduser-to-enduser OAuth2 authorization-code sample.
+    technogym_client_id: str = ""
+    technogym_client_secret: str = ""
+    technogym_redirect_uri: str = "http://localhost:8000/integrations/technogym/callback"
+    technogym_oauth_authorize_url: str = "https://oauth.mywellness.com/Authorize/Authorize"
+    technogym_oauth_token_url: str = "https://token.mywellness.com/oauth2/token"
+    technogym_api_base: str = "https://api.mywellness.com/v4"
+    technogym_scope: str = ""
+    # §19 note: same reasoning as Garmin — paginated remote calls are paced.
+    technogym_page_delay_seconds: float = 2.0
+    technogym_activity_page_size: int = 50
+
     # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
     telegram_bot_token: str = ""
 
