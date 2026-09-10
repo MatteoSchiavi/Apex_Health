@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agent.tools import TOOL_REGISTRY, ToolContext, tool_schemas
-from app.core.llm import LLMError, LLMClient, LLMResponse, ToolCallRequest
+from app.core.llm import LLMError, LLMClient, LLMResponse, ToolCallRequest, jsonable
 from app.models.ai import AgentToolCall
 from app.queries.usage import log_llm_usage
 
@@ -30,24 +30,6 @@ NO_CONVERGENCE_REPLY = (
     "I couldn't finish this request within the tool budget — here's what I have so far. "
     "Try narrowing the question."
 )
-
-
-def _jsonable(value: Any) -> Any:
-    """Recursively coerce a tool payload into JSONB-safe types (date/datetime
-    → ISO strings, Decimal → float). agent_tool_calls and the tool message
-    payloads must never fail on serialization — a handler returning a raw
-    date is a logging bug, not a crash."""
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, dict):
-        return {str(k): _jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_jsonable(v) for v in value]
-    return str(value)
 
 
 @dataclass
@@ -115,7 +97,7 @@ async def _execute_tool(
             error = result["error"]
     latency_ms = int((time.monotonic() - started) * 1000)
 
-    result = _jsonable(result)
+    result = jsonable(result)
     ctx.session.add(
         AgentToolCall(
             session_id=session_id,

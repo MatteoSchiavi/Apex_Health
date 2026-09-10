@@ -19,6 +19,8 @@ tier routing hardcodes it per the §8.1 note), powerful comes from settings.
 import json
 import logging
 from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Protocol
 
 import httpx
@@ -113,6 +115,24 @@ class LiveGLMClient:
         except httpx.HTTPError as exc:
             raise LLMError(f"GLM completion failed: {exc}") from exc
         return parse_completion(body, fallback_model=self._models[tier])
+
+
+def jsonable(value: Any) -> Any:
+    """Recursively coerce an AI payload into JSONB-safe types (date/datetime
+    → ISO strings, Decimal → float). Shared by the agent loop's tool-call
+    audit and the report generation's query audit: agent_tool_calls and
+    tool-message payloads must never fail on serialization."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {str(k): jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [jsonable(v) for v in value]
+    return str(value)
 
 
 def parse_completion(body: dict[str, Any], fallback_model: str) -> LLMResponse:
