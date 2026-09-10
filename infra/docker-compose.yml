@@ -1,0 +1,71 @@
+# Health Control Center — local/staging deployment (MASTER_SPEC §2, §16, §21)
+#
+# Services in Phase 0: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api, worker.
+# Added in later phases per §23: celery beat (first scheduled job, Phase 1–2),
+# bot (Phase 3, long polling). The web dashboard is out of scope this round (Appendix A).
+#
+# Logging: JSON to stdout captured with rotation (§21).
+name: apex-health
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg16
+    command: postgres -c shared_preload_libraries=timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hcc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hcc}
+      POSTGRES_DB: ${POSTGRES_DB:-hcc}
+    volumes:
+      - db_data:/home/postgres/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hcc} -d ${POSTGRES_DB:-hcc}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *default_logging
+
+  api:
+    build: ../backend
+    env_file: ../.env
+    environment:
+      # Container-network URLs override host-side .env values.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    logging: *default_logging
+
+  worker:
+    build: ../backend
+    command: celery -A app.tasks.celery_app worker --loglevel=INFO
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default_logging
+
+volumes:
+  db_data:
