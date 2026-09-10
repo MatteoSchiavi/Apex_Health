@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 
 from app.core.llm import LLMError, parse_completion
@@ -19,6 +20,21 @@ from app.queries.usage import (
     log_embedding_usage,
     log_llm_usage,
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _isolate_token_usage():
+    """token_usage rows persist across tests in this session-scoped DB (the
+    agent-loop tests write them too) — start each accounting test clean."""
+    import os
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE token_usage RESTART IDENTITY CASCADE"))
+    await engine.dispose()
 
 
 async def test_ai_and_training_models_round_trip(db_session):

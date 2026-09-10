@@ -70,7 +70,7 @@ async def test_free_text_gets_real_agent_reply():
         assert sent_texts(client) == [REPLY]
         prompt = llm.calls[0]["messages"][0]["content"]
         assert "recovery looking" in prompt  # the user's question
-        assert '"readiness": 71.0' in prompt  # grounded in the snapshot
+        assert '"readiness": 71.0' in llm.calls[0]["system"]  # grounded via the §8.4 system block
         assert llm.calls[0]["tier"] == "cheap"
 
         async with ctx.sessionmaker() as session:
@@ -90,9 +90,9 @@ async def test_agent_without_data_says_what_it_can():
         llm = FixtureLLMClient([REPLY])
         owner = await _link_chat(ctx, CHAT)
         await run_agent_turn(ctx.sessionmaker, llm, owner, "how is my recovery?", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC))
-        prompt = llm.calls[0]["messages"][0]["content"]
-        assert '"latest": null' in prompt
-        assert '"trend_7d": []' in prompt
+        system = llm.calls[0]["system"]
+        assert '"latest": null' in system
+        assert '"trend_14d": []' in system
 
 
 async def test_session_boundary_after_30_minutes():
