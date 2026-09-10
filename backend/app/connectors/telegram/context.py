@@ -26,11 +26,18 @@ class BotContext:
     sessionmaker: async_sessionmaker
     redis: Redis  # one-time link codes + edit-flow state (§10.3)
     dispatch_voice: VoiceDispatcher
+    # LLM clients are built lazily (§8.1): only flows that actually call the
+    # model pay the construction cost, and tests inject fixtures.
+    llm_factory: Callable[[], Any] = lambda: _missing_llm()
 
     async def enqueue_voice(self, **kwargs: Any) -> None:
         """Fire-and-forget voice hand-off so polling continues immediately."""
         task = asyncio.create_task(self.dispatch_voice(**kwargs))
         task.add_done_callback(_log_task_failure)
+
+
+def _missing_llm() -> Any:
+    raise RuntimeError("BotContext.llm_factory not configured by this runtime")
 
 
 def _log_task_failure(task: asyncio.Task) -> None:

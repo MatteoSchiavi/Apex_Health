@@ -13,7 +13,12 @@ celery_app = Celery(
     "hcc",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.health_tasks", "app.tasks.garmin_sync", "app.tasks.feature_engine"],
+    include=[
+        "app.tasks.health_tasks",
+        "app.tasks.garmin_sync",
+        "app.tasks.feature_engine",
+        "app.tasks.telegram_voice",
+    ],
 )
 
 celery_app.conf.update(
