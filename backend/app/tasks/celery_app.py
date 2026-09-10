@@ -1,7 +1,8 @@
 """Celery application (MASTER_SPEC §2, §19). Beat carries the scheduled jobs
 that have landed so far: Garmin sync every 6 hours (Phase 1), the nightly
-feature engine at 03:00 user-local (Phase 2), and nightly gear accumulation
-right after it (Phase 4)."""
+feature engine at 03:00 user-local (Phase 2), nightly gear accumulation
+right after it (Phase 4), and the daily AI budget check at 23:45 UTC
+(Phase 5, §8.6)."""
 
 from celery import Celery
 from celery.schedules import crontab
@@ -19,6 +20,7 @@ celery_app = Celery(
         "app.tasks.garmin_sync",
         "app.tasks.feature_engine",
         "app.tasks.gear_tasks",
+        "app.tasks.budget",
         "app.tasks.telegram_voice",
     ],
 )
@@ -51,6 +53,12 @@ celery_app.conf.update(
         "gear-accumulation-hourly-dispatch": {
             "task": "gear.accumulate_all",
             "schedule": crontab(minute=15),
+        },
+        # §19: daily budget check, 1×/day at 23:45 UTC — near the close of
+        # the UTC accounting day the token_usage sums use (§8.6).
+        "daily-budget-check": {
+            "task": "budget.daily_check",
+            "schedule": crontab(minute=45, hour=23),
         },
     },
 )
