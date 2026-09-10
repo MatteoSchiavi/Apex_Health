@@ -1,18 +1,19 @@
 """Read functions over §6.4 tables (§8.2 shared query layer).
 
-lab_panels and gear are read with parameterized SQL for now — their ORM
-models are mapped by their owning phase (Phase 4, same convention as
-models/user.py documents). All other reads go through mapped models.
+All reads go through mapped ORM models — lab_panels/gear were parameterized
+SQL until Phase 4 mapped their models (same convention as models/user.py).
+Labs/donation reads live in app/queries/labs.py.
 """
 
 from datetime import date
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, Discipline
 from app.models.alert import Alert
 from app.models.features import DailyFeature
+from app.models.gear import Gear
 from app.models.integration import Integration
 from app.models.wellness import SleepSession
 
@@ -61,58 +62,36 @@ async def open_alerts(session: AsyncSession, user_id: int) -> list[Alert]:
     return list(rows)
 
 
-async def donation_status(session: AsyncSession, user_id: int, today: date) -> dict | None:
-    """Last donation + eligibility (§8.3 get_donation_status)."""
-    row = (
-        await session.execute(
-            text(
-                "SELECT donation_type, date, next_eligible_date FROM lab_panels "
-                "WHERE user_id = :uid AND donation_type IS NOT NULL "
-                "ORDER BY date DESC LIMIT 1"
-            ),
-            {"uid": user_id},
-        )
-    ).first()
-    if row is None:
-        return None
-    donation_type, donation_date, next_eligible = row
-    return {
-        "donation_type": donation_type,
-        "date": donation_date,
-        "next_eligible_date": next_eligible,
-        "days_since": (today - donation_date).days if donation_date else None,
-    }
-
-
 async def gear_overview(session: AsyncSession, user_id: int) -> list[dict]:
     """Usage vs service interval per gear item (§8.3 get_gear_status)."""
     rows = (
-        await session.execute(
-            text(
-                "SELECT name, gear_type, active, hours_since_service, km_since_service, "
-                "service_interval_hours, service_interval_km FROM gear WHERE user_id = :uid "
-                "ORDER BY active DESC, name"
-            ),
-            {"uid": user_id},
+        await session.scalars(
+            select(Gear)
+            .where(Gear.user_id == user_id)
+            .order_by(Gear.active.desc(), Gear.name)
         )
-    ).mappings().all()
+    ).all()
     items = []
-    for r in rows:
+    for g in rows:
         usage_pct = None
-        if r["service_interval_hours"]:
-            usage_pct = float(r["hours_since_service"] or 0) / float(r["service_interval_hours"]) * 100
-        if r["service_interval_km"]:
-            km_pct = float(r["km_since_service"] or 0) / float(r["service_interval_km"]) * 100
+        if g.service_interval_hours:
+            usage_pct = float(g.hours_since_service or 0) / float(g.service_interval_hours) * 100
+        if g.service_interval_km:
+            km_pct = float(g.km_since_service or 0) / float(g.service_interval_km) * 100
             usage_pct = max(usage_pct or 0, km_pct)
         items.append(
             {
-                "name": r["name"],
-                "gear_type": r["gear_type"],
-                "active": r["active"],
-                "hours_since_service": float(r["hours_since_service"] or 0),
-                "km_since_service": float(r["km_since_service"] or 0),
-                "service_interval_hours": float(r["service_interval_hours"]) if r["service_interval_hours"] else None,
-                "service_interval_km": float(r["service_interval_km"]) if r["service_interval_km"] else None,
+                "name": g.name,
+                "gear_type": g.gear_type,
+                "active": g.active,
+                "hours_since_service": float(g.hours_since_service or 0),
+                "km_since_service": float(g.km_since_service or 0),
+                "service_interval_hours": (
+                    float(g.service_interval_hours) if g.service_interval_hours else None
+                ),
+                "service_interval_km": (
+                    float(g.service_interval_km) if g.service_interval_km else None
+                ),
                 "usage_pct": usage_pct,
             }
         )

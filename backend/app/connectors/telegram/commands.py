@@ -13,7 +13,7 @@ from app.connectors.telegram.link_flow import get_linked_user_id
 from app.models.user import User
 from app.queries import (
     activities_on_local_date,
-    donation_status,
+    get_donation_status,
     gear_overview,
     integrations_overview,
     latest_daily_feature,
@@ -63,7 +63,7 @@ async def cmd_donate(ctx, chat_id: int, user_id: int) -> str:
         user = await session.get(User, user_id)
         today = datetime.now(ZoneInfo(user.timezone)).date()
         feature = await latest_daily_feature(session, user_id)
-        status = await donation_status(session, user_id, today)
+        status = await get_donation_status(session, user_id, today)
 
     if status is None:
         return NO_DONATIONS

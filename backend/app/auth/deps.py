@@ -26,3 +26,10 @@ async def get_current_session(
     # Bind the raw token for handlers that need to destroy the session.
     request.state.session_token = hcc_session
     return resolved
+
+
+async def get_current_user(
+    resolved: tuple[User, UserSession] = Depends(get_current_session),
+) -> User:
+    """The authenticated principal for handlers that don't touch the session row."""
+    return resolved[0]
