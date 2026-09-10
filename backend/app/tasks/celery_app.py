@@ -1,8 +1,8 @@
 """Celery application (MASTER_SPEC §2, §19). Beat carries the scheduled jobs
 that have landed so far: Garmin + Technogym syncs every 6 hours (Phases 1/6),
-the nightly feature engine at 03:00 user-local (Phase 2), nightly gear
-accumulation right after it (Phase 4), and the daily AI budget check at
-23:45 UTC (Phase 5, §8.6)."""
+the forecast refresh every 6 hours (Phase 7, §19), the nightly feature engine
+at 03:00 user-local (Phase 2), nightly gear accumulation right after it
+(Phase 4), and the daily AI budget check at 23:45 UTC (Phase 5, §8.6)."""
 
 from celery import Celery
 from celery.schedules import crontab
@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.tasks.health_tasks",
         "app.tasks.garmin_sync",
         "app.tasks.technogym_sync",
+        "app.tasks.weather_tasks",
         "app.tasks.feature_engine",
         "app.tasks.gear_tasks",
         "app.tasks.budget",
@@ -51,6 +52,13 @@ celery_app.conf.update(
         "technogym-sync-every-6h": {
             "task": "technogym.sync_all",
             "schedule": crontab(minute=10, hour="*/6"),
+        },
+        # §19: forecast refresh every 6 hours, upserts forecast_cache (§6.4).
+        # Staggered at :20, after both connector syncs — so activities they
+        # ingested are enriched in the same tick (§14).
+        "weather-refresh-every-6h": {
+            "task": "weather.refresh_all",
+            "schedule": crontab(minute=20, hour="*/6"),
         },
         "feature-engine-hourly-dispatch": {
             "task": "features.nightly",
