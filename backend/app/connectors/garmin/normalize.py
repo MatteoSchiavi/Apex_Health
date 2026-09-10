@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.garmin import fetch
 from app.connectors.garmin.type_map import resolve_type_key
+from app.gear.service import auto_link_gear
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream
 from app.models.integration import RawIngest
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession, StressReading
@@ -228,6 +229,15 @@ async def _upsert_activity(
             setattr(activity, key, val)
         link.raw_ingest_id = raw.id
     stats.activities_upserted += 1
+
+    # §13: auto-link the discipline's default gear at ingestion (idempotent
+    # via the (activity_id, gear_id) PK — re-normalization never re-adds).
+    await auto_link_gear(
+        session,
+        user_id=raw.user_id,
+        discipline_id=discipline_id,
+        activity_id=activity.id,
+    )
 
     # Garmin reports VO2max per-activity (vO2MaxValue); the latest estimate of
     # a local day wins (activities are processed chronologically).

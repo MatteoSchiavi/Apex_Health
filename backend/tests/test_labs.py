@@ -10,9 +10,8 @@ No third-party calls — the Telegram client is the fixture implementation
 """
 
 import os
-from datetime import UTC, date, datetime
+from datetime import date
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, text
 
@@ -27,7 +26,6 @@ from app.models.medical import LabMetric, LabPanel
 from app.models.telegram import TelegramLink
 from app.connectors.telegram.alerts import push_alert
 from app.queries import get_donation_status, get_lab_trend
-from tests.conftest import reset_owner_auth_state
 from tests.helpers.telegram import (
     FixtureTelegramClient,
     clean_bot_tables,  # noqa: F401 — autouse per-test truncate
