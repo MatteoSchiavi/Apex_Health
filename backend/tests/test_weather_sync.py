@@ -374,3 +374,202 @@ async def test_task_enriches_ingested_activities_end_to_end(db_session, monkeypa
         await db_session.get(Activity, activity.id, populate_existing=True)
     ).weather_snapshot
     assert snapshot is not None and snapshot["source"] == "open-meteo"
+
+
+# ------------------------------------------------------ §14 nudge (forecast × readiness)
+
+
+async def _seed_readiness(db_session, owner: int, readiness: float | None) -> None:
+    from app.models.features import DailyFeature
+
+    await db_session.execute(
+        text("DELETE FROM daily_features WHERE user_id = :u"), {"u": owner}
+    )
+    await db_session.commit()
+    async with db_session.begin():
+        db_session.add(
+            DailyFeature(
+                user_id=owner,
+                date=date(2025, 3, 10),
+                recovery_score=80.0,
+                strain_score=12.0,
+                readiness_score=readiness,
+                training_load_acute=800.0,
+                training_load_chronic=700.0,
+                acwr=1.14,
+                sleep_architecture_score=70.0,
+                hrv_deviation_from_baseline=2.0,
+                iron_status_flag=None,
+                data_completeness="full",
+            )
+        )
+
+
+def _nudge_now() -> datetime:
+    # 07:00 owner-local (Europe/Rome) on 2025-03-10 == 06:00 UTC
+    return datetime(2025, 3, 10, 6, 0, tzinfo=UTC)
+
+
+def _nudge_settings(**overrides) -> "SimpleNamespace":
+    return SimpleNamespace(
+        weather_home_lat=HOME[0],
+        weather_home_lon=HOME[1],
+        weather_nudge_readiness_threshold=70.0,
+        telegram_bot_token="fixture-token",
+        redis_url="redis://localhost:6380/0",
+        **overrides,
+    )
+
+
+async def _ensure_link(db_session, owner: int, chat_id: int = 555) -> None:
+    """Idempotent link row (chat_id is UNIQUE; tests share the session DB)."""
+    await db_session.execute(
+        text(
+            "INSERT INTO telegram_links (user_id, chat_id) VALUES (:u, :c) "
+            "ON CONFLICT DO NOTHING"
+        ),
+        {"u": owner, "c": chat_id},
+    )
+    await db_session.commit()
+
+
+async def test_nudge_fires_for_good_forecast_and_high_readiness(db_session, monkeypatch):
+    from app.tasks.weather_tasks import _readiness_nudge
+
+    owner = await db_session.scalar(select(User.id).order_by(User.id).limit(1))
+    await _seed_readiness(db_session, owner, readiness=78.0)
+    await _seed_forecast_for_nudge(db_session)  # tomorrow (03-11) is a good window
+    await db_session.execute(text("TRUNCATE telegram_links"))
+    await db_session.commit()
+    await _ensure_link(db_session, owner)
+
+    monkeypatch.setattr(
+        "app.tasks.weather_tasks.get_settings", lambda: _nudge_settings()
+    )
+    monkeypatch.setattr(
+        "app.connectors.telegram.client.LiveTelegramClient",
+        lambda token: FixtureTelegramClientForNudge(),
+    )
+    result = await _readiness_nudge(now_iso=_nudge_now().isoformat())
+
+    assert result["status"] == "ok" and len(result["nudged"]) == 1
+    assert result["nudged"][0]["date"] == "2025-03-11"
+
+
+async def test_nudge_deduplicates_per_day(db_session, monkeypatch):
+    from app.tasks.weather_tasks import _readiness_nudge
+
+    owner = await db_session.scalar(select(User.id).order_by(User.id).limit(1))
+    await _seed_readiness(db_session, owner, readiness=78.0)
+    await _seed_forecast_for_nudge(db_session)
+    await _ensure_link(db_session, owner)
+
+    monkeypatch.setattr(
+        "app.tasks.weather_tasks.get_settings", lambda: _nudge_settings()
+    )
+    monkeypatch.setattr(
+        "app.connectors.telegram.client.LiveTelegramClient",
+        lambda token: FixtureTelegramClientForNudge(),
+    )
+    first = await _readiness_nudge(now_iso=_nudge_now().isoformat())
+    second = await _readiness_nudge(now_iso=_nudge_now().isoformat())
+    assert len(first["nudged"]) == 1
+    assert second["nudged"] == []  # §17-style: re-run stays quiet
+
+
+async def test_nudge_stays_quiet_for_low_readiness_or_bad_weather(db_session, monkeypatch):
+    from app.tasks.weather_tasks import _readiness_nudge
+
+    owner = await db_session.scalar(select(User.id).order_by(User.id).limit(1))
+
+    # low readiness, good forecast → quiet
+    await _seed_readiness(db_session, owner, readiness=55.0)
+    await _seed_forecast_for_nudge(db_session)
+    monkeypatch.setattr(
+        "app.tasks.weather_tasks.get_settings", lambda: _nudge_settings()
+    )
+    result = await _readiness_nudge(now_iso=_nudge_now().isoformat())
+    assert result["nudged"] == []
+
+    # high readiness, bad forecast (heavy rain 03-11? no — 03-11 is good; use
+    # a cache that only holds a rainy day) → quiet
+    await _seed_bad_forecast_for_nudge(db_session)
+    result = await _readiness_nudge(now_iso=_nudge_now().isoformat())
+    assert result["nudged"] == []
+
+
+async def _seed_forecast_for_nudge(db_session) -> None:
+    """Tomorrow (2025-03-11): 8–17°C, 5% rain, wind 12 km/h → good window."""
+    from decimal import Decimal
+
+    db_session.add(
+        ForecastCache(
+            lat=Decimal("45.075"),
+            lon=Decimal("9.725"),
+            date=date(2025, 3, 11),
+            payload={
+                "source": "open-meteo",
+                "time": "2025-03-11",
+                "daily": {
+                    "temperature_2m_max": 17.4,
+                    "temperature_2m_min": 8.0,
+                    "temperature_2m_mean": 12.3,
+                    "precipitation_sum": 0.0,
+                    "precipitation_probability_max": 5,
+                    "wind_speed_10m_max": 12.1,
+                    "weather_code": 3.0,
+                },
+            },
+            fetched_at=NOW,
+        )
+    )
+    await db_session.commit()
+
+
+async def _seed_bad_forecast_for_nudge(db_session) -> None:
+    """Tomorrow (2025-03-11 variant): 95% rain, 34 km/h wind → NOT a good window.
+    Replaces any good-window row already seeded for that date."""
+    from decimal import Decimal
+
+    await db_session.execute(
+        text("DELETE FROM forecast_cache WHERE date = :d"), {"d": date(2025, 3, 11)}
+    )
+    await db_session.commit()
+
+    db_session.add(
+        ForecastCache(
+            lat=Decimal("45.075"),
+            lon=Decimal("9.725"),
+            date=date(2025, 3, 11),
+            payload={
+                "source": "open-meteo",
+                "time": "2025-03-11",
+                "daily": {
+                    "temperature_2m_max": 11.2,
+                    "temperature_2m_min": 3.9,
+                    "temperature_2m_mean": 7.2,
+                    "precipitation_sum": 12.8,
+                    "precipitation_probability_max": 95,
+                    "wind_speed_10m_max": 33.8,
+                    "weather_code": 65.0,
+                },
+            },
+            fetched_at=NOW,
+        )
+    )
+    await db_session.commit()
+
+
+class FixtureTelegramClientForNudge:
+    """Records proactive sends without any Bot API call."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.sent.append({"chat_id": chat_id, "text": text})
+
+
+def test_nudge_beat_entry_exists():
+    entry = celery_app.conf.beat_schedule["weather-nudge-hourly-dispatch"]
+    assert entry["task"] == "weather.readiness_nudge"
