@@ -62,13 +62,15 @@ async def open_alerts(session: AsyncSession, user_id: int) -> list[Alert]:
     return list(rows)
 
 
-async def gear_overview(session: AsyncSession, user_id: int) -> list[dict]:
-    """Usage vs service interval per gear item (§8.3 get_gear_status)."""
+async def gear_overview(session: AsyncSession, user_id: int, gear_id: int | None = None) -> list[dict]:
+    """Usage vs service interval per gear item (§8.3 get_gear_status); a
+    gear_id narrows to one item."""
+    conditions = [Gear.user_id == user_id]
+    if gear_id is not None:
+        conditions.append(Gear.id == gear_id)
     rows = (
         await session.scalars(
-            select(Gear)
-            .where(Gear.user_id == user_id)
-            .order_by(Gear.active.desc(), Gear.name)
+            select(Gear).where(*conditions).order_by(Gear.active.desc(), Gear.name)
         )
     ).all()
     items = []
@@ -81,6 +83,7 @@ async def gear_overview(session: AsyncSession, user_id: int) -> list[dict]:
             usage_pct = max(usage_pct or 0, km_pct)
         items.append(
             {
+                "gear_id": g.id,
                 "name": g.name,
                 "gear_type": g.gear_type,
                 "active": g.active,

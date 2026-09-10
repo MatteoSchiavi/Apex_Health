@@ -1,0 +1,379 @@
+"""Tool registry (MASTER_SPEC §8.3).
+
+Every tool is a thin wrapper over a function in app/queries/ — the same
+functions the scheduled report tasks (§19) and the Telegram bot call
+directly, so "get my ACWR trend" has exactly one implementation (§8.2).
+
+Write tools (§8.5) never commit directly: propose_* drafts a row and
+returns it; confirmation happens via Telegram inline buttons. Tool errors
+(surface as exceptions) are converted to tool RESULTS by the agent loop
+(§8.4) — they never kill it.
+"""
+
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Awaitable, Callable
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.training import TrainingPlan
+from app.queries.journal import get_journal_entries
+from app.queries.labs import get_donation_status, get_lab_trend
+from app.queries.metrics import (
+    discipline_id_by_slug,
+    get_activity_summary,
+    get_metric_trend,
+)
+from app.queries.plans import (
+    create_plan_draft,
+    create_supplement_draft,
+    get_training_plan,
+)
+from app.queries.search import search_context
+from app.queries.snapshot import gear_overview
+
+
+@dataclass
+class ToolContext:
+    """Per-turn dependencies handed to every handler: the caller's session,
+    user scope, today-in-user-tz, and optional services (embeddings)."""
+
+    session: AsyncSession
+    user_id: int
+    today: date
+    embedding_client: Any | None = None  # EmbeddingClient — wired by the bot ctx
+
+
+@dataclass
+class ToolSpec:
+    name: str
+    kind: str  # 'read' | 'write'
+    description: str
+    parameters: dict[str, Any]
+    handler: Callable[..., Awaitable[Any]]
+
+
+def _date(value: str | None, *, field_name: str, required: bool = True) -> date | None:
+    if value is None:
+        if required:
+            raise ValueError(f"{field_name} is required (YYYY-MM-DD)")
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be YYYY-MM-DD, got {value!r}") from exc
+
+
+def _date_range(start_date: str | None, end_date: str | None) -> tuple[date, date]:
+    start = _date(start_date, field_name="start_date")
+    end = _date(end_date, field_name="end_date")
+    if start > end:
+        raise ValueError("start_date must be on or before end_date")
+    return start, end
+
+
+# --- read tools -------------------------------------------------------------
+
+
+async def _get_metric_trend(
+    ctx: ToolContext,
+    metric: str,
+    start_date: str,
+    end_date: str,
+    discipline_id: int | None = None,
+) -> dict:
+    start, end = _date_range(start_date, end_date)
+    rows = await get_metric_trend(
+        ctx.session, ctx.user_id, metric, start, end, discipline_id=discipline_id
+    )
+    return {"metric": metric, "rows": rows}
+
+
+async def _get_lab_trend(
+    ctx: ToolContext, marker: str, start_date: str | None = None, end_date: str | None = None
+) -> dict:
+    start = _date(start_date, field_name="start_date", required=False)
+    end = _date(end_date, field_name="end_date", required=False)
+    rows = await get_lab_trend(ctx.session, ctx.user_id, marker, start_date=start, end_date=end)
+    return {"marker": marker, "rows": rows}
+
+
+async def _get_activity_summary(
+    ctx: ToolContext, start_date: str, end_date: str, discipline_id: int | None = None
+) -> dict:
+    start, end = _date_range(start_date, end_date)
+    return await get_activity_summary(
+        ctx.session, ctx.user_id, start, end, discipline_id=discipline_id
+    )
+
+
+async def _get_journal_entries(
+    ctx: ToolContext, start_date: str, end_date: str, tags: list[str] | None = None
+) -> dict:
+    start, end = _date_range(start_date, end_date)
+    rows = await get_journal_entries(ctx.session, ctx.user_id, start, end, tags=tags)
+    return {"entries": rows, "count": len(rows)}
+
+
+async def _search_context(ctx: ToolContext, query: str, top_k: int = 5) -> dict:
+    if ctx.embedding_client is None:
+        # §8.4: degrade as a readable result, not a crash — the harness is
+        # usable before the embedding key is configured.
+        return {"error": "semantic search unavailable: embeddings client not configured"}
+    result = await ctx.embedding_client.embed([query])
+    hits = await search_context(ctx.session, ctx.user_id, result.vectors[0], top_k=top_k)
+    return {"query": query, "hits": hits}
+
+
+async def _get_training_plan(ctx: ToolContext, status: str | None = None) -> dict:
+    plan = await get_training_plan(ctx.session, ctx.user_id, status=status)
+    return {"plan": plan}
+
+
+async def _get_donation_status(ctx: ToolContext) -> dict:
+    status = await get_donation_status(ctx.session, ctx.user_id, ctx.today)
+    return {"donation_status": status}
+
+
+async def _get_gear_status(ctx: ToolContext, gear_id: int | None = None) -> dict:
+    items = await gear_overview(ctx.session, ctx.user_id, gear_id=gear_id)
+    return {"items": items}
+
+
+# --- write tools (§8.5: draft only, confirm via Telegram) --------------------
+
+
+async def _propose_training_plan(
+    ctx: ToolContext, week_start: str, sessions: list[dict]
+) -> dict:
+    if not sessions:
+        raise ValueError("sessions must be a non-empty list")
+    week = _date(week_start, field_name="week_start")
+    # Session dates must parse up front — one bad row aborts the whole draft.
+    normalized = []
+    for spec in sessions:
+        day = _date(spec.get("date"), field_name="sessions[].date")
+        normalized.append({**spec, "date": day})
+    # Discipline slugs → ids (§6.4 seed names, e.g. 'road_cycling').
+    resolved: dict[int, int] = {}
+    for index, spec in enumerate(normalized):
+        slug = spec.get("discipline")
+        if slug is not None:
+            discipline_id = await discipline_id_by_slug(ctx.session, slug)
+            if discipline_id is None:
+                raise ValueError(f"unknown discipline slug {slug!r}")
+            resolved[index] = discipline_id
+    draft = await create_plan_draft(
+        ctx.session, ctx.user_id, week, normalized, discipline_ids=resolved
+    )
+    return {
+        **draft,
+        "note": "Draft created — awaiting confirmation via Telegram inline buttons (§8.5).",
+    }
+
+
+async def _propose_supplement_change(
+    ctx: ToolContext,
+    supplement_name: str,
+    dose: str | None = None,
+    schedule_cron: str | None = None,
+    reason: str | None = None,
+) -> dict:
+    draft = await create_supplement_draft(
+        ctx.session, ctx.user_id, supplement_name, dose, schedule_cron, reason
+    )
+    return {
+        **draft,
+        "note": "Draft created — awaiting confirmation via Telegram inline buttons (§8.5).",
+    }
+
+
+async def _sync_plan_to_technogym(ctx: ToolContext, training_plan_id: int) -> dict:
+    """§8.3/§11: only a CONFIRMED plan can sync — and prescription-push itself
+    is stage 11b, contingent on the real Technogym access tier (§24 open
+    item). Until that lands the tool validates the precondition and returns
+    the documented fallback ('/plan today', followed manually)."""
+    row = await ctx.session.get(TrainingPlan, training_plan_id)
+    if row is None or row.user_id != ctx.user_id:
+        return {"error": "plan not found for this account"}
+    if row.status == "draft":
+        return {"error": "plan is still a draft — confirm it first (§8.5)"}
+    return {
+        "status": "pending_technogym_access",
+        "plan_id": training_plan_id,
+        "fallback": "Prescription-push (§11b) awaits Technogym access confirmation; "
+        "use '/plan today' in Telegram and follow it manually.",
+    }
+
+
+# --- registry ----------------------------------------------------------------
+
+
+def _schema(props: dict[str, Any], required: list[str]) -> dict[str, Any]:
+    return {"type": "object", "properties": props, "required": required}
+
+
+TOOL_REGISTRY: dict[str, ToolSpec] = {
+    spec.name: spec
+    for spec in [
+        ToolSpec(
+            name="get_metric_trend",
+            kind="read",
+            description="Daily trend of one health/performance metric "
+            "(readiness, recovery, strain, acwr, acute_load, chronic_load, "
+            "sleep_architecture, hrv_deviation_pct, illness_risk, injury_risk, "
+            "cross_discipline_fatigue, iron_status_flag) over a date range; "
+            "discipline-scoped metrics (estimated_ftp, aerobic_decoupling_pct, "
+            "efficiency_factor) need discipline_id.",
+            parameters=_schema(
+                {
+                    "metric": {"type": "string"},
+                    "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "discipline_id": {"type": "integer"},
+                },
+                ["metric", "start_date", "end_date"],
+            ),
+            handler=_get_metric_trend,
+        ),
+        ToolSpec(
+            name="get_lab_trend",
+            kind="read",
+            description="Lab marker series across blood panels (e.g. ferritin, hemoglobin).",
+            parameters=_schema(
+                {
+                    "marker": {"type": "string"},
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": "string"},
+                },
+                ["marker"],
+            ),
+            handler=_get_lab_trend,
+        ),
+        ToolSpec(
+            name="get_activity_summary",
+            kind="read",
+            description="Aggregated activities (sessions, duration, distance, training load) "
+            "over a date range, with a per-discipline breakdown.",
+            parameters=_schema(
+                {
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": "string"},
+                    "discipline_id": {"type": "integer"},
+                },
+                ["start_date", "end_date"],
+            ),
+            handler=_get_activity_summary,
+        ),
+        ToolSpec(
+            name="get_journal_entries",
+            kind="read",
+            description="The athlete's journal entries over a date range, optionally filtered by tags.",
+            parameters=_schema(
+                {
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                ["start_date", "end_date"],
+            ),
+            handler=_get_journal_entries,
+        ),
+        ToolSpec(
+            name="search_context",
+            kind="read",
+            description="Semantic search over the athlete's journal entries and AI reports "
+            "(pgvector cosine). Use for fuzzy/recall questions.",
+            parameters=_schema(
+                {
+                    "query": {"type": "string"},
+                    "top_k": {"type": "integer", "default": 5},
+                },
+                ["query"],
+            ),
+            handler=_search_context,
+        ),
+        ToolSpec(
+            name="get_training_plan",
+            kind="read",
+            description="Current/active training plan with its planned sessions; "
+            "optionally filter by status (draft|confirmed|active|completed).",
+            parameters=_schema({"status": {"type": "string"}}, []),
+            handler=_get_training_plan,
+        ),
+        ToolSpec(
+            name="get_donation_status",
+            kind="read",
+            description="Blood donation status: last donation, days since, next eligible date.",
+            parameters=_schema({}, []),
+            handler=_get_donation_status,
+        ),
+        ToolSpec(
+            name="get_gear_status",
+            kind="read",
+            description="Gear usage vs service interval; optionally one item via gear_id.",
+            parameters=_schema({"gear_id": {"type": "integer"}}, []),
+            handler=_get_gear_status,
+        ),
+        ToolSpec(
+            name="propose_training_plan",
+            kind="write",
+            description="DRAFT a weekly training plan (never applies directly — the user "
+            "confirms via Telegram). Each session: {date, discipline? (slug), session_type?, "
+            "target_duration_min?, target_load?, description?}.",
+            parameters=_schema(
+                {
+                    "week_start": {"type": "string", "description": "YYYY-MM-DD (snapped to its Monday)"},
+                    "sessions": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                    },
+                },
+                ["week_start", "sessions"],
+            ),
+            handler=_propose_training_plan,
+        ),
+        ToolSpec(
+            name="propose_supplement_change",
+            kind="write",
+            description="DRAFT a supplement protocol change (never applies directly — the user "
+            "confirms via Telegram).",
+            parameters=_schema(
+                {
+                    "supplement_name": {"type": "string"},
+                    "dose": {"type": "string"},
+                    "schedule_cron": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                ["supplement_name"],
+            ),
+            handler=_propose_supplement_change,
+        ),
+        ToolSpec(
+            name="sync_plan_to_technogym",
+            kind="write",
+            description="Push a CONFIRMED plan to Technogym as a prescribed program "
+            "(contingent on Technogym access — §11b).",
+            parameters=_schema({"training_plan_id": {"type": "integer"}}, ["training_plan_id"]),
+            handler=_sync_plan_to_technogym,
+        ),
+    ]
+}
+
+
+def tool_schemas() -> list[dict[str, Any]]:
+    """OpenAI-compatible tools payload for the LLM request (§8.4)."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": spec.name,
+                "description": spec.description,
+                "parameters": spec.parameters,
+            },
+        }
+        for spec in TOOL_REGISTRY.values()
+    ]
+
+
+WRITE_TOOLS = frozenset(spec.name for spec in TOOL_REGISTRY.values() if spec.kind == "write")
