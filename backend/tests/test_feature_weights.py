@@ -7,12 +7,25 @@ weights that were active then.
 """
 
 from datetime import UTC, date, datetime
+import pytest_asyncio
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.weights import cutoff_for_local_day, load_weights
+
+@pytest_asyncio.fixture(autouse=True)
+async def v1_weights_only(db_session):
+    """The §6.4 tests mutate the GLOBAL feature_weights config (v2/future
+    rows); delete everything above the seeded v1 after each test so later
+    tests — in this or any other module — see the migration's state."""
+    yield
+    from sqlalchemy import text
+
+    await db_session.execute(text("DELETE FROM feature_weights WHERE version > 1"))
+    await db_session.commit()
+
 
 ROME = ZoneInfo("Europe/Rome")
 
