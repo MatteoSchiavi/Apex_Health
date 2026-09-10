@@ -20,8 +20,9 @@ Layout:
 Built-in drill cases:
 - activity 7104 starts 2025-03-08 23:30 GMT = 2025-03-09 00:30 in
   Europe/Rome — proves the §17 day-boundary rule (local_date 03-09, not the
-  UTC day 03-08), and its `walking` typeKey exercises the documented
-  discipline fallback (`gym_general`).
+  UTC day 03-08); its `walking` typeKey lands in the generic bucket
+  (`gym_general`, explicitly mapped — true fallbacks are unit-tested via
+  `resolve_type_key`).
 - `sleep/2025-03-02.json` is malformed (upstream shape change drill): its raw
   row must stay `processed=false` while every other payload normalizes.
 - Days 2025-03-01 backward are empty: backfill stops after 10 consecutive
