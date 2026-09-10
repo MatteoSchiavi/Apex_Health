@@ -60,6 +60,12 @@ celery_app.conf.update(
             "task": "weather.refresh_all",
             "schedule": crontab(minute=20, hour="*/6"),
         },
+        # §14 nudge: hourly dispatch, the task gates on LOCAL hour 07:00 (the
+        # feature engine's pattern) and de-dupes per user per day in Redis.
+        "weather-nudge-hourly-dispatch": {
+            "task": "weather.readiness_nudge",
+            "schedule": crontab(minute=25),
+        },
         "feature-engine-hourly-dispatch": {
             "task": "features.nightly",
             "schedule": crontab(minute=0),
