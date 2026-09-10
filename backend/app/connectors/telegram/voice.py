@@ -70,6 +70,7 @@ class VoiceDeps:
     telegram: object  # TelegramClient protocol
     llm: LLMClient
     stt: object  # STTClient protocol
+    embeddings: object | None = None  # EmbeddingClient — journal search corpus
 
 
 def draft_keyboard(row_id: int) -> dict:
@@ -243,10 +244,15 @@ async def run_voice_pipeline(
 
 
 async def confirm_draft(
-    sessionmaker: async_sessionmaker, chat_id: int, row_id: int
+    sessionmaker: async_sessionmaker,
+    chat_id: int,
+    row_id: int,
+    embeddings_client: object | None = None,
 ) -> tuple[str, str | None]:
-    """✅ Save: write journal_entries, mark confirmed. Idempotent — a second
-    confirm answers 'already saved' and changes nothing.
+    """✅ Save: write journal_entries, mark confirmed, embed the entry for
+    §8.3 search_context (best-effort — a embeddings outage never blocks a
+    save). Idempotent — a second confirm answers 'already saved' and changes
+    nothing.
 
     Returns (callback_answer, follow_up_message | None)."""
     async with sessionmaker() as session:
@@ -283,6 +289,32 @@ async def confirm_draft(
         await session.flush()
         row.status = "confirmed"
         row.linked_journal_entry_id = entry.id
+
+        # §6.2/§8.3: journal entries are the searchable corpus — embed at
+        # write time. Best-effort, savepoint-isolated so an embedding
+        # failure cannot poison the save.
+        if embeddings_client is not None and entry.free_text_notes:
+            try:
+                from app.queries.search import embed_journal_entry
+                from app.queries.usage import log_embedding_usage
+
+                async with session.begin_nested():
+                    embed_result = await embed_journal_entry(
+                        session,
+                        embeddings_client,
+                        user_id,
+                        entry.id,
+                        entry.free_text_notes,
+                    )
+                    await log_embedding_usage(
+                        session,
+                        user_id=user_id,
+                        model=embed_result.model,
+                        tokens_in=embed_result.tokens_in,
+                    )
+            except Exception:  # noqa: BLE001 — save must not fail on embeddings
+                logger.exception("embedding journal entry %s failed — saved anyway", entry.id)
+
         await session.commit()
         journal_id = entry.id
     logger.info("chat %s: draft %s confirmed as journal entry %s", chat_id, row_id, journal_id)
