@@ -15,7 +15,20 @@ from app.models.features import (
     FeatureWeight,
 )
 from app.models.integration import Integration, RawIngest
+from app.models.gear import (
+    ActivityGearLink,
+    DisciplineGearDefault,
+    Gear,
+    GearServiceLog,
+)
 from app.models.journal import JournalEntry
+from app.models.medical import (
+    LabMetric,
+    LabPanel,
+    NutritionLog,
+    SupplementLog,
+    SupplementProtocol,
+)
 from app.models.telegram import TelegramLink, TelegramMessage
 from app.models.user import AuthCredential, User, UserSession
 from app.models.wellness import (
@@ -27,6 +40,7 @@ from app.models.wellness import (
 
 __all__ = [
     "Activity",
+    "ActivityGearLink",
     "ActivitySourceLink",
     "ActivityStream",
     "AiChatMessage",
@@ -37,14 +51,22 @@ __all__ = [
     "DailyBiometric",
     "DailyFeature",
     "Discipline",
+    "DisciplineGearDefault",
     "DisciplineFeature",
     "FeatureWeight",
+    "Gear",
+    "GearServiceLog",
     "HrvReading",
     "Integration",
     "JournalEntry",
+    "LabMetric",
+    "LabPanel",
+    "NutritionLog",
     "RawIngest",
     "SleepSession",
     "StressReading",
+    "SupplementLog",
+    "SupplementProtocol",
     "TelegramLink",
     "TelegramMessage",
     "User",

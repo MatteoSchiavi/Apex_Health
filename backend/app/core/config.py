@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     login_window_minutes: int = 15
     login_max_attempts: int = 5
     login_lockout_minutes: int = 15
+    # §23 Phase 4 low-ferritin rule: ng/mL cutoff when a panel carries no
+    # lab-provided reference low. A judgment call the spec leaves open —
+    # surfaced here as the single documented tunable.
+    low_ferritin_ng_ml: float = 30.0
 
 
 @lru_cache
