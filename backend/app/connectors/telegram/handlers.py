@@ -11,6 +11,7 @@ handles are logged and dropped — the polling loop outlives any update.
 
 import logging
 
+from app.agent.entrypoint import run_agent_turn
 from app.connectors.telegram.commands import cmd_donate, cmd_gear, cmd_report, cmd_status
 from app.connectors.telegram.link_flow import (
     confirm_link_code,
@@ -100,7 +101,7 @@ async def handle_update(ctx, update: dict) -> None:
         await _handle_command(ctx, message, chat_id, text, linked_user_id)
         return
     if text:
-        await _handle_free_text(ctx, message, chat_id, text)
+        await _handle_free_text(ctx, message, chat_id, text, linked_user_id)
         return
     logger.debug("message %s: no text/voice — nothing routed", message.get("message_id"))
 
@@ -209,12 +210,13 @@ async def _handle_callback(ctx, callback: dict) -> None:
     await ctx.telegram.answer_callback_query(callback["id"], "Unknown action.")
 
 
-async def _handle_free_text(ctx, message: dict, chat_id: int, text: str) -> None:
-    """✏️ Edit corrections first (draft flow); the agent entrypoint takes
-    everything else once it lands (§8)."""
+async def _handle_free_text(ctx, message: dict, chat_id: int, text: str, user_id: int) -> None:
+    """✏️ Edit corrections first (draft flow); everything else goes to the
+    agent entrypoint — a real, data-grounded response (§23 Phase 3 AC2)."""
     handled = await apply_edit_corrections(
         ctx.sessionmaker, ctx.redis, ctx.telegram, ctx.llm_factory, chat_id, text
     )
     if handled:
         return
-    logger.info("chat %s: free text received — agent pending", chat_id)
+    result = await run_agent_turn(ctx.sessionmaker, ctx.llm_factory(), user_id, text)
+    await ctx.telegram.send_message(chat_id, result.reply)
