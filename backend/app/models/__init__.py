@@ -8,6 +8,7 @@ from app.models.activity import (
 )
 from app.models.alert import Alert
 from app.models.base import Base
+from app.models.chat import AiChatMessage, AiChatSession
 from app.models.features import (
     DailyFeature,
     DisciplineFeature,
@@ -28,6 +29,8 @@ __all__ = [
     "Activity",
     "ActivitySourceLink",
     "ActivityStream",
+    "AiChatMessage",
+    "AiChatSession",
     "Alert",
     "AuthCredential",
     "Base",
