@@ -109,7 +109,8 @@ async def clean_bot_tables(db_session):
             "stress_readings, supplement_logs, supplement_protocols, "
             "telegram_links, telegram_messages, training_plans, planned_sessions, "
             "technogym_sync_log, watch_sync_log, weekly_rollups, monthly_rollups, "
-            "embeddings, token_usage, agent_tool_calls RESTART IDENTITY CASCADE"
+            "embeddings, token_usage, agent_tool_calls, forecast_cache "
+            "RESTART IDENTITY CASCADE"
         )
     )
     await db_session.commit()

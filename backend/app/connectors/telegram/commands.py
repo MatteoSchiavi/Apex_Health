@@ -1,10 +1,11 @@
-"""Bot commands (§10.3): /status, /donate, /report, /gear, /plan.
+"""Bot commands (§10.3): /status, /donate, /report, /gear, /plan, /forecast.
 
 All data reads go through app/queries (§8.2 — one implementation per read,
 shared with the future agent tools and report tasks). /report is the
 templated daily summary: deliberately NO LLM call (§9.2). /plan is the
 §11b fallback delivery path — the confirmed plan reaches the user in
 Telegram while prescription-push awaits the real Technogym access tier.
+/forecast is §14's primary access point while the web dashboard is deferred.
 """
 
 import logging
@@ -15,7 +16,9 @@ from app.connectors.telegram.link_flow import get_linked_user_id
 from app.models.user import User
 from app.queries import (
     activities_on_local_date,
+    describe_weather_code,
     get_donation_status,
+    get_forecast,
     get_plan_sessions_for_day,
     gear_overview,
     integrations_overview,
@@ -192,4 +195,70 @@ async def cmd_plan(ctx, chat_id: int, user_id: int) -> str:
         "\nPrescription-push to Technogym equipment (§11b) awaits the "
         "access-tier confirmation (§24) — follow the session manually."
     )
+    return "\n".join(lines)
+
+
+NO_WEATHER_CONFIGURED = (
+    "Weather is not configured yet — set WEATHER_HOME_LAT and "
+    "WEATHER_HOME_LON to enable forecast caching (§14)."
+)
+
+NO_FORECAST_CACHED = (
+    "No forecast cached yet — the 6-hourly refresh will fill the cache "
+    "once coordinates are configured (§19)."
+)
+
+
+def format_forecast_day(row: dict) -> str:
+    """One cached day → one Telegram line (metric units, Open-Meteo defaults)."""
+    daily = row["payload"].get("daily") or {}
+    desc = describe_weather_code(daily.get("weather_code"))
+    detail = []
+    if desc:
+        detail.append(desc)
+    if daily.get("temperature_2m_min") is not None or daily.get("temperature_2m_max") is not None:
+        detail.append(
+            f"{daily.get('temperature_2m_min', '—')}–{daily.get('temperature_2m_max', '—')}°C"
+        )
+    if daily.get("precipitation_sum") is not None:
+        prob = daily.get("precipitation_probability_max")
+        prob_part = f", {prob}%" if prob is not None else ""
+        detail.append(f"{daily.get('precipitation_sum')}mm{prob_part}")
+    if daily.get("wind_speed_10m_max") is not None:
+        detail.append(f"wind {daily.get('wind_speed_10m_max')}km/h")
+    return f"- {row['date'].isoformat()}: " + " · ".join(detail)
+
+
+async def cmd_forecast(ctx, chat_id: int, user_id: int, arg: str = "") -> str:
+    """§14: the cached forecast reaches the user while the dashboard is
+    deferred — same data, same query layer as GET /weather/forecast.
+    Optional `arg`: how many days to show (default: everything cached)."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if settings.weather_home_lat == 0.0 and settings.weather_home_lon == 0.0:
+        return NO_WEATHER_CONFIGURED
+
+    days = 7
+    if arg.strip().isdigit():
+        days = max(1, min(16, int(arg.strip())))
+
+    async with ctx.sessionmaker() as session:
+        user = await session.get(User, user_id)
+        local_today = datetime.now(ZoneInfo(user.timezone)).date()
+        rows = await get_forecast(
+            session,
+            lat=settings.weather_home_lat,
+            lon=settings.weather_home_lon,
+            days=days,
+            today=local_today,
+        )
+    if not rows:
+        return NO_FORECAST_CACHED
+
+    header = (
+        f"Forecast ({settings.weather_home_lat:.2f}, {settings.weather_home_lon:.2f})"
+        f" — {user.timezone}"
+    )
+    lines = [header] + [format_forecast_day(r) for r in rows]
     return "\n".join(lines)
