@@ -12,8 +12,22 @@ from pathlib import Path
 
 # --- env defaults (must run before any `app` import) ---
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://hcc@localhost:5433/hcc")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
+
+
+def _ensure_usable(name: str, default: str, *ok_prefixes: str) -> None:
+    """Keep a deliberately exported value, replace anything unusable.
+
+    setdefault alone is not enough: some dev sandboxes export unrelated values
+    (e.g. DATABASE_URL=file:...) that would poison the SQLAlchemy URL. An
+    explicit override with a real backend scheme (CI service containers) wins.
+    """
+    value = os.environ.get(name, "")
+    if not value or not value.startswith(ok_prefixes):
+        os.environ[name] = default
+
+
+_ensure_usable("DATABASE_URL", "postgresql+asyncpg://hcc@localhost:5433/hcc", "postgresql")
+_ensure_usable("REDIS_URL", "redis://localhost:6380/0", "redis")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key")
 os.environ.setdefault("OWNER_EMAIL", "owner@apexhealth.dev")

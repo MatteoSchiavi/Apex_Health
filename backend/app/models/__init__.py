@@ -8,6 +8,11 @@ from app.models.activity import (
 )
 from app.models.alert import Alert
 from app.models.base import Base
+from app.models.features import (
+    DailyFeature,
+    DisciplineFeature,
+    FeatureWeight,
+)
 from app.models.integration import Integration, RawIngest
 from app.models.user import AuthCredential, User, UserSession
 from app.models.wellness import (
@@ -25,7 +30,10 @@ __all__ = [
     "AuthCredential",
     "Base",
     "DailyBiometric",
+    "DailyFeature",
     "Discipline",
+    "DisciplineFeature",
+    "FeatureWeight",
     "HrvReading",
     "Integration",
     "RawIngest",
