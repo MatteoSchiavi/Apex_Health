@@ -16,7 +16,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://hcc@localhost:5433/h
 os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key")
-os.environ.setdefault("OWNER_EMAIL", "owner@apex.local")
+os.environ.setdefault("OWNER_EMAIL", "owner@apexhealth.dev")
 os.environ.setdefault("OWNER_PASSWORD", "test-owner-password")
 
 import pytest

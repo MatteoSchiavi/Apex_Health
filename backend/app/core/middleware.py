@@ -20,6 +20,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if not request.headers.get(CSRF_HEADER):
                 return JSONResponse(
                     status_code=403,
-                    detail=f"Missing required header: {CSRF_HEADER}",
+                    content={"detail": f"Missing required header: {CSRF_HEADER}"},
                 )
         return await call_next(request)
