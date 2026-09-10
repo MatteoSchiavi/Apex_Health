@@ -13,7 +13,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration import RawIngest
@@ -29,8 +29,6 @@ PAYLOAD_ARCHIVE = "archive"
 
 async def owner_user_id(session: AsyncSession) -> int | None:
     """The owner account id (auth_credentials.role = 'owner')."""
-    from sqlalchemy import text
-
     row = await session.scalar(
         text("SELECT user_id FROM auth_credentials WHERE role = 'owner' ORDER BY id LIMIT 1")
     )
