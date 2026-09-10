@@ -5,9 +5,17 @@ Phase 1, telegram_links in Phase 3, invites with onboarding work); the full
 schema itself is created by the Alembic migration regardless.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, SmallInteger, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Numeric,
+    SmallInteger,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -18,9 +26,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    dob: Mapped[str | None] = mapped_column(nullable=True)
+    dob: Mapped[date | None] = mapped_column(Date, nullable=True)
     sex: Mapped[str | None] = mapped_column(Text, nullable=True)
-    height_cm: Mapped[float | None] = mapped_column(nullable=True)
+    height_cm: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     weight_goal_direction: Mapped[str | None] = mapped_column(Text, nullable=True)
     timezone: Mapped[str] = mapped_column(
         Text, nullable=False, default="Europe/Rome", server_default="Europe/Rome"
