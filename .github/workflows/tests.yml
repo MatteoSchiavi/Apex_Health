@@ -1,0 +1,66 @@
+# §20 Testing Strategy: "CI: GitHub Actions runs pytest on every push."
+#
+# The suite is hermetic: connector tests run against recorded fixtures, the
+# restore-drill unit tests use a fake pg_dump (the LIVE drill is a host-side
+# phase demo), and the schema is rebuilt from the Alembic chain per session
+# (tests/conftest.py) — which is why the service container must have BOTH
+# TimescaleDB and pgvector: migration 0001 creates those extensions.
+# timescale/timescaledb-ha ships both.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb-ha:pg16
+        env:
+          POSTGRES_USER: hcc
+          POSTGRES_PASSWORD: hcc
+          POSTGRES_DB: hcc
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hcc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Run the suite (schema is rebuilt by conftest per session)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://hcc:hcc@localhost:5433/hcc
+          REDIS_URL: redis://localhost:6380/0
+          SESSION_SECRET: ci-session-secret
+          ENCRYPTION_KEY: ci-encryption-key
+          OWNER_EMAIL: owner@apexhealth.dev
+          OWNER_PASSWORD: ci-owner-password
+        run: uv run python -m pytest -q
