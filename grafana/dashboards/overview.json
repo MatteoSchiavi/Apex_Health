@@ -1,0 +1,796 @@
+{
+ "uid": "apex-overview",
+ "title": "Overview \u2014 Health at a glance",
+ "description": "Daily driver: readiness, alerts, load, plan, weather.",
+ "tags": [
+  "apex-health",
+  "temp-ui"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "current": {
+     "selected": false,
+     "text": "Demo Owner",
+     "value": "1"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Athlete",
+    "multi": false,
+    "name": "user",
+    "options": [],
+    "query": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "links": [],
+ "panels": [
+  {
+   "id": 101,
+   "type": "stat",
+   "title": "Readiness",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT readiness_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 40
+       },
+       {
+        "color": "yellow",
+        "value": 65
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 102,
+   "type": "stat",
+   "title": "Recovery",
+   "description": "",
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT recovery_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 40
+       },
+       {
+        "color": "yellow",
+        "value": 60
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 103,
+   "type": "stat",
+   "title": "HRV (ms)",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT hrv_ms AS value FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 104,
+   "type": "stat",
+   "title": "Sleep last night",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(total_sleep_s/3600.0,1) AS value FROM sleep_sessions WHERE user_id=$user ORDER BY local_date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 105,
+   "type": "stat",
+   "title": "Weight",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT weight_kg AS value FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "kg",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 106,
+   "type": "stat",
+   "title": "Steps",
+   "description": "",
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT steps AS value FROM daily_biometrics WHERE user_id=$user AND steps IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 107,
+   "type": "timeseries",
+   "title": "Readiness \u00b7 Recovery \u00b7 Strain",
+   "description": "Feature-engine daily outputs (\u00a77).",
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 16,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", readiness_score AS readiness, recovery_score AS recovery, strain_score AS strain FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 108,
+   "type": "table",
+   "title": "Alerts",
+   "description": "\u00a717 alert rows \u2014 lowest acknowledgement first.",
+   "gridPos": {
+    "x": 16,
+    "y": 5,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT type AS \"type\", severity AS \"severity\", message AS \"message\", triggered_at AS \"triggered\", acknowledged AS \"ack\" FROM alerts WHERE user_id=$user ORDER BY acknowledged ASC, triggered_at DESC LIMIT 8",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 109,
+   "type": "timeseries",
+   "title": "Weight & resting HR",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", weight_kg AS weight_kg, resting_hr AS rhr FROM daily_biometrics WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 110,
+   "type": "timeseries",
+   "title": "Training load \u2014 acute vs chronic",
+   "description": "7-day vs 28-day rolling load; ACWR = ratio.",
+   "gridPos": {
+    "x": 12,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", training_load_acute AS acute_7d, training_load_chronic AS chronic_28d FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 111,
+   "type": "table",
+   "title": "Upcoming planned sessions",
+   "description": "\u00a711 \u2014 confirmed/active plans only; drafts stay hidden.",
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ps.date AS \"date\", dn.name AS \"discipline\", ps.session_type AS \"type\", ps.target_duration_min AS \"target min\", ps.target_load AS \"target load\", ps.description AS \"description\" FROM planned_sessions ps JOIN training_plans tp ON tp.id = ps.training_plan_id JOIN disciplines dn ON dn.id = ps.discipline_id WHERE tp.user_id=$user AND tp.status IN ('active','confirmed') AND ps.date >= CURRENT_DATE ORDER BY ps.date LIMIT 10",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 112,
+   "type": "table",
+   "title": "Forecast (home coords)",
+   "description": "\u00a714 forecast cache \u2014 WMO codes via \u00a78.2 table.",
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT fc.date AS \"date\", CASE (fc.payload->>'weather_code')::int WHEN 0 THEN 'Clear' WHEN 1 THEN 'Mostly clear' WHEN 2 THEN 'Partly cloudy' WHEN 3 THEN 'Overcast' WHEN 45 THEN 'Fog' WHEN 51 THEN 'Drizzle' WHEN 61 THEN 'Light rain' WHEN 63 THEN 'Rain' WHEN 65 THEN 'Heavy rain' WHEN 71 THEN 'Snow' WHEN 80 THEN 'Showers' WHEN 95 THEN 'Thunderstorm' ELSE 'code ' || (fc.payload->>'weather_code') END AS \"weather\", fc.payload->>'temperature_2m_max' AS \"t max\", fc.payload->>'temperature_2m_min' AS \"t min\", fc.payload->>'wind_speed_10m_max' AS \"wind\", fc.payload->>'precipitation_sum' AS \"precip\" FROM forecast_cache fc WHERE fc.date >= CURRENT_DATE ORDER BY fc.date LIMIT 7",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  }
+ ]
+}

@@ -1,0 +1,1119 @@
+{
+ "uid": "apex-recovery",
+ "title": "Recovery & Sleep",
+ "description": "HRV, sleep architecture, stress, body composition, risk scores.",
+ "tags": [
+  "apex-health",
+  "temp-ui"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "current": {
+     "selected": false,
+     "text": "Demo Owner",
+     "value": "1"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Athlete",
+    "multi": false,
+    "name": "user",
+    "options": [],
+    "query": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "links": [],
+ "panels": [
+  {
+   "id": 124,
+   "type": "stat",
+   "title": "HRV last (ms)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT hrv_ms AS value FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 125,
+   "type": "stat",
+   "title": "HRV 7d avg",
+   "description": "",
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(AVG(hrv_ms),1) AS value FROM (SELECT hrv_ms FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 7) h",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 126,
+   "type": "stat",
+   "title": "RHR last",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT resting_hr AS value FROM daily_biometrics WHERE user_id=$user AND resting_hr IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 127,
+   "type": "stat",
+   "title": "Sleep score",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT sleep_score AS value FROM sleep_sessions WHERE user_id=$user ORDER BY local_date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 128,
+   "type": "stat",
+   "title": "Weight",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT weight_kg AS value FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "kg",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 129,
+   "type": "stat",
+   "title": "Body fat",
+   "description": "",
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT body_fat_pct AS value FROM daily_biometrics WHERE user_id=$user AND body_fat_pct IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 130,
+   "type": "timeseries",
+   "title": "HRV vs rolling baseline",
+   "description": "\u00a77 baseline \u2014 deviation drives recovery/readiness.",
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 16,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT timestamp AS \"time\", hrv_ms AS hrv, rolling_baseline_ms AS baseline FROM hrv_readings WHERE user_id=$user AND $__timeFilter(timestamp) ORDER BY timestamp",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 131,
+   "type": "gauge",
+   "title": "Recovery score",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 4,
+    "w": 8,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT recovery_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 40
+       },
+       {
+        "color": "yellow",
+        "value": 60
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "showThresholdLabels": false,
+    "showThresholdMarkers": true
+   }
+  },
+  {
+   "id": 132,
+   "type": "timeseries",
+   "title": "Sleep duration & score",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", ROUND(total_sleep_s/3600.0,2) AS hours, sleep_score AS score FROM sleep_sessions WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 133,
+   "type": "barchart",
+   "title": "Sleep stages (h)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", deep_s/3600.0 AS deep, light_s/3600.0 AS light, rem_s/3600.0 AS rem, awake_s/3600.0 AS awake FROM sleep_sessions WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 80,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 134,
+   "type": "timeseries",
+   "title": "Resting HR & respiration",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", resting_hr AS rhr FROM daily_biometrics WHERE user_id=$user AND resting_hr IS NOT NULL AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", respiration_avg AS respiration FROM sleep_sessions WHERE user_id=$user AND respiration_avg IS NOT NULL AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "B",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 135,
+   "type": "timeseries",
+   "title": "Stress & body battery (daily)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', timestamp) AS \"time\", AVG(stress_level) AS stress, MAX(body_battery) AS battery FROM stress_readings WHERE user_id=$user AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 136,
+   "type": "timeseries",
+   "title": "Weight & body fat",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 29,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", weight_kg AS weight_kg, body_fat_pct AS body_fat FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 137,
+   "type": "timeseries",
+   "title": "HRV deviation from baseline (%)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 29,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", hrv_deviation_from_baseline AS deviation_pct FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": -15
+       },
+       {
+        "color": "yellow",
+        "value": 0
+       },
+       {
+        "color": "green",
+        "value": 5
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 138,
+   "type": "timeseries",
+   "title": "VO2max & SpO2",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", vo2max AS vo2max, spo2_avg AS spo2 FROM daily_biometrics WHERE user_id=$user AND vo2max IS NOT NULL AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 139,
+   "type": "timeseries",
+   "title": "Illness & injury risk",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", illness_risk_score AS illness, injury_risk_score AS injury FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": 0,
+     "max": 1,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  }
+ ]
+}

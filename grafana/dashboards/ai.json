@@ -1,0 +1,898 @@
+{
+ "uid": "apex-ai",
+ "title": "AI & Agent",
+ "description": "Token budget, tool-loop audit, reports, voice drafts, embeddings usage.",
+ "tags": [
+  "apex-health",
+  "temp-ui"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "current": {
+     "selected": false,
+     "text": "Demo Owner",
+     "value": "1"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Athlete",
+    "multi": false,
+    "name": "user",
+    "options": [],
+    "query": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   },
+   {
+    "current": {
+     "text": "0.25",
+     "value": "0.25"
+    },
+    "hide": 0,
+    "label": "Daily budget $",
+    "name": "budget",
+    "skipUrlSync": false,
+    "type": "textbox"
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "links": [],
+ "panels": [
+  {
+   "id": 159,
+   "type": "stat",
+   "title": "Spend today",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COALESCE(SUM(cost_estimate_usd),0) AS value FROM token_usage WHERE user_id=$user AND created_at::date = CURRENT_DATE",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 160,
+   "type": "stat",
+   "title": "Spend (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COALESCE(SUM(cost_estimate_usd),0) AS value FROM token_usage WHERE user_id=$user AND created_at > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 161,
+   "type": "stat",
+   "title": "Tool calls (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND atc.created_at > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 162,
+   "type": "stat",
+   "title": "Tool error rate (30d)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(100.0*COUNT(*) FILTER (WHERE error IS NOT NULL)/NULLIF(COUNT(*),0),1) AS value FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND atc.created_at > now() - interval '30 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 5
+       },
+       {
+        "color": "red",
+        "value": 10
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 163,
+   "type": "stat",
+   "title": "Over-budget days",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM (SELECT created_at::date AS d, SUM(cost_estimate_usd) AS c FROM token_usage WHERE user_id=$user GROUP BY 1) x WHERE c > ${budget}",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 164,
+   "type": "stat",
+   "title": "Pending voice drafts",
+   "description": "",
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM telegram_messages WHERE chat_id IN (SELECT chat_id FROM telegram_links WHERE user_id=$user) AND status='pending'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 165,
+   "type": "timeseries",
+   "title": "Daily AI spend vs budget",
+   "description": "Budget is editable via the textbox variable (DAILY_TOKEN_BUDGET_USD default 0.25).",
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 16,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', created_at) AS \"time\", SUM(cost_estimate_usd) AS spend FROM token_usage WHERE user_id=$user AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', created_at) AS \"time\", ${budget}::numeric AS budget FROM token_usage WHERE user_id=$user AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+     "refId": "B",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 166,
+   "type": "barchart",
+   "title": "Tool calls by tool",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 4,
+    "w": 8,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT now() AS \"time\", atc.tool_name AS metric, COUNT(*) AS value FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND $__timeFilter(atc.created_at) GROUP BY 2 ORDER BY 3 DESC",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": 0
+   }
+  },
+  {
+   "id": 167,
+   "type": "timeseries",
+   "title": "Agent sessions & tool calls per day",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', started_at) AS \"time\", COUNT(*) AS sessions FROM ai_chat_sessions WHERE user_id=$user AND $__timeFilter(started_at) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', atc.created_at) AS \"time\", COUNT(*) AS tool_calls FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND $__timeFilter(atc.created_at) GROUP BY 1 ORDER BY 1",
+     "refId": "B",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 168,
+   "type": "timeseries",
+   "title": "Tokens in/out per day",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 13,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('day', created_at) AS \"time\", SUM(tokens_in) AS tokens_in, SUM(tokens_out) AS tokens_out FROM token_usage WHERE user_id=$user AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 20,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 169,
+   "type": "table",
+   "title": "Recent agent tool calls (\u00a78.3 audit)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 24,
+    "h": 10
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT atc.created_at AS \"at\", atc.tool_name AS \"tool\", atc.latency_ms AS \"latency ms\", atc.error AS \"error\", LEFT(atc.input_json::text, 60) AS \"input\", LEFT(atc.output_json::text, 60) AS \"output\" FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user ORDER BY atc.created_at DESC LIMIT 20",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 170,
+   "type": "table",
+   "title": "AI reports (daily/weekly/monthly)",
+   "description": "\u00a79.2 templated daily summaries show model 'template' ($0.00).",
+   "gridPos": {
+    "x": 0,
+    "y": 31,
+    "w": 14,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT generated_at AS \"at\", report_type AS \"type\", period_start AS \"from\", period_end AS \"to\", COALESCE(model_used, 'template') AS \"model\", LEFT(replace(content_md, E'\\n', ' '), 100) AS \"excerpt\" FROM ai_reports WHERE user_id=$user ORDER BY generated_at DESC LIMIT 12",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 171,
+   "type": "barchart",
+   "title": "Telegram voice drafts by status",
+   "description": "\u00a78.5/\u00a710.2 write-confirm flow: pending \u2192 confirmed/rejected.",
+   "gridPos": {
+    "x": 14,
+    "y": 31,
+    "w": 10,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT now() AS \"time\", tm.status AS metric, COUNT(*) AS value FROM telegram_messages tm WHERE tm.chat_id IN (SELECT chat_id FROM telegram_links WHERE user_id=$user) GROUP BY 2 ORDER BY 3 DESC",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": 0
+   }
+  }
+ ]
+}

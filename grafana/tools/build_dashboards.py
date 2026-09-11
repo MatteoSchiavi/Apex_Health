@@ -1,0 +1,604 @@
+#!/usr/bin/env python3
+"""Generate the temporary Grafana dashboards (JSON) for Apex Health.
+
+Emits one JSON file per dashboard into <repo>/grafana/dashboards/. Every
+panel uses raw SQL against the real schema — re-run this script after
+schema changes to regenerate. Generated artifacts are committed so Grafana
+provisions them directly (grafana/provisioning/dashboards/provider.yml).
+
+Usage: python3 build_dashboards.py [repo_root]
+"""
+import json
+import sys
+from pathlib import Path
+
+DS = {"type": "grafana-postgresql-datasource", "uid": "apex-pg"}
+TAGS = ["apex-health", "temp-ui"]
+_id = [100]
+
+
+def nid() -> int:
+    _id[0] += 1
+    return _id[0]
+
+
+def tgt(sql: str, ref: str = "A", fmt: str = "time_series") -> dict:
+    return {"datasource": DS, "editorMode": "code", "rawQuery": True,
+            "rawSql": sql, "refId": ref, "format": fmt}
+
+
+TS_CUSTOM = {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 8,
+             "showPoints": "never", "spanNulls": True,
+             "pointSize": 5, "axisPlacement": "auto"}
+BAR_CUSTOM = {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80,
+              "showPoints": "never", "spanNulls": False}
+HBAR_OPTS = {"orientation": "horizontal", "showValue": "never",
+             "stacking": "off", "groupWidth": 0.7, "barWidth": 0.8,
+             "legend": {"displayMode": "list", "placement": "right", "showLegend": True},
+             "tooltip": {"mode": "multi", "sort": "desc"}, "xTickLabelRotation": 0}
+
+
+def panel(ptype, title, x, y, w, h, targets, desc=None, unit=None,
+          opts=None, custom=None, overrides=None, minv=None, maxv=None,
+          thresholds=None):
+    if opts is None:
+        if ptype == "timeseries":
+            opts = {"legend": {"displayMode": "list", "placement": "bottom",
+                               "showLegend": True},
+                    "tooltip": {"mode": "multi", "sort": "desc"}}
+        elif ptype == "stat":
+            opts = {"reduceOptions": {"calcs": ["lastNotNull"], "fields": ""},
+                    "textMode": "auto", "colorMode": "value",
+                    "graphMode": "none", "wideLayout": True}
+        elif ptype == "gauge":
+            opts = {"reduceOptions": {"calcs": ["lastNotNull"], "fields": ""},
+                    "showThresholdLabels": False, "showThresholdMarkers": True}
+        elif ptype == "table":
+            opts = {"showHeader": True, "cellHeight": "sm"}
+        elif ptype == "barchart":
+            opts = {"orientation": "auto", "showValue": "never",
+                    "stacking": "off", "groupWidth": 0.7, "barWidth": 0.8,
+                    "legend": {"displayMode": "list", "placement": "bottom",
+                               "showLegend": True},
+                    "tooltip": {"mode": "multi", "sort": "desc"},
+                    "xTickLabelRotation": -25}
+        elif ptype == "piechart":
+            opts = {"pieType": "pie", "displayLabels": ["name", "percent"],
+                    "legend": {"displayMode": "table", "placement": "right",
+                               "showLegend": True, "values": ["value"]},
+                    "tooltip": {"mode": "single", "sort": "none"}}
+        else:
+            opts = {}
+    if custom is None:
+        custom = TS_CUSTOM if ptype == "timeseries" else {}
+    return {"id": nid(), "type": ptype, "title": title,
+            "description": desc or "",
+            "gridPos": {"x": x, "y": y, "w": w, "h": h},
+            "datasource": DS, "targets": targets,
+            "fieldConfig": {"defaults": {"unit": unit, "custom": custom,
+                                         "min": minv, "max": maxv,
+                                         "thresholds": thresholds or
+                                         {"mode": "absolute", "steps": [
+                                             {"color": "green", "value": None}]}},
+                            "overrides": overrides or []},
+            "options": opts}
+
+
+def th(*steps):
+    """thresholds: th(("red", 30), ("yellow", 50)) — base green at None."""
+    s = [{"color": "green", "value": None}]
+    for color, value in steps:
+        s.append({"color": color, "value": value})
+    return {"mode": "absolute", "steps": s}
+
+
+def user_var():
+    q = "SELECT name AS __text, id AS __value FROM users ORDER BY id"
+    return {"current": {"selected": False, "text": "Demo Owner", "value": "1"},
+            "datasource": DS, "definition": q, "hide": 0, "includeAll": False,
+            "label": "Athlete", "multi": False, "name": "user", "options": [],
+            "query": q,
+            "refresh": 1, "regex": "", "skipUrlSync": False, "sort": 1,
+            "type": "query"}
+
+
+def metric_var():
+    q = ("SELECT DISTINCT metric_name AS __text, metric_name AS __value "
+         "FROM lab_metrics ORDER BY 1")
+    return {"current": {"selected": False, "text": "Vitamin D (25-OH)",
+                        "value": "Vitamin D (25-OH)"},
+            "datasource": DS, "definition": q, "hide": 0, "includeAll": False,
+            "label": "Metric", "multi": False, "name": "metric",
+            "options": [], "query": q,
+            "refresh": 1, "regex": "", "skipUrlSync": False, "sort": 1,
+            "type": "query"}
+
+
+def budget_var():
+    return {"current": {"text": "0.25", "value": "0.25"}, "hide": 0,
+            "label": "Daily budget $", "name": "budget", "skipUrlSync": False,
+            "type": "textbox"}
+
+
+def dashboard(uid, title, panels, variables, time_from="now-90d",
+              refresh="5m", desc=None):
+    return {"uid": uid, "title": title, "description": desc or "",
+            "tags": TAGS, "timezone": "browser", "editable": True,
+            "graphTooltip": 1, "schemaVersion": 39, "version": 1,
+            "refresh": refresh, "time": {"from": time_from, "to": "now"},
+            "timepicker": {"refresh_intervals": ["30s", "1m", "5m", "15m", "1h"]},
+            "templating": {"list": variables},
+            "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+                                      "enable": True, "hide": True, "iconColor": "rgba(0, 211, 255, 1)",
+                                      "name": "Annotations & Alerts", "type": "dashboard"}]},
+            "links": [], "panels": panels}
+
+
+def write(repo, name, dash):
+    out = Path(repo) / "grafana" / "dashboards" / f"{name}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(dash, indent=1))
+    print(f"wrote {out}")
+
+
+# ---------------------------------------------------------------- overview
+def build_overview():
+    P = []
+    stats = [
+        ("Readiness", "SELECT readiness_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1", None, th(("red", 40), ("yellow", 65))),
+        ("Recovery", "SELECT recovery_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1", None, th(("red", 40), ("yellow", 60))),
+        ("HRV (ms)", "SELECT hrv_ms AS value FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 1", None, None),
+        ("Sleep last night", "SELECT ROUND(total_sleep_s/3600.0,1) AS value FROM sleep_sessions WHERE user_id=$user ORDER BY local_date DESC LIMIT 1", "h", None),
+        ("Weight", "SELECT weight_kg AS value FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1", "kg", None),
+        ("Steps", "SELECT steps AS value FROM daily_biometrics WHERE user_id=$user AND steps IS NOT NULL ORDER BY date DESC LIMIT 1", "short", None),
+    ]
+    for i, (title, sql, unit, thr) in enumerate(stats):
+        P.append(panel("stat", title, i * 4, 0, 4, 5, [tgt(sql, fmt="table")],
+                       unit=unit, thresholds=thr))
+    P.append(panel("timeseries", "Readiness · Recovery · Strain", 0, 5, 16, 8,
+                   [tgt('SELECT date AS "time", readiness_score AS readiness, '
+                        'recovery_score AS recovery, strain_score AS strain '
+                        'FROM daily_features WHERE user_id=$user AND $__timeFilter(date) '
+                        'ORDER BY date')],
+                   desc="Feature-engine daily outputs (§7).", minv=0, maxv=100))
+    P.append(panel("table", "Alerts", 16, 5, 8, 8,
+                   [tgt('SELECT type AS "type", severity AS "severity", message AS "message", '
+                        'triggered_at AS "triggered", acknowledged AS "ack" FROM alerts '
+                        'WHERE user_id=$user ORDER BY acknowledged ASC, triggered_at DESC LIMIT 8',
+                        fmt="table")],
+                   desc="§17 alert rows — lowest acknowledgement first."))
+    P.append(panel("timeseries", "Weight & resting HR", 0, 13, 12, 8,
+                   [tgt('SELECT date AS "time", weight_kg AS weight_kg, resting_hr AS rhr '
+                        'FROM daily_biometrics WHERE user_id=$user AND $__timeFilter(date) '
+                        'ORDER BY date')]))
+    P.append(panel("timeseries", "Training load — acute vs chronic", 12, 13, 12, 8,
+                   [tgt('SELECT date AS "time", training_load_acute AS acute_7d, '
+                        'training_load_chronic AS chronic_28d FROM daily_features '
+                        'WHERE user_id=$user AND $__timeFilter(date) ORDER BY date')],
+                   desc="7-day vs 28-day rolling load; ACWR = ratio."))
+    P.append(panel("table", "Upcoming planned sessions", 0, 21, 12, 8,
+                   [tgt('SELECT ps.date AS "date", dn.name AS "discipline", ps.session_type AS "type", '
+                        'ps.target_duration_min AS "target min", ps.target_load AS "target load", '
+                        'ps.description AS "description" FROM planned_sessions ps '
+                        'JOIN training_plans tp ON tp.id = ps.training_plan_id '
+                        'JOIN disciplines dn ON dn.id = ps.discipline_id '
+                        'WHERE tp.user_id=$user AND tp.status IN (\'active\',\'confirmed\') '
+                        'AND ps.date >= CURRENT_DATE ORDER BY ps.date LIMIT 10', fmt="table")],
+                   desc="§11 — confirmed/active plans only; drafts stay hidden."))
+    P.append(panel("table", "Forecast (home coords)", 12, 21, 12, 8,
+                   [tgt("SELECT fc.date AS \"date\", \
+CASE (fc.payload->>'weather_code')::int WHEN 0 THEN 'Clear' WHEN 1 THEN 'Mostly clear' \
+WHEN 2 THEN 'Partly cloudy' WHEN 3 THEN 'Overcast' WHEN 45 THEN 'Fog' WHEN 51 THEN 'Drizzle' \
+WHEN 61 THEN 'Light rain' WHEN 63 THEN 'Rain' WHEN 65 THEN 'Heavy rain' WHEN 71 THEN 'Snow' \
+WHEN 80 THEN 'Showers' WHEN 95 THEN 'Thunderstorm' ELSE 'code ' || (fc.payload->>'weather_code') END AS \"weather\", \
+fc.payload->>'temperature_2m_max' AS \"t max\", fc.payload->>'temperature_2m_min' AS \"t min\", \
+fc.payload->>'wind_speed_10m_max' AS \"wind\", fc.payload->>'precipitation_sum' AS \"precip\" \
+FROM forecast_cache fc WHERE fc.date >= CURRENT_DATE ORDER BY fc.date LIMIT 7", fmt="table")],
+                   desc="§14 forecast cache — WMO codes via §8.2 table."))
+    return dashboard("apex-overview", "Overview — Health at a glance", P,
+                     [user_var()], time_from="now-30d", refresh="30s",
+                     desc="Daily driver: readiness, alerts, load, plan, weather.")
+
+# ---------------------------------------------------------------- activity
+def build_activity():
+    P = []
+    stats = [
+        ("Hours (7d)", "SELECT ROUND(SUM(duration_s)/3600.0,1) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'", "h"),
+        ("Distance (7d)", "SELECT ROUND(SUM(distance_m)/1000.0,1) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'", "km"),
+        ("Sessions (7d)", "SELECT COUNT(*) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'", "short"),
+        ("Load (7d)", "SELECT ROUND(SUM(training_load)) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'", None),
+    ]
+    for i, (title, sql, unit) in enumerate(stats):
+        P.append(panel("stat", title, i * 6, 0, 6, 4, [tgt(sql, fmt="table")], unit=unit))
+    P.append(panel("barchart", "Weekly hours by discipline", 0, 4, 12, 9,
+                   [tgt('SELECT date_trunc(\'week\', local_date) AS "time", d.name AS metric, '
+                        'SUM(a.duration_s)/3600.0 AS value FROM activities a '
+                        'JOIN disciplines d ON d.id=a.discipline_id '
+                        'WHERE a.user_id=$user AND $__timeFilter(local_date) '
+                        'GROUP BY 1, 2 ORDER BY 1')],
+                   custom={**BAR_CUSTOM, "stacking": {"mode": "normal", "group": "A"}}))
+    P.append(panel("piechart", "Time by discipline", 12, 4, 6, 9,
+                   [tgt('SELECT now() AS "time", d.name AS metric, SUM(a.duration_s)/3600.0 AS value '
+                        'FROM activities a JOIN disciplines d ON d.id=a.discipline_id '
+                        'WHERE a.user_id=$user AND $__timeFilter(local_date) GROUP BY 2')]))
+    P.append(panel("timeseries", "Avg / max HR", 18, 4, 6, 9,
+                   [tgt('SELECT local_date AS "time", avg_hr AS avg_hr, max_hr AS max_hr '
+                        'FROM activities WHERE user_id=$user AND avg_hr IS NOT NULL '
+                        'AND $__timeFilter(local_date) ORDER BY local_date')]))
+    P.append(panel("table", "Recent activities", 0, 13, 24, 11,
+                   [tgt('SELECT to_char(a.local_date,\'YYYY-MM-DD\') AS "date", d.name AS "discipline", '
+                        "to_char(a.start_time AT TIME ZONE 'Europe/Rome', 'MM-DD HH24:MI') AS \"start\", "
+                        'ROUND(a.duration_s/60.0) AS "min", ROUND(a.distance_m/1000.0,1) AS "km", '
+                        'a.avg_hr AS "avg hr", a.max_hr AS "max hr", a.avg_power AS "avg W", '
+                        'a.calories AS "kcal", a.training_load AS "load", '
+                        'a.weather_snapshot->>\'temperature_2m_mean\' AS "temp", '
+                        'a.data_completeness AS "quality" '
+                        'FROM activities a JOIN disciplines d ON d.id=a.discipline_id '
+                        'WHERE a.user_id=$user ORDER BY a.start_time DESC LIMIT 25',
+                        fmt="table")],
+                   desc="Weather column comes from §14 enrichment (weather_snapshot)."))
+    P.append(panel("timeseries", "Run pace (min/km)", 0, 24, 8, 8,
+                   [tgt('SELECT local_date AS "time", ROUND((duration_s/60.0)/(distance_m/1000.0),2) '
+                        'AS min_per_km FROM activities a JOIN disciplines d ON d.id=a.discipline_id '
+                        'WHERE a.user_id=$user AND d.name=\'running\' AND distance_m > 0 '
+                        'AND $__timeFilter(local_date) ORDER BY local_date')], minv=3.5, maxv=7.5))
+    P.append(panel("timeseries", "Estimated FTP (cycling)", 8, 24, 8, 8,
+                   [tgt('SELECT date AS "time", estimated_ftp AS ftp FROM discipline_features df '
+                        'JOIN disciplines d ON d.id=df.discipline_id WHERE df.user_id=$user '
+                        'AND d.name=\'road_cycling\' AND $__timeFilter(date) ORDER BY date')]))
+    P.append(panel("table", "Segment efforts", 16, 24, 8, 8,
+                   [tgt('SELECT to_char(a.local_date,\'YYYY-MM-DD\') AS "date", s.name AS "segment", '
+                        'se.elapsed_time_s AS "seconds", se.is_pr AS "PR" FROM segment_efforts se '
+                        'JOIN segments s ON s.id=se.segment_id '
+                        'JOIN activities a ON a.id=se.activity_id '
+                        'WHERE a.user_id=$user ORDER BY a.local_date DESC LIMIT 10', fmt="table")]))
+    return dashboard("apex-activity", "Training & Activities", P, [user_var()],
+                     desc="Workouts, disciplines, load, pace, FTP, segments, weather-enriched rows.")
+
+
+# ---------------------------------------------------------------- recovery
+def build_recovery():
+    P = []
+    stats = [
+        ("HRV last (ms)", "SELECT hrv_ms AS value FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 1", None),
+        ("HRV 7d avg", "SELECT ROUND(AVG(hrv_ms),1) AS value FROM (SELECT hrv_ms FROM hrv_readings WHERE user_id=$user ORDER BY timestamp DESC LIMIT 7) h", None),
+        ("RHR last", "SELECT resting_hr AS value FROM daily_biometrics WHERE user_id=$user AND resting_hr IS NOT NULL ORDER BY date DESC LIMIT 1", "short"),
+        ("Sleep score", "SELECT sleep_score AS value FROM sleep_sessions WHERE user_id=$user ORDER BY local_date DESC LIMIT 1", None),
+        ("Weight", "SELECT weight_kg AS value FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1", "kg"),
+        ("Body fat", "SELECT body_fat_pct AS value FROM daily_biometrics WHERE user_id=$user AND body_fat_pct IS NOT NULL ORDER BY date DESC LIMIT 1", "percent"),
+    ]
+    for i, (title, sql, unit) in enumerate(stats):
+        P.append(panel("stat", title, i * 4, 0, 4, 4, [tgt(sql, fmt="table")], unit=unit))
+    P.append(panel("timeseries", "HRV vs rolling baseline", 0, 4, 16, 9,
+                   [tgt('SELECT timestamp AS "time", hrv_ms AS hrv, rolling_baseline_ms AS baseline '
+                        'FROM hrv_readings WHERE user_id=$user AND $__timeFilter(timestamp) '
+                        'ORDER BY timestamp')],
+                   desc="§7 baseline — deviation drives recovery/readiness."))
+    P.append(panel("gauge", "Recovery score", 16, 4, 8, 9,
+                   [tgt('SELECT recovery_score AS value FROM daily_features WHERE user_id=$user '
+                        'ORDER BY date DESC LIMIT 1', fmt="table")],
+                   thresholds=th(("red", 40), ("yellow", 60)), minv=0, maxv=100))
+    P.append(panel("timeseries", "Sleep duration & score", 0, 13, 12, 8,
+                   [tgt('SELECT local_date AS "time", ROUND(total_sleep_s/3600.0,2) AS hours, '
+                        'sleep_score AS score FROM sleep_sessions WHERE user_id=$user '
+                        'AND $__timeFilter(local_date) ORDER BY local_date')]))
+    P.append(panel("barchart", "Sleep stages (h)", 12, 13, 12, 8,
+                   [tgt('SELECT local_date AS "time", deep_s/3600.0 AS deep, light_s/3600.0 AS light, '
+                        'rem_s/3600.0 AS rem, awake_s/3600.0 AS awake FROM sleep_sessions '
+                        'WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date',
+                        fmt="table")],
+                   custom={**BAR_CUSTOM, "stacking": {"mode": "normal", "group": "A"}}))
+    P.append(panel("timeseries", "Resting HR & respiration", 0, 21, 12, 8,
+                   [tgt('SELECT date AS "time", resting_hr AS rhr FROM daily_biometrics '
+                        'WHERE user_id=$user AND resting_hr IS NOT NULL AND $__timeFilter(date) '
+                        'ORDER BY date'),
+                    tgt('SELECT local_date AS "time", respiration_avg AS respiration '
+                        'FROM sleep_sessions WHERE user_id=$user AND respiration_avg IS NOT NULL '
+                        'AND $__timeFilter(local_date) ORDER BY local_date', ref="B")]))
+    P.append(panel("timeseries", "Stress & body battery (daily)", 12, 21, 12, 8,
+                   [tgt("SELECT date_trunc('day', timestamp) AS \"time\", "
+                        "AVG(stress_level) AS stress, MAX(body_battery) AS battery "
+                        "FROM stress_readings WHERE user_id=$user AND $__timeFilter(timestamp) "
+                        "GROUP BY 1 ORDER BY 1")]))
+    P.append(panel("timeseries", "Weight & body fat", 0, 29, 12, 8,
+                   [tgt('SELECT date AS "time", weight_kg AS weight_kg, body_fat_pct AS body_fat '
+                        'FROM daily_biometrics WHERE user_id=$user AND weight_kg IS NOT NULL '
+                        'AND $__timeFilter(date) ORDER BY date')]))
+    P.append(panel("timeseries", "HRV deviation from baseline (%)", 12, 29, 12, 8,
+                   [tgt('SELECT date AS "time", hrv_deviation_from_baseline AS deviation_pct '
+                        'FROM daily_features WHERE user_id=$user AND $__timeFilter(date) '
+                        'ORDER BY date')], thresholds=th(("red", -15), ("yellow", 0), ("green", 5))))
+    P.append(panel("timeseries", "VO2max & SpO2", 0, 37, 12, 8,
+                   [tgt('SELECT date AS "time", vo2max AS vo2max, spo2_avg AS spo2 '
+                        'FROM daily_biometrics WHERE user_id=$user AND vo2max IS NOT NULL '
+                        'AND $__timeFilter(date) ORDER BY date')]))
+    P.append(panel("timeseries", "Illness & injury risk", 12, 37, 12, 8,
+                   [tgt('SELECT date AS "time", illness_risk_score AS illness, injury_risk_score AS injury '
+                        'FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date')],
+                   minv=0, maxv=1))
+    return dashboard("apex-recovery", "Recovery & Sleep", P, [user_var()],
+                     desc="HRV, sleep architecture, stress, body composition, risk scores.")
+
+
+# --------------------------------------------------------------- nutrition
+def build_nutrition():
+    P = []
+    stats = [
+        ("Calories today", "SELECT COALESCE(SUM(calories),0) AS value FROM nutrition_logs WHERE user_id=$user AND calories IS NOT NULL AND timestamp::date = CURRENT_DATE", "short"),
+        ("Protein today (g)", "SELECT COALESCE(SUM(protein_g),0) AS value FROM nutrition_logs WHERE user_id=$user AND protein_g IS NOT NULL AND timestamp::date = CURRENT_DATE", "short"),
+        ("Caffeine today (mg)", "SELECT COALESCE(SUM(caffeine_mg),0) AS value FROM nutrition_logs WHERE user_id=$user AND caffeine_mg IS NOT NULL AND timestamp::date = CURRENT_DATE", "short"),
+        ("Water today (L)", "SELECT COALESCE(SUM(water_ml),0)/1000.0 AS value FROM nutrition_logs WHERE user_id=$user AND water_ml IS NOT NULL AND timestamp::date = CURRENT_DATE", "litre"),
+    ]
+    for i, (title, sql, unit) in enumerate(stats):
+        P.append(panel("stat", title, i * 6, 0, 6, 4, [tgt(sql, fmt="table")], unit=unit))
+    P.append(panel("timeseries", "Daily calories", 0, 4, 12, 8,
+                   [tgt("SELECT date_trunc('day', timestamp) AS \"time\", SUM(calories) AS kcal "
+                        "FROM nutrition_logs WHERE user_id=$user AND calories IS NOT NULL "
+                        "AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1")], minv=0))
+    P.append(panel("timeseries", "Macros (g/day)", 12, 4, 12, 8,
+                   [tgt("SELECT date_trunc('day', timestamp) AS \"time\", SUM(protein_g) AS protein, "
+                        "SUM(carbs_g) AS carbs, SUM(fat_g) AS fat FROM nutrition_logs "
+                        "WHERE user_id=$user AND protein_g IS NOT NULL AND $__timeFilter(timestamp) "
+                        "GROUP BY 1 ORDER BY 1")]))
+    P.append(panel("piechart", "Macro energy split (30d)", 0, 12, 8, 9,
+                   [tgt('SELECT SUM(protein_g)*4 AS "Protein kcal", SUM(carbs_g)*4 AS "Carbs kcal", '
+                        'SUM(fat_g)*9 AS "Fat kcal" FROM nutrition_logs WHERE user_id=$user '
+                        "AND protein_g IS NOT NULL AND timestamp > now() - interval '30 days'",
+                        fmt="table")]))
+    P.append(panel("timeseries", "Caffeine & alcohol", 8, 12, 8, 9,
+                   [tgt("SELECT date_trunc('day', timestamp) AS \"time\", SUM(caffeine_mg) AS caffeine_mg "
+                        "FROM nutrition_logs WHERE user_id=$user AND caffeine_mg IS NOT NULL "
+                        "AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1"),
+                    tgt("SELECT date_trunc('day', timestamp) AS \"time\", SUM(alcohol_units) AS alcohol_units "
+                        "FROM nutrition_logs WHERE user_id=$user AND alcohol_units IS NOT NULL "
+                        "AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1", ref="B")]))
+    P.append(panel("timeseries", "Water (L/day)", 16, 12, 8, 9,
+                   [tgt("SELECT date_trunc('day', timestamp) AS \"time\", SUM(water_ml)/1000.0 AS litres "
+                        "FROM nutrition_logs WHERE user_id=$user AND water_ml IS NOT NULL "
+                        "AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1")]))
+    P.append(panel("table", "Supplement adherence (30d)", 0, 21, 12, 9,
+                   [tgt("SELECT sp.supplement_name AS \"supplement\", sp.dose AS \"dose\", "
+                        "COUNT(sl.*) AS \"logged\", COUNT(sl.*) FILTER (WHERE sl.adherence) AS \"taken\", "
+                        "ROUND(100.0 * COUNT(sl.*) FILTER (WHERE sl.adherence) / NULLIF(COUNT(sl.*),0), 1) "
+                        "AS \"adherence %\" FROM supplement_protocols sp "
+                        "LEFT JOIN supplement_logs sl ON sl.protocol_id = sp.id "
+                        "AND sl.taken_at > now() - interval '30 days' "
+                        "WHERE sp.user_id=$user GROUP BY sp.id, sp.supplement_name, sp.dose "
+                        "ORDER BY sp.supplement_name", fmt="table")]))
+    P.append(panel("timeseries", "Adherence % (daily)", 12, 21, 12, 9,
+                   [tgt("SELECT sl.taken_at::date AS \"time\", "
+                        "ROUND(100.0 * SUM(CASE WHEN sl.adherence THEN 1 ELSE 0 END) / COUNT(*),1) AS pct "
+                        "FROM supplement_logs sl JOIN supplement_protocols sp ON sp.id = sl.protocol_id "
+                        "WHERE sp.user_id=$user AND $__timeFilter(sl.taken_at) "
+                        "GROUP BY 1 ORDER BY 1")], minv=0, maxv=100))
+    return dashboard("apex-nutrition", "Nutrition & Supplements", P, [user_var()],
+                     desc="Meals, macros, hydration, caffeine/alcohol, supplement adherence.")
+
+
+# -------------------------------------------------------------------- labs
+def build_labs():
+    P = []
+    stats = [
+        ("Ferritin (ng/mL)", "SELECT ferritin_ng_ml AS value FROM lab_panels WHERE user_id=$user ORDER BY date DESC LIMIT 1", {"mode": "absolute", "steps": [{"color": "red", "value": None}, {"color": "yellow", "value": 30}, {"color": "green", "value": 50}]}),
+        ("Hemoglobin (g/dL)", "SELECT hemoglobin_g_dl AS value FROM lab_panels WHERE user_id=$user ORDER BY date DESC LIMIT 1", th(("yellow", 13.5), ("green", 14.0))),
+        ("Days to eligibility", "SELECT (next_eligible_date - CURRENT_DATE) AS value FROM lab_panels WHERE user_id=$user AND next_eligible_date IS NOT NULL ORDER BY date DESC LIMIT 1", None),
+        ("Panels total", "SELECT COUNT(*) AS value FROM lab_panels WHERE user_id=$user", None),
+    ]
+    for i, (title, sql, thr) in enumerate(stats):
+        P.append(panel("stat", title, i * 6, 0, 6, 5, [tgt(sql, fmt="table")], thresholds=thr))
+    P.append(panel("timeseries", "Ferritin — recovery story", 0, 5, 16, 9,
+                   [tgt('SELECT date AS "time", ferritin_ng_ml AS ferritin FROM lab_panels '
+                        'WHERE user_id=$user AND $__timeFilter(date) ORDER BY date')],
+                   desc="Low-ferritin threshold 30 ng/mL (config default) — §17 alert fired on the dip.",
+                   thresholds={"mode": "absolute", "steps": [{"color": "red", "value": None},
+                                                            {"color": "yellow", "value": 30},
+                                                            {"color": "green", "value": 50}]}, minv=0))
+    P.append(panel("timeseries", "Hemoglobin & hematocrit", 16, 5, 8, 9,
+                   [tgt('SELECT date AS "time", hemoglobin_g_dl AS hemoglobin, hematocrit_pct AS hematocrit '
+                        'FROM lab_panels WHERE user_id=$user AND $__timeFilter(date) ORDER BY date')]))
+    P.append(panel("table", "Panel history", 0, 14, 24, 10,
+                   [tgt('SELECT to_char(date,\'YYYY-MM-DD\') AS "date", panel_type AS "type", donation_type AS "donation", '
+                        'hemoglobin_g_dl AS "hgb", hematocrit_pct AS "hct", ferritin_ng_ml AS "ferritin", '
+                        'iron AS "iron", wbc AS "wbc", plt AS "plt", next_eligible_date AS "eligible", '
+                        'source AS "source" FROM lab_panels WHERE user_id=$user '
+                        'ORDER BY date DESC', fmt="table")],
+                   desc="Notes are stored encrypted (notes_ciphertext) — not rendered here by design."))
+    P.append(panel("timeseries", "Metric trend — ${metric}", 0, 24, 24, 9,
+                   [tgt('SELECT lp.date AS "time", lm.value AS value FROM lab_metrics lm '
+                        'JOIN lab_panels lp ON lp.id = lm.lab_panel_id '
+                        "WHERE lp.user_id=$user AND lm.metric_name = '${metric}' "
+                        'AND $__timeFilter(lp.date) ORDER BY lp.date')],
+                   desc="Pick any extra metric from the panels via the Metric dropdown."))
+    return dashboard("apex-labs", "Labs & Blood Health", P, [user_var(), metric_var()],
+                     time_from="now-1y",
+                     desc="Blood panels, donation tracking, extra lab metrics vs reference ranges.")
+
+# ----------------------------------------------------------------------- ai
+def build_ai():
+    P = []
+    stats = [
+        ("Spend today", "SELECT COALESCE(SUM(cost_estimate_usd),0) AS value FROM token_usage WHERE user_id=$user AND created_at::date = CURRENT_DATE", "currencyUSD", None),
+        ("Spend (7d)", "SELECT COALESCE(SUM(cost_estimate_usd),0) AS value FROM token_usage WHERE user_id=$user AND created_at > now() - interval '7 days'", "currencyUSD", None),
+        ("Tool calls (7d)", "SELECT COUNT(*) AS value FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND atc.created_at > now() - interval '7 days'", "short", None),
+        ("Tool error rate (30d)", "SELECT ROUND(100.0*COUNT(*) FILTER (WHERE error IS NOT NULL)/NULLIF(COUNT(*),0),1) AS value FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id WHERE s.user_id=$user AND atc.created_at > now() - interval '30 days'", "percent", th(("green", 5), ("red", 10))),
+        ("Over-budget days", "SELECT COUNT(*) AS value FROM (SELECT created_at::date AS d, SUM(cost_estimate_usd) AS c FROM token_usage WHERE user_id=$user GROUP BY 1) x WHERE c > ${budget}", "short", None),
+        ("Pending voice drafts", "SELECT COUNT(*) AS value FROM telegram_messages WHERE chat_id IN (SELECT chat_id FROM telegram_links WHERE user_id=$user) AND status='pending'", "short", None),
+    ]
+    for i, (title, sql, unit, thr) in enumerate(stats):
+        P.append(panel("stat", title, i * 4, 0, 4, 4, [tgt(sql, fmt="table")],
+                       unit=unit, thresholds=thr))
+    P.append(panel("timeseries", "Daily AI spend vs budget", 0, 4, 16, 9,
+                   [tgt("SELECT date_trunc('day', created_at) AS \"time\", "
+                        "SUM(cost_estimate_usd) AS spend FROM token_usage "
+                        "WHERE user_id=$user AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1"),
+                    tgt("SELECT date_trunc('day', created_at) AS \"time\", "
+                        "${budget}::numeric AS budget FROM token_usage "
+                        "WHERE user_id=$user AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1", ref="B")],
+                   desc="Budget is editable via the textbox variable (DAILY_TOKEN_BUDGET_USD default 0.25)."))
+    P.append(panel("barchart", "Tool calls by tool", 16, 4, 8, 9,
+                   [tgt('SELECT now() AS "time", atc.tool_name AS metric, COUNT(*) AS value '
+                        'FROM agent_tool_calls atc '
+                        'JOIN ai_chat_sessions s ON s.id=atc.session_id '
+                        'WHERE s.user_id=$user AND $__timeFilter(atc.created_at) '
+                        'GROUP BY 2 ORDER BY 3 DESC')], opts=HBAR_OPTS))
+    P.append(panel("timeseries", "Agent sessions & tool calls per day", 0, 13, 12, 8,
+                   [tgt("SELECT date_trunc('day', started_at) AS \"time\", COUNT(*) AS sessions "
+                        "FROM ai_chat_sessions WHERE user_id=$user AND $__timeFilter(started_at) "
+                        "GROUP BY 1 ORDER BY 1"),
+                    tgt("SELECT date_trunc('day', atc.created_at) AS \"time\", COUNT(*) AS tool_calls "
+                        "FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id "
+                        "WHERE s.user_id=$user AND $__timeFilter(atc.created_at) GROUP BY 1 ORDER BY 1",
+                        ref="B")]))
+    P.append(panel("timeseries", "Tokens in/out per day", 12, 13, 12, 8,
+                   [tgt("SELECT date_trunc('day', created_at) AS \"time\", SUM(tokens_in) AS tokens_in, "
+                        "SUM(tokens_out) AS tokens_out FROM token_usage WHERE user_id=$user "
+                        "AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1")],
+                   custom={**TS_CUSTOM, "fillOpacity": 20}))
+    P.append(panel("table", "Recent agent tool calls (§8.3 audit)", 0, 21, 24, 10,
+                   [tgt('SELECT atc.created_at AS "at", atc.tool_name AS "tool", '
+                        'atc.latency_ms AS "latency ms", atc.error AS "error", '
+                        'LEFT(atc.input_json::text, 60) AS "input", '
+                        'LEFT(atc.output_json::text, 60) AS "output" '
+                        'FROM agent_tool_calls atc JOIN ai_chat_sessions s ON s.id=atc.session_id '
+                        'WHERE s.user_id=$user ORDER BY atc.created_at DESC LIMIT 20', fmt="table")]))
+    P.append(panel("table", "AI reports (daily/weekly/monthly)", 0, 31, 14, 9,
+                   [tgt("SELECT generated_at AS \"at\", report_type AS \"type\", "
+                        "period_start AS \"from\", period_end AS \"to\", "
+                        "COALESCE(model_used, 'template') AS \"model\", "
+                        "LEFT(replace(content_md, E'\\n', ' '), 100) AS \"excerpt\" "
+                        "FROM ai_reports WHERE user_id=$user ORDER BY generated_at DESC LIMIT 12",
+                        fmt="table")],
+                   desc="§9.2 templated daily summaries show model 'template' ($0.00)."))
+    P.append(panel("barchart", "Telegram voice drafts by status", 14, 31, 10, 9,
+                   [tgt("SELECT now() AS \"time\", tm.status AS metric, COUNT(*) AS value "
+                        "FROM telegram_messages tm "
+                        "WHERE tm.chat_id IN (SELECT chat_id FROM telegram_links WHERE user_id=$user) "
+                        "GROUP BY 2 ORDER BY 3 DESC")],
+                   opts=HBAR_OPTS,
+                   desc="§8.5/§10.2 write-confirm flow: pending → confirmed/rejected."))
+    return dashboard("apex-ai", "AI & Agent", P, [user_var(), budget_var()],
+                     desc="Token budget, tool-loop audit, reports, voice drafts, embeddings usage.")
+
+
+# ------------------------------------------------------------------ journal
+def build_journal():
+    P = []
+    stats = [
+        ("Entries (7d)", "SELECT COUNT(*) AS value FROM journal_entries WHERE user_id=$user AND date > CURRENT_DATE - 7", "short"),
+        ("Avg mood (30d)", "SELECT ROUND(AVG(mood_score),1) AS value FROM journal_entries WHERE user_id=$user AND date > CURRENT_DATE - 30", None),
+        ("Avg energy (30d)", "SELECT ROUND(AVG(energy_score),1) AS value FROM journal_entries WHERE user_id=$user AND date > CURRENT_DATE - 30", None),
+        ("Avg soreness (30d)", "SELECT ROUND(AVG(soreness_score),1) AS value FROM journal_entries WHERE user_id=$user AND date > CURRENT_DATE - 30", None),
+    ]
+    for i, (title, sql, unit) in enumerate(stats):
+        P.append(panel("stat", title, i * 6, 0, 6, 4, [tgt(sql, fmt="table")], unit=unit))
+    P.append(panel("timeseries", "Mood · Energy · Motivation", 0, 4, 16, 9,
+                   [tgt('SELECT date AS "time", mood_score AS mood, energy_score AS energy, '
+                        'motivation_score AS motivation FROM journal_entries '
+                        'WHERE user_id=$user AND $__timeFilter(date) ORDER BY date')],
+                   minv=0, maxv=10))
+    P.append(panel("timeseries", "Soreness & subjective stress", 16, 4, 8, 9,
+                   [tgt('SELECT date AS "time", soreness_score AS soreness, stress_subjective AS stress '
+                        'FROM journal_entries WHERE user_id=$user AND $__timeFilter(date) '
+                        'ORDER BY date')], minv=0, maxv=10))
+    P.append(panel("timeseries", "Sleep: subjective vs measured", 0, 13, 12, 8,
+                   [tgt('SELECT date AS "time", sleep_quality_subjective AS subjective '
+                        'FROM journal_entries WHERE user_id=$user AND sleep_quality_subjective IS NOT NULL '
+                        'AND $__timeFilter(date) ORDER BY date'),
+                    tgt('SELECT local_date AS "time", sleep_score AS measured FROM sleep_sessions '
+                        'WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date', ref="B")]))
+    P.append(panel("barchart", "Tags", 12, 13, 12, 8,
+                   [tgt("SELECT now() AS \"time\", tag AS metric, COUNT(*) AS value "
+                        "FROM journal_entries je, "
+                        "unnest(je.tags) AS tag WHERE je.user_id=$user AND $__timeFilter(je.date) "
+                        "GROUP BY 2 ORDER BY 3 DESC")], opts=HBAR_OPTS))
+    P.append(panel("table", "Recent entries", 0, 21, 24, 10,
+                   [tgt("SELECT to_char(je.date,'YYYY-MM-DD') AS \"date\", je.source AS \"source\", mood_score AS \"mood\", "
+                        "energy_score AS \"energy\", soreness_score AS \"soreness\", "
+                        "stress_subjective AS \"stress\", sleep_quality_subjective AS \"sleep q\", "
+                        "array_to_string(tags, ', ') AS \"tags\", LEFT(free_text_notes, 80) AS \"notes\" "
+                        "FROM journal_entries je WHERE je.user_id=$user ORDER BY je.date DESC LIMIT 20",
+                        fmt="table")],
+                   desc="Voice-sourced rows (§10.2) carry the transcript + confirm flow."))
+    return dashboard("apex-journal", "Journal & Mind", P, [user_var()],
+                     desc="Subjective scores vs measured data, tags, voice-note history.")
+
+
+# ------------------------------------------------------------------- system
+def build_system():
+    P = []
+    P.append(panel("table", "Integrations (§21)", 0, 0, 12, 8,
+                   [tgt("SELECT provider AS \"provider\", status AS \"status\", "
+                        "consecutive_failures AS \"failures\", last_synced_at AS \"last sync\", "
+                        "ROUND(EXTRACT(EPOCH FROM (now()-last_synced_at))/3600.0,1) AS \"hours ago\" "
+                        "FROM integrations WHERE user_id=$user ORDER BY provider", fmt="table")],
+                   desc="3 consecutive failures trigger §21 escalation (sync_failure alert + push)."))
+    P.append(panel("stat", "Watch sync age (h)", 12, 0, 4, 4,
+                   [tgt("SELECT ROUND(EXTRACT(EPOCH FROM (now()-MAX(synced_at)))/3600.0,1) AS value "
+                        "FROM watch_sync_log WHERE user_id=$user", fmt="table")], thresholds=th(("red", 30), ("yellow", 12))))
+    P.append(panel("stat", "Technogym sync age (h)", 16, 0, 4, 4,
+                   [tgt("SELECT ROUND(EXTRACT(EPOCH FROM (now()-MAX(synced_at)))/3600.0,1) AS value "
+                        "FROM technogym_sync_log WHERE user_id=$user", fmt="table")], thresholds=th(("red", 30), ("yellow", 12))))
+    P.append(panel("stat", "Active sessions", 20, 0, 4, 4,
+                   [tgt("SELECT COUNT(*) AS value FROM sessions WHERE expires_at > now()", fmt="table")],
+                   unit="short"))
+    P.append(panel("timeseries", "Raw ingest rows/day by source (§3)", 0, 8, 12, 8,
+                   [tgt("SELECT date_trunc('day', fetched_at) AS \"time\", source AS metric, COUNT(*) AS value "
+                        "FROM raw_ingest WHERE $__timeFilter(fetched_at) GROUP BY 1, 2 ORDER BY 1",
+                        fmt="table")]))
+    P.append(panel("table", "Alerts (recent)", 12, 8, 12, 8,
+                   [tgt("SELECT triggered_at AS \"at\", type AS \"type\", severity AS \"severity\", "
+                        "message AS \"message\", acknowledged AS \"ack\" FROM alerts WHERE user_id=$user "
+                        "ORDER BY triggered_at DESC LIMIT 12", fmt="table")]))
+    P.append(panel("table", "Gear service status (§13)", 0, 16, 12, 8,
+                   [tgt("SELECT name AS \"gear\", gear_type AS \"type\", km_since_service AS \"km used\", "
+                        "service_interval_km AS \"km interval\", "
+                        "CASE WHEN service_interval_km > 0 THEN ROUND(100.0*km_since_service/service_interval_km) END "
+                        "AS \"km %\", hours_since_service AS \"h used\", service_interval_hours AS \"h interval\", "
+                        "CASE WHEN service_interval_hours > 0 THEN ROUND(100.0*hours_since_service/service_interval_hours) END "
+                        "AS \"h %\" FROM gear WHERE user_id=$user ORDER BY name", fmt="table")]))
+    P.append(panel("table", "Sync logs", 12, 16, 12, 8,
+                   [tgt("SELECT 'watch' AS \"log\", synced_at AS \"at\", sync_type AS \"direction\", "
+                        "'ok' AS \"status\" FROM watch_sync_log WHERE user_id=$user "
+                        "UNION ALL SELECT 'technogym', synced_at, sync_direction, status "
+                        "FROM technogym_sync_log WHERE user_id=$user "
+                        "ORDER BY \"at\" DESC LIMIT 15", fmt="table")]))
+    P.append(panel("table", "Data coverage", 0, 24, 12, 8,
+                   [tgt("SELECT 'daily_features' AS \"source\", COUNT(*) AS \"rows\", MAX(date) AS \"latest\" "
+                        "FROM daily_features WHERE user_id=$user "
+                        "UNION ALL SELECT 'sleep_sessions', COUNT(*), MAX(local_date) FROM sleep_sessions WHERE user_id=$user "
+                        "UNION ALL SELECT 'activities', COUNT(*), MAX(local_date) FROM activities WHERE user_id=$user "
+                        "UNION ALL SELECT 'hrv_readings', COUNT(*), MAX(timestamp)::date FROM hrv_readings WHERE user_id=$user "
+                        "UNION ALL SELECT 'nutrition_logs', COUNT(*), MAX(timestamp)::date FROM nutrition_logs WHERE user_id=$user "
+                        "UNION ALL SELECT 'journal_entries', COUNT(*), MAX(date) FROM journal_entries WHERE user_id=$user "
+                        "UNION ALL SELECT 'lab_panels', COUNT(*), MAX(date) FROM lab_panels WHERE user_id=$user "
+                        "UNION ALL SELECT 'token_usage', COUNT(*), MAX(created_at)::date FROM token_usage WHERE user_id=$user",
+                        fmt="table")]))
+    P.append(panel("stat", "Embeddings (§6.2)", 12, 24, 4, 8,
+                   [tgt("SELECT COUNT(*) AS value FROM embeddings", fmt="table")], unit="short",
+                   thresholds=th(("yellow", 1))))
+    P.append(panel("stat", "Forecast days cached", 16, 24, 4, 8,
+                   [tgt("SELECT COUNT(*) AS value FROM forecast_cache WHERE date >= CURRENT_DATE", fmt="table")],
+                   unit="short"))
+    P.append(panel("stat", "Invite codes", 20, 24, 4, 8,
+                   [tgt("SELECT COUNT(*) AS value FROM invites", fmt="table")], unit="short"))
+    return dashboard("apex-system", "System & Sync Health", P, [user_var()],
+                     time_from="now-30d", refresh="1m",
+                     desc="Connectors, raw ingest, alerts, gear, backups coverage, session state.")
+
+
+def main():
+    repo = sys.argv[1] if len(sys.argv) > 1 else "/home/z/apex-health-clone"
+    write(repo, "overview", build_overview())
+    write(repo, "activity", build_activity())
+    write(repo, "recovery", build_recovery())
+    write(repo, "nutrition", build_nutrition())
+    write(repo, "labs", build_labs())
+    write(repo, "ai", build_ai())
+    write(repo, "journal", build_journal())
+    write(repo, "system", build_system())
+    print("8 dashboards generated")
+
+
+if __name__ == "__main__":
+    main()
+

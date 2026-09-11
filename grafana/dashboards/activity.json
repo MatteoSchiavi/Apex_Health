@@ -1,0 +1,751 @@
+{
+ "uid": "apex-activity",
+ "title": "Training & Activities",
+ "description": "Workouts, disciplines, load, pace, FTP, segments, weather-enriched rows.",
+ "tags": [
+  "apex-health",
+  "temp-ui"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "current": {
+     "selected": false,
+     "text": "Demo Owner",
+     "value": "1"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Athlete",
+    "multi": false,
+    "name": "user",
+    "options": [],
+    "query": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "links": [],
+ "panels": [
+  {
+   "id": 113,
+   "type": "stat",
+   "title": "Hours (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(duration_s)/3600.0,1) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 114,
+   "type": "stat",
+   "title": "Distance (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(distance_m)/1000.0,1) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "km",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 115,
+   "type": "stat",
+   "title": "Sessions (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 116,
+   "type": "stat",
+   "title": "Load (7d)",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(training_load)) AS value FROM activities WHERE user_id=$user AND start_time > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 117,
+   "type": "barchart",
+   "title": "Weekly hours by discipline",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', local_date) AS \"time\", d.name AS metric, SUM(a.duration_s)/3600.0 AS value FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user AND $__timeFilter(local_date) GROUP BY 1, 2 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 80,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 118,
+   "type": "piechart",
+   "title": "Time by discipline",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 6,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT now() AS \"time\", d.name AS metric, SUM(a.duration_s)/3600.0 AS value FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user AND $__timeFilter(local_date) GROUP BY 2",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "pieType": "pie",
+    "displayLabels": [
+     "name",
+     "percent"
+    ],
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true,
+     "values": [
+      "value"
+     ]
+    },
+    "tooltip": {
+     "mode": "single",
+     "sort": "none"
+    }
+   }
+  },
+  {
+   "id": 119,
+   "type": "timeseries",
+   "title": "Avg / max HR",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 4,
+    "w": 6,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", avg_hr AS avg_hr, max_hr AS max_hr FROM activities WHERE user_id=$user AND avg_hr IS NOT NULL AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 120,
+   "type": "table",
+   "title": "Recent activities",
+   "description": "Weather column comes from \u00a714 enrichment (weather_snapshot).",
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 24,
+    "h": 11
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT to_char(a.local_date,'YYYY-MM-DD') AS \"date\", d.name AS \"discipline\", to_char(a.start_time AT TIME ZONE 'Europe/Rome', 'MM-DD HH24:MI') AS \"start\", ROUND(a.duration_s/60.0) AS \"min\", ROUND(a.distance_m/1000.0,1) AS \"km\", a.avg_hr AS \"avg hr\", a.max_hr AS \"max hr\", a.avg_power AS \"avg W\", a.calories AS \"kcal\", a.training_load AS \"load\", a.weather_snapshot->>'temperature_2m_mean' AS \"temp\", a.data_completeness AS \"quality\" FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user ORDER BY a.start_time DESC LIMIT 25",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 121,
+   "type": "timeseries",
+   "title": "Run pace (min/km)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", ROUND((duration_s/60.0)/(distance_m/1000.0),2) AS min_per_km FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user AND d.name='running' AND distance_m > 0 AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": 3.5,
+     "max": 7.5,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 122,
+   "type": "timeseries",
+   "title": "Estimated FTP (cycling)",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", estimated_ftp AS ftp FROM discipline_features df JOIN disciplines d ON d.id=df.discipline_id WHERE df.user_id=$user AND d.name='road_cycling' AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 123,
+   "type": "table",
+   "title": "Segment efforts",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT to_char(a.local_date,'YYYY-MM-DD') AS \"date\", s.name AS \"segment\", se.elapsed_time_s AS \"seconds\", se.is_pr AS \"PR\" FROM segment_efforts se JOIN segments s ON s.id=se.segment_id JOIN activities a ON a.id=se.activity_id WHERE a.user_id=$user ORDER BY a.local_date DESC LIMIT 10",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  }
+ ]
+}
