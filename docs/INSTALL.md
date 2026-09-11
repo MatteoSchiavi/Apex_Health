@@ -54,6 +54,7 @@ Fill `.env` (gitignored — never commit it). The complete reference:
 | `LOW_FERRITIN_NG_ML` | optional | default `30` (§12) |
 | `BACKUP_ENCRYPTION_KEY` | for backups | dedicated Fernet key — different from `ENCRYPTION_KEY` (§22.7) |
 | `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET` | for offsite | Backblaze B2 upload (§22.7) |
+| `TRUST_PROXY_HEADERS` | for Funnel/proxy | `true` behind Tailscale Funnel / Caddy — adopts X-Forwarded-Proto/For from loopback peers only (§15) |
 
 > **Note (dev keys):** any valid Fernet string works for
 > `ENCRYPTION_KEY`/`BACKUP_ENCRYPTION_KEY` in dev. In production they are
@@ -195,7 +196,8 @@ export BACKUP_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet
 # 3. prove restores work — seeds markers, backs up, restores to a scratch DB,
 #    compares all tables and decrypts the crypto-marked lab note
 cd backend && uv run python tools/restore_drill.py
-# → RESTORE DRILL PASSED — 46/46 tables match (first live run, 2026-09)
+# → RESTORE DRILL PASSED — 47/47 tables match (first live run 46/46 at Phase 8,
+#   re-run after Phase 11 on a fresh environment)
 
 # 4. real restore into a target DB
 uv run python tools/restore_backup.py backups/hcc-YYYYMMDD-HHMMSS.daily.sql.gz.enc \
@@ -205,12 +207,59 @@ uv run python tools/restore_backup.py backups/hcc-YYYYMMDD-HHMMSS.daily.sql.gz.e
 Optional offsite: set the three `B2_*` variables — upload failures never
 block the local encrypted backup, they are reported and retried next night.
 
+## 8a. Friends & invites (§15, Phase 9)
+
+The API is multi-user: the owner invites, the friend onboards themselves.
+
+```bash
+BASE=https://<funnel-host>.ts.net          # or http://localhost:8000 in dev
+CSRF="X-CSRF-Token: t"
+
+# 1. OWNER logs in (cookie jar), mints an invite (7-day default expiry)
+curl -c /tmp/owner.jar -X POST $BASE/auth/login -H "$CSRF" \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"owner@...","password":"..."}'
+CODE=$(curl -b /tmp/owner.jar -X POST $BASE/settings/invites -H "$CSRF" \
+     -H 'Content-Type: application/json' -d '{}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')
+
+# 2. Send the code to your friend over a channel you trust.
+# 3. FRIEND redeems — one call creates the account AND their session:
+curl -c /tmp/friend.jar -X POST $BASE/auth/invite/redeem -H "$CSRF" \
+     -H 'Content-Type: application/json' \
+     -d "{\"code\":\"$CODE\",\"name\":\"Dana\",\"email\":\"dana@…\",\"password\":\"…\"}"
+# → 201 {"role":"friend","ai_access_tier":"cheap_only",...}
+
+# list/revoke invites (owner):  GET / DELETE /settings/invites
+# raise a friend's AI tier:     PATCH /settings/users/{id}/ai-tier
+```
+
+Friends see ONLY their own data everywhere (labs, gear, activities, plans,
+alerts, chat): cross-user row IDs answer 404, owner-only settings answer
+403. Isolation is asserted in `tests/test_multiuser_isolation.py`.
+To expose `$BASE` beyond your tailnet, follow `infra/tailscale-funnel-setup.md`.
+
+## 8b. Watch tokens (Phase 10)
+
+Each user (owner or friend) mints a token for THEIR wrist — the watch can
+only ever see that user's numbers:
+
+```bash
+curl -b /tmp/owner.jar -X POST $BASE/watch/tokens -H "$CSRF" \
+     -H 'Content-Type: application/json' -d '{"name":"fr965"}'
+# {"id":1,"name":"fr965","token":"<ONE-TIME SECRET>",...}
+```
+
+Paste `$BASE` + the token into the watch app's settings (Connect IQ →
+Apex Health → Settings); build/sideload from `connectiq/` — see its README.
+Revoke any time with `DELETE /watch/tokens/{id}` (immediate) and list with
+`GET /watch/tokens` (hashes only — the plaintext is shown exactly once).
+
 ## 9. Running the tests
 
 ```bash
 cd backend && uv sync
 # point DATABASE_URL/REDIS_URL at a DEV database (tests create their own DBs)
-uv run pytest -q          # 228 passed is the green baseline
+uv run pytest -q          # 247 passed is the green baseline
 ```
 
 CI (GitHub Actions) runs the same suite against

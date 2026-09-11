@@ -6,7 +6,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-228_green-73BF69)
+![Tests](https://img.shields.io/badge/tests-247_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **Technogym gym
 sessions**, **blood-donation lab panels**, **subjective journaling via
@@ -407,6 +407,86 @@ call documented in `app/core/backups.py`).
 
   `backups/` is gitignored — artifacts of real health data never enter git.
 
+### Multi-user & remote access (Phase 9)
+
+§15's deferral ("actually inviting and onboarding friends") ends here.
+
+- **Invite flow (§18 Settings):** the owner mints one-shot codes with
+  `POST /settings/invites` (128-bit urlsafe capability tokens, default 7-day
+  expiry, listed with redemption state, unused ones revocable). The code is
+  shown once and works exactly once: redemption claims the row under
+  `SELECT ... FOR UPDATE`, so two people racing the same code cannot both
+  get an account — the loser sees a uniform rejection with no oracle for
+  *why* (unknown / used / expired are indistinguishable from outside).
+- **Redemption = onboarding:** `POST /auth/invite/redeem` turns a live code
+  into a `role=friend` account (`ai_access_tier=cheap_only`, share off —
+  §15 defaults) *and* a session in one transaction; the friend picks their
+  own email and password. Email-taken is answered 409 *without* consuming
+  the code, so an invite survives a typo'd recipient.
+- **Owner-only surface:** `require_owner` gate (403, honest) on
+  `/settings/invites*` and `/settings/users/{id}/ai-tier` (§18). Judgment
+  call (documented in `app/api/settings.py`): `/settings/integrations`
+  stays per-user — under friend onboarding every friend connects their own
+  sources and the whole data model is `user_id`-scoped.
+- **Data isolation — the AC:** "a friend redeems an invite, logs in, sees
+  only their own data." Asserted in both directions across labs / gear /
+  settings in `tests/test_multiuser_isolation.py`, including direct
+  addressing of the other user's row IDs (404 — existence denied, same
+  convention the API always used) and per-account session independence.
+  `backend/tools/demo_phase9.py` reproduces the full flow live.
+- **Tailscale Funnel (§15):** `TRUST_PROXY_HEADERS=true` + a
+  loopback-only `ProxyHeadersMiddleware` makes the app Funnel-aware (the
+  local tailscaled proxy is the only peer allowed to vouch for
+  `X-Forwarded-Proto/For`); `infra/tailscale-funnel-setup.md` is the
+  §4-named setup artifact (why Funnel, serve/funnel commands, what is
+  already correct — Secure/HttpOnly/Lax cookies, CSRF header, no CORS by
+  design, email-keyed rate limiting, revocable server-side sessions — and
+  the onboarding walkthrough). The AC was demonstrated end-to-end through a
+  Funnel-shaped local HTTPS terminator: redeem + login *over the Funnel
+  URL* → only own rows visible.
+
+### Connect IQ watch app (Phase 10)
+
+`/connectiq` — a Monkey C **glance** for Garmin wearables (fr965 / fenix7x /
+epix2 pinned; any CIQ 4.0+ product works): the glance strip on the watch
+face shows **today's readiness, recovery and strain**, color-banded, with
+the as-of date so a stale day can't pose as today (the server reports
+`stale` honestly when the nightly engine hasn't scored today yet).
+
+- **Backend:** migration 0004 adds `device_tokens` (a documented judgment
+  call — the §6.4 schema predates the watch and has no device-presentable
+  credential; tokens are peppered-hash like sessions, soft-revocable,
+  per-user). `GET /watch/today` is Bearer-authed and answers with the **token
+  owner's** scores for the **owner's local date** (§17) — isolation is
+  structural: there is no parameter by which a friend's watch could ask for
+  someone else's numbers.
+- **Device side:** 30-minute background temporal event fetches and caches;
+  the glance paints from `Application.Storage` with zero network latency;
+  opening the app refreshes live; a 401 clears the cache so a revoked token
+  never leaves yesterday's numbers on display.
+- **Honest limit:** the source is reviewed against the CIQ 4.0 API surface
+  but **not compiled here** (the SDK isn't fetchable in this environment) —
+  `connectiq/README.md` has the exact `monkeyc` build + sideload steps for
+  the owner's machine.
+
+### CI & drill re-run (Phase 11)
+
+- **CI (§20):** `.github/workflows/tests.yml` runs the full pytest suite on
+  every push — services `timescale/timescaledb-ha:pg16` (carries both
+  extensions migration 0001 needs) and `redis:7`; conftest rebuilds the
+  Alembic chain per session, so CI sees the same schema as local.
+- **Hardening re-verified** in the fresh environment: the §20/§21/§22 audit
+  suites (sliding-session expiry, served-route auth matrix, JSON logging,
+  alert/log channel separation) all green — 247 tests total.
+- **Restore drill re-run live** on this deployment: **47/47 tables match**
+  (now including `device_tokens`), `alembic_version=0004`, the encrypted lab
+  note round-trips with the app key. The drill is committed and rerunnable —
+  the owner should run it once more on the real host after Docker parity.
+- **Remaining connectors:** unchanged from Phase 8 — every specced connector
+  is built (Garmin, Technogym, weather, Telegram/STT/embeddings); Strava /
+  MyFitnessPal are deliberately unspecced (§1 substitutes them via the
+  feature engine).
+
 ## Status
 
 | Phase | Scope | State |
@@ -421,13 +501,17 @@ call documented in `app/core/backups.py`).
 | 7 | Weather: cache, activity enrichment, `/forecast`, §14 nudge | ✅ |
 | 8 | Hardening audit, encrypted backups + B2 offsite + **restore drill 46/46** | ✅ |
 | — | Temporary Grafana web UI (8 dashboards / 147 panels) | ✅ |
-| 9–11 | Real dashboard style, hardening leftovers, extras | ⏳ deferred by owner |
+| 9 | Multi-user: invite flow, friend accounts, **data-isolation proof**, Tailscale Funnel readiness + setup guide | ✅ |
+| 10 | Connect IQ watch app: glance shows today's readiness / recovery / strain (+ `/watch/today` + per-user device tokens) | ✅ source+API; `.prg` build/sideload needs the owner's SDK + watch |
+| 11 | CI on every push (§20), hardening re-verified, **restore drill re-run live: 47/47** | ✅ |
+| — | Real dashboard style (Appendix A) | ⏳ deferred by owner |
 
 Out of scope this build round (per the spec): the real web dashboard
-(Appendix A) and friend onboarding. Strava / MyFitnessPal have no
-integration sections anywhere in the spec — §1 explicitly substitutes them
-with the feature engine ("without needing those subscriptions"); treated as
-deliberately out of scope rather than invented spec (§0).
+(Appendix A). Friend onboarding is now IN (Phase 9). Strava / MyFitnessPal
+have no integration sections anywhere in the spec — §1 explicitly
+substitutes them with the feature engine ("without needing those
+subscriptions"); treated as deliberately out of scope rather than invented
+spec (§0).
 
 **Known honest limitation:** everything above was developed and verified on
 a user-space dev stack (PostgreSQL 16 + TimescaleDB + pgvector on :5433,
@@ -455,13 +539,17 @@ backend/
     schemas/      Pydantic boundary schemas
     tasks/        Celery app + beat schedule (§19)
   alembic/        migrations
-  tests/          37 files / 228 tests — fixtures only, no live APIs (§20)
+  tests/          37 test files / 247 tests — fixtures only, no live APIs (§20)
   tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
-                  restore_backup, restore_drill
+                  restore_backup, restore_drill, demo_phase9 (AC demo)
 grafana/          temporary web UI: provisioning, generated dashboards,
                   build/validate tooling, run_grafana.sh
+connectiq/        Garmin watch glance app (Monkey C): readiness/recovery/
+                  strain on the wrist, talks to /watch/today over the Funnel
 infra/            docker-compose.yml (db · redis · api · worker · bot)
+                  + tailscale-funnel-setup.md (§15 remote access)
 scripts/          reset-dev.sh
+.github/workflows/ tests.yml — full pytest on every push (§20)
 docs/             INSTALL.md — full installation guide
 ```
 
@@ -471,7 +559,7 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 228 tests, fixtures only — no live APIs
+uv run pytest -q                   # 247 tests, fixtures only — no live APIs
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

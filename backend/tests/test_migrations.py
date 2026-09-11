@@ -7,6 +7,9 @@ EXPECTED_TABLES = {
     # identity, auth & integrations
     "users", "auth_credentials", "invites", "sessions", "telegram_links",
     "integrations", "raw_ingest",
+    # Phase 10 addition (documented judgment call — §6.4 has no
+    # device-presentable credential type; see alembic/versions/0004)
+    "device_tokens",
     # disciplines & gear
     "disciplines", "gear", "gear_service_logs", "discipline_gear_defaults",
     # activities
