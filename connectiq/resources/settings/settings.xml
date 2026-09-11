@@ -1,0 +1,8 @@
+<settings>
+    <setting propertyKey="@Properties.server_url" title="@Strings.ServerUrlTitle" prompt="@Strings.ServerUrlPrompt">
+        <settingConfig type="alphaNumeric" maxLength="120" readonly="false"/>
+    </setting>
+    <setting propertyKey="@Properties.api_token" title="@Strings.TokenTitle" prompt="@Strings.TokenPrompt">
+        <settingConfig type="alphaNumeric" maxLength="80" readonly="false"/>
+    </setting>
+</settings>
