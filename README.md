@@ -1,78 +1,174 @@
-# Apex Health — Personal Health & Performance Control Center
+# ⚡ Apex Health — Personal Health & Performance Control Center
 
-Backend for a self-hosted platform unifying Garmin biometrics, Technogym gym
-sessions, blood-donation lab panels, subjective journaling (Telegram voice
-notes), gear maintenance, and weather data — with a derived-metrics feature
-engine and a tiered, tool-using AI layer. Single source of truth:
-[`MASTER_SPEC.md`](./MASTER_SPEC.md).
+![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-228_green-73BF69)
 
-**Out of scope this build round** (per the spec): web dashboard (Appendix A)
-and friend onboarding.
+A self-hosted backend that unifies **Garmin biometrics**, **Technogym gym
+sessions**, **blood-donation lab panels**, **subjective journaling via
+Telegram voice notes**, **gear maintenance** and **weather data** — runs a
+derived-metrics **feature engine** on top (readiness, recovery, strain,
+load, ACWR, risk scores), and serves it all through a **Telegram bot with a
+tiered, tool-using AI coach** that can read your data and *draft* plans for
+your explicit confirmation.
 
-## Stack
+Single source of truth for product decisions:
+[`MASTER_SPEC.md`](./MASTER_SPEC.md) (§ references throughout this README
+point there). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
+Temporary web UI: [`grafana/README.md`](./grafana/README.md).
 
-Python 3.12 · FastAPI (async) · SQLAlchemy 2.0 (async) + Alembic ·
-PostgreSQL 16 + TimescaleDB + pgvector · Celery + Redis · Telegram long
-polling (from Phase 3) · Docker Compose.
+---
 
-## Layout
+## Why it exists
+
+Wearable apps each own a piece of the picture and none of them know about
+your gym machine sessions, your donations, your subjective state, or your
+shoe mileage. Apex Health is the **single local source of truth**: every
+upstream payload is stored **raw-first** before normalization (§3), every
+derived number is **reproducible and versioned** (§6.4), every AI write
+**stays a draft until a human confirms it** (§8.5), and every query layer is
+shared between the bot, the agent tools and the reports — **one
+implementation per read** (§8.2).
+
+## Feature map
+
+| Domain | What it does | Access points |
+|---|---|---|
+| **Ingestion** | Garmin (activities + streams, sleep, HRV, stress, biometrics) and Technogym (OAuth2, workouts) every 6 h; raw-first into `raw_ingest`, idempotent upserts, ±10 min **multi-source reconciliation** so the same workout from watch + machine never duplicates (§12) | Celery beat; owner CLIs |
+| **Feature engine** | Nightly derived metrics: readiness / recovery / strain, 7d/28d acute-chronic load + ACWR, HRV deviation from rolling baseline, sleep architecture score, illness / injury risk, per-discipline FTP, aerobic decoupling, efficiency factor — with versioned blend weights and `data_completeness` honesty flags (§7, §17) | `daily_features`, Grafana, bot, agent |
+| **Medical & labs** | Blood panels with per-marker reference ranges, app-layer-**encrypted free-text notes** (Fernet), donation eligibility countdown, low-ferritin alert (§12) | `POST/GET /labs`, `/donate`, Grafana Labs page |
+| **Lifestyle** | Nutrition logs (kcal, macros, water, caffeine, alcohol), supplement protocols + per-dose **adherence tracking** (§13) | ingest API, Grafana Nutrition page |
+| **Gear** | Activities auto-inherit discipline defaults; nightly **recompute** (never increment) of km/h since service; `gear_service_due` alert once per threshold crossing; logging a service resets + resolves (§13) | `POST /gear/...`, `/gear` bot command |
+| **Weather** | Keyless Open-Meteo forecast + archive; 6-hourly cache refresh; **every activity enriched** with the weather it happened in (`weather_snapshot`); proactive "good window tomorrow" nudge gated on readiness (§14) | `/forecast [days]`, `GET /weather/forecast`, Grafana |
+| **Telegram bot** | Long polling (no public port): `/link` pairing, **voice notes → Whisper STT → structured draft → ✅ Save / ✏️ Edit**, commands, alert push with severity icons (§10) | the primary daily interface |
+| **AI coach** | Tool-using agent over a compact data snapshot: 11 tools, ≤ 8 loop iterations with best-partial fallback, full audit of every call, three-tier model routing, hard daily token budget (§8) | free text in the bot |
+| **Semantic memory** | Journal entries + reports embedded (pinned `text-embedding-3-small`), pgvector cosine `search_context` scoped to the caller (§6.2) | agent tool |
+| **Reports** | Daily summary **templated at zero LLM cost**; weekly + monthly on the powerful tier; all idempotent per period (§9.2) | `/report`, scheduled push |
+| **Security** | Owner bootstrap, HttpOnly + SameSite session cookies, CSRF header on every write, login rate-limit + lockout, sliding expiry, all routes 401/403 except `/health` (§22) | — |
+| **Ops & backups** | JSON structured logs, `sync_failure` escalation after 3 consecutive connector failures, nightly **encrypted-before-disk** pg_dump + retention + B2 offsite + a real, rerunnable **restore drill** (§21, §22.7) | `tools/restore_drill.py` |
+| **Web UI (temporary)** | 8 Grafana dashboards / 147 panels covering every table above — read-only role, versioned JSON, SQL-validated | `grafana/run_grafana.sh` → :3001 |
+
+## Architecture
 
 ```
-backend/          FastAPI app, Alembic migrations, tests
-  app/api         REST routers (§18) — built now, not publicly exposed yet
-  app/auth        sessions, owner bootstrap, login rate limiting
-  app/core        config, db/redis, security, logging, middleware
-  app/models      ORM models (grow phase by phase)
-  app/connectors  per-source connectors (garmin in Phase 1; technogym/telegram/weather later)
-  app/features    derived-metrics engine (§7) — loads, scores, discipline math
-  app/schemas     Pydantic boundary schemas
-  app/tasks       Celery tasks (§19 schedule lands with its phases)
-  tools           owner-only operational CLIs (garmin connection)
-infra/            docker-compose.yml
-scripts/          reset-dev.sh — rebuild dev DB/Redis from a clean slate
+                ┌─────────────────────────── data sources ───────────────────────────┐
+                │   Garmin Connect        Technogym API        Open-Meteo (keyless)  │
+                └──────┬──────────────────────┬──────────────────────┬───────────────┘
+                       │ 6h beat              │ 6h beat (:10)        │ 6h beat (:20)
+                ┌──────▼──────────────────────▼──────────────────────▼───────────────┐
+                │  connectors/  — raw-first into raw_ingest, then idempotent         │
+                │  normalizers → activities (+streams), sleep, HRV, stress,          │
+                │  biometrics; ±10 min multi-source reconciliation (§12)             │
+                └──────┬─────────────────────────────────────────────────────────────┘
+                       │
+                ┌──────▼─────────────────────────────────────────────────────────────┐
+                │  PostgreSQL 16 + TimescaleDB + pgvector                            │
+                │  raw_ingest → normalized tables → nightly feature engine (§7)      │
+                │  → daily_features / discipline_features → alerts, rollups          │
+                └──────┬──────────────────────────┬──────────────────────────────────┘
+                       │                          │
+                ┌──────▼───────────┐      ┌───────▼──────────────────────────────────┐
+                │  REST API (§18)  │      │  Celery worker + beat (§19)              │
+                │  labs/gear/integ │      │  syncs · features · gear · reports ·     │
+                │  /weather /auth  │      │  budget · backups · voice · alerts       │
+                └──────┬───────────┘      └───────▼──────────────────────────────────┘
+                       │                          │
+                ┌──────▼────────────────────────────────────────────────────────────┐
+                │  Telegram bot (long polling §10) — commands, voice drafts,        │
+                │  alert push, free text → AI agent (tools §8.3 · loop §8.4 ·       │
+                │  routing §9.2 · budget §8.6 · confirm-before-write §8.5)          │
+                └──────┬─────────────────────────────────────────────────────────────┘
+                       │ reads
+                ┌──────▼─────────────────────────────────────────────────────────────┐
+                │  shared query layer app/queries (§8.2 — one implementation/read)   │
+                │  consumed by bot · agent tools · reports · Grafana dashboards      │
+                └────────────────────────────────────────────────────────────────────┘
 ```
 
-## Quickstart (host with Docker)
+**Every write is idempotent** (upserts keyed on natural or `(source,
+external_id)` keys — §17): re-running any sync, feature range or report
+never double-counts. **Every AI write is a draft** until confirmed with an
+inline button.
+
+## The AI layer
+
+The AI is deliberately **grounded, frugal and supervised**:
+
+- **Grounded** — free text reaches the agent with a compact system block
+  (profile, active feature weights, 14-day feature window, open alerts) and
+  the §8.3 tool registry: `get_metric_trend`, `get_lab_trend`,
+  `get_activity_summary`, `get_journal_entries`, `search_context`,
+  `get_training_plan`, `get_donation_status`, `get_gear_status`, plus the
+  write tools `propose_training_plan`, `propose_supplement_change`,
+  `sync_plan_to_technogym`. Tools are thin wrappers over the same
+  `app/queries` layer everything else uses — the model cannot invent data it
+  cannot query.
+- **Frugal** — a free-tier classification call tags each message *lookup* or
+  *strategic* and routes to the cheap or powerful tier (§9.2); accounts with
+  `ai_access_tier='cheap_only'` are hard-capped. Every call writes
+  `token_usage` with a §9.1 rate-table cost estimate; a daily check (23:45
+  UTC) fires an informational `budget_warning` alert over
+  `DAILY_TOKEN_BUDGET_USD` (default $0.25). The daily report is a pure
+  template — $0.00.
+- **Supervised** — propose tools only ever **draft**: a training plan lands
+  at `status='draft'`, a supplement change at `active=false`, and the bot
+  attaches ✅/❌ buttons. Nothing is written for real until a human taps
+  confirm (§8.5). The loop gives the model at most 8 iterations and returns
+  its best partial answer instead of failing (§8.4); tool errors are fed
+  back as results, never crashes. Every tool execution is audited to
+  `agent_tool_calls` with latency, input and output.
+- **Local-first posture** — the platform itself is self-hosted (your
+  Postgres, your Redis, your bot process, your encrypted backups). The only
+  external AI dependencies are the GLM API (chat + structured extraction)
+  and OpenAI embeddings + Whisper STT; both are optional and degrade
+  honestly: without keys, search returns a readable "unavailable" result and
+  templated reports keep working at zero cost. Swapping the LLM client to a
+  self-hosted endpoint is a config change, not a refactor — the client is
+  one module (`app/core/llm.py`) behind the routing layer.
+
+## Quickstart (Docker)
 
 ```bash
-cp .env.example .env          # fill in values
+cp .env.example .env          # fill in values — see docs/INSTALL.md
 docker compose -f infra/docker-compose.yml up -d --build
 curl http://localhost:8000/health
 ```
 
-## Development without Docker
-
-The same engine (PostgreSQL 16 + TimescaleDB + pgvector, Redis) must be
-reachable at the URLs in `.env`. Then:
-
-```bash
-cd backend && uv sync
-uv run alembic upgrade head
-uv run uvicorn app.main:app --port 8000
-uv run celery -A app.tasks.celery_app worker --loglevel=INFO
-```
+Full walkthrough (env-var reference, Telegram/LLM keys, real Garmin /
+Technogym connections, Grafana UI, backups, restore drill, tests):
+**[`docs/INSTALL.md`](./docs/INSTALL.md)**.
 
 ## Temporary web UI (Grafana)
 
 Until the real dashboard is designed (spec-deferred, Appendix A), a full
-read-only Grafana UI serves every feature above: overview, training,
-recovery/sleep, nutrition/supplements, labs/blood health, AI & agent
-observability, journal, and system/sync health — provisioned as versioned
-dashboard JSON talking SELECT-only to the dev database.
+read-only Grafana UI serves every feature: overview, training, recovery &
+sleep, nutrition & supplements, labs & blood health, AI & agent
+observability, journal & mind, system & sync health — **8 dashboards, 147
+panels**, provisioned as versioned JSON talking SELECT-only to the
+database.
 
 ```bash
-bash scripts/start_dev_env.sh   # dev stack first
+bash scripts/start_dev_env.sh   # dev stack first (bare-metal path)
 grafana/run_grafana.sh          # → http://127.0.0.1:3001 (anonymous viewer; admin/apex-demo)
 ```
 
-Optional deterministic demo data for the UI:
-`cd backend && .venv/bin/python -m tools.seed_demo_data` (synthetic 180-day
-dataset — see `grafana/README.md` for coverage and maintenance).
+Optional deterministic demo data for the UI (synthetic ~240-day story):
+`cd backend && PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240`
+— see `grafana/README.md` for coverage, pitfalls and maintenance.
 
-## Garmin connector (Phase 1)
+## Implementation notes by phase
 
-Sync runs every 6 hours via Celery beat (§19): activities (+ streams), sleep,
-HRV, stress, and daily biometrics. Every payload is stored raw before
+The sections below are the surviving engineering journal of the build —
+each phase's judgment calls are documented where the code lives.
+
+### Garmin connector (Phase 1)
+
+Sync runs every 6 hours via Celery beat (§19): activities (+ streams),
+sleep, HRV, stress, and daily biometrics. Every payload is stored raw before
 normalization (§3/§17); all writes are idempotent upserts keyed
 `(source, external_id)` (§17). Connecting the real account is the owner's
 manual step (§23 Phase 1) — automated tests only ever use recorded fixtures
@@ -92,7 +188,7 @@ tokens are stored app-layer-encrypted in `integrations.credentials_encrypted`
 (§17) and the password is never persisted. Three consecutive sync failures
 fire a `sync_failure` alert (§21).
 
-## Feature engine (Phase 2)
+### Feature engine (Phase 2)
 
 The nightly Celery beat task (`features.nightly`, dispatched hourly, run for
 each user whose local wall clock reads 03:00 — §19) computes the previous
@@ -108,26 +204,10 @@ change, expectations hand-computed). Any functional-form change that moves a
 number fails the suite.
 
 Correcting a weight version or source data? Re-run the affected range —
-upserts by primary key make it a safe idempotent backfill (§6.4):
+upserts by primary key make it a safe idempotent backfill (§6.4) via
+`app.features.engine.compute_user_range(session, user, start, end)`.
 
-```bash
-cd backend && uv run python -c "
-import asyncio
-from datetime import date
-from app.core.db import sessionmaker
-from app.features.engine import compute_user_range
-from app.models.user import User
-
-async def main():
-    async with sessionmaker() as s:
-        user = await s.get(User, 1)
-        print(await compute_user_range(s, user, date(2025, 4, 1), date(2025, 4, 11)))
-
-asyncio.run(main())
-"
-```
-
-## Telegram bot (Phase 3)
+### Telegram bot (Phase 3)
 
 Long polling (§10.1): the bot process asks Telegram for updates — outbound-only,
 no webhook, no public port, no tunnel. Added as the `bot` compose service.
@@ -144,13 +224,11 @@ no webhook, no public port, no tunnel. Added as the `bot` compose service.
   auto-commits.
 - **Commands (§10.3):** `/status` (integrations + daily snapshot), `/donate`
   (last donation, eligibility, iron flag), `/report` (templated daily summary
-  — deliberately no LLM, §9.2), `/gear` (usage vs service intervals). Reads go
+  — deliberately no LLM, §9.2), `/gear` (usage vs service intervals),
+  `/plan` (today's confirmed sessions), `/forecast [days]`. Reads go
   through the shared query layer `app/queries` (§8.2).
-- **Free text:** routed to `app/agent/entrypoint.py` — a real, data-grounded
-  response built on a compact snapshot (latest features, 7-day trend, open
-  alerts), logged to `ai_chat_sessions`/`ai_chat_messages` with the §6.4
-  30-minute session boundary. The full tool-using harness, tier routing and
-  token accounting land in Phase 5 (§23) inside the same entrypoint.
+- **Free text:** routed to `app/agent/entrypoint.py` — the full tool-using
+  agent (Phase 5) inside the §6.4 30-minute session boundary.
 - **Alert push (§21):** alert-creating code paths commit the row then call
   `push_alert` — delivered to the linked chat with severity icons.
 
@@ -167,7 +245,7 @@ cd backend && uv run python -m app.connectors.telegram.polling
 Automated tests and demos never touch the live Bot API, LLM, or STT — they run
 against recorded fixtures only (§0/§20).
 
-## Medical, lifestyle & gear (Phase 4)
+### Medical, lifestyle & gear (Phase 4)
 
 - **Lab panels (§6.4, §17):** `POST /labs` records a panel — standard markers
   as structured columns, every marker mirrored into `lab_metrics` with unit
@@ -182,31 +260,25 @@ against recorded fixtures only (§0/§20).
   through `app/medical/lifestyle.py`.
 - **Gear (§13):** ingested activities auto-inherit the discipline's default
   gear (`discipline_gear_defaults`, idempotent via PK). The nightly
-  `gear.accumulate_all` task (beat :15, runs inside the 03:00-03:59 local
+  `gear.accumulate_all` task (beat :15, inside the 03:00-03:59 local
   window right after the feature engine, §19) RECOMPUTES
   `hours_since_service`/`km_since_service` from linked activities — a
   recompute, never an increment, so re-runs never double-count (§17).
   Crossing a configured interval fires ONE `gear_service_due` alert per gear
-  and pushes it; logging a service (`POST /gear/{id}/service` endpoint shape,
-  §18) resets the counters and resolves the open alert.
+  and pushes it; logging a service (`POST /gear/{id}/service`, §18) resets
+  the counters and resolves the open alert.
 - **Shared reads (§8.2):** `get_lab_trend`, `get_donation_status`,
-  `get_gear_status` now run on the Phase 4 ORM models — the same functions
-  the bot, future agent tools, and report tasks call.
+  `get_gear_status` run on the Phase 4 ORM models — the same functions
+  the bot, the agent tools, and report tasks call.
 
-## Agent harness & AI layer (Phase 5)
+### Agent harness & AI layer (Phase 5)
 
-- **Tool loop (§8.4):** free text now runs the full harness — the model sees
+- **Tool loop (§8.4):** free text runs the full harness — the model sees
   a cached system block (profile, active feature weights, a 14-day feature
   window, open alerts) plus the §8.3 tool registry, and can call tools for
   up to 8 iterations before returning the best partial answer. Tool errors
   come back as results, never as crashes. Every tool execution is audited to
   `agent_tool_calls` (with `session_id`; scheduled callers log NULL).
-- **Tool registry (§8.3):** all eleven tools — `get_metric_trend`,
-  `get_lab_trend`, `get_activity_summary`, `get_journal_entries`,
-  `search_context`, `get_training_plan`, `get_donation_status`,
-  `get_gear_status`, plus the write tools `propose_training_plan`,
-  `propose_supplement_change`, `sync_plan_to_technogym` — are thin wrappers
-  over the §8.2 query layer.
 - **Write-tool confirmation (§8.5):** propose tools only DRAFT (plan row at
   `status='draft'`, supplement proposal at `active=false`); the bot attaches
   inline ✅/❌ buttons and only a human tap confirms — confirming a plan
@@ -221,71 +293,192 @@ against recorded fixtures only (§0/§20).
   with a §9.1 rate-table cost estimate; the daily `budget.daily_check` task
   (beat 23:45 UTC) sums each account's day and fires an informational
   `budget_warning` alert (once per user per UTC day) over
-  `DAILY_TOKEN_BUDGET_USD`. Whisper STT is not an LLM/embedding call — its
-  per-minute cost is out of §8.6's letter and lands with the Phase 8
-  observability pass.
+  `DAILY_TOKEN_BUDGET_USD`.
 - **Reports (§19, §9.2):** the daily summary is TEMPLATED — zero LLM cost,
   `model_used` NULL (§6.4) — persisted at :45 inside each user's 03:00-03:59
-  local window (after the feature engine and gear accumulation; §19 does not
-  schedule it explicitly, this is the documented judgment call). Weekly
-  (Monday 06:00 local) and monthly (1st 06:00 local) reports are always
-  POWERFUL tier over a §8.2 data pack, audited with `session_id=NULL`, and
-  pushed to linked chats. All report rows upsert idempotently per period.
+  local window. Weekly (Monday 06:00 local) and monthly (1st 06:00 local)
+  reports are always POWERFUL tier over a §8.2 data pack, audited with
+  `session_id=NULL`, and pushed to linked chats. All report rows upsert
+  idempotently per period.
 - **Semantic search (§6.2, §8.3):** journal entries (on save) and report
   content (on generation) are embedded with the PINNED
   `text-embedding-3-small`; `search_context` runs pgvector cosine over them,
-  scoped to the caller via the source rows (§6.4's embeddings table has no
-  user_id). Without `OPENAI_API_KEY` the tool degrades to a readable
-  "unavailable" result.
+  scoped to the caller via the source rows. Without `OPENAI_API_KEY` the
+  tool degrades to a readable "unavailable" result.
 
-## Technogym connector (Phase 6)
+### Technogym connector (Phase 6)
 
 - **Stage 11a (built regardless, §11):** OAuth2 authorization-code flow per
   the enduser-to-enduser sample on developer.technogym.com — authorize URL
   with a single-use Redis-backed `state`, code exchange, single-flight token
   refresh on sync (rotated tokens are re-encrypted back into
   `integrations.credentials_encrypted`). Workout pulls go raw-first into
-  `raw_ingest` (`workout` + `workout_detail:{id}` payload types), then the
-  normalizer upserts `activities` keyed on `(source='technogym',
-  external_id)` — full history backfill on first sync, ±10 min-window
-  incremental afterwards, every remote call paced like Garmin (§19).
+  `raw_ingest`, then the normalizer upserts `activities` keyed on
+  `(source='technogym', external_id)` — full history backfill on first sync,
+  ±10 min-window incremental afterwards, every remote call paced like
+  Garmin (§19).
 - **Multi-source reconciliation (§12, Phase 6 AC):** when an ingested
   session lands within ±10 minutes of an existing row for the same user and
   the SAME seeded discipline, no duplicate `activities` row is created — the
   new source is attached via `activity_source_links` and fields merge per
   the richer-source-per-field rule (Garmin for HR/GPS-derived, Technogym for
   machine power), and a populated field is NEVER overwritten with NULL.
-  Candidates already linked to the incoming source are excluded, so two
-  Technogym machine sessions five minutes apart stay two workouts. The rule
-  runs symmetrically — Garmin arrivals reconcile into Technogym rows too.
-  Judgment calls are documented in `app/connectors/reconciliation.py`.
-- **Manual connection (§0/§16.7, Phase 6 AC):** the owner connects the real
-  account themselves — either `POST /settings/integrations/technogym/authorize`
-  then open the returned URL (provider redirects to
-  `/integrations/technogym/callback`, which the single-use state
-  authenticates), or the CLI:
+  The rule runs symmetrically — Garmin arrivals reconcile into Technogym
+  rows too.
+- **Manual connection (§0/§16.7):** the owner connects the real account —
+  `POST /settings/integrations/technogym/authorize` then open the returned
+  URL, or the CLI:
 
   ```bash
   cd backend
   TECHNOGYM_CLIENT_ID=... TECHNOGYM_CLIENT_SECRET=... \
       uv run python tools/technogym_connect.py start   # prints URL + state
-  # provider redirect completes automatically; otherwise paste the code:
   uv run python tools/technogym_connect.py complete <code> <state>
   uv run python tools/technogym_connect.py sync [--backfill]
-  uv run python tools/technogym_connect.py status
   ```
 - **Stage 11b (contingent, §24):** `sync_plan_to_technogym` still validates
   the confirmed-plan precondition and returns the documented fallback until
   the owner registers and confirms what the individual access tier grants.
-  The fallback delivery path is now real: `/plan today` in Telegram shows
-  the day's confirmed-plan sessions (drafts never show) with the
-  follow-manually note. Fixture payloads are recorded-shape placeholders —
-  the first real manual sync captures live payloads, and raw-first design
-  means any shape drift is a parser fix, never data loss (§3).
+  The fallback delivery path is real: `/plan today` in Telegram shows the
+  day's confirmed-plan sessions (drafts never show) with the
+  follow-manually note. Raw-first design means any live payload shape drift
+  is a parser fix, never data loss (§3).
 - **Schedule (§19):** `technogym.sync_all` runs every 6 hours, staggered at
-  :10 off the Garmin :00 tick (load-spreading judgment call); §21
-  escalation (3 consecutive failures -> `sync_failure` alert) is now a
-  shared helper both connectors use.
+  :10 off the Garmin :00 tick; §21 escalation is a shared helper both
+  connectors use.
+
+### Weather module (Phase 7)
+
+- **Source (§2, §14):** Open-Meteo — free, no API key. Forecast API (future
+  days plus up to 92 past days) and archive API (full history). Raw-first
+  per §3/§17 into `raw_ingest` before normalization.
+- **Forecast cache (§19 AC):** `weather.refresh_all` every 6 hours (beat
+  :20) upserts `forecast_cache` on its `UNIQUE (lat, lon, date)` key — keyed
+  on the coordinates we asked for, not the grid-snapped echo values, which
+  would quietly multiply near-duplicate rows.
+- **`weather_snapshot` on ingestion (§14 AC):** the same beat enriches every
+  activity whose `weather_snapshot` is still NULL — coordinates from the
+  first positioned stream sample, falling back to home. Recent dates ride
+  the forecast API's past window; older dates go to the archive API.
+  NULL-only writes; the column is `none_as_null` so "not weathered yet"
+  means SQL NULL for every writer.
+- **§14 nudge:** once per user per local day (07:00 local), when TOMORROW's
+  cached forecast is a good training window (max temp 5–28 °C, rain ≤ 40 %,
+  wind ≤ 35 km/h) AND latest readiness ≥
+  `WEATHER_NUDGE_READINESS_THRESHOLD` (default 70), the linked chat gets one
+  proactive message. Redis SETNX dedup.
+- **Configuration:** `WEATHER_HOME_LAT` / `WEATHER_HOME_LON` (unset/0
+  disables refresh with a logged note), `WEATHER_FORECAST_DAYS` (default 7),
+  `WEATHER_NUDGE_READINESS_THRESHOLD` (≤ 0 disables the nudge). Weather has
+  no `integrations` row — keyless, nothing to escalate (§21); failures are
+  logged and retried next tick.
+
+### Backups & disaster recovery (Phase 8)
+
+§22.7: nightly `pg_dump` at 02:00 UTC, encrypted with a key **dedicated to
+backups** (`BACKUP_ENCRYPTION_KEY` — independent from the app's
+`ENCRYPTION_KEY` so one leaked key cannot open both), retained as 14 daily +
+6 monthly archives (first-of-month snapshots are the monthly pool — judgment
+call documented in `app/core/backups.py`).
+
+- **Artifact format:** `hcc-YYYYMMDD-HHMMSS.{daily|monthly}.sql.gz.enc` —
+  Fernet(gzip(plain-SQL pg_dump)). Encrypted *before* it touches disk; a
+  plaintext dump of health data is never written anywhere, ever. Key unset ⇒
+  honest nightly skip (never an unencrypted fallback).
+- **Offsite:** pushed to Backblaze B2 when `B2_APPLICATION_KEY_ID` /
+  `B2_APPLICATION_KEY` / `B2_BUCKET` are set (native v2 API over httpx). A
+  failed upload never fails the local backup — reported honestly, retried
+  next night.
+- **Restore:** `backend/tools/restore_backup.py <artifact> --target-dsn …`
+  decrypts, gunzips and pipes SQL into psql with `ON_ERROR_STOP` — stdin
+  only, no plaintext temp file. TimescaleDB hypertables restore under the
+  documented `timescaledb_pre_restore()` / `timescaledb_post_restore()`
+  wrapper.
+- **The restore drill (§22.7 AC):** `backend/tools/restore_drill.py` seeds
+  marker data through the ORM, snapshots every public table, runs the real
+  backup pipeline, restores into a scratch database and compares
+  table-by-table — including `alembic_version` and proving the encrypted lab
+  note still decrypts with the *app* key. First live run: **46/46 tables
+  matched**. Rerun it on the real host after Docker parity is proven:
+
+  ```bash
+  BACKUP_ENCRYPTION_KEY=<key> uv run python tools/restore_drill.py
+  ```
+
+  `backups/` is gitignored — artifacts of real health data never enter git.
+
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 0 | Scaffold: schema + seeds, `/health`, owner auth + security middleware, Celery, CI | ✅ |
+| 1 | Garmin connector (fixtures; real connect = owner CLI) | ✅ |
+| 2 | Feature engine + golden-dataset regression suite | ✅ |
+| 3 | Telegram bot: linking, voice drafts, commands, alert push | ✅ |
+| 4 | Medical / lifestyle / gear + low-ferritin & gear alerts | ✅ |
+| 5 | Agent harness: 11 tools, loop + audit, tier routing, budget, reports, pgvector search | ✅ |
+| 6 | Technogym OAuth2 connector + §12 reconciliation + `/plan today` | ✅ |
+| 7 | Weather: cache, activity enrichment, `/forecast`, §14 nudge | ✅ |
+| 8 | Hardening audit, encrypted backups + B2 offsite + **restore drill 46/46** | ✅ |
+| — | Temporary Grafana web UI (8 dashboards / 147 panels) | ✅ |
+| 9–11 | Real dashboard style, hardening leftovers, extras | ⏳ deferred by owner |
+
+Out of scope this build round (per the spec): the real web dashboard
+(Appendix A) and friend onboarding. Strava / MyFitnessPal have no
+integration sections anywhere in the spec — §1 explicitly substitutes them
+with the feature engine ("without needing those subscriptions"); treated as
+deliberately out of scope rather than invented spec (§0).
+
+**Known honest limitation:** everything above was developed and verified on
+a user-space dev stack (PostgreSQL 16 + TimescaleDB + pgvector on :5433,
+Redis 8 on :6380). **Docker parity is still unproven** until
+`docker compose -f infra/docker-compose.yml up -d --build` runs on the
+owner's host — same for the real-account connections, which are manual owner
+steps by design (§0/§16.7).
+
+## Repo layout
+
+```
+backend/
+  app/
+    api/          REST routers (§18) — health, auth, labs, gear, integrations, weather
+    agent/        entrypoint, tool registry (§8.3), loop (§8.4), routing (§9.2)
+    auth/         sessions, owner bootstrap, login rate limiting
+    connectors/   garmin · technogym · telegram · weather · b2 · reconciliation · escalation
+    core/         config, db/redis, security (Fernet), llm client, logging, backups
+    features/     derived-metrics engine (§7): load, baselines, scores, discipline math
+    gear/         service accumulation + alerts (§13)
+    medical/      labs + lifestyle ingestion (§12/§13)
+    models/       ORM models (§6 schema)
+    queries/      shared read layer (§8.2) — bot, agent tools, reports, dashboards
+    reports/      templated daily + LLM weekly/monthly (§9.2)
+    schemas/      Pydantic boundary schemas
+    tasks/        Celery app + beat schedule (§19)
+  alembic/        migrations
+  tests/          37 files / 228 tests — fixtures only, no live APIs (§20)
+  tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
+                  restore_backup, restore_drill
+grafana/          temporary web UI: provisioning, generated dashboards,
+                  build/validate tooling, run_grafana.sh
+infra/            docker-compose.yml (db · redis · api · worker · bot)
+scripts/          reset-dev.sh
+docs/             INSTALL.md — full installation guide
+```
+
+## Testing
+
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head        # dev DB must be reachable (see .env)
+uv run pytest -q                   # 228 tests, fixtures only — no live APIs
+```
+
+The suite covers: golden-dataset feature math (incl. EU DST day), connector
+normalizers on recorded fixtures, reconciliation, agent loop + tool audit,
+tier routing fail-closed paths, budget alerts, session sliding expiry, the
+served route-auth matrix, JSON log shape, backup pipeline (fake pg_dump —
+no real binary in CI) and the restore drill's crypto round-trip.
 
 ## Reset dev state
 
@@ -297,144 +490,6 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
 
 - Owner account is bootstrapped at startup from `OWNER_EMAIL`/`OWNER_PASSWORD` (§15).
 - `POST /auth/login` returns a `Secure`, `HttpOnly`, `SameSite=Lax` session cookie (§22.2).
-- Every state-changing request must send `X-CSRF-Token: <any-value>` (§22.3) —
-  a custom header cross-origin requests cannot attach without a preflight.
+- Every state-changing request must send `X-CSRF-Token: <any-value>` (§22.3).
 - Five failed logins per email per 15 minutes lock the account temporarily (§22.1).
 - `GET /health` is the only public route (§17).
-
-## Weather module (Phase 7)
-
-- **Source (§2, §14):** Open-Meteo — free, no API key, which is the spec's
-  exact reason for choosing it. Two endpoints: the forecast API (future days
-  plus up to 92 past days) and the archive API (full history, lagging a few
-  days behind real time). Raw-first per §3/§17: every upstream payload lands
-  in `raw_ingest` (`source='open-meteo'`, `payload_type='forecast' |
-  'archive'`) before normalization.
-- **Forecast cache (§19 AC):** `weather.refresh_all` runs every 6 hours on
-  beat (staggered at :20, right after both connector syncs) and upserts
-  `forecast_cache` on its `UNIQUE (lat, lon, date)` key. The cache key uses
-  the coordinates we asked for, not the grid-snapped values Open-Meteo
-  echoes back — echoed values drift a grid cell between refreshes and would
-  quietly multiply near-duplicate rows. Re-running rewrites the same rows:
-  the scheduled refresh never double-counts (§17).
-- **`weather_snapshot` on ingestion (§14 AC):** the same beat tick enriches
-  every activity whose `weather_snapshot` is still NULL — coordinates from
-  the activity's first positioned stream sample, falling back to the
-  configured home coordinates. Recent dates ride the forecast API's past
-  window; dates older than the archive lag go to the archive API. Only NULL
-  columns are ever written (the pass never overwrites, so it is idempotent);
-  the column is `none_as_null` so "not weathered yet" means SQL NULL for
-  every writer.
-- **Access points:** the `/forecast [days]` bot command (§14's primary access
-  point while the dashboard is deferred) and `GET /weather/forecast?days=N`
-  (§18) read the same cache through the same `get_forecast` query (§8.2 —
-  one implementation per read, one WMO code table shared by both).
-- **§14 nudge:** once per user per local day (07:00 local, hourly beat
-  dispatch), when TOMORROW's cached forecast is a good training window
-  (documented thresholds: max temp 5–28°C, rain probability ≤ 40%, wind
-  ≤ 35 km/h) AND the latest readiness is at least
-  `WEATHER_NUDGE_READINESS_THRESHOLD` (default 70), the user's linked chats
-  get one proactive message. Redis SETNX dedup — a re-run the same day stays
-  quiet.
-- **Configuration (env tunables):** `WEATHER_HOME_LAT` / `WEATHER_HOME_LON`
-  (unset/0 disables the refresh with a logged note instead of failing a beat
-  tick), `WEATHER_FORECAST_DAYS` (default 7), `WEATHER_NUDGE_READINESS_THRESHOLD`
-  (≤ 0 disables the nudge). Weather has no `integrations` row — the source is
-  keyless, there are no credentials to store and no §21 escalation path;
-  failures are logged and retried on the next tick.
-
-## Backups & disaster recovery (Phase 8)
-
-§22.7: nightly `pg_dump` at 02:00 UTC (§19), encrypted with a key **dedicated
-to backups** (`BACKUP_ENCRYPTION_KEY` — independent from the app's
-`ENCRYPTION_KEY` so one leaked key cannot open both), retained as 14 daily +
-6 monthly archives (first-of-month snapshots are the monthly pool — judgment
-call documented in `app/core/backups.py`).
-
-- **Artifact format:** `hcc-YYYYMMDD-HHMMSS.{daily|monthly}.sql.gz.enc` —
-  Fernet(gzip(plain-SQL pg_dump)). The dump is encrypted *before* it touches
-  the backup directory; a plaintext dump of health data is never written
-  anywhere, ever. `BACKUP_ENCRYPTION_KEY` unset ⇒ the nightly task logs an
-  honest skip (never an unencrypted fallback).
-- **Offsite (§22.7):** the artifact is pushed to Backblaze B2 when
-  `B2_APPLICATION_KEY_ID`/`B2_APPLICATION_KEY`/`B2_BUCKET` are set (native v2
-  API over httpx, no extra dependency). A failed upload never fails the local
-  backup — it is reported honestly and retried the next night.
-- **Restore:** `backend/tools/restore_backup.py <artifact> --target-dsn …`
-  decrypts, gunzips and pipes the SQL into psql with `ON_ERROR_STOP` — stdin
-  only, so no plaintext temp file ever hits disk. TimescaleDB hypertables
-  restore under the documented `timescaledb_pre_restore()` /
-  `timescaledb_post_restore()` wrapper; DSNs are redacted from any error
-  output.
-- **The restore drill (§22.7 AC):** `backend/tools/restore_drill.py` seeds
-  marker data through the ORM (owner, activity, a `sleep_sessions`
-  hypertable row, journal entry, Fernet-encrypted lab panel), snapshots every
-  public table, runs the real backup pipeline, restores into a scratch
-  `hcc_restore_drill` database and compares table-by-table — including
-  `alembic_version` and proving the encrypted lab note still decrypts with
-  the *app* key. First live run: **46/46 tables matched**. Rerun it on the
-  real host after `docker compose up` parity is proven:
-
-  ```bash
-  BACKUP_ENCRYPTION_KEY=<key> uv run python tools/restore_drill.py
-  ```
-
-  `backups/` is gitignored — artifacts of real health data never enter git.
-
-## Status
-
-- Phase 0 (scaffold) — complete: schema + seed, `/health`, owner auth +
-  security middleware, Celery wiring, reset script, CI.
-- Phase 1 (Garmin connector) — complete: fixture-based sync acceptance met;
-  real-account connection is the owner's manual `tools/garmin_sync.py connect` step.
-- Phase 2 (feature engine) — complete: golden-dataset regression suite green;
-  nightly task populates daily/discipline features respecting the day-boundary
-  rule; `feature_weights` seeded (v1).
-- Phase 3 (Telegram bot) — complete: polling loop, `/link` flow, voice
-  pipeline with confirmable drafts, commands via the shared query layer,
-  free-text agent entrypoint, alert push. Live bot needs `TELEGRAM_BOT_TOKEN`;
-  fixtures only in tests/demos (§0).
-- Phase 4 (medical/lifestyle/gear) — complete: lab panels + low-ferritin
-  alert, nutrition/supplement ingestion, gear accumulation with
-  `gear_service_due`, `/labs` + `/gear` APIs.
-- Phase 5 (agent harness + AI layer) — complete: §8.3 tool registry, §8.4
-  loop with `agent_tool_calls` audit, §9.2 per-account routing + free-tier
-  classification, §8.6 `token_usage` + daily budget check, templated daily
-  summaries, powerful-tier weekly/monthly reports, §8.5 Telegram
-  confirmation flow, pgvector `search_context`. Live LLM calls need
-  `GLM_API_KEY`; embeddings need `OPENAI_API_KEY` (§6.2 pinned model).
-- Phase 6 (Technogym connector) — complete: Stage 11a OAuth2 flow with
-  manual owner connection (API + `tools/technogym_connect.py`), raw-first
-  workout ingestion with full-history backfill and 6-hourly sync, §12
-  multi-source reconciliation (no duplicates against same-window Garmin
-  entries), `/plan today` fallback for the contingent Stage 11b. Real
-  connection needs `TECHNOGYM_CLIENT_ID/SECRET`; endpoints tunable via env
-  until registration confirms the §24 access tier. Stage 11b
-  prescription-push stays behind the §24 human decision.
-- Phase 7 (weather module) — complete: Open-Meteo client (keyless), raw-first
-  forecast refresh upserting `forecast_cache` every 6 hours (idempotent on
-  lat/lon/date), §14 `activities.weather_snapshot` enrichment on ingestion
-  (stream coords → home fallback, NULL-only writes), `/forecast` bot command
-  + `GET /weather/forecast` over one shared query, §14 forecast × readiness
-  nudge with per-day Redis dedup. Needs `WEATHER_HOME_LAT`/`WEATHER_HOME_LON`
-  to produce data; tests/demos use recorded Open-Meteo fixtures only.
-  Docker parity still unproven until `docker compose up -d --build` runs on
-  the owner's host.
-- Phase 8 (hardening, backups, remaining connectors) — complete: nightly
-  encrypted backup pipeline + retention, B2 offsite upload, restore tooling,
-  the §22.7 restore drill (tested for real — 46/46 tables match), and a
-  hardening audit locking sliding sessions, the route-auth matrix and JSON
-  logging (see "Backups & disaster recovery" above). Remaining connectors:
-  all connectors the spec actually defines (Garmin, Technogym, weather,
-  Telegram/STT/embeddings) are built; Strava/MFP have no integration
-  sections — §1 substitutes them with the feature engine ("without needing
-  those subscriptions"), and the only mentions are the §3 diagram and the
-  `activity_source_links.provider` enum. Treated as deliberately out of
-  scope rather than invented spec (§0: implementation layer, not
-  architecture layer). Suite: 228 tests green.
-- Temporary web UI (Grafana) — complete: 8 provisioned dashboards covering
-  every table/feature of Phases 0-8 (read-only `grafana_ro` role, anonymous
-  viewer, generated dashboard JSON + panel-SQL validator + deterministic
-  180-day demo seeder). Stop-gap until the real dashboard style is chosen;
-  see `grafana/README.md`. Docker parity still unproven (user-space dev
-  stack, same as every phase above).
