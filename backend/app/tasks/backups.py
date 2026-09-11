@@ -57,10 +57,10 @@ def run_nightly_backup(now=None) -> dict:
 
     # Offsite copy (§22.7) — skip honestly when B2 is not configured.
     if settings.b2_application_key_id and settings.b2_application_key and settings.b2_bucket:
-        from app.integrations.b2 import upload_to_b2
+        from app.connectors.b2 import B2Uploader
 
         try:
-            upload_to_b2(meta["path"])
+            B2Uploader().upload(meta["path"])
             report["b2"] = "uploaded"
         except Exception as exc:  # noqa: BLE001 — offsite failure must not fail the local backup
             logger.error("backup b2 upload failed: %s", exc)

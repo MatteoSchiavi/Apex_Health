@@ -7,6 +7,7 @@ session so every test sees a fresh, complete schema.
 
 import asyncio
 import os
+import stat
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -139,3 +140,24 @@ async def reset_owner_auth_state(session: AsyncSession) -> None:
         )
     )
     await session.commit()
+
+
+@pytest.fixture
+def fake_pg_dump(tmp_path):
+    """An executable stand-in for pg_dump emitting a tiny valid dump (backup tests).
+
+    Hermetic: CI and sandboxes need no PostgreSQL toolchain — the LIVE restore
+    drill is a phase demo, not a unit test.
+    """
+    fake_sql = (
+        "--\n-- PostgreSQL database dump\n--\n\n"
+        "CREATE TABLE public.daily_features (user_id integer);\n"
+        "COPY public.daily_features (user_id) FROM stdin;\n"
+        "42\n"
+        "\\.\n"
+        "-- PostgreSQL database dump complete\n"
+    )
+    script = tmp_path / "fake_pg_dump.sh"
+    script.write_text(f"#!/bin/sh\ncat <<'SQLEOF'\n{fake_sql}SQLEOF\n")
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    return str(script)
