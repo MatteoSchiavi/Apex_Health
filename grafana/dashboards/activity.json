@@ -10,7 +10,7 @@
  "editable": true,
  "graphTooltip": 1,
  "schemaVersion": 39,
- "version": 1,
+ "version": 2,
  "refresh": "5m",
  "time": {
   "from": "now-90d",
@@ -69,18 +69,30 @@
    }
   ]
  },
- "links": [],
+ "links": [
+  {
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true,
+   "targetBlank": false,
+   "tags": [
+    "apex-health"
+   ],
+   "title": "\u2317 Dashboards",
+   "type": "dashboards"
+  }
+ ],
  "panels": [
   {
-   "id": 113,
+   "id": 121,
    "type": "stat",
    "title": "Hours (7d)",
    "description": "",
    "gridPos": {
     "x": 0,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -101,7 +113,7 @@
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "h",
+     "unit": null,
      "custom": {},
      "min": null,
      "max": null,
@@ -109,7 +121,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -122,24 +134,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 114,
+   "id": 122,
    "type": "stat",
    "title": "Distance (7d)",
    "description": "",
    "gridPos": {
-    "x": 6,
+    "x": 3,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -168,7 +181,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -181,24 +194,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 115,
+   "id": 123,
    "type": "stat",
    "title": "Sessions (7d)",
    "description": "",
    "gridPos": {
-    "x": 12,
+    "x": 6,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -227,7 +241,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -240,24 +254,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 116,
+   "id": 124,
    "type": "stat",
    "title": "Load (7d)",
    "description": "",
    "gridPos": {
-    "x": 18,
+    "x": 9,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -286,7 +301,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -299,22 +314,263 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 117,
+   "id": 125,
+   "type": "stat",
+   "title": "Hours YTD",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(duration_s)/3600.0,1) AS value FROM activities WHERE user_id=$user AND local_date >= date_trunc('year', CURRENT_DATE)",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 126,
+   "type": "stat",
+   "title": "Distance YTD (km)",
+   "description": "",
+   "gridPos": {
+    "x": 15,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(distance_m)/1000.0,1) AS value FROM activities WHERE user_id=$user AND local_date >= date_trunc('year', CURRENT_DATE)",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 127,
+   "type": "stat",
+   "title": "Elevation 30d (m)",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(elevation_gain_m)) AS value FROM activities WHERE user_id=$user AND local_date > CURRENT_DATE - 30 AND elevation_gain_m IS NOT NULL",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 128,
+   "type": "stat",
+   "title": "Run pace (30d)",
+   "description": "",
+   "gridPos": {
+    "x": 21,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(SUM(duration_s)/60.0 / NULLIF(SUM(distance_m)/1000.0,0),2) AS value FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user AND d.name='running' AND a.local_date > CURRENT_DATE - 30 AND a.distance_m > 0",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 129,
    "type": "barchart",
    "title": "Weekly hours by discipline",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 4,
+    "y": 5,
     "w": 12,
     "h": 9
    },
@@ -341,7 +597,7 @@
      "custom": {
       "drawStyle": "bars",
       "lineWidth": 1,
-      "fillOpacity": 80,
+      "fillOpacity": 85,
       "showPoints": "never",
       "spanNulls": false,
       "stacking": {
@@ -382,13 +638,13 @@
    }
   },
   {
-   "id": 118,
+   "id": 130,
    "type": "piechart",
    "title": "Time by discipline",
    "description": "",
    "gridPos": {
     "x": 12,
-    "y": 4,
+    "y": 5,
     "w": 6,
     "h": 9
    },
@@ -428,7 +684,7 @@
     "overrides": []
    },
    "options": {
-    "pieType": "pie",
+    "pieType": "donut",
     "displayLabels": [
      "name",
      "percent"
@@ -448,13 +704,13 @@
    }
   },
   {
-   "id": 119,
+   "id": 131,
    "type": "timeseries",
    "title": "Avg / max HR",
    "description": "",
    "gridPos": {
     "x": 18,
-    "y": 4,
+    "y": 5,
     "w": 6,
     "h": 9
    },
@@ -480,12 +736,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -499,13 +759,47 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "avg_hr"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "max_hr"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
-     "displayMode": "list",
+     "displayMode": "table",
      "placement": "bottom",
-     "showLegend": true
+     "showLegend": true,
+     "calcs": [
+      "lastNotNull"
+     ]
     },
     "tooltip": {
      "mode": "multi",
@@ -514,13 +808,13 @@
    }
   },
   {
-   "id": 120,
+   "id": 132,
    "type": "table",
    "title": "Recent activities",
    "description": "Weather column comes from \u00a714 enrichment (weather_snapshot).",
    "gridPos": {
     "x": 0,
-    "y": 13,
+    "y": 14,
     "w": 24,
     "h": 11
    },
@@ -536,7 +830,7 @@
      },
      "editorMode": "code",
      "rawQuery": true,
-     "rawSql": "SELECT to_char(a.local_date,'YYYY-MM-DD') AS \"date\", d.name AS \"discipline\", to_char(a.start_time AT TIME ZONE 'Europe/Rome', 'MM-DD HH24:MI') AS \"start\", ROUND(a.duration_s/60.0) AS \"min\", ROUND(a.distance_m/1000.0,1) AS \"km\", a.avg_hr AS \"avg hr\", a.max_hr AS \"max hr\", a.avg_power AS \"avg W\", a.calories AS \"kcal\", a.training_load AS \"load\", a.weather_snapshot->>'temperature_2m_mean' AS \"temp\", a.data_completeness AS \"quality\" FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user ORDER BY a.start_time DESC LIMIT 25",
+     "rawSql": "SELECT to_char(a.local_date,'YYYY-MM-DD') AS \"date\", d.name AS \"discipline\", to_char(a.start_time AT TIME ZONE 'Europe/Rome', 'MM-DD HH24:MI') AS \"start\", ROUND(a.duration_s/60.0) AS \"min\", ROUND(a.distance_m/1000.0,1) AS \"km\", a.elevation_gain_m AS \"\u2191 m\", a.avg_hr AS \"avg hr\", a.max_hr AS \"max hr\", a.avg_power AS \"avg W\", a.calories AS \"kcal\", a.training_load AS \"load\", a.weather_snapshot->>'temperature_2m_mean' AS \"temp\", a.data_completeness AS \"quality\" FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user ORDER BY a.start_time DESC LIMIT 25",
      "refId": "A",
      "format": "table"
     }
@@ -565,13 +859,13 @@
    }
   },
   {
-   "id": 121,
+   "id": 133,
    "type": "timeseries",
    "title": "Run pace (min/km)",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 24,
+    "y": 25,
     "w": 8,
     "h": 8
    },
@@ -597,12 +891,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 3.5,
      "max": 7.5,
@@ -616,7 +914,23 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "min_per_km"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -631,13 +945,13 @@
    }
   },
   {
-   "id": 122,
+   "id": 134,
    "type": "timeseries",
    "title": "Estimated FTP (cycling)",
    "description": "",
    "gridPos": {
     "x": 8,
-    "y": 24,
+    "y": 25,
     "w": 8,
     "h": 8
    },
@@ -663,12 +977,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -682,7 +1000,23 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "ftp"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -697,13 +1031,13 @@
    }
   },
   {
-   "id": 123,
+   "id": 135,
    "type": "table",
    "title": "Segment efforts",
    "description": "",
    "gridPos": {
     "x": 16,
-    "y": 24,
+    "y": 25,
     "w": 8,
     "h": 8
    },
@@ -745,6 +1079,409 @@
    "options": {
     "showHeader": true,
     "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 136,
+   "type": "barchart",
+   "title": "Weekly distance by discipline (km)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', local_date) AS \"time\", d.name AS metric, ROUND(SUM(a.distance_m)/1000.0,1) AS value FROM activities a JOIN disciplines d ON d.id=a.discipline_id WHERE a.user_id=$user AND a.distance_m IS NOT NULL AND $__timeFilter(local_date) GROUP BY 1, 2 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 137,
+   "type": "barchart",
+   "title": "Weekly elevation gain (m)",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', local_date) AS \"time\", ROUND(SUM(elevation_gain_m)) AS meters FROM activities WHERE user_id=$user AND elevation_gain_m IS NOT NULL AND $__timeFilter(local_date) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 138,
+   "type": "barchart",
+   "title": "Weekly kcal",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', local_date) AS \"time\", SUM(calories) AS kcal FROM activities WHERE user_id=$user AND calories IS NOT NULL AND $__timeFilter(local_date) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 139,
+   "type": "barchart",
+   "title": "Activities by hour of day",
+   "description": "Local start hour (Europe/Rome).",
+   "gridPos": {
+    "x": 0,
+    "y": 41,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT to_char(EXTRACT(HOUR FROM start_time AT TIME ZONE 'Europe/Rome')::int, 'FM00') || ':00' AS \"hour\", COUNT(*) AS \"sessions\" FROM activities WHERE user_id=$user AND $__timeFilter(local_date) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 140,
+   "type": "timeseries",
+   "title": "Aerobic decoupling & efficiency (road cycling)",
+   "description": "Lower decoupling = better aerobic endurance; EF = normalised power / HR.",
+   "gridPos": {
+    "x": 12,
+    "y": 41,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT df.date AS \"time\", df.aerobic_decoupling_pct AS decoupling_pct, df.efficiency_factor AS EF FROM discipline_features df JOIN disciplines d ON d.id=df.discipline_id WHERE df.user_id=$user AND d.name='road_cycling' AND $__timeFilter(df.date) ORDER BY df.date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "decoupling_pct"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "EF"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "EF"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
    }
   }
  ]

@@ -33,11 +33,11 @@ datasource + all dashboards, sets Overview as the org home (dark theme).
 | apex-overview | Overview — Health at a glance | readiness/recovery/strain KPIs, alerts, load, plan, forecast |
 | apex-activity | Training & Activities | weekly hours by discipline, pace, FTP, segments, weather-enriched rows |
 | apex-recovery | Recovery & Sleep | HRV vs baseline, sleep stages, stress/body battery, body comp, risk scores |
-| apex-nutrition | Nutrition & Supplements | calories, macros, hydration, caffeine/alcohol, supplement adherence |
-| apex-labs | Labs & Blood Health | ferritin/hemoglobin recovery story, panel history, per-metric dropdown |
-| apex-ai | AI & Agent | token budget vs spend, tool-loop audit (§8.3), reports, voice drafts (§8.5) |
-| apex-journal | Journal & Mind | subjective scores vs measured, tags, voice-note history |
-| apex-system | System & Sync Health | integrations, raw ingest, gear service (§13), sync logs, data coverage |
+| apex-nutrition | Nutrition & Supplements | calories, macros, hydration, caffeine/alcohol, supplement adherence bar gauges |
+| apex-labs | Labs & Blood Health | ferritin/hemoglobin recovery story, latest metrics vs reference ranges, panel history, per-metric dropdown |
+| apex-ai | AI & Agent | token budget vs spend, tool-loop audit (§8.3), model mix, tier routing, latency bar gauges, reports, voice drafts (§8.5) |
+| apex-journal | Journal & Mind | subjective scores vs measured, mood vs strain dual axis, tags, voice-note history |
+| apex-system | System & Sync Health | integrations, raw ingest, gear service (§13), sync logs, data coverage, rollups (§7.4), invites (§4.3), ops notes |
 
 Every dashboard is scoped by the **Athlete** dropdown (users table); Labs
 adds a lab-**Metric** dropdown; AI has an editable **Daily budget $** box
@@ -46,14 +46,20 @@ adds a lab-**Metric** dropdown; AI has an editable **Daily budget $** box
 ## Demo data
 
 The UI is only as full as your dev DB. `backend/tools/seed_demo_data.py`
-seeds a deterministic ~180-day story across every table (activities, sleep,
+seeds a deterministic ~240-day story across every table (activities, sleep,
 HRV, nutrition, journal + Telegram voice flow, labs incl. the low-ferritin
 alert, gear overdue, AI budget crossing, plans, embeddings, forecasts):
 
 ```bash
-cd backend && .venv/bin/python -m tools.seed_demo_data   # re-runnable, wipes user data first
+cd backend && PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240  # re-runnable, wipes user data first
 # owner login afterwards: owner@apexhealth.dev / demo-owner-1234
 ```
+
+**Gotcha:** seed **before** starting Grafana (or restart Grafana after
+seeding) — the PostgreSQL connection pool caches prepared plans that go
+stale after a TRUNCATE (`could not open relation with OID ...`), and a
+restart (`grafana/run_grafana.sh stop && grafana/run_grafana.sh start`)
+fixes it instantly.
 
 **All seeded data is synthetic.** With a fresh, unseeded DB the dashboards
 are honest "No data" panels and fill in as real ingestion runs.
