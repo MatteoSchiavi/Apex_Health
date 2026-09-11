@@ -114,6 +114,11 @@ class Settings(BaseSettings):
 
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
+    # §15 remote access: when the app sits behind Tailscale Funnel / Caddy on
+    # the same host, the TLS terminator forwards X-Forwarded-Proto/For over
+    # plain HTTP. On (and only from loopback peers) the app adopts them —
+    # see infra/tailscale-funnel-setup.md.
+    trust_proxy_headers: bool = False
     # §22: session cookies are short-lived with sliding expiry.
     session_ttl_minutes: int = 720
     # §22.1: 5 failed attempts per email per 15 minutes -> temporary lockout.
