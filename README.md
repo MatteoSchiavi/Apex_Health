@@ -326,6 +326,44 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
   keyless, there are no credentials to store and no §21 escalation path;
   failures are logged and retried on the next tick.
 
+## Backups & disaster recovery (Phase 8)
+
+§22.7: nightly `pg_dump` at 02:00 UTC (§19), encrypted with a key **dedicated
+to backups** (`BACKUP_ENCRYPTION_KEY` — independent from the app's
+`ENCRYPTION_KEY` so one leaked key cannot open both), retained as 14 daily +
+6 monthly archives (first-of-month snapshots are the monthly pool — judgment
+call documented in `app/core/backups.py`).
+
+- **Artifact format:** `hcc-YYYYMMDD-HHMMSS.{daily|monthly}.sql.gz.enc` —
+  Fernet(gzip(plain-SQL pg_dump)). The dump is encrypted *before* it touches
+  the backup directory; a plaintext dump of health data is never written
+  anywhere, ever. `BACKUP_ENCRYPTION_KEY` unset ⇒ the nightly task logs an
+  honest skip (never an unencrypted fallback).
+- **Offsite (§22.7):** the artifact is pushed to Backblaze B2 when
+  `B2_APPLICATION_KEY_ID`/`B2_APPLICATION_KEY`/`B2_BUCKET` are set (native v2
+  API over httpx, no extra dependency). A failed upload never fails the local
+  backup — it is reported honestly and retried the next night.
+- **Restore:** `backend/tools/restore_backup.py <artifact> --target-dsn …`
+  decrypts, gunzips and pipes the SQL into psql with `ON_ERROR_STOP` — stdin
+  only, so no plaintext temp file ever hits disk. TimescaleDB hypertables
+  restore under the documented `timescaledb_pre_restore()` /
+  `timescaledb_post_restore()` wrapper; DSNs are redacted from any error
+  output.
+- **The restore drill (§22.7 AC):** `backend/tools/restore_drill.py` seeds
+  marker data through the ORM (owner, activity, a `sleep_sessions`
+  hypertable row, journal entry, Fernet-encrypted lab panel), snapshots every
+  public table, runs the real backup pipeline, restores into a scratch
+  `hcc_restore_drill` database and compares table-by-table — including
+  `alembic_version` and proving the encrypted lab note still decrypts with
+  the *app* key. First live run: **46/46 tables matched**. Rerun it on the
+  real host after `docker compose up` parity is proven:
+
+  ```bash
+  BACKUP_ENCRYPTION_KEY=<key> uv run python tools/restore_drill.py
+  ```
+
+  `backups/` is gitignored — artifacts of real health data never enter git.
+
 ## Status
 
 - Phase 0 (scaffold) — complete: schema + seed, `/health`, owner auth +
@@ -365,3 +403,15 @@ scripts/reset-dev.sh           # -f to skip the confirmation prompt
   to produce data; tests/demos use recorded Open-Meteo fixtures only.
   Docker parity still unproven until `docker compose up -d --build` runs on
   the owner's host.
+- Phase 8 (hardening, backups, remaining connectors) — complete: nightly
+  encrypted backup pipeline + retention, B2 offsite upload, restore tooling,
+  the §22.7 restore drill (tested for real — 46/46 tables match), and a
+  hardening audit locking sliding sessions, the route-auth matrix and JSON
+  logging (see "Backups & disaster recovery" above). Remaining connectors:
+  all connectors the spec actually defines (Garmin, Technogym, weather,
+  Telegram/STT/embeddings) are built; Strava/MFP have no integration
+  sections — §1 substitutes them with the feature engine ("without needing
+  those subscriptions"), and the only mentions are the §3 diagram and the
+  `activity_source_links.provider` enum. Treated as deliberately out of
+  scope rather than invented spec (§0: implementation layer, not
+  architecture layer). Suite: 228 tests green.
