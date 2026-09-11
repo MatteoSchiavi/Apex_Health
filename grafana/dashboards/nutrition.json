@@ -10,7 +10,7 @@
  "editable": true,
  "graphTooltip": 1,
  "schemaVersion": 39,
- "version": 1,
+ "version": 2,
  "refresh": "5m",
  "time": {
   "from": "now-90d",
@@ -69,18 +69,30 @@
    }
   ]
  },
- "links": [],
+ "links": [
+  {
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true,
+   "targetBlank": false,
+   "tags": [
+    "apex-health"
+   ],
+   "title": "\u2317 Dashboards",
+   "type": "dashboards"
+  }
+ ],
  "panels": [
   {
-   "id": 140,
+   "id": 164,
    "type": "stat",
    "title": "Calories today",
    "description": "",
    "gridPos": {
     "x": 0,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -101,7 +113,7 @@
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "short",
+     "unit": null,
      "custom": {},
      "min": null,
      "max": null,
@@ -109,7 +121,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -122,24 +134,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 141,
+   "id": 165,
    "type": "stat",
    "title": "Protein today (g)",
    "description": "",
    "gridPos": {
-    "x": 6,
+    "x": 3,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -168,7 +181,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -181,24 +194,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 142,
+   "id": 166,
    "type": "stat",
    "title": "Caffeine today (mg)",
    "description": "",
    "gridPos": {
-    "x": 12,
+    "x": 6,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -227,7 +241,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -240,24 +254,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 143,
+   "id": 167,
    "type": "stat",
    "title": "Water today (L)",
    "description": "",
    "gridPos": {
-    "x": 18,
+    "x": 9,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -286,7 +301,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -299,22 +314,263 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 144,
+   "id": 168,
+   "type": "stat",
+   "title": "Kcal 7d avg",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(AVG(c),0) AS value FROM (SELECT COALESCE(SUM(calories),0) AS c FROM nutrition_logs WHERE user_id=$user AND calories IS NOT NULL AND timestamp::date > CURRENT_DATE - 7 GROUP BY timestamp::date) x",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 169,
+   "type": "stat",
+   "title": "Protein 7d avg (g)",
+   "description": "",
+   "gridPos": {
+    "x": 15,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(AVG(p),0) AS value FROM (SELECT COALESCE(SUM(protein_g),0) AS p FROM nutrition_logs WHERE user_id=$user AND protein_g IS NOT NULL AND timestamp::date > CURRENT_DATE - 7 GROUP BY timestamp::date) x",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 170,
+   "type": "stat",
+   "title": "Alcohol 7d (units)",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COALESCE(SUM(alcohol_units),0) AS value FROM nutrition_logs WHERE user_id=$user AND alcohol_units IS NOT NULL AND timestamp > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 171,
+   "type": "stat",
+   "title": "Meals logged 7d",
+   "description": "",
+   "gridPos": {
+    "x": 21,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM nutrition_logs WHERE user_id=$user AND timestamp > now() - interval '7 days'",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 172,
    "type": "timeseries",
    "title": "Daily calories",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 4,
+    "y": 5,
     "w": 12,
     "h": 8
    },
@@ -340,12 +596,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 0,
      "max": null,
@@ -359,7 +619,23 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "kcal"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -374,13 +650,13 @@
    }
   },
   {
-   "id": 145,
+   "id": 173,
    "type": "timeseries",
    "title": "Macros (g/day)",
    "description": "",
    "gridPos": {
     "x": 12,
-    "y": 4,
+    "y": 5,
     "w": 12,
     "h": 8
    },
@@ -406,12 +682,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -425,7 +705,53 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "protein"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "carbs"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FADE2A"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "fat"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -440,13 +766,13 @@
    }
   },
   {
-   "id": 146,
+   "id": 174,
    "type": "piechart",
    "title": "Macro energy split (30d)",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 12,
+    "y": 13,
     "w": 8,
     "h": 9
    },
@@ -486,7 +812,7 @@
     "overrides": []
    },
    "options": {
-    "pieType": "pie",
+    "pieType": "donut",
     "displayLabels": [
      "name",
      "percent"
@@ -506,13 +832,13 @@
    }
   },
   {
-   "id": 147,
+   "id": 175,
    "type": "timeseries",
    "title": "Caffeine & alcohol",
    "description": "",
    "gridPos": {
     "x": 8,
-    "y": 12,
+    "y": 13,
     "w": 8,
     "h": 9
    },
@@ -549,14 +875,18 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
-     "min": null,
+     "min": 0,
      "max": null,
      "thresholds": {
       "mode": "absolute",
@@ -568,7 +898,38 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "caffeine_mg"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#C15C17"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "alcohol_units"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#E02F44"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -583,13 +944,13 @@
    }
   },
   {
-   "id": 148,
+   "id": 176,
    "type": "timeseries",
-   "title": "Water (L/day)",
+   "title": "Water (L/day) vs 2.5 L target",
    "description": "",
    "gridPos": {
     "x": 16,
-    "y": 12,
+    "y": 13,
     "w": 8,
     "h": 9
    },
@@ -615,14 +976,18 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "dashed"
+      }
      },
-     "min": null,
+     "min": 0,
      "max": null,
      "thresholds": {
       "mode": "absolute",
@@ -630,11 +995,35 @@
        {
         "color": "green",
         "value": null
+       },
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 2.5
        }
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "litres"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#6ED0E0"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -649,15 +1038,15 @@
    }
   },
   {
-   "id": 149,
+   "id": 177,
    "type": "table",
    "title": "Supplement adherence (30d)",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 21,
+    "y": 22,
     "w": 12,
-    "h": 9
+    "h": 8
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -700,15 +1089,91 @@
    }
   },
   {
-   "id": 150,
+   "id": 178,
+   "type": "bargauge",
+   "title": "Adherence by supplement (30d)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 22,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT sp.supplement_name AS \"supplement\", ROUND(100.0 * COUNT(sl.*) FILTER (WHERE sl.adherence) / NULLIF(COUNT(sl.*),0)) AS \"adherence %\" FROM supplement_protocols sp LEFT JOIN supplement_logs sl ON sl.protocol_id = sp.id AND sl.taken_at > now() - interval '30 days' WHERE sp.user_id=$user GROUP BY sp.id, sp.supplement_name ORDER BY 2 DESC",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {},
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "green",
+        "value": 90
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "displayMode": "gradient",
+    "minVizHeight": 10,
+    "minVizWidth": 0,
+    "namePlacement": "auto",
+    "orientation": "horizontal",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": true
+    },
+    "showUnfilled": true,
+    "sizing": "auto",
+    "valueMode": "color"
+   }
+  },
+  {
+   "id": 179,
    "type": "timeseries",
    "title": "Adherence % (daily)",
    "description": "",
    "gridPos": {
-    "x": 12,
-    "y": 21,
+    "x": 0,
+    "y": 30,
     "w": 12,
-    "h": 9
+    "h": 8
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -732,12 +1197,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 0,
      "max": 100,
@@ -763,6 +1232,80 @@
      "mode": "multi",
      "sort": "desc"
     }
+   }
+  },
+  {
+   "id": 180,
+   "type": "barchart",
+   "title": "Weekly protein (g)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 30,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', timestamp) AS \"time\", ROUND(SUM(protein_g)) AS protein_g FROM nutrition_logs WHERE user_id=$user AND protein_g IS NOT NULL AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
    }
   }
  ]

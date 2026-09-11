@@ -10,7 +10,7 @@
  "editable": true,
  "graphTooltip": 1,
  "schemaVersion": 39,
- "version": 1,
+ "version": 2,
  "refresh": "5m",
  "time": {
   "from": "now-90d",
@@ -69,18 +69,30 @@
    }
   ]
  },
- "links": [],
+ "links": [
+  {
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true,
+   "targetBlank": false,
+   "tags": [
+    "apex-health"
+   ],
+   "title": "\u2317 Dashboards",
+   "type": "dashboards"
+  }
+ ],
  "panels": [
   {
-   "id": 124,
+   "id": 141,
    "type": "stat",
    "title": "HRV last (ms)",
    "description": "",
    "gridPos": {
     "x": 0,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -109,7 +121,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -122,24 +134,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 125,
+   "id": 142,
    "type": "stat",
    "title": "HRV 7d avg",
    "description": "",
    "gridPos": {
-    "x": 4,
+    "x": 3,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -168,7 +181,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -181,24 +194,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 126,
+   "id": 143,
    "type": "stat",
    "title": "RHR last",
    "description": "",
    "gridPos": {
-    "x": 8,
+    "x": 6,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -227,7 +241,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -240,24 +254,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 127,
+   "id": 144,
    "type": "stat",
    "title": "Sleep score",
    "description": "",
    "gridPos": {
-    "x": 12,
+    "x": 9,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -286,7 +301,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -299,24 +314,97 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 128,
+   "id": 145,
    "type": "stat",
-   "title": "Weight",
+   "title": "Sleep debt 7d (h)",
    "description": "",
    "gridPos": {
-    "x": 16,
+    "x": 12,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ROUND(56 - SUM(total_sleep_s)/3600.0,1) AS value FROM (SELECT total_sleep_s FROM sleep_sessions WHERE user_id=$user ORDER BY local_date DESC LIMIT 7) s",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 3
+       },
+       {
+        "color": "red",
+        "value": 6
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 146,
+   "type": "stat",
+   "title": "Weight (kg)",
+   "description": "",
+   "gridPos": {
+    "x": 15,
+    "y": 0,
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -345,7 +433,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -358,24 +446,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 129,
+   "id": 147,
    "type": "stat",
-   "title": "Body fat",
+   "title": "Body fat (%)",
    "description": "",
    "gridPos": {
-    "x": 20,
+    "x": 18,
     "y": 0,
-    "w": 4,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -404,7 +493,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -417,24 +506,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 130,
-   "type": "timeseries",
-   "title": "HRV vs rolling baseline",
-   "description": "\u00a77 baseline \u2014 deviation drives recovery/readiness.",
+   "id": 148,
+   "type": "stat",
+   "title": "Restlessness",
+   "description": "",
    "gridPos": {
-    "x": 0,
-    "y": 4,
-    "w": 16,
-    "h": 9
+    "x": 21,
+    "y": 0,
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -448,30 +538,22 @@
      },
      "editorMode": "code",
      "rawQuery": true,
-     "rawSql": "SELECT timestamp AS \"time\", hrv_ms AS hrv, rolling_baseline_ms AS baseline FROM hrv_readings WHERE user_id=$user AND $__timeFilter(timestamp) ORDER BY timestamp",
+     "rawSql": "SELECT restlessness AS value FROM sleep_sessions WHERE user_id=$user AND restlessness IS NOT NULL ORDER BY local_date DESC LIMIT 1",
      "refId": "A",
-     "format": "time_series"
+     "format": "table"
     }
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": null,
-     "custom": {
-      "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
-      "showPoints": "never",
-      "spanNulls": true,
-      "pointSize": 5,
-      "axisPlacement": "auto"
-     },
+     "unit": "percentunit",
+     "custom": {},
      "min": null,
      "max": null,
      "thresholds": {
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -480,27 +562,29 @@
     "overrides": []
    },
    "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom",
-     "showLegend": true
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
     },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
    }
   },
   {
-   "id": 131,
+   "id": 149,
    "type": "gauge",
-   "title": "Recovery score",
+   "title": "Recovery",
    "description": "",
    "gridPos": {
-    "x": 16,
-    "y": 4,
-    "w": 8,
-    "h": 9
+    "x": 0,
+    "y": 5,
+    "w": 4,
+    "h": 7
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -550,20 +634,264 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "showThresholdLabels": false,
-    "showThresholdMarkers": true
+    "showThresholdMarkers": true,
+    "minVizHeight": 75,
+    "minVizWidth": 75
    }
   },
   {
-   "id": 132,
+   "id": 150,
+   "type": "gauge",
+   "title": "Readiness",
+   "description": "",
+   "gridPos": {
+    "x": 4,
+    "y": 5,
+    "w": 4,
+    "h": 7
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT readiness_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 40
+       },
+       {
+        "color": "yellow",
+        "value": 65
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "showThresholdLabels": false,
+    "showThresholdMarkers": true,
+    "minVizHeight": 75,
+    "minVizWidth": 75
+   }
+  },
+  {
+   "id": 151,
+   "type": "gauge",
+   "title": "Strain",
+   "description": "",
+   "gridPos": {
+    "x": 8,
+    "y": 5,
+    "w": 4,
+    "h": 7
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT strain_score AS value FROM daily_features WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 50
+       },
+       {
+        "color": "red",
+        "value": 75
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "showThresholdLabels": false,
+    "showThresholdMarkers": true,
+    "minVizHeight": 75,
+    "minVizWidth": 75
+   }
+  },
+  {
+   "id": 152,
+   "type": "timeseries",
+   "title": "HRV vs rolling baseline",
+   "description": "\u00a77 baseline \u2014 deviation drives recovery/readiness.",
+   "gridPos": {
+    "x": 12,
+    "y": 5,
+    "w": 12,
+    "h": 7
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT timestamp AS \"time\", hrv_ms AS hrv, rolling_baseline_ms AS baseline FROM hrv_readings WHERE user_id=$user AND $__timeFilter(timestamp) ORDER BY timestamp",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "hrv"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "baseline"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 153,
    "type": "timeseries",
    "title": "Sleep duration & score",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 13,
+    "y": 12,
     "w": 12,
     "h": 8
    },
@@ -589,14 +917,18 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
-     "min": null,
+     "min": 0,
      "max": null,
      "thresholds": {
       "mode": "absolute",
@@ -608,13 +940,63 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "hours"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3D71D9"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "score"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "score"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
-     "displayMode": "list",
+     "displayMode": "table",
      "placement": "bottom",
-     "showLegend": true
+     "showLegend": true,
+     "calcs": [
+      "lastNotNull"
+     ]
     },
     "tooltip": {
      "mode": "multi",
@@ -623,13 +1005,13 @@
    }
   },
   {
-   "id": 133,
+   "id": 154,
    "type": "barchart",
    "title": "Sleep stages (h)",
    "description": "",
    "gridPos": {
     "x": 12,
-    "y": 13,
+    "y": 12,
     "w": 12,
     "h": 8
    },
@@ -656,7 +1038,7 @@
      "custom": {
       "drawStyle": "bars",
       "lineWidth": 1,
-      "fillOpacity": 80,
+      "fillOpacity": 85,
       "showPoints": "never",
       "spanNulls": false,
       "stacking": {
@@ -669,6 +1051,141 @@
      "thresholds": {
       "mode": "absolute",
       "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "deep"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#705DA0"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "light"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "rem"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "awake"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 155,
+   "type": "barchart",
+   "title": "Sleep debt vs 8 h target (h)",
+   "description": "Above 0 = debt (slept < 8 h); below 0 = surplus.",
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", ROUND(8.0 - total_sleep_s/3600.0,2) AS debt_h FROM sleep_sessions WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
        {
         "color": "green",
         "value": null
@@ -697,13 +1214,227 @@
    }
   },
   {
-   "id": 134,
+   "id": 156,
+   "type": "timeseries",
+   "title": "Bedtime consistency (local hour)",
+   "description": "Times after midnight mapped to 24+ so bedtime stays continuous.",
+   "gridPos": {
+    "x": 8,
+    "y": 20,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", EXTRACT(HOUR FROM start_time AT TIME ZONE 'Europe/Rome') + EXTRACT(MINUTE FROM start_time AT TIME ZONE 'Europe/Rome')/60.0 + CASE WHEN EXTRACT(HOUR FROM start_time AT TIME ZONE 'Europe/Rome') < 12 THEN 24 ELSE 0 END AS bedtime_h FROM sleep_sessions WHERE user_id=$user AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": 20,
+     "max": 26,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "bedtime_h"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 157,
+   "type": "timeseries",
+   "title": "Sleep architecture score & restlessness",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 20,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT df.date AS \"time\", df.sleep_architecture_score AS arch_score FROM daily_features df WHERE df.user_id=$user AND df.sleep_architecture_score IS NOT NULL AND $__timeFilter(df.date) ORDER BY df.date",
+     "refId": "A",
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT local_date AS \"time\", restlessness AS restlessness FROM sleep_sessions WHERE user_id=$user AND restlessness IS NOT NULL AND $__timeFilter(local_date) ORDER BY local_date",
+     "refId": "B",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "arch_score"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "restlessness"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "restlessness"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 158,
    "type": "timeseries",
    "title": "Resting HR & respiration",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 21,
+    "y": 28,
     "w": 12,
     "h": 8
    },
@@ -740,12 +1471,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -759,7 +1494,54 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "rhr"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "respiration"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#6ED0E0"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "respiration"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -774,13 +1556,13 @@
    }
   },
   {
-   "id": 135,
+   "id": 159,
    "type": "timeseries",
    "title": "Stress & body battery (daily)",
    "description": "",
    "gridPos": {
     "x": 12,
-    "y": 21,
+    "y": 28,
     "w": 12,
     "h": 8
    },
@@ -806,12 +1588,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -825,7 +1611,54 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "stress"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "battery"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "battery"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -840,14 +1673,14 @@
    }
   },
   {
-   "id": 136,
+   "id": 160,
    "type": "timeseries",
    "title": "Weight & body fat",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 29,
-    "w": 12,
+    "y": 36,
+    "w": 8,
     "h": 8
    },
    "datasource": {
@@ -872,12 +1705,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -891,7 +1728,54 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "weight_kg"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FADE2A"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "body_fat"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#C15C17"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "body_fat"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -906,14 +1790,14 @@
    }
   },
   {
-   "id": 137,
+   "id": 161,
    "type": "timeseries",
    "title": "HRV deviation from baseline (%)",
    "description": "",
    "gridPos": {
-    "x": 12,
-    "y": 29,
-    "w": 12,
+    "x": 8,
+    "y": 36,
+    "w": 8,
     "h": 8
    },
    "datasource": {
@@ -938,12 +1822,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "dashed"
+      }
      },
      "min": null,
      "max": null,
@@ -984,14 +1872,14 @@
    }
   },
   {
-   "id": 138,
+   "id": 162,
    "type": "timeseries",
    "title": "VO2max & SpO2",
    "description": "",
    "gridPos": {
-    "x": 0,
-    "y": 37,
-    "w": 12,
+    "x": 16,
+    "y": 36,
+    "w": 8,
     "h": 8
    },
    "datasource": {
@@ -1016,12 +1904,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": null,
      "max": null,
@@ -1035,7 +1927,54 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "vo2max"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#56A64B"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "spo2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#6ED0E0"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "spo2"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -1050,15 +1989,15 @@
    }
   },
   {
-   "id": 139,
+   "id": 163,
    "type": "timeseries",
-   "title": "Illness & injury risk",
-   "description": "",
+   "title": "Illness \u00b7 injury \u00b7 cross-discipline fatigue",
+   "description": "\u00a77 risk features (0\u20131). Sustained rises \u2192 \u00a717 alerts.",
    "gridPos": {
-    "x": 12,
-    "y": 37,
-    "w": 12,
-    "h": 8
+    "x": 0,
+    "y": 44,
+    "w": 24,
+    "h": 7
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -1072,7 +2011,7 @@
      },
      "editorMode": "code",
      "rawQuery": true,
-     "rawSql": "SELECT date AS \"time\", illness_risk_score AS illness, injury_risk_score AS injury FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "rawSql": "SELECT date AS \"time\", illness_risk_score AS illness, injury_risk_score AS injury, cross_discipline_fatigue_index AS fatigue FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
      "refId": "A",
      "format": "time_series"
     }
@@ -1082,12 +2021,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 0,
      "max": 1,
@@ -1101,7 +2044,53 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "illness"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "injury"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "fatigue"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {

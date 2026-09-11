@@ -10,7 +10,7 @@
  "editable": true,
  "graphTooltip": 1,
  "schemaVersion": 39,
- "version": 1,
+ "version": 2,
  "refresh": "5m",
  "time": {
   "from": "now-90d",
@@ -69,18 +69,30 @@
    }
   ]
  },
- "links": [],
+ "links": [
+  {
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true,
+   "targetBlank": false,
+   "tags": [
+    "apex-health"
+   ],
+   "title": "\u2317 Dashboards",
+   "type": "dashboards"
+  }
+ ],
  "panels": [
   {
-   "id": 172,
+   "id": 214,
    "type": "stat",
    "title": "Entries (7d)",
    "description": "",
    "gridPos": {
     "x": 0,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -109,7 +121,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -122,24 +134,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 173,
+   "id": 215,
    "type": "stat",
    "title": "Avg mood (30d)",
    "description": "",
    "gridPos": {
-    "x": 6,
+    "x": 3,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -168,7 +181,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -181,24 +194,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 174,
+   "id": 216,
    "type": "stat",
    "title": "Avg energy (30d)",
    "description": "",
    "gridPos": {
-    "x": 12,
+    "x": 6,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -227,7 +241,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -240,24 +254,25 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 175,
+   "id": 217,
    "type": "stat",
    "title": "Avg soreness (30d)",
    "description": "",
    "gridPos": {
-    "x": 18,
+    "x": 9,
     "y": 0,
-    "w": 6,
-    "h": 4
+    "w": 3,
+    "h": 5
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -286,7 +301,7 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "blue",
         "value": null
        }
       ]
@@ -299,24 +314,265 @@
      "calcs": [
       "lastNotNull"
      ],
-     "fields": ""
+     "fields": "",
+     "values": false
     },
     "textMode": "auto",
     "colorMode": "value",
-    "graphMode": "none",
+    "graphMode": "area",
     "wideLayout": true
    }
   },
   {
-   "id": 176,
+   "id": 218,
+   "type": "stat",
+   "title": "Streak (days)",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "WITH RECURSIVE d AS (SELECT MAX(date) AS day FROM journal_entries WHERE user_id=$user UNION ALL SELECT day - 1 FROM d WHERE EXISTS (SELECT 1 FROM journal_entries je WHERE je.user_id=$user AND je.date = d.day - 1)) SELECT COUNT(*) AS value FROM d",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 219,
+   "type": "stat",
+   "title": "Days logged (30d)",
+   "description": "",
+   "gridPos": {
+    "x": 15,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM journal_entries WHERE user_id=$user AND date > CURRENT_DATE - 30",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 220,
+   "type": "stat",
+   "title": "Voice entries (30d)",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM journal_entries WHERE user_id=$user AND source='telegram_voice' AND date > CURRENT_DATE - 30",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 221,
+   "type": "stat",
+   "title": "Tags in use",
+   "description": "",
+   "gridPos": {
+    "x": 21,
+    "y": 0,
+    "w": 3,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(DISTINCT tag) AS value FROM journal_entries je, unnest(je.tags) AS tag WHERE je.user_id=$user",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "area",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 222,
    "type": "timeseries",
    "title": "Mood \u00b7 Energy \u00b7 Motivation",
    "description": "",
    "gridPos": {
     "x": 0,
-    "y": 4,
-    "w": 16,
-    "h": 9
+    "y": 5,
+    "w": 12,
+    "h": 8
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -340,12 +596,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 0,
      "max": 10,
@@ -359,7 +619,184 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "mood"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#E02F44"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "energy"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "motivation"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "showLegend": true,
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 223,
+   "type": "timeseries",
+   "title": "Mood vs training strain",
+   "description": "Left axis 0\u201310 subjective mood; right axis daily strain (\u00a77).",
+   "gridPos": {
+    "x": 12,
+    "y": 5,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", mood_score AS mood FROM journal_entries WHERE user_id=$user AND mood_score IS NOT NULL AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", strain_score AS strain FROM daily_features WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "B",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "mood"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#E02F44"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "strain"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "strain"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -374,15 +811,15 @@
    }
   },
   {
-   "id": 177,
+   "id": 224,
    "type": "timeseries",
    "title": "Soreness & subjective stress",
    "description": "",
    "gridPos": {
-    "x": 16,
-    "y": 4,
+    "x": 0,
+    "y": 13,
     "w": 8,
-    "h": 9
+    "h": 8
    },
    "datasource": {
     "type": "grafana-postgresql-datasource",
@@ -406,12 +843,16 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
      "min": 0,
      "max": 10,
@@ -425,7 +866,38 @@
       ]
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "soreness"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "stress"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#F2495C"
+        }
+       }
+      ]
+     }
+    ]
    },
    "options": {
     "legend": {
@@ -440,14 +912,14 @@
    }
   },
   {
-   "id": 178,
+   "id": 225,
    "type": "timeseries",
    "title": "Sleep: subjective vs measured",
-   "description": "",
+   "description": "Left axis 0\u201310 subjective; right axis 0\u2013100 measured score.",
    "gridPos": {
-    "x": 0,
+    "x": 8,
     "y": 13,
-    "w": 12,
+    "w": 8,
     "h": 8
    },
    "datasource": {
@@ -483,13 +955,122 @@
      "unit": null,
      "custom": {
       "drawStyle": "line",
-      "lineWidth": 2,
-      "fillOpacity": 8,
+      "lineWidth": 3,
+      "fillOpacity": 22,
+      "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
-      "axisPlacement": "auto"
+      "axisPlacement": "auto",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
      },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "subjective"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#B877D9"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "measured"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#73BF69"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "measured"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 8
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 226,
+   "type": "piechart",
+   "title": "Entry source",
+   "description": "web vs telegram_voice (\u00a710.2 speech-to-text flow).",
+   "gridPos": {
+    "x": 16,
+    "y": 13,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT now() AS \"time\", je.source AS metric, COUNT(*) AS value FROM journal_entries je WHERE je.user_id=$user AND $__timeFilter(je.date) GROUP BY 2",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
      "min": null,
      "max": null,
      "thresholds": {
@@ -505,25 +1086,33 @@
     "overrides": []
    },
    "options": {
+    "pieType": "donut",
+    "displayLabels": [
+     "name",
+     "percent"
+    ],
     "legend": {
-     "displayMode": "list",
-     "placement": "bottom",
-     "showLegend": true
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true,
+     "values": [
+      "value"
+     ]
     },
     "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
+     "mode": "single",
+     "sort": "none"
     }
    }
   },
   {
-   "id": 179,
+   "id": 227,
    "type": "barchart",
    "title": "Tags",
    "description": "",
    "gridPos": {
-    "x": 12,
-    "y": 13,
+    "x": 0,
+    "y": 21,
     "w": 12,
     "h": 8
    },
@@ -539,9 +1128,9 @@
      },
      "editorMode": "code",
      "rawQuery": true,
-     "rawSql": "SELECT now() AS \"time\", tag AS metric, COUNT(*) AS value FROM journal_entries je, unnest(je.tags) AS tag WHERE je.user_id=$user AND $__timeFilter(je.date) GROUP BY 2 ORDER BY 3 DESC",
+     "rawSql": "SELECT tag AS \"tag\", COUNT(*) AS \"uses\" FROM journal_entries je, unnest(je.tags) AS tag WHERE je.user_id=$user AND $__timeFilter(je.date) GROUP BY 1 ORDER BY 2 DESC",
      "refId": "A",
-     "format": "time_series"
+     "format": "table"
     }
    ],
    "fieldConfig": {
@@ -581,13 +1170,87 @@
    }
   },
   {
-   "id": 180,
+   "id": 228,
+   "type": "barchart",
+   "title": "Days logged per week",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 21,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date_trunc('week', date) AS \"time\", COUNT(*) AS entries FROM journal_entries je WHERE je.user_id=$user AND $__timeFilter(je.date) GROUP BY 1 ORDER BY 1",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 85,
+      "showPoints": "never",
+      "spanNulls": false
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "auto",
+    "showValue": "never",
+    "stacking": "off",
+    "groupWidth": 0.7,
+    "barWidth": 0.8,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    },
+    "xTickLabelRotation": -25
+   }
+  },
+  {
+   "id": 229,
    "type": "table",
    "title": "Recent entries",
    "description": "Voice-sourced rows (\u00a710.2) carry the transcript + confirm flow.",
    "gridPos": {
     "x": 0,
-    "y": 21,
+    "y": 29,
     "w": 24,
     "h": 10
    },
