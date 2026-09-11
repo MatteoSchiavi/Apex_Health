@@ -16,6 +16,7 @@ from app.models.features import (
     FeatureWeight,
 )
 from app.models.integration import Integration, RawIngest
+from app.models.gym import GymScheduleSlot
 from app.models.gear import (
     ActivityGearLink,
     DisciplineGearDefault,
@@ -63,6 +64,7 @@ __all__ = [
     "ForecastCache",
     "Gear",
     "GearServiceLog",
+    "GymScheduleSlot",
     "HrvReading",
     "Integration",
     "JournalEntry",

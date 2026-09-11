@@ -10,6 +10,9 @@ EXPECTED_TABLES = {
     # Phase 10 addition (documented judgment call — §6.4 has no
     # device-presentable credential type; see alembic/versions/0004)
     "device_tokens",
+    # Phase 10 v2 addition (the rethought watch app — recurring weekly gym
+    # routine; §6.4's training_plans are week-scoped, not standing templates)
+    "gym_schedule_slots",
     # disciplines & gear
     "disciplines", "gear", "gear_service_logs", "discipline_gear_defaults",
     # activities

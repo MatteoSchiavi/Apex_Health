@@ -1,4 +1,5 @@
-"""Bot commands (§10.3): /status, /donate, /report, /gear, /plan, /forecast.
+"""Bot commands (§10.3): /status, /donate, /report, /gear, /plan, /forecast,
+/gym.
 
 All data reads go through app/queries (§8.2 — one implementation per read,
 shared with the future agent tools and report tasks). /report is the
@@ -16,6 +17,8 @@ from app.connectors.telegram.link_flow import get_linked_user_id
 from app.models.user import User
 from app.queries import (
     activities_on_local_date,
+    create_slot,
+    delete_slot,
     describe_weather_code,
     get_donation_status,
     get_forecast,
@@ -23,8 +26,12 @@ from app.queries import (
     gear_overview,
     integrations_overview,
     latest_daily_feature,
+    list_slots,
     open_alerts,
+    resolve_day,
+    resolve_range,
     sleep_on_local_date,
+    update_slot,
 )
 
 logger = logging.getLogger("connectors.telegram.commands")
@@ -262,3 +269,145 @@ async def cmd_forecast(ctx, chat_id: int, user_id: int, arg: str = "") -> str:
     )
     lines = [header] + [format_forecast_day(r) for r in rows]
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------------ /gym ----
+
+GYM_HELP = (
+    "Gym schedule (Phase 10 v2):\n"
+    "/gym — today's sessions\n"
+    "/gym week — the 7-day schedule\n"
+    "/gym list — recurring slots (with ids)\n"
+    "/gym set Mon 18:00 Push Day — add a recurring slot\n"
+    "/gym note <id> Bench 4x8 · Incline 3x10 — attach exercises\n"
+    "/gym rm <id> — remove a slot\n"
+    "Date-specific AI-planned sessions (confirmed plans) override the "
+    "recurring template on their dates."
+)
+
+_WEEKDAYS = {
+    "mon": 0, "monday": 0,
+    "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "weds": 2, "wednesday": 2,
+    "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
+}
+
+GYM_SET_USAGE = "Usage: /gym set Mon 18:00 Push Day"
+
+
+def _parse_weekday(token: str) -> int | None:
+    return _WEEKDAYS.get(token.strip().lower())
+
+
+def _format_session(entry: dict) -> str:
+    bits = []
+    if entry.get("start_time"):
+        bits.append(entry["start_time"])
+    if entry.get("target_duration_min"):
+        bits.append(f"{entry['target_duration_min']} min")
+    bits.append(entry["title"])
+    origin = "plan" if entry["source"] == "plan" else "routine"
+    line = f"- {' · '.join(bits)} ({origin})"
+    if entry.get("description"):
+        line += f"\n    {entry['description']}"
+    return line
+
+
+async def cmd_gym(ctx, chat_id: int, user_id: int, arg: str = "") -> str:
+    """Phase 10 v2: the gym schedule in Telegram — read paths share the query
+    layer with the watch endpoints; quick edits mean the routine can be
+    maintained from a phone without any REST client."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    parts = arg.strip().split(None, 1)
+    sub = (parts[0].lower() if parts else "") or "today"
+    rest = parts[1] if len(parts) > 1 else ""
+
+    async with ctx.sessionmaker() as session:
+        user = await session.get(User, user_id)
+        now = datetime.now(ZoneInfo(user.timezone))
+        local_today = now.date()
+
+        if sub in ("today", "tomorrow"):
+            day = local_today if sub == "today" else local_today + timedelta(days=1)
+            sessions = await resolve_day(session, user_id, day)
+            if not sessions:
+                return f"No sessions scheduled for {day.isoformat()} — rest day."
+            lines = [f"Gym — {day.isoformat()} ({now.strftime('%a') if sub == 'today' else ''}):"]
+            lines += [_format_session(e) for e in sessions]
+            return "\n".join(lines).replace("  )", ")")
+
+        if sub == "week":
+            monday = local_today - timedelta(days=local_today.weekday())
+            week = await resolve_range(session, user_id, monday, days=7)
+            names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            lines = [f"Week of {monday.isoformat()}:"]
+            for day_entry in week:
+                if day_entry["sessions"]:
+                    for entry in day_entry["sessions"]:
+                        when = entry.get("start_time") or ""
+                        lines.append(f"- {names[day_entry['weekday']]} {when} {entry['title']}".rstrip())
+                else:
+                    lines.append(f"- {names[day_entry['weekday']]} — rest")
+            return "\n".join(lines)
+
+        if sub == "list":
+            slots = await list_slots(session, user_id)
+            if not slots:
+                return "No recurring slots yet.\n" + GYM_HELP
+            names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            lines = ["Recurring weekly slots:"]
+            for s in slots:
+                flag = "" if s.active else " (paused)"
+                lines.append(f"#{s.id} {names[s.weekday]} {s.start_time.strftime('%H:%M')} {s.title}{flag}")
+                if s.description:
+                    lines.append(f"    {s.description}")
+            return "\n".join(lines)
+
+        if sub == "set":
+            tokens = rest.split(None, 2)
+            if len(tokens) < 3:
+                return GYM_SET_USAGE
+            weekday = _parse_weekday(tokens[0])
+            if weekday is None:
+                return GYM_SET_USAGE
+            time_token = tokens[1]
+            try:
+                hour, minute = time_token.split(":", 1)
+                start = datetime.strptime(f"{int(hour):02d}:{int(minute):02d}", "%H:%M").time()
+            except (ValueError, TypeError):
+                return GYM_SET_USAGE
+            title = tokens[2].strip()
+            if not title or len(title) > 60:
+                return "Title must be 1-60 characters."
+            slot = await create_slot(session, user_id, weekday, start, title)
+            await session.commit()
+            names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            return (
+                f"Added #{slot.id}: {names[weekday]} {start.strftime('%H:%M')} {title}\n"
+                f"Attach exercises with /gym note {slot.id} <exercises>."
+            )
+
+        if sub == "note":
+            tokens = rest.split(None, 1)
+            if len(tokens) < 2 or not tokens[0].isdigit():
+                return "Usage: /gym note <id> <exercises>"
+            slot = await update_slot(session, user_id, int(tokens[0]), description=tokens[1].strip()[:2000])
+            if slot is None:
+                return "No such slot."
+            await session.commit()
+            return f"Updated #{slot.id} {slot.title}:\n    {slot.description}"
+
+        if sub == "rm":
+            if not rest.strip().isdigit():
+                return "Usage: /gym rm <id>"
+            if not await delete_slot(session, user_id, int(rest.strip())):
+                return "No such slot."
+            await session.commit()
+            return "Removed."
+
+        return GYM_HELP

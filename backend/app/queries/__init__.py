@@ -7,6 +7,17 @@ with each phase; Phase 5 adds the remaining §8.3 tools (metrics, journal,
 plans, search) plus the token_usage accounting (§8.6).
 """
 
+from app.queries.gym import (
+    active_supplements,
+    create_slot,
+    delete_slot,
+    journal_streak,
+    list_slots,
+    open_alert_summaries,
+    resolve_day,
+    resolve_range,
+    update_slot,
+)
 from app.queries.journal import get_journal_entries
 from app.queries.labs import get_donation_status, get_lab_trend
 from app.queries.metrics import (

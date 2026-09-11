@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Apex Health glance — Connect IQ manifest (MASTER_SPEC §23 Phase 10).
+<!-- Apex Day — Connect IQ manifest (Phase 10 v2, the rethought watch app).
+     The app surfaces what ONLY Apex knows (gym schedule, supplements,
+     alerts, journal streak) — readiness/recovery/strain stay native on the
+     device (Training Readiness / Recovery Time / Body Battery).
      Glances need Connect IQ 4.0 (minApiVersion); every product listed below
      ships it. Communications permission covers makeWebRequest to the Funnel
      URL; Background powers the 30-minute temporal refresh so the glance is
