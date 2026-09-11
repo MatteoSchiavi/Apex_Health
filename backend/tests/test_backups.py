@@ -6,10 +6,7 @@ PostgreSQL toolchain deps. The LIVE end-to-end restore drill (real pg_dump,
 real database) is a phase demo, not a unit test — see scripts/demo_phase8.py.
 """
 
-import base64
-import hashlib
 import os
-import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,24 +22,6 @@ from app.core.backups import (
     read_backup,
 )
 from app.tasks.backups import run_nightly_backup
-
-FAKE_SQL = (
-    "--\n-- PostgreSQL database dump\n--\n\n"
-    "CREATE TABLE public.daily_features (user_id integer);\n"
-    "COPY public.daily_features (user_id) FROM stdin;\n"
-    "42\n"
-    "\\.\n"
-    "-- PostgreSQL database dump complete\n"
-)
-
-
-@pytest.fixture
-def fake_pg_dump(tmp_path: Path):
-    """An executable stand-in for pg_dump that emits a tiny valid dump."""
-    script = tmp_path / "fake_pg_dump.sh"
-    script.write_text(f"#!/bin/sh\ncat <<'SQLEOF'\n{FAKE_SQL}SQLEOF\n")
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    return str(script)
 
 
 @pytest.fixture
@@ -243,6 +222,9 @@ def test_fernet_key_derivation_is_dedicated(tmp_path, fake_pg_dump):
     """§22.7 judgment call: the backup key is independent from the app's
     ENCRYPTION_KEY — an artifact made with the backup key must NOT open with
     the app-layer key, and vice versa."""
+    import base64
+    import hashlib
+
     from cryptography.fernet import Fernet
 
     d = tmp_path / "bk"
