@@ -91,6 +91,26 @@ class Settings(BaseSettings):
     # proactive Telegram nudge per user per day. <=0 disables the nudge.
     weather_nudge_readiness_threshold: float = 70.0
 
+    # --- Backups (§22.7, §19): nightly pg_dump, encrypted with a key DEDICATED
+    # to backups (independent from ENCRYPTION_KEY so a leaked app key cannot
+    # open backups and vice versa), retained 14 daily + 6 monthly archives.
+    # Unset key => the nightly task logs an honest skip instead of writing a
+    # plaintext dump (an unencrypted dump of health data must not exist).
+    backup_encryption_key: str = ""
+    backup_dir: str = str(REPO_ROOT / "backups")
+    # Restore path needs a pg_dump/pg_restore-capable toolchain in PATH; overridable
+    # for sandboxes and containers where the binary lives elsewhere.
+    pg_dump_bin: str = "pg_dump"
+    backup_retain_daily: int = 14
+    backup_retain_monthly: int = 6
+
+    # --- B2 offsite (§22.7: Backblaze B2 free tier) ---
+    # Unset => uploads are skipped with a logged note; local encrypted copies
+    # still happen so the restore drill never depends on a remote service.
+    b2_application_key_id: str = ""
+    b2_application_key: str = ""
+    b2_bucket: str = ""
+
     # --- Tunables (spec defaults) ---
     environment: str = "dev"
     # §22: session cookies are short-lived with sliding expiry.

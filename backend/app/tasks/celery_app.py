@@ -2,7 +2,8 @@
 that have landed so far: Garmin + Technogym syncs every 6 hours (Phases 1/6),
 the forecast refresh every 6 hours (Phase 7, §19), the nightly feature engine
 at 03:00 user-local (Phase 2), nightly gear accumulation right after it
-(Phase 4), and the daily AI budget check at 23:45 UTC (Phase 5, §8.6)."""
+(Phase 4), the daily AI budget check at 23:45 UTC (Phase 5, §8.6), and the
+nightly encrypted database backup at 02:00 UTC (Phase 8, §22.7/§19)."""
 
 from celery import Celery
 from celery.schedules import crontab
@@ -25,6 +26,7 @@ celery_app = Celery(
         "app.tasks.budget",
         "app.tasks.ai_reports",
         "app.tasks.telegram_voice",
+        "app.tasks.backups",
     ],
 )
 
@@ -98,6 +100,12 @@ celery_app.conf.update(
         "monthly-report-hourly-dispatch": {
             "task": "reports.monthly",
             "schedule": crontab(minute=0),
+        },
+        # §19/§22.7: nightly encrypted pg_dump at 02:00 UTC. Database-wide
+        # job — no per-user local-time semantics, so a plain UTC crontab.
+        "nightly-backup": {
+            "task": "backups.nightly",
+            "schedule": crontab(minute=0, hour=2),
         },
     },
 )

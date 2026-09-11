@@ -14,6 +14,10 @@ __pycache__/
 *.db
 *.sqlite3
 
+# Database backups — encrypted artifacts of REAL HEALTH DATA (§22.7).
+# Never commit, never push. Restore tooling lives in backend/tools/.
+backups/
+
 # OS / editor
 .DS_Store
 .idea/
