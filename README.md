@@ -6,7 +6,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-247_green-73BF69)
+![Tests](https://img.shields.io/badge/tests-257_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **Technogym gym
 sessions**, **blood-donation lab panels**, **subjective journaling via
@@ -445,29 +445,47 @@ call documented in `app/core/backups.py`).
   Funnel-shaped local HTTPS terminator: redeem + login *over the Funnel
   URL* → only own rows visible.
 
-### Connect IQ watch app (Phase 10)
+### Connect IQ watch app — "Apex Day" (Phase 10 v2, rethought)
 
-`/connectiq` — a Monkey C **glance** for Garmin wearables (fr965 / fenix7x /
-epix2 pinned; any CIQ 4.0+ product works): the glance strip on the watch
-face shows **today's readiness, recovery and strain**, color-banded, with
-the as-of date so a stale day can't pose as today (the server reports
-`stale` honestly when the nightly engine hasn't scored today yet).
+The original Phase 10 put readiness / recovery / strain on the wrist — the
+wrong idea, because every supported device already renders those natively
+(Training Readiness, Recovery Time, Body Battery / Training Load). Phase 10
+v2 rethought the app around the actual need: the watch is where Apex shows
+what **only Apex knows** and Garmin cannot:
 
-- **Backend:** migration 0004 adds `device_tokens` (a documented judgment
-  call — the §6.4 schema predates the watch and has no device-presentable
-  credential; tokens are peppered-hash like sessions, soft-revocable,
-  per-user). `GET /watch/today` is Bearer-authed and answers with the **token
-  owner's** scores for the **owner's local date** (§17) — isolation is
-  structural: there is no parameter by which a friend's watch could ask for
-  someone else's numbers.
-- **Device side:** 30-minute background temporal event fetches and caches;
-  the glance paints from `Application.Storage` with zero network latency;
-  opening the app refreshes live; a 401 clears the cache so a revoked token
-  never leaves yesterday's numbers on display.
-- **Honest limit:** the source is reviewed against the CIQ 4.0 API surface
-  but **not compiled here** (the SDK isn't fetchable in this environment) —
-  `connectiq/README.md` has the exact `monkeyc` build + sideload steps for
-  the owner's machine.
+- **Gym schedule** — the recurring weekly routine (`gym_schedule_slots`,
+  migration 0005: weekday + start time + title + exercises block). Confirmed
+  AI training plans (`planned_sessions`) **override** the recurring template
+  on their specific dates — the routine is the baseline, the plan refines
+  individual days. Managed from Telegram (`/gym`, `/gym week`, `/gym set Mon
+  18:00 Push Day`, `/gym note <id> Bench 4x8 · Incline 3x10`, `/gym list`,
+  `/gym rm`) or REST (`GET/POST /schedule`, `PATCH/DELETE /schedule/{id}`).
+- **Supplements due today** — active protocols with dose.
+- **Apex alerts** — open, severity-colored (ferritin trends, sync failures,
+  gear service due); acking stays in Telegram/web.
+- **Journal streak** — consecutive journal days (ends today, or yesterday
+  when today's entry hasn't happened yet).
+
+Surfaces: the **glance** strip shows today's session (title + time) or
+"Rest day" plus the supplement/alert/streak counts; opening the app gives a
+menu — **Today** (sessions with wrapped exercises, supplements, alerts,
+streak), **Week** (7-day schedule, today highlighted, plan overrides marked),
+**Alerts** (severity-colored list). A 30-minute background temporal event
+refreshes the day cache; views paint from `Application.Storage` so the wrist
+never blocks on the radio.
+
+- **Backend:** migration 0004 `device_tokens` (peppered-hash, soft-revocable,
+  per-user — unchanged) plus the new v2 Bearer-authed endpoints `GET
+  /watch/day` and `GET /watch/week` (owner-local dates, §17); `GET
+  /watch/today` remains for the scores. Isolation stays structural: a
+  friend's watch token resolves only the friend's schedule (tested both
+  directions).
+- **Device side:** on 401 the app deletes its cached data and shows "Token
+  invalid" — a revoked token never leaves yesterday's plan posing as today.
+- **Honest limit:** the Monkey C source is written against the CIQ 4.0 API
+  surface but **not compiled here** (the SDK isn't fetchable in this
+  environment) — `connectiq/README.md` has the exact `monkeyc` build +
+  sideload steps for the owner's machine.
 
 ### CI & drill re-run (Phase 11)
 
@@ -477,7 +495,7 @@ the as-of date so a stale day can't pose as today (the server reports
   Alembic chain per session, so CI sees the same schema as local.
 - **Hardening re-verified** in the fresh environment: the §20/§21/§22 audit
   suites (sliding-session expiry, served-route auth matrix, JSON logging,
-  alert/log channel separation) all green — 247 tests total.
+  alert/log channel separation) all green — 257 tests total.
 - **Restore drill re-run live** on this deployment: **47/47 tables match**
   (now including `device_tokens`), `alembic_version=0004`, the encrypted lab
   note round-trips with the app key. The drill is committed and rerunnable —
@@ -502,7 +520,7 @@ the as-of date so a stale day can't pose as today (the server reports
 | 8 | Hardening audit, encrypted backups + B2 offsite + **restore drill 46/46** | ✅ |
 | — | Temporary Grafana web UI (8 dashboards / 147 panels) | ✅ |
 | 9 | Multi-user: invite flow, friend accounts, **data-isolation proof**, Tailscale Funnel readiness + setup guide | ✅ |
-| 10 | Connect IQ watch app: glance shows today's readiness / recovery / strain (+ `/watch/today` + per-user device tokens) | ✅ source+API; `.prg` build/sideload needs the owner's SDK + watch |
+| 10 | Connect IQ watch app **v2 "Apex Day"** (rethought): gym schedule + supplements + alerts + streak on the wrist, NOT native scores; `/watch/day`, `/watch/week`, `/schedule` CRUD, `/gym` bot, recurring `gym_schedule_slots` + plan-override resolution | ✅ source+API, demoed live; `.prg` build needs the owner's SDK + watch |
 | 11 | CI on every push (§20), hardening re-verified, **restore drill re-run live: 47/47** | ✅ |
 | — | Real dashboard style (Appendix A) | ⏳ deferred by owner |
 
@@ -539,13 +557,14 @@ backend/
     schemas/      Pydantic boundary schemas
     tasks/        Celery app + beat schedule (§19)
   alembic/        migrations
-  tests/          37 test files / 247 tests — fixtures only, no live APIs (§20)
+  tests/          38 test files / 257 tests — fixtures only, no live APIs (§20)
   tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
                   restore_backup, restore_drill, demo_phase9 (AC demo)
 grafana/          temporary web UI: provisioning, generated dashboards,
                   build/validate tooling, run_grafana.sh
-connectiq/        Garmin watch glance app (Monkey C): readiness/recovery/
-                  strain on the wrist, talks to /watch/today over the Funnel
+connectiq/        Garmin watch app "Apex Day" (Monkey C): gym schedule,
+                  supplements, alerts, journal streak — talks to /watch/day
+                  and /watch/week over the Funnel
 infra/            docker-compose.yml (db · redis · api · worker · bot)
                   + tailscale-funnel-setup.md (§15 remote access)
 scripts/          reset-dev.sh
@@ -559,7 +578,7 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 247 tests, fixtures only — no live APIs
+uv run pytest -q                   # 257 tests, fixtures only — no live APIs
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

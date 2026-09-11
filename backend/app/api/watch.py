@@ -5,10 +5,20 @@ Token management (session-authed, each user mints their own):
   GET    /watch/tokens        -> own tokens with mint/last-used/revoked state
   DELETE /watch/tokens/{id}   -> soft-revoke one of MY tokens
 
-Data endpoint (Bearer-token authed — cookie auth is impossible on a Connect
+Data endpoints (Bearer-token authed — cookie auth is impossible on a Connect
 IQ device; makeWebRequest carries the token in the Authorization header):
   GET    /watch/today         -> {readiness, recovery, strain, as_of date,
                                   data completeness} for the TOKEN OWNER.
+  GET    /watch/day  (v2)     -> the Apex-only day: gym sessions (recurring
+                                  schedule, overridden by date-specific
+                                  planned sessions), active supplements, open
+                                  alerts, journal streak. This is the payload
+                                  the rethought app actually shows — the old
+                                  scores stay available but are NOT what the
+                                  glance duplicates (Garmin already shows
+                                  Training Readiness / Recovery / Body Battery
+                                  natively).
+  GET    /watch/week (v2)     -> 7 resolved days for the week view.
 
 Isolation is structural: the token resolves to exactly one user, and the
 daily_features row is fetched by that user's id and that user's LOCAL date
@@ -16,7 +26,7 @@ daily_features row is fetched by that user's id and that user's LOCAL date
 numbers, there is no parameter to do otherwise.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -31,6 +41,13 @@ from app.core.security import hash_session_token, new_session_token
 from app.models.features import DailyFeature
 from app.models.user import User, UserSession
 from app.models.watch import DeviceToken
+from app.queries import (
+    active_supplements,
+    journal_streak,
+    open_alert_summaries,
+    resolve_day,
+    resolve_range,
+)
 
 router = APIRouter(prefix="/watch", tags=["watch"])
 
@@ -198,3 +215,71 @@ async def today(
         data_completeness=row.data_completeness,
         stale=stale,
     )
+
+
+# ------------------------------------------------------- v2: Apex-only payload
+
+
+def _compact_session(entry: dict) -> dict:
+    """Radio-friendly session dict for the wrist (short keys, no nulls)."""
+    out = {
+        "title": entry["title"],
+        "source": entry["source"],  # schedule | plan
+        "start": entry["start_time"],  # null for plan sessions (date-anchored)
+        "duration": entry["target_duration_min"],
+    }
+    description = entry.get("description")
+    if description:
+        out["notes"] = description[:800]  # exercises block; truncation is honest
+    return out
+
+
+class WatchDay(BaseModel):
+    date: str
+    weekday: int  # 0=Mon .. 6=Sun (watch renders its own names)
+    sessions: list[dict]
+    supplements: list[dict]
+    alerts: dict
+    journal_streak: int
+
+
+class WatchWeek(BaseModel):
+    week_start: str
+    days: list[dict]
+
+
+@router.get("/day", response_model=WatchDay)
+async def watch_day(
+    session: AsyncSession = Depends(get_session),
+    principal: tuple[User, DeviceToken] = Depends(get_watch_principal),
+) -> WatchDay:
+    user, _token = principal
+    local_today = datetime.now(ZoneInfo(user.timezone)).date()
+    return WatchDay(
+        date=local_today.isoformat(),
+        weekday=local_today.weekday(),
+        sessions=[
+            _compact_session(e)
+            for e in await resolve_day(session, user.id, local_today)
+        ],
+        supplements=await active_supplements(session, user.id, local_today),
+        alerts=await open_alert_summaries(session, user.id),
+        journal_streak=await journal_streak(session, user.id, local_today),
+    )
+
+
+@router.get("/week", response_model=WatchWeek)
+async def watch_week(
+    session: AsyncSession = Depends(get_session),
+    principal: tuple[User, DeviceToken] = Depends(get_watch_principal),
+) -> WatchWeek:
+    """The 7 days starting Monday of the token owner's LOCAL current week —
+    the gym schedule is a weekly template, so the week view anchors on the
+    user-local Monday (§17 day-boundary rule)."""
+    user, _token = principal
+    local_today = datetime.now(ZoneInfo(user.timezone)).date()
+    monday = local_today - timedelta(days=local_today.weekday())
+    resolved = await resolve_range(session, user.id, monday, days=7)
+    for day in resolved:
+        day["sessions"] = [_compact_session(e) for e in day["sessions"]]
+    return WatchWeek(week_start=monday.isoformat(), days=resolved)

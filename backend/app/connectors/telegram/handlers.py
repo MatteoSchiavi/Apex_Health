@@ -15,6 +15,7 @@ from app.agent.entrypoint import run_agent_turn
 from app.connectors.telegram.commands import (
     cmd_donate,
     cmd_forecast,
+    cmd_gym,
     cmd_gear,
     cmd_plan,
     cmd_report,
@@ -67,6 +68,7 @@ UNKNOWN_COMMAND = (
     "/report — templated daily report\n"
     "/gear — gear usage vs service intervals\n"
     "/plan — today's confirmed plan sessions\n"
+    "/gym — gym schedule (today / week / set / list / note / rm)\n"
     "/forecast [days] — cached weather forecast (§14)"
 )
 
@@ -84,10 +86,11 @@ DATA_COMMANDS = {
     "/gear": cmd_gear,
     "/plan": cmd_plan,
     "/forecast": cmd_forecast,
+    "/gym": cmd_gym,
 }
 
 # Data commands whose trailing argument is meaningful (e.g. "/forecast 3").
-ARG_COMMANDS = {"/forecast"}
+ARG_COMMANDS = {"/forecast", "/gym"}
 
 
 async def handle_update(ctx, update: dict) -> None:

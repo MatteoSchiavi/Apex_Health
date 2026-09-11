@@ -1,13 +1,10 @@
 <strings>
-    <string id="AppName">Apex Health</string>
-    <string id="AppTitle">Apex Health</string>
+    <string id="AppName">Apex Day</string>
+    <string id="AppTitle">Apex Day</string>
     <string id="ServerUrlTitle">Server URL</string>
     <string id="ServerUrlPrompt">Full Funnel URL, e.g. https://host.tailnet.ts.net</string>
     <string id="TokenTitle">API token</string>
     <string id="TokenPrompt">Mint with POST /watch/tokens (see repo docs)</string>
-    <string id="LabelReady">READY</string>
-    <string id="LabelRecovery">RECOVERY</string>
-    <string id="LabelStrain">STRAIN</string>
     <string id="NoData">No data yet</string>
     <string id="Syncing">Syncing...</string>
 </strings>

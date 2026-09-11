@@ -1,105 +1,111 @@
-# Apex Health — Connect IQ glance
+# Apex Day — Connect IQ watch app (Phase 10 v2)
 
-A Connect IQ **glance** (watch-app with glance view) for Garmin wearables:
-on your watch face's glance strip it shows **today's readiness, recovery and
-strain** — the three §7 composite scores — color-banded like the rest of the
-platform (green/amber/red, `--` when the day has no scores yet).
+The **rethought** watch app. The original Phase 10 put readiness / recovery /
+strain on the wrist — which was the wrong idea: every supported device already
+renders those natively (Training Readiness, Recovery Time, Body Battery /
+Training Load). A data page duplicating them is a worse copy of what the watch
+already shows.
+
+**Apex Day shows what ONLY Apex knows:**
+
+| Surface | Content | Source |
+|---|---|---|
+| **Glance** | today's gym session (title + time) or "Rest day"; supplement / open-alert / streak counts | `GET /watch/day` via 30-min background refresh |
+| **Today** | gym sessions with the exercises block (recurring routine + `PLANNED SESSION` AI overrides), active supplements, open alerts, journal streak | `GET /watch/day` |
+| **Week** | 7-day schedule, today highlighted — planned sessions override the recurring template on their dates | `GET /watch/week` |
+| **Alerts** | open alerts, severity-colored (acking stays in Telegram/web) | `GET /watch/day` (cached) |
+
+## Data flow
 
 ```
-┌──────────────────────────┐        ┌──────────────────────────┐
-│ READY              82.5  │        │ READY              88.0  │  green
-│ RECOVERY           61.0  │        │ RECOVERY           38.0  │  red
-│ STRAIN             14.2  │        │ STRAIN              9.5  │  green
-│            2026-09-11    │        │            2026-09-10    │  stale: date shown
-└──────────────────────────┘        └──────────────────────────┘
+┌────────┐  makeWebRequest (Bearer device token, 15 min while open)  ┌────────┐
+│  watch  │ ────────────────────────────────────────────────────────▶ │  Apex   │
+│ (BLE +  │ ◀─────────────────────────── JSON /watch/day, /watch/week │ backend │
+│  phone) │                                                            └────────┘
+│         │  background temporal event every 30 min → /watch/day
+│         │  results parked in Application.Storage ($ keys)
+└────────┘
+        glance + views paint from Storage — never block on the radio
 ```
 
-## How it talks to the server
+- **Auth**: a per-user device token (`POST /watch/tokens`, plaintext shown
+  once, peppered-hash at rest, soft-revocable). On 401 the app DELETES its
+  cached data and shows "Token invalid" — a revoked token can never pose
+  stale data as current.
+- **Isolation**: the token resolves to exactly one user; there is no
+  parameter to fetch anyone else's schedule (proven by tests,
+  `tests/test_gym_schedule.py`).
+- **Server URL**: your Tailscale Funnel URL (`https://host.tailnet.ts.net`) —
+  the same surface friends use for remote access (§15).
 
-- Data source: `GET /watch/today` (Bearer token) — see `backend/app/api/watch.py`.
-  The server answers with the **token owner's** scores for the **owner's
-  local date** (§17 day-boundary rule); a friend's watch can only ever see
-  the friend's numbers — isolation is structural, not a parameter.
-- Token: mint with `POST /watch/tokens` (any session — owner or friend):
-
-  ```sh
-  curl -X POST https://<funnel-host>.ts.net/watch/tokens \
-       -H "Content-Type: application/json" \
-       -H "X-CSRF-Token: t" \
-       -b "hcc_session=<your session cookie>" \
-       -d '{"name": "fr965"}'
-  # {"id": 3, "name": "fr965", "token": "<ONE-TIME SECRET>", ...}
-  ```
-
-  Revoke with `DELETE /watch/tokens/{id}` (immediate: the next request
-  answers 401 and the watch drops its cache).
-- On the watch: open **Settings → Connect IQ → Apex Health → Settings** and
-  paste the **Funnel URL** (`https://<host>.<tailnet>.ts.net`) and the token.
-- Refresh model: a background temporal event (every 30 min) fetches and
-  caches into `Application.Storage`; the **glance never touches the network**
-  — it paints from cache in milliseconds. Opening the app refreshes live.
-- When today isn't scored yet (the nightly engine runs 03:00 user-local),
-  the server serves the most recent scored day with `stale: true` — the
-  glance shows that date so yesterday's recovery never poses as today's.
-
-## Building the .prg
-
-You need the Garmin Connect IQ SDK and a developer key (once):
-
-```sh
-# 1. SDK: install via https://developer.garmin.com/connect-iq/sdk/ or:
-#    SDK Manager -> "Connect IQ SDK" (linux tarball), unzip anywhere.
-# 2. Developer key (used to sign the .prg):
-openssl genrsa -out developer_key.pem 4096
-
-# 3. Compile (from this directory):
-monkeyc -f monkey.jungle \
-        -y developer_key.pem \
-        -d fr965 \
-        -w \
-        -o bin/apexhealth.prg
-
-# 4. Sideload: copy bin/apexhealth.prg to GARMIN/Apps/ on the watch (or use
-#    the SDK's device simulator: connectiq -d fr965, then File > Load App).
-```
-
-Alternatively open this folder in VS Code with the official *Connect IQ
-SDK* extension — it reads `monkey.jungle` and builds/simulates with F5.
-
-Products pinned in `manifest.xml`: **fr965, fenix7x, epix2** (all Connect IQ
-4.0+, all with glance support). Add more `<iq:product id="..."/>` lines as
-needed — the code uses only CIQ-4.0 APIs (`GlanceView`, `ServiceDelegate`,
-`makeWebRequest`).
-
-## Repo layout
+## Files
 
 ```
 connectiq/
-├── manifest.xml            # app metadata, products, permissions, glances entry
-├── monkey.jungle           # build config consumed by monkeyc
-├── resources/
-│   ├── strings/strings.xml     # user-visible strings
-│   ├── properties/properties.xml  # server_url + api_token defaults
-│   ├── settings/settings.xml   # editable from Garmin Connect / Express
-│   └── drawables/              # launcher icon (generated, 34x34)
+├── manifest.xml                  # watch-app + glances, CIQ 4.0 (fr965/fenix7x/epix2)
+├── monkey.jungle                 # build config
 └── source/
-    ├── ApexApp.mc              # entry: glance + app + background service
-    ├── ApexTodayService.mc     # /watch/today fetch + Storage cache
-    ├── ApexGlanceView.mc       # THE GLANCE (readiness/recovery/strain)
-    ├── ApexView.mc             # full-screen view + manual refresh
-    ├── ApexBackgroundService.mc# 30-min temporal fetch
-    └── ApexScore.mc            # shared format/color bands
+    ├── ApexApp.mc                # entry: Menu2 (Today/Week/Alerts) + glance + service
+    ├── ApexDayService.mc         # /watch/day + /watch/week fetch, Storage cache, 401 wipe
+    ├── ApexFormat.mc             # weekday names, severity colors, word-wrap
+    ├── ApexGlanceView.mc         # glance: session + counts
+    ├── ApexTodayView.mc          # full day: gym / supplements / alerts / streak
+    ├── ApexWeekView.mc           # 7-day schedule
+    ├── ApexAlertsView.mc         # open alerts
+    └── ApexBackgroundService.mc  # 30-min temporal refresh, re-arms + exits
 ```
 
-## Honest limitations
+## Setting your gym schedule
 
-- Built and reviewed against the Connect IQ 4.0 API surface, but **not
-  compiled or run on real hardware from this environment** (the SDK needs
-  Garmin's installer; sideloading needs the physical watch). First build on
-  the owner's machine: `monkeyc` will catch any API drift on the exact SDK
-  version you have.
-- `makeWebRequest` from the watch routes through the **phone's** internet
-  connection (Garmin Connect app, BLE) — that's why the public Funnel URL
-  works from anywhere without the watch joining a network.
-- Battery: one small HTTPS request per 30 minutes; adjust
-  `30 * 60 * 1000L` in `ApexBackgroundService.mc` if you prefer hourly.
+The recurring weekly routine lives in the backend (`gym_schedule_slots`,
+migration 0005) and can be managed two ways:
+
+- **Telegram** (phone-only, no REST client needed):
+  - `/gym` — today's sessions · `/gym week` — the 7 days
+  - `/gym set Mon 18:00 Push Day` — add a slot
+  - `/gym note 1 Bench 4x8 · Incline 3x10` — attach the exercises block
+  - `/gym list` — slots with ids · `/gym rm 1` — remove
+- **REST** (session + CSRF): `GET/POST /schedule`, `PATCH/DELETE /schedule/{id}`.
+
+Confirmed/active AI training plans (`training_plans`/`planned_sessions`)
+override the recurring template on their specific dates — so the routine is
+the baseline and the plan layer refines individual days.
+
+## Building the .prg (requires the owner's machine)
+
+The Monkey C sources here are complete but **not compiled in this
+environment** (the Garmin SDK cannot be fetched non-interactively). On a
+machine with the [Connect IQ SDK](https://developer.garmin.com/connect-iq/sdk/):
+
+```bash
+# 1. one-time: accept the SDK license and get a developer key
+connectiq  # or: java -jar bin/monkeybrains.jar -a   (CIQ SDK ≥ 7 GUI)
+
+# 2. build (from the repo root)
+monkeyc \
+  -f connectiq/monkey.jungle \
+  -y ~/garmin/developer_key.pem \
+  -w -o bin/apexday.prg \
+  -d fr965            # or fenix7x / epix2
+
+# 3. sideload: copy bin/apexday.prg to GARMIN/Apps/ on the watch over USB,
+#    or use `monkeydo bin/apexday.prg fr965` with the simulator first.
+```
+
+Then in **Garmin Connect IQ settings** for Apex Day:
+
+1. **Server URL** — your Funnel URL, e.g. `https://apex.tailnet-example.ts.net`
+2. **API token** — mint from the web API:
+   `curl -X POST $URL/watch/tokens -b "session=..." -H "X-CSRF-Token: ..." -d '{"name":"fenix"}'`
+   (or via the documented flow in `docs/INSTALL.md` §8b) and paste the
+   plaintext once.
+
+## Honest limits
+
+- Not compiled here — needs the owner's SDK + hardware for the .prg and
+  on-device verification (monkeydo simulator run recommended first).
+- `makeWebRequest` requires the phone companion app reachable (BLE) or
+  Wi-Fi on devices that have it; the glance still paints the last cached
+  day when the phone is away, stamped by freshness via the streak footer.
+- Plan sessions have no clock time (`start: null`) — the week view and
+  Today view handle this by omitting the time, not faking one.

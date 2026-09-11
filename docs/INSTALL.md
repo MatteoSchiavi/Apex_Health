@@ -238,10 +238,49 @@ alerts, chat): cross-user row IDs answer 404, owner-only settings answer
 403. Isolation is asserted in `tests/test_multiuser_isolation.py`.
 To expose `$BASE` beyond your tailnet, follow `infra/tailscale-funnel-setup.md`.
 
-## 8b. Watch tokens (Phase 10)
+## 8b. Watch app "Apex Day" (Phase 10 v2)
+
+The watch app shows what ONLY Apex knows — the gym schedule, active
+supplements, open alerts and the journal streak. It deliberately does NOT
+duplicate readiness/recovery/strain: Garmin renders those natively
+(Training Readiness, Recovery Time, Body Battery).
+
+### 8b-1. Set your gym schedule (the recurring weekly routine)
+
+**From Telegram** (no REST client needed):
+
+```
+/gym                       — today's sessions
+/gym week                  — the 7-day schedule
+/gym list                  — recurring slots with ids
+/gym set Mon 18:00 Push Day          — add a slot
+/gym note <id> Bench 4x8 · Incline 3x10 — attach the exercises block
+/gym rm <id>               — remove a slot
+```
+
+**From REST** (session cookie + CSRF header, like every mutating call):
+
+```bash
+curl -b /tmp/owner.jar -X POST $BASE/schedule -H "$CSRF" \
+     -H 'Content-Type: application/json' \
+     -d '{"weekday":0,"start_time":"18:00","title":"Push Day",
+          "description":"Bench 4x8 · Incline DB 3x10 · OH Press 3x8"}'
+# 201 {"id":1,"weekday":0,"start_time":"18:00","title":"Push Day",...}
+
+curl -b /tmp/owner.jar $BASE/schedule            # list
+curl -b /tmp/owner.jar -X PATCH $BASE/schedule/1 -H "$CSRF" \
+     -d '{"start_time":"19:30"}'                 # edit / pause (active:false)
+curl -b /tmp/owner.jar -X DELETE $BASE/schedule/1 -H "$CSRF"   # remove
+```
+
+`weekday` is 0=Mon .. 6=Sun. Confirmed/active AI training plans
+(`planned_sessions`) override the recurring template on their specific
+dates — the routine is the baseline, the plan refines individual days.
+
+### 8b-2. Mint a device token
 
 Each user (owner or friend) mints a token for THEIR wrist — the watch can
-only ever see that user's numbers:
+only ever see that user's schedule and data:
 
 ```bash
 curl -b /tmp/owner.jar -X POST $BASE/watch/tokens -H "$CSRF" \
@@ -250,16 +289,27 @@ curl -b /tmp/owner.jar -X POST $BASE/watch/tokens -H "$CSRF" \
 ```
 
 Paste `$BASE` + the token into the watch app's settings (Connect IQ →
-Apex Health → Settings); build/sideload from `connectiq/` — see its README.
+Apex Day → Settings); build/sideload from `connectiq/` — see its README.
 Revoke any time with `DELETE /watch/tokens/{id}` (immediate) and list with
 `GET /watch/tokens` (hashes only — the plaintext is shown exactly once).
+On the next wrist refresh a revoked token wipes the cached data and the
+app shows "Token invalid" instead of yesterday's plan.
+
+### 8b-3. What the wrist renders
+
+- **Glance** — today's session (title + time) or "Rest day", plus
+  `supp N · alert N · streak Nd` counts.
+- **Today** — gym sessions with the exercises block (recurring routine and
+  `PLANNED SESSION` AI overrides), supplements, alerts, streak.
+- **Week** — the 7-day schedule, today highlighted, plan overrides marked.
+- **Alerts** — open alerts, severity-colored (ack in Telegram/web).
 
 ## 9. Running the tests
 
 ```bash
 cd backend && uv sync
 # point DATABASE_URL/REDIS_URL at a DEV database (tests create their own DBs)
-uv run pytest -q          # 247 passed is the green baseline
+uv run pytest -q          # 257 passed is the green baseline
 ```
 
 CI (GitHub Actions) runs the same suite against
