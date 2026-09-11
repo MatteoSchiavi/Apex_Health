@@ -4,11 +4,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import auth, gear, health, integrations, labs, weather
+from app.api import auth, gear, health, integrations, labs, settings, weather
 from app.auth.service import ensure_owner
+from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
 from app.core.logging import configure_logging
-from app.core.middleware import CSRFMiddleware
+from app.core.middleware import CSRFMiddleware, ProxyHeadersMiddleware
 
 
 @asynccontextmanager
@@ -24,11 +25,15 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="Health Control Center", lifespan=lifespan)
     app.add_middleware(CSRFMiddleware)
+    # §15: behind Tailscale Funnel/Caddy, honor X-Forwarded-* from the local
+    # terminator when configured to (infra/tailscale-funnel-setup.md).
+    app.add_middleware(ProxyHeadersMiddleware, trusted=get_settings().trust_proxy_headers)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(labs.router)
     app.include_router(gear.router)
     app.include_router(integrations.router)
+    app.include_router(settings.router)
     app.include_router(weather.router)
     return app
 
