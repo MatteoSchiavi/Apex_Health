@@ -52,6 +52,23 @@ uv run uvicorn app.main:app --port 8000
 uv run celery -A app.tasks.celery_app worker --loglevel=INFO
 ```
 
+## Temporary web UI (Grafana)
+
+Until the real dashboard is designed (spec-deferred, Appendix A), a full
+read-only Grafana UI serves every feature above: overview, training,
+recovery/sleep, nutrition/supplements, labs/blood health, AI & agent
+observability, journal, and system/sync health — provisioned as versioned
+dashboard JSON talking SELECT-only to the dev database.
+
+```bash
+bash scripts/start_dev_env.sh   # dev stack first
+grafana/run_grafana.sh          # → http://127.0.0.1:3001 (anonymous viewer; admin/apex-demo)
+```
+
+Optional deterministic demo data for the UI:
+`cd backend && .venv/bin/python -m tools.seed_demo_data` (synthetic 180-day
+dataset — see `grafana/README.md` for coverage and maintenance).
+
 ## Garmin connector (Phase 1)
 
 Sync runs every 6 hours via Celery beat (§19): activities (+ streams), sleep,
@@ -415,3 +432,9 @@ call documented in `app/core/backups.py`).
   `activity_source_links.provider` enum. Treated as deliberately out of
   scope rather than invented spec (§0: implementation layer, not
   architecture layer). Suite: 228 tests green.
+- Temporary web UI (Grafana) — complete: 8 provisioned dashboards covering
+  every table/feature of Phases 0-8 (read-only `grafana_ro` role, anonymous
+  viewer, generated dashboard JSON + panel-SQL validator + deterministic
+  180-day demo seeder). Stop-gap until the real dashboard style is chosen;
+  see `grafana/README.md`. Docker parity still unproven (user-space dev
+  stack, same as every phase above).
