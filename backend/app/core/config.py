@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     # Restore path needs a pg_dump/pg_restore-capable toolchain in PATH; overridable
     # for sandboxes and containers where the binary lives elsewhere.
     pg_dump_bin: str = "pg_dump"
+    psql_bin: str = "psql"
     backup_retain_daily: int = 14
     backup_retain_monthly: int = 6
 
