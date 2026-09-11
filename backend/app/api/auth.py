@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import CREDENTIALS_EXCEPTION, get_current_session
+from app.auth.invites import InviteError, redeem_invite
 from app.auth.service import (
     AuthError,
     authenticate,
@@ -22,7 +23,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.redis import get_redis
 from app.models.user import AuthCredential, User, UserSession
-from app.schemas.auth import LoginRequest, LoginResponse
+from app.schemas.auth import LoginRequest, LoginResponse, RedeemInviteRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -86,3 +87,53 @@ async def logout(
         raise CREDENTIALS_EXCEPTION
     await destroy_session(session, token)
     response.delete_cookie(key=session_cookie_name(), path="/")
+
+
+@router.post("/invite/redeem", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+async def redeem(
+    payload: RedeemInviteRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> LoginResponse:
+    """§18 /auth/invite/redeem — one POST turns a live invite code into a
+    friend account AND a session (no separate login step: the person just
+    chose the password, asking them to type it again is friction without
+    security value). Bootstrap/auth route per §17, CSRF header still
+    required (state-changing, §22.3)."""
+    try:
+        user, cred, _invite = await redeem_invite(
+            session,
+            code=payload.code.strip(),
+            name=payload.name,
+            email=payload.email,
+            password=payload.password,
+        )
+    except InviteError as exc:
+        if exc.kind == "email_taken":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "That email is already registered — log in instead",
+            ) from exc
+        # Uniform rejection for invalid / used / expired: one message, no
+        # oracle for which codes exist.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Invite code is not valid (unknown, already used, or expired)",
+        ) from exc
+
+    token, _ = await create_session(session, user.id)
+    response.set_cookie(
+        key=session_cookie_name(),
+        value=token,
+        max_age=cookie_max_age_seconds(),
+        secure=True,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return LoginResponse(
+        user_id=user.id,
+        email=cred.email,
+        role=cred.role,
+        ai_access_tier=cred.ai_access_tier,
+    )

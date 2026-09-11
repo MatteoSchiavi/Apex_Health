@@ -74,3 +74,23 @@ class UserSession(Base):
         DateTime(timezone=True), nullable=False, server_default="now()"
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Invite(Base):
+    """Invitation capability token (§6.4 invites, §15 onboarding).
+
+    The code IS the credential: whoever holds a live code may create one
+    friend account. `used_by` marks redemption; redemption is atomic
+    (row-locked claim in app.auth.invites.redeem_invite).
+    """
+
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    used_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
