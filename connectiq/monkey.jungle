@@ -1,0 +1,7 @@
+# Apex Health glance — Connect IQ build configuration.
+# Build:  monkeyc -f monkey.jungle -y developer_key.pem -w -o bin/apexhealth.prg -d fr965
+project.manifest = manifest.xml
+project.type = watch-app
+project.sourcePath = source
+project.resources = resources
+project.baseIcon = resources/drawables/launcher_icon.png

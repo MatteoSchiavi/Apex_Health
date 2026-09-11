@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apex Health glance — Connect IQ manifest (MASTER_SPEC §23 Phase 10).
+     Glances need Connect IQ 4.0 (minApiVersion); every product listed below
+     ships it. Communications permission covers makeWebRequest to the Funnel
+     URL; Background powers the 30-minute temporal refresh so the glance is
+     instant and radio-quiet on the wrist. -->
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application
+        entry="ApexApp"
+        id="f3a1c9e2b7d54a6f8e0c2d4b6a8f0c1e"
+        name="@Strings.AppName"
+        type="watch-app"
+        launcherIcon="@Drawables.LauncherIcon"
+        minApiVersion="4.0.0"
+        minSdkVersion="4.0.0">
+        <iq:products>
+            <iq:product id="fr965"/>
+            <iq:product id="fenix7x"/>
+            <iq:product id="epix2"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+            <iq:uses-permission id="Background"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:display-language>eng</iq:display-language>
+        </iq:languages>
+        <iq:barrels/>
+        <iq:glances>
+            <iq:glance entry="ApexGlanceView"/>
+        </iq:glances>
+    </iq:application>
+</iq:manifest>
