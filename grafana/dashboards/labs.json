@@ -1,0 +1,608 @@
+{
+ "uid": "apex-labs",
+ "title": "Labs & Blood Health",
+ "description": "Blood panels, donation tracking, extra lab metrics vs reference ranges.",
+ "tags": [
+  "apex-health",
+  "temp-ui"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-1y",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "current": {
+     "selected": false,
+     "text": "Demo Owner",
+     "value": "1"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Athlete",
+    "multi": false,
+    "name": "user",
+    "options": [],
+    "query": "SELECT name AS __text, id AS __value FROM users ORDER BY id",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   },
+   {
+    "current": {
+     "selected": false,
+     "text": "Vitamin D (25-OH)",
+     "value": "Vitamin D (25-OH)"
+    },
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "apex-pg"
+    },
+    "definition": "SELECT DISTINCT metric_name AS __text, metric_name AS __value FROM lab_metrics ORDER BY 1",
+    "hide": 0,
+    "includeAll": false,
+    "label": "Metric",
+    "multi": false,
+    "name": "metric",
+    "options": [],
+    "query": "SELECT DISTINCT metric_name AS __text, metric_name AS __value FROM lab_metrics ORDER BY 1",
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": false,
+    "sort": 1,
+    "type": "query"
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "links": [],
+ "panels": [
+  {
+   "id": 151,
+   "type": "stat",
+   "title": "Ferritin (ng/mL)",
+   "description": "",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT ferritin_ng_ml AS value FROM lab_panels WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 30
+       },
+       {
+        "color": "green",
+        "value": 50
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 152,
+   "type": "stat",
+   "title": "Hemoglobin (g/dL)",
+   "description": "",
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT hemoglobin_g_dl AS value FROM lab_panels WHERE user_id=$user ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 13.5
+       },
+       {
+        "color": "green",
+        "value": 14.0
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 153,
+   "type": "stat",
+   "title": "Days to eligibility",
+   "description": "",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT (next_eligible_date - CURRENT_DATE) AS value FROM lab_panels WHERE user_id=$user AND next_eligible_date IS NOT NULL ORDER BY date DESC LIMIT 1",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 154,
+   "type": "stat",
+   "title": "Panels total",
+   "description": "",
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 5
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT COUNT(*) AS value FROM lab_panels WHERE user_id=$user",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": ""
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "graphMode": "none",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 155,
+   "type": "timeseries",
+   "title": "Ferritin \u2014 recovery story",
+   "description": "Low-ferritin threshold 30 ng/mL (config default) \u2014 \u00a717 alert fired on the dip.",
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 16,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", ferritin_ng_ml AS ferritin FROM lab_panels WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": 0,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 30
+       },
+       {
+        "color": "green",
+        "value": 50
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 156,
+   "type": "timeseries",
+   "title": "Hemoglobin & hematocrit",
+   "description": "",
+   "gridPos": {
+    "x": 16,
+    "y": 5,
+    "w": 8,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT date AS \"time\", hemoglobin_g_dl AS hemoglobin, hematocrit_pct AS hematocrit FROM lab_panels WHERE user_id=$user AND $__timeFilter(date) ORDER BY date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 157,
+   "type": "table",
+   "title": "Panel history",
+   "description": "Notes are stored encrypted (notes_ciphertext) \u2014 not rendered here by design.",
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 24,
+    "h": 10
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT to_char(date,'YYYY-MM-DD') AS \"date\", panel_type AS \"type\", donation_type AS \"donation\", hemoglobin_g_dl AS \"hgb\", hematocrit_pct AS \"hct\", ferritin_ng_ml AS \"ferritin\", iron AS \"iron\", wbc AS \"wbc\", plt AS \"plt\", next_eligible_date AS \"eligible\", source AS \"source\" FROM lab_panels WHERE user_id=$user ORDER BY date DESC",
+     "refId": "A",
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {},
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   }
+  },
+  {
+   "id": 158,
+   "type": "timeseries",
+   "title": "Metric trend \u2014 ${metric}",
+   "description": "Pick any extra metric from the panels via the Metric dropdown.",
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 24,
+    "h": 9
+   },
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "apex-pg"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "apex-pg"
+     },
+     "editorMode": "code",
+     "rawQuery": true,
+     "rawSql": "SELECT lp.date AS \"time\", lm.value AS value FROM lab_metrics lm JOIN lab_panels lp ON lp.id = lm.lab_panel_id WHERE lp.user_id=$user AND lm.metric_name = '${metric}' AND $__timeFilter(lp.date) ORDER BY lp.date",
+     "refId": "A",
+     "format": "time_series"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": null,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisPlacement": "auto"
+     },
+     "min": null,
+     "max": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  }
+ ]
+}
