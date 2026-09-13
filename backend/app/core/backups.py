@@ -2,7 +2,7 @@
 
 Pipeline per the spec: nightly `pg_dump`, encrypted with `BACKUP_ENCRYPTION_KEY`,
 retained 14 daily + 6 monthly archives; offsite copy goes to Backblaze B2
-(the upload lives in app/integrations/b2.py — this module owns the local artifact).
+(the upload lives in app/connectors/b2.py — this module owns the local artifact).
 
 Order matters for privacy: the dump is encrypted BEFORE it touches the backup
 directory — the only plaintext bytes ever exist in the pg_dump subprocess pipe.

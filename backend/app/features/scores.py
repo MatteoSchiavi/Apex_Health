@@ -77,6 +77,27 @@ def respiration_elevation_component(dev_pct: float) -> float:
     return clamp01(dev_pct / 10.0)
 
 
+def journal_soreness_fatigue_component(
+    soreness_score: float | None, energy_score: float | None
+) -> float | None:
+    """Journal-reported soreness and fatigue, normalized to 0..1.
+
+    The voice/text extraction prompt pins both fields to 1-10 ("include a
+    score only when the speaker states it"), so: soreness maps 1 -> 0,
+    10 -> 1; energy maps inversely (low reported energy IS the fatigue
+    signal, 10 -> 0, 1 -> 1). When only one is present it stands alone —
+    never padded with an invented value. None when the day has no journal
+    scores at all."""
+    signals: list[float] = []
+    if soreness_score is not None:
+        signals.append(clamp01((soreness_score - 1.0) / 9.0))
+    if energy_score is not None:
+        signals.append(clamp01((10.0 - energy_score) / 9.0))
+    if not signals:
+        return None
+    return sum(signals) / len(signals)
+
+
 def acwr_readiness_component(acwr: float) -> float:
     """Sweet spot 0.8-1.3 -> 1.0; ramping above 1.3 folds to 0 at 2.0;
     detraining below 0.8 scales linearly to 0 at 0.0."""
@@ -212,12 +233,14 @@ def illness_risk_score(
     hrv_dev_pct: float | None,
     resting_hr_dev_bpm: float | None,
     respiration_dev_pct: float | None,
+    journal_soreness_fatigue: float | None = None,
 ) -> float | None:
     """§7: HRV drop + resting-HR elevation + elevated respiration + journal
-    soreness/fatigue. The journal component is part of the feature definition
-    (its weight is seeded) but no journal source exists until the medical /
-    lifestyle module — it stays structurally absent, which does NOT flag the
-    day partial (that flag tracks sensor data, §17)."""
+    soreness/fatigue. The journal component activates on days the journal
+    actually carries soreness/energy scores (any source — the voice pipeline
+    writes them on draft confirmation); a journal-free day simply lacks the
+    component, which does NOT flag the day partial (that flag tracks sensor
+    data, §17)."""
     value = blend(
         {
             "hrv_drop": None
@@ -229,7 +252,7 @@ def illness_risk_score(
             "respiration_elevation": None
             if respiration_dev_pct is None
             else respiration_elevation_component(respiration_dev_pct),
-            "journal_soreness_fatigue": None,  # no journal source yet
+            "journal_soreness_fatigue": journal_soreness_fatigue,
         },
         weights,
     )

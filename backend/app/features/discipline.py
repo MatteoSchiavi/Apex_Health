@@ -131,8 +131,12 @@ def best_mean_power(
     streams: list[ActivityStream], duration_s: int, window_s: int
 ) -> float | None:
     """Best mean power over any sliding `window_s` window (sample-and-hold
-    integration). Candidates anchor at every sample start — for a step
-    function the optimum is attained at a step boundary."""
+    integration). For a step function the window mean is piecewise linear in
+    the window start; its max is therefore attained at a breakpoint: a sample
+    offset, that offset shifted back by the window (the hold it leaves out
+    enters), the domain edge 0, or the latest legal start. Anchoring only at
+    sample offsets can miss the true best window (e.g. a hard finish after a
+    long quiet warm-up)."""
     powered = sorted(
         (s for s in streams if s.power is not None),
         key=lambda s: s.t_offset_s,
@@ -140,12 +144,15 @@ def best_mean_power(
     if not powered or duration_s < window_s:
         return None
     offsets = [s.t_offset_s for s in powered]
-    starts = sorted(set(offsets) | {0})
+    latest_start = duration_s - window_s
+    starts = sorted(
+        s
+        for s in {0, latest_start, *offsets, *(o - window_s for o in offsets)}
+        if 0 <= s <= latest_start
+    )
     best: float | None = None
     for start in starts:
         end = start + window_s
-        if end > duration_s:
-            continue
         # Integrate sample-and-hold power over [start, end] segment by
         # segment: from t, the hold lasts until the next sample offset.
         total = 0.0

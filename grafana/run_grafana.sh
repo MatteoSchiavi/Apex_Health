@@ -15,7 +15,7 @@ GRAFANA_DIST="${GRAFANA_DIST:-/home/z/grafana-dist}"
 RUNTIME="${GRAFANA_RUNTIME:-/home/z/grafana-runtime}"
 PORT="${GRAFANA_PORT:-3001}"
 PSQL_BIN="${PSQL_BIN:-psql}"
-DB_ARGS=("-h" "127.0.0.1" "-p" "5433" "-U" "hcc" "-d" "hcc")
+DB_ARGS=("-h" "${PGHOST:-127.0.0.1}" "-p" "${PGPORT:-5433}" "-U" "${PGUSER:-hcc}" "-d" "${PGDATABASE:-hcc}")
 TARBALL_URL="https://dl.grafana.com/oss/release/grafana-11.6.3.linux-amd64.tar.gz"
 
 case "${1:-start}" in
@@ -47,19 +47,35 @@ if [ ! -x "$GRAFANA_DIST/bin/grafana" ]; then
   echo "grafana dist missing — downloading $TARBALL_URL"
   mkdir -p "$GRAFANA_DIST" /tmp/grafana-dl
   # dl.grafana.com throttles per connection: pull in parallel ranges.
-  LEN=$(curl -sI "$TARBALL_URL" | rg -io 'content-length: \d+' | rg -o '\d+' | tr -d '\r' | head -1)
-  N=16; CH=$(( (LEN + N - 1) / N ))
-  for i in $(seq 0 $((N-1))); do
-    S=$((i*CH)); E=$(( S+CH-1 )); [ $E -ge $LEN ] && E=$((LEN-1))
-    curl -fsSL -r "$S-$E" -o "/tmp/grafana-dl/part$i" "$TARBALL_URL" &
-  done
-  wait
-  cat /tmp/grafana-dl/part* > /tmp/grafana-dl/g.tar.gz
+  LEN=$(curl -sI "$TARBALL_URL" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+  if [ -z "$LEN" ]; then
+    # no content-length (proxy?) — single stream
+    curl -fsSL -o /tmp/grafana-dl/g.tar.gz "$TARBALL_URL"
+  else
+    N=16; CH=$(( (LEN + N - 1) / N ))
+    for i in $(seq 0 $((N-1))); do
+      S=$((i*CH)); E=$(( S+CH-1 )); [ $E -ge $LEN ] && E=$((LEN-1))
+      curl -fsSL -r "$S-$E" -o "/tmp/grafana-dl/part$i" "$TARBALL_URL" &
+    done
+    wait
+    cat /tmp/grafana-dl/part* > /tmp/grafana-dl/g.tar.gz
+    rm -f /tmp/grafana-dl/part*
+  fi
   tar -xzf /tmp/grafana-dl/g.tar.gz -C "$GRAFANA_DIST" --strip-components=1
   rm -rf /tmp/grafana-dl
 fi
 
 mkdir -p "$RUNTIME/data" "$RUNTIME/logs" "$RUNTIME/plugins"
+
+# Point the provisioned datasource at the DB the script is actually talking
+# to (PGHOST/PGPORT overrides) — patch the provisioning file in place with a
+# .bak fallback; the default URL already matches the default dev stack.
+DS_FILE="$REPO_ROOT/grafana/provisioning/datasources/datasource.yml"
+DS_URL="${PGHOST:-127.0.0.1}:${PGPORT:-5433}"
+if ! grep -q "url: ${DS_URL}$" "$DS_FILE"; then
+  cp "$DS_FILE" "$DS_FILE.bak"
+  sed -i "s|^    url: .*|    url: ${DS_URL}|" "$DS_FILE"
+fi
 
 echo "ensuring grafana_ro role + SELECT grants"
 "$PSQL_BIN" "${DB_ARGS[@]}" -f "$REPO_ROOT/grafana/sql/bootstrap.sql" >/dev/null
