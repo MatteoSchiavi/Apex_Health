@@ -1,12 +1,12 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
-![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-257_green-73BF69)
+![Tests](https://img.shields.io/badge/tests-269_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **Technogym gym
 sessions**, **blood-donation lab panels**, **subjective journaling via
@@ -495,11 +495,20 @@ never blocks on the radio.
   Alembic chain per session, so CI sees the same schema as local.
 - **Hardening re-verified** in the fresh environment: the §20/§21/§22 audit
   suites (sliding-session expiry, served-route auth matrix, JSON logging,
-  alert/log channel separation) all green — 257 tests total.
-- **Restore drill re-run live** on this deployment: **47/47 tables match**
-  (now including `device_tokens`), `alembic_version=0004`, the encrypted lab
-  note round-trips with the app key. The drill is committed and rerunnable —
-  the owner should run it once more on the real host after Docker parity.
+  alert/log channel separation) all green — 269 tests total.
+- **Restore drill re-run live** on this deployment: **48/48 tables match**
+  (`device_tokens` + `gym_schedule_slots` included), `alembic_version=0005`,
+  the encrypted lab note round-trips with the app key. The drill is
+  committed and rerunnable — the owner should run it once more on the real
+  host after Docker parity.
+- **Final verification pass** (end of build round): every phase's evidence
+  re-audited against the spec; deep math audit of the feature engine found
+  and fixed three latent issues (best-window power search anchors, the
+  §7 journal component of the illness score was still dormant despite the
+  seeded weight, `iron_status_flag` was never populated despite Phase 4 —
+  all three now wired, golden-tested, and covered by 12 new regression
+  tests); served auth surface re-probed live (401s + CSRF + owner flow);
+  all 152 Grafana panel queries re-validated against a live seeded DB.
 - **Remaining connectors:** unchanged from Phase 8 — every specced connector
   is built (Garmin, Technogym, weather, Telegram/STT/embeddings); Strava /
   MyFitnessPal are deliberately unspecced (§1 substitutes them via the
@@ -521,7 +530,7 @@ never blocks on the radio.
 | — | Temporary Grafana web UI (8 dashboards / 147 panels) | ✅ |
 | 9 | Multi-user: invite flow, friend accounts, **data-isolation proof**, Tailscale Funnel readiness + setup guide | ✅ |
 | 10 | Connect IQ watch app **v2 "Apex Day"** (rethought): gym schedule + supplements + alerts + streak on the wrist, NOT native scores; `/watch/day`, `/watch/week`, `/schedule` CRUD, `/gym` bot, recurring `gym_schedule_slots` + plan-override resolution | ✅ source+API, demoed live; `.prg` build needs the owner's SDK + watch |
-| 11 | CI on every push (§20), hardening re-verified, **restore drill re-run live: 47/47** | ✅ |
+| 11 | CI on every push (§20), hardening re-verified, **restore drill re-run live: 48/48** | ✅ |
 | — | Real dashboard style (Appendix A) | ⏳ deferred by owner |
 
 Out of scope this build round (per the spec): the real web dashboard
@@ -557,7 +566,7 @@ backend/
     schemas/      Pydantic boundary schemas
     tasks/        Celery app + beat schedule (§19)
   alembic/        migrations
-  tests/          38 test files / 257 tests — fixtures only, no live APIs (§20)
+  tests/          39 test files / 269 tests — fixtures only, no live APIs (§20)
   tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
                   restore_backup, restore_drill, demo_phase9 (AC demo)
 grafana/          temporary web UI: provisioning, generated dashboards,
@@ -567,7 +576,8 @@ connectiq/        Garmin watch app "Apex Day" (Monkey C): gym schedule,
                   and /watch/week over the Funnel
 infra/            docker-compose.yml (db · redis · api · worker · bot)
                   + tailscale-funnel-setup.md (§15 remote access)
-scripts/          reset-dev.sh
+scripts/          reset-dev.sh · start_dev_env.sh · rebuild_pg_redis.sh
+                  (user-space, no-Docker/no-root dev stack helpers)
 .github/workflows/ tests.yml — full pytest on every push (§20)
 docs/             INSTALL.md — full installation guide
 ```
@@ -578,7 +588,7 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 257 tests, fixtures only — no live APIs
+uv run pytest -q                   # 269 tests, fixtures only — no live APIs
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

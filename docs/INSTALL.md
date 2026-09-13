@@ -19,9 +19,11 @@ restore drill. Product background lives in the
 | **Redis 7+** | broker + one-time codes + dedup keys |
 | ~2 GB RAM, ~5 GB disk for the stack | Grafana tarball adds ~500 MB |
 
-Ports used by default: **8000** API · **3001** Grafana · **5432** (compose)
-or **5433** (bare-metal recipe) Postgres · **6379** (compose) or **6380**
-(bare-metal recipe) Redis.
+Ports used by default: **8000** API · **3001** Grafana · **5433** Postgres ·
+**6380** Redis. Option A's compose keeps Postgres/Redis
+container-internal (only the API port is published); host-side commands
+(alembic, pytest) reach the DB through `docker compose exec` or the
+bare-metal recipe ports above.
 
 ## 2. Get the code
 
@@ -102,7 +104,7 @@ cd backend && uv sync
 
 # 2. services (distro Postgres 16 + TimescaleDB + pgvector, Redis 7+)
 #    create db `hcc` with role `hcc`, then:
-uv run alembic upgrade head            # → migration 0003
+uv run alembic upgrade head            # → migration 0005 (gym_schedule_slots)
 
 # 3. run the platform (4 terminals, or tmux)
 uv run uvicorn app.main:app --port 8000                        # API
@@ -114,14 +116,19 @@ grafana/run_grafana.sh                                         # UI (optional)
 ### 5a. User-space Postgres/Redis recipe (no root, no Docker)
 
 The sandbox this project was built in has no root and no Docker, so the dev
-stack runs extracted from Debian/PGDG packages (the exact recipe lives in
-`scripts/rebuild_pg_redis.sh`):
+stack runs extracted from Debian/PGDG packages. Two committed scripts
+drive the whole path (both keep their downloads/cluster under `$HOME`,
+overridable via `PG_ROOT`/`REDIS_ROOT`/`PGDATA` env vars):
+
+```bash
+bash scripts/rebuild_pg_redis.sh   # fetch + extract PG16+TimescaleDB+pgvector, Redis 8
+bash scripts/start_dev_env.sh      # initdb (first run) + start both, idempotent
+```
 
 - **PostgreSQL 16** on **:5433**, `unix_socket_directories` pointed at a
   writable dir, `shared_preload_libraries = 'timescaledb'`;
 - **Redis 8.x** on **:6380** (wire-compatible with the compose `redis:7` for
   everything this project uses);
-- `bash scripts/start_dev_env.sh` starts/stops both idempotently;
 - export `DATABASE_URL=postgresql+asyncpg://hcc@localhost:5433/hcc` and
   `REDIS_URL=redis://localhost:6380/0` for every backend command.
 
@@ -131,6 +138,11 @@ stack runs extracted from Debian/PGDG packages (the exact recipe lives in
 grafana/run_grafana.sh            # first run downloads the OSS tarball (~180 MB)
 # → http://127.0.0.1:3001  (anonymous Viewer; admin login admin/apex-demo)
 ```
+
+The script defaults its dist/runtime dirs to `/home/z/grafana-dist` and
+`/home/z/grafana-runtime`; override both via `GRAFANA_DIST` / `GRAFANA_RUNTIME`
+env vars. It connects to the DB on `localhost:5433` — override via
+`PGHOST`/`PGPORT` if your Postgres lives elsewhere.
 
 - Provisioned automatically: PostgreSQL datasource (uid `apex-pg`), the 8
   dashboards from `grafana/dashboards/`, Overview pinned as home, dark
@@ -196,8 +208,9 @@ export BACKUP_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet
 # 3. prove restores work — seeds markers, backs up, restores to a scratch DB,
 #    compares all tables and decrypts the crypto-marked lab note
 cd backend && uv run python tools/restore_drill.py
-# → RESTORE DRILL PASSED — 47/47 tables match (first live run 46/46 at Phase 8,
-#   re-run after Phase 11 on a fresh environment)
+# → RESTORE DRILL PASSED — 48/48 tables match (first live run 46/46 at Phase 8,
+#   re-run after Phase 11 at 47/47, again at the final verification pass with
+#   gym_schedule_slots included)
 
 # 4. real restore into a target DB
 uv run python tools/restore_backup.py backups/hcc-YYYYMMDD-HHMMSS.daily.sql.gz.enc \
@@ -309,7 +322,7 @@ app shows "Token invalid" instead of yesterday's plan.
 ```bash
 cd backend && uv sync
 # point DATABASE_URL/REDIS_URL at a DEV database (tests create their own DBs)
-uv run pytest -q          # 257 passed is the green baseline
+uv run pytest -q          # 269 passed is the green baseline
 ```
 
 CI (GitHub Actions) runs the same suite against

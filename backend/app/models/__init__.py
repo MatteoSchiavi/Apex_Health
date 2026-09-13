@@ -34,6 +34,7 @@ from app.models.medical import (
 from app.models.telegram import TelegramLink, TelegramMessage
 from app.models.training import PlannedSession, TrainingPlan
 from app.models.user import AuthCredential, User, UserSession
+from app.models.watch import DeviceToken
 from app.models.weather import ForecastCache
 from app.models.wellness import (
     DailyBiometric,
@@ -56,6 +57,7 @@ __all__ = [
     "Base",
     "DailyBiometric",
     "DailyFeature",
+    "DeviceToken",
     "Discipline",
     "DisciplineGearDefault",
     "DisciplineFeature",

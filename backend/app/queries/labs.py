@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.medical.labs import MARKER_ALIASES
+from app.models.features import DailyFeature
 from app.models.medical import LabMetric, LabPanel
 
 
@@ -50,7 +51,11 @@ async def get_lab_trend(
 async def get_donation_status(
     session: AsyncSession, user_id: int, today: date
 ) -> dict | None:
-    """Last donation + eligibility (§8.3 get_donation_status)."""
+    """Last donation + eligibility (§8.3 get_donation_status: "next eligible
+    date, days since last donation, iron flag"). The iron flag rides the
+    feature engine's daily_features.iron_status_flag — the latest scored day
+    at or before `today` that carries one ("low"/"normal"; None = never
+    measured)."""
     panel = (
         await session.scalars(
             select(LabPanel)
@@ -64,9 +69,22 @@ async def get_donation_status(
     ).first()
     if panel is None:
         return None
+    iron_row = (
+        await session.scalars(
+            select(DailyFeature)
+            .where(
+                DailyFeature.user_id == user_id,
+                DailyFeature.iron_status_flag.is_not(None),
+                DailyFeature.date <= today,
+            )
+            .order_by(DailyFeature.date.desc())
+            .limit(1)
+        )
+    ).first()
     return {
         "donation_type": panel.donation_type,
         "date": panel.date,
         "next_eligible_date": panel.next_eligible_date,
         "days_since": (today - panel.date).days,
+        "iron_flag": iron_row.iron_status_flag if iron_row is not None else None,
     }

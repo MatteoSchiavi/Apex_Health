@@ -20,9 +20,15 @@ Row honesty rules:
   resting HR, sleep session) is missing, or when an activity on D carries no
   HR signal at all (§17: incomplete sensor days are flagged, never silently
   scored as complete). Baseline warm-up (fewer than MIN_OBS observations)
-  and the structural absence of a journal source do NOT flag partial — they
-  are not sensor gaps.
-- iron_status_flag stays NULL until the labs/medical module lands (Phase 4).
+  and a journal-free day do NOT flag partial — they are not sensor gaps.
+  The illness score's journal component (§7) activates on days the journal
+  carries soreness/energy scores.
+- iron_status_flag (§8.3 get_donation_status): the latest lab panel on/before
+  D that carries a ferritin value decides — "low" below the panel's own
+  reference low (or the configured default), "normal" otherwise, None when
+  no ferritin result exists yet. Point-in-time honest: no invented decay
+  windows; a newer panel updates the flag, an old one persists as "the
+  latest known".
 """
 
 import logging
@@ -36,8 +42,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features import baselines, discipline as discipline_metrics, load, scores
 from app.features.weights import cutoff_for_local_day, load_weights
+from app.medical.labs import ferritin_reference_low
 from app.models.activity import Activity, ActivityStream, Discipline
 from app.models.features import DailyFeature, DisciplineFeature
+from app.models.journal import JournalEntry
+from app.models.medical import LabPanel
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 
@@ -148,6 +157,40 @@ async def _load_window(
         .unique()
         .all()
     )
+    # The illness score's journal component (§7) needs ONLY day D's entries —
+    # soreness/energy are same-day self-reports, no baseline involved. The
+    # journal `date` is already the user's local date (§17), no conversion.
+    journal_entries = (
+        (
+            await session.scalars(
+                select(JournalEntry).where(
+                    JournalEntry.user_id == user.id,
+                    JournalEntry.date == day,
+                )
+            )
+        )
+        .unique()
+        .all()
+    )
+    iron_panel = (
+        (
+            await session.scalars(
+                select(LabPanel)
+                .where(
+                    LabPanel.user_id == user.id,
+                    LabPanel.date <= day,
+                    LabPanel.ferritin_ng_ml.is_not(None),
+                )
+                .order_by(LabPanel.date.desc(), LabPanel.id.desc())
+                .limit(1)
+            )
+        )
+        .unique()
+        .first()
+    )
+    iron_threshold = (
+        await ferritin_reference_low(session, iron_panel) if iron_panel else None
+    )
     disciplines = {
         d.id: d for d in (await session.scalars(select(Discipline))).all()
     }
@@ -156,6 +199,9 @@ async def _load_window(
         "activities": activities,
         "streams_by_activity": streams_by_activity,
         "sleep_sessions": sleep_sessions,
+        "journal_entries": journal_entries,
+        "iron_panel": iron_panel,
+        "iron_threshold": iron_threshold,
         "hrv_by_local_day": _readings_by_local_day(
             hrv_readings, tz, first_day, day
         ),
@@ -280,7 +326,22 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     readiness = scores.readiness_score(
         w["readiness_score"], recovery, sleep_architecture, acwr
     )
-    illness = scores.illness_risk_score(w["illness_risk_score"], hrv_dev, rhr_dev, resp_dev)
+    # §7 journal component: day-level mean over the entries that carry each
+    # score (entries lacking soreness/energy are simply not averaged in).
+    day_journals = window.get("journal_entries", [])
+    soreness_values = [
+        float(e.soreness_score) for e in day_journals if e.soreness_score is not None
+    ]
+    energy_values = [
+        float(e.energy_score) for e in day_journals if e.energy_score is not None
+    ]
+    journal_component = scores.journal_soreness_fatigue_component(
+        (sum(soreness_values) / len(soreness_values)) if soreness_values else None,
+        (sum(energy_values) / len(energy_values)) if energy_values else None,
+    )
+    illness = scores.illness_risk_score(
+        w["illness_risk_score"], hrv_dev, rhr_dev, resp_dev, journal_component
+    )
     mean28, std28 = load.load_distribution(loads, day)
     injury = scores.injury_risk_score(w["injury_risk_score"], acwr, day_load, mean28, std28)
     cdfi = scores.cross_discipline_fatigue_index(loads_by_discipline, day)
@@ -301,6 +362,18 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         "partial" if (missing_wellness or activity_hr_gaps) else "full"
     )
 
+    # iron_status_flag: latest known ferritin as of D (see module docstring).
+    iron_panel = window.get("iron_panel")
+    iron_threshold = window.get("iron_threshold")
+    if iron_panel is not None and iron_threshold is not None:
+        iron_flag = (
+            "low"
+            if float(iron_panel.ferritin_ng_ml) < float(iron_threshold)
+            else "normal"
+        )
+    else:
+        iron_flag = None
+
     daily_row = {
         "user_id": user.id,
         "date": day,
@@ -314,7 +387,7 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         "hrv_deviation_from_baseline": hrv_dev,
         "illness_risk_score": illness,
         "injury_risk_score": injury,
-        "iron_status_flag": None,  # labs/medical module lands later (Phase 4)
+        "iron_status_flag": iron_flag,
         "cross_discipline_fatigue_index": cdfi,
         "data_completeness": data_completeness,
     }
