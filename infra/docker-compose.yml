@@ -1,11 +1,19 @@
-# Health Control Center — local/staging deployment (MASTER_SPEC §2, §16, §21)
+# Health Control Center — local/staging/homeserver deployment (MASTER_SPEC §2, §16, §21)
 #
-# Services in Phase 0: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api, worker.
-# Added in Phase 1–2: celery beat via the worker's beat_schedule (garmin sync,
-# feature engine). Added in Phase 3: bot (long polling, §10.1).
-# The web dashboard is out of scope this round (Appendix A).
+# Services: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api (uvicorn),
+# worker (Celery worker + embedded beat — beat_schedule lives in
+# app/tasks/celery_app.py, §19), bot (Telegram long polling, §10.1), grafana
+# (the Apex Health dashboards, provisioned from ../grafana).
 #
 # Logging: JSON to stdout captured with rotation (§21).
+# Resilience: every service restarts unless stopped, so a homeserver reboot
+# brings the whole stack back with the Docker daemon.
+#
+# Credentials note: db/redis publish NO ports — they are only reachable on
+# the compose network, so the built-in defaults (hcc/hcc/hcc) are the sane
+# single-user homeserver posture. If you ever change POSTGRES_* remember the
+# interpolation in this file reads infra/.env (or --env-file), NOT the
+# repo-root .env — the clean way is to override BOTH or neither.
 name: apex-health
 
 services:
@@ -18,11 +26,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hcc}
     volumes:
       - db_data:/home/postgres/pgdata
+      # First init only (empty data volume): create the read-only Grafana
+      # role. On an existing volume re-apply manually:
+      #   docker compose exec db sh -c 'psql -U hcc -d hcc -f /docker-entrypoint-initdb.d/10-grafana-ro.sql'
+      - ../grafana/sql/bootstrap.sql:/docker-entrypoint-initdb.d/10-grafana-ro.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hcc} -d ${POSTGRES_DB:-hcc}"]
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
     logging: &default_logging
       driver: json-file
       options:
@@ -36,6 +49,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
     logging: *default_logging
 
   api:
@@ -51,12 +65,22 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
+    restart: unless-stopped
+    # Nightly backup artifacts live here on the host, outside the container
+    # lifecycle; the same mount lets `exec api python tools/restore_drill.py`
+    # see exactly what the worker wrote.
+    volumes:
+      - ../backups:/app/backups
     logging: *default_logging
 
   worker:
     build: ../backend
-    command: celery -A app.tasks.celery_app worker --loglevel=INFO
+    # --beat: the embedded beat runs the §19 schedule (Garmin/Technogym syncs
+    # every 6h, nightly feature engine 03:00 user-local, gear accumulation,
+    # AI budget check 23:45 UTC, nightly encrypted backup 02:00 UTC, reports).
+    # Without it the schedule is DEFINED but never ticked.
+    command: celery -A app.tasks.celery_app worker --beat --loglevel=INFO
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
@@ -66,12 +90,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ../backups:/app/backups
     logging: *default_logging
 
   # §10.1: long polling — outbound-only, no public port, no webhook secret.
+  # Behind a profile so a stack without TELEGRAM_BOT_TOKEN boots fully
+  # healthy instead of crash-looping the bot container:
+  #   docker compose -f infra/docker-compose.yml --profile telegram up -d
   bot:
     build: ../backend
     command: python -m app.connectors.telegram.polling
+    profiles: ["telegram"]
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
@@ -81,7 +112,39 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    logging: *default_logging
+
+  # The Apex Health dashboards (grafana/dashboards, provisioned read-only).
+  # Container overrides in infra/grafana/ shadow the host-run provisioning
+  # files: the datasource points at the db service, the dashboard path at the
+  # in-container mount. Anonymous Viewer + dark theme, same as the host UI.
+  grafana:
+    image: grafana/grafana:11.6.3
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-apex-demo}
+      GF_USERS_DEFAULT_THEME: dark
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_ANONYMOUS_HIDE_VERSION: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./grafana/provider.yml:/etc/grafana/provisioning/dashboards/provider.yml:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
     logging: *default_logging
 
 volumes:
   db_data:
+  grafana_data:

@@ -135,8 +135,17 @@ The AI is deliberately **grounded, frugal and supervised**:
 ```bash
 cp .env.example .env          # fill in values — see docs/INSTALL.md
 docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 curl http://localhost:8000/health
 ```
+
+That brings up `db · redis · api · worker(+beat) · grafana` — the API on
+**:8000**, the Apex dashboards on **:3001**, nightly encrypted backups
+into `./backups/` on the host, everything `restart: unless-stopped` for
+headless servers. The Telegram bot joins via
+`--profile telegram` once `TELEGRAM_BOT_TOKEN` is set. Migrating to a
+homeserver over SSH:
+[`docs/INSTALL.md` §9](./docs/INSTALL.md#9-migrating-to-a-homeserver-over-ssh-docker).
 
 Full walkthrough (env-var reference, Telegram/LLM keys, real Garmin /
 Technogym connections, Grafana UI, backups, restore drill, tests):
@@ -237,7 +246,7 @@ needs `OPENAI_API_KEY` (Whisper) and `GLM_API_KEY` on the worker, and the
 Celery worker must be running for voice drafts:
 
 ```bash
-docker compose --project-directory infra up -d db redis worker bot
+docker compose -f infra/docker-compose.yml --profile telegram up -d
 # or without Docker:
 cd backend && uv run python -m app.connectors.telegram.polling
 ```
@@ -545,7 +554,10 @@ a user-space dev stack (PostgreSQL 16 + TimescaleDB + pgvector on :5433,
 Redis 8 on :6380). **Docker parity is still unproven** until
 `docker compose -f infra/docker-compose.yml up -d --build` runs on the
 owner's host — same for the real-account connections, which are manual owner
-steps by design (§0/§16.7).
+steps by design (§0/§16.7). The compose deployment is now feature-complete
+(grafana service, embedded beat, pg_dump 16 in the images, host-mounted
+backup dir, restart policies) and §9 of the INSTALL guide walks the full
+SSH migration.
 
 ## Repo layout
 
@@ -574,8 +586,9 @@ grafana/          temporary web UI: provisioning, generated dashboards,
 connectiq/        Garmin watch app "Apex Day" (Monkey C): gym schedule,
                   supplements, alerts, journal streak — talks to /watch/day
                   and /watch/week over the Funnel
-infra/            docker-compose.yml (db · redis · api · worker · bot)
-                  + tailscale-funnel-setup.md (§15 remote access)
+infra/            docker-compose.yml (db · redis · api · worker+beat · bot ·
+                  grafana) + container Grafana provisioning overrides
+                  (infra/grafana/) + tailscale-funnel-setup.md (§15 remote access)
 scripts/          reset-dev.sh · start_dev_env.sh · rebuild_pg_redis.sh
                   (user-space, no-Docker/no-root dev stack helpers)
 .github/workflows/ tests.yml — full pytest on every push (§20)
