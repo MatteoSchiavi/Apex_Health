@@ -1,0 +1,17 @@
+# Normalize line endings: every checkout on every OS gets LF.
+# Attributes take precedence over core.autocrlf, so a default Git-for-Windows
+# clone (autocrlf=true) can NOT rewrite the tree to CRLF — CRLF is not a
+# cosmetic issue here: Dockerfile RUN line-continuations and POSIX shell
+# scripts (grafana/run_grafana.sh, scripts/*.sh) break with CRLF endings.
+* text=auto eol=lf
+
+# Windows-native exceptions (none today, kept explicit for the future)
+# *.bat text eol=crlf
+# *.ps1 text eol=crlf
+
+# Binary assets — never normalize
+*.png binary
+*.jpg binary
+*.ico binary
+*.prg binary
+*.fit binary

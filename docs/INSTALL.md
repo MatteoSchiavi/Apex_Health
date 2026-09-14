@@ -12,7 +12,7 @@ restore drill. Product background lives in the
 
 | Requirement | Notes |
 |---|---|
-| Linux host (Debian/Ubuntu or Arch tested) | root not required for the bare-metal dev path |
+| Linux host (Debian/Ubuntu or Arch tested) — or **Windows 10/11 via Docker Desktop** (§4a) | root not required for the bare-metal dev path |
 | **Docker + Compose v2** *(Option A)* | or nothing but Python for Option B |
 | **Python 3.12** + [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | **PostgreSQL 16** with **TimescaleDB** and **pgvector** extensions | via the compose image `timescale/timescaledb-ha:pg16`, or a local install |
@@ -113,6 +113,70 @@ bare-metal path; the compose file mirrors it but **Docker parity is still
 unproven on your host** — treat the first `up --build` as the acceptance
 run (log output welcome as an issue/PR). The full SSH-migration
 walkthrough is §9.
+
+### 4a. Windows notes (Docker Desktop)
+
+Windows runs the identical stack — everything is a Linux container — so
+what you verify here is exactly what later lands on the Linux server.
+
+1. **Install once:**
+   - **Docker Desktop for Windows** with the **WSL 2** backend
+     (`wsl --install` first on a fresh machine, reboot, then install Docker
+     Desktop and leave "Use WSL 2 based engine" enabled).
+   - **Git for Windows** (default options are fine — see `.gitattributes`
+     note below).
+2. **Clone somewhere local, not cloud-synced:**
+   `C:\Users\<you>\apex-health` is ideal. **Avoid OneDrive/Dropbox folders**
+   (file locks interfere with bind mounts). Docker Desktop shares your user
+   profile by default, so no share configuration is needed.
+   ```powershell
+   git clone https://github.com/MatteoSchiavi/Apex_Health.git ~/apex-health
+   cd ~/apex-health
+   ```
+3. **Line endings are handled:** the repo pins `.gitattributes` to
+   `eol=lf`, which overrides Git-for-Windows' `core.autocrlf` — every file
+   checks out with LF endings, so the Dockerfile's line-continuations and
+   the POSIX scripts survive the clone intact.
+4. **Create `.env` without Python:**
+   ```powershell
+   Copy-Item .env.example .env
+   # three fresh secrets — paste one per line into .env:
+   -join ((1..2) | % { [guid]::NewGuid().ToString('N') })
+   ```
+   Edit `.env` in VS Code (or any editor saving UTF-8 **without** BOM —
+   plain Notepad's default is fine). Fill `OWNER_EMAIL`/`OWNER_PASSWORD`
+   and the three secrets; leave `DATABASE_URL`/`REDIS_URL` empty.
+5. **Run the same commands in PowerShell** — forward slashes work as-is:
+   ```powershell
+   docker compose -f infra/docker-compose.yml up -d --build
+   docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+   curl.exe http://localhost:8000/health      # → {"status":"ok"}
+   ```
+   Use **`curl.exe`**, not `curl` — in PowerShell `curl` is an alias for
+   `Invoke-WebRequest` and the cookie-jar examples below would fail.
+   The login smoke test from §9.3, Windows form:
+   ```powershell
+   curl.exe -c cookies.txt -X POST http://localhost:8000/auth/login `
+        -H "Content-Type: application/json" `
+        -d '{"email":"<OWNER_EMAIL>","password":"<OWNER_PASSWORD>"}'
+   curl.exe -b cookies.txt http://localhost:8000/labs
+   ```
+6. **Run the test suite on Windows (optional):** the images ship without
+   dev dependencies, but the api container has `uv` and the full source —
+   pull dev deps and run inside the container (tests create and drop their
+   own throwaway databases):
+   ```powershell
+   docker compose -f infra/docker-compose.yml exec api sh -c "uv sync --frozen && uv run pytest -q"
+   ```
+   This mutates only the disposable container's venv — `up -d` recreates
+   it clean. If it gives you trouble, rely on CI (the same 269 tests run
+   on every push) plus the functional checks above.
+7. **Migrating to the Linux server afterwards:** §9 as-is — the compose
+   stack is identical. Bring your `.env` (secrets decrypt your connector
+   tokens and lab notes — a fresh install with new keys can NOT read old
+   data) and, if you produced any, the `backups/` artifacts. Clone the
+   repo fresh on the server and copy `.env` over — do not rsync
+   Windows-side node/venv artifacts.
 
 ## 5. Option B — bare-metal / dev (no Docker)
 
