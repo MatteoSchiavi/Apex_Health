@@ -78,20 +78,41 @@ docker compose -f infra/docker-compose.yml logs -f api
 ```
 
 Services: `db` (TimescaleDB-ha pg16 with shared_preload_libraries),
-`redis`, `api` (uvicorn), `worker` (Celery worker **+ beat** — the beat
-schedule lives inside the worker, §19), `bot` (Telegram long polling).
+`redis`, `api` (uvicorn), `worker` (Celery worker **+ embedded beat** — the
+§19 schedule runs inside the worker process), `grafana` (the Apex
+dashboards on **:3001**, provisioned read-only from `grafana/`; anonymous
+Viewer + dark theme, admin login via `GRAFANA_ADMIN_PASSWORD`, default
+`admin/apex-demo`) — plus `bot` (Telegram long polling), which lives
+behind the `telegram` profile: start it once `TELEGRAM_BOT_TOKEN` is set
+(`--profile telegram up -d`). Every service carries `restart:
+unless-stopped`, so a server reboot brings the stack back with the Docker
+daemon.
 
-Then apply migrations (first boot only — the API also runs them
-automatically on start in dev mode):
+Then apply migrations (first boot — the API does **not** auto-migrate;
+owner bootstrap happens on startup):
 
 ```bash
 docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 ```
 
+The read-only Grafana role is created automatically on first db init
+(empty data volume); on an existing volume re-apply it once:
+
+```bash
+docker compose -f infra/docker-compose.yml exec db \
+  sh -c 'psql -U hcc -d hcc -f /docker-entrypoint-initdb.d/10-grafana-ro.sql'
+```
+
+Nightly backup artifacts land on the host in `./backups/` (bind-mounted
+into api + worker — containers stay disposable), and the api/worker
+images carry `pg_dump`/`psql` 16 so the §22.7 backup task and the restore
+tooling work unmodified.
+
 **Honest caveat:** the whole project was developed and verified on the
 bare-metal path; the compose file mirrors it but **Docker parity is still
-unproven** — treat the first `up --build` on your host as the acceptance
-run (log output welcome as an issue/PR).
+unproven on your host** — treat the first `up --build` as the acceptance
+run (log output welcome as an issue/PR). The full SSH-migration
+walkthrough is §9.
 
 ## 5. Option B — bare-metal / dev (no Docker)
 
@@ -317,7 +338,126 @@ app shows "Token invalid" instead of yesterday's plan.
 - **Week** — the 7-day schedule, today highlighted, plan overrides marked.
 - **Alerts** — open alerts, severity-colored (ack in Telegram/web).
 
-## 9. Running the tests
+## 9. Migrating to a homeserver over SSH (Docker)
+
+The full path from your machine to a headless, always-on box.
+Assumptions: `ssh USER@SERVER` works and Docker + Compose v2 are installed
+(on a fresh Debian/Ubuntu: `curl -fsSL https://get.docker.com | sh`, then
+`sudo usermod -aG docker USER` and re-login). Nothing else should listen
+on :8000/:3001.
+
+### 9.1 Move the code
+
+```bash
+# from your machine — clone straight on the server (private repo, so ssh
+# keys or a token are needed there), or push/pull via your workstation:
+ssh USER@SERVER 'git clone https://github.com/MatteoSchiavi/Apex_Health.git ~/apps/apex-health'
+
+# …or copy an existing working tree (fastest when you already have .env
+# and demo data tuned locally — .venv/backups/grafana-runtime excluded):
+rsync -a --exclude .venv --exclude backups --exclude .git \
+      /path/to/apex-health/ USER@SERVER:apps/apex-health/
+```
+
+### 9.2 Configure on the server
+
+```bash
+ssh USER@SERVER
+cd ~/apps/apex-health
+cp .env.example .env
+nano .env
+```
+
+Minimum for a working server (generate each secret fresh — never reuse
+the dev values):
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # SESSION_SECRET
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # ENCRYPTION_KEY
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # BACKUP_ENCRYPTION_KEY
+```
+
+- `OWNER_EMAIL` / `OWNER_PASSWORD` — your login (§15 bootstrap).
+- `DATABASE_URL` / `REDIS_URL` can stay EMPTY: compose overrides them with
+  container-network values (`db:5432`, `redis:6379`) anyway.
+- `BACKUP_ENCRYPTION_KEY` — set it now; losing it later means losing every
+  backup artifact (§22.7).
+- `TELEGRAM_BOT_TOKEN`, `GLM_API_KEY`, `OPENAI_API_KEY`,
+  `WEATHER_HOME_LAT/LON`, `GARMIN_EMAIL/PASSWORD` — per feature, see §3
+  and §7. Uncomment `GRAFANA_ADMIN_PASSWORD` to move off `apex-demo`.
+  After setting the bot token add the bot service:
+  `docker compose -f infra/docker-compose.yml --profile telegram up -d`.
+
+### 9.3 Boot & verify
+
+```bash
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+curl http://localhost:8000/health                     # → {"status":"ok"}
+docker compose -f infra/docker-compose.yml ps        # all healthy
+```
+
+- Dashboards: `http://SERVER-LAN-IP:3001` (folder **Apex Health**, 8
+  dashboards; the datasource queries the db service as the read-only
+  `grafana_ro`).
+- Owner login (session cookie + CSRF header for writes, §22.3):
+
+```bash
+BASE=http://localhost:8000
+curl -c /tmp/jar -X POST $BASE/auth/login -H 'Content-Type: application/json' \
+     -d '{"email":"<OWNER_EMAIL>","password":"<OWNER_PASSWORD>"}'
+curl -b /tmp/jar $BASE/labs | head -c 400       # authenticated GET → own lab panels
+```
+
+- Demo data (optional, synthetic, wipes user data — re-run any time):
+
+  ```bash
+  docker compose -f infra/docker-compose.yml exec api \
+    env PYTHONPATH=/app python tools/seed_demo_data.py --days 240
+  # owner login afterwards: owner@apexhealth.dev / demo-owner-1234
+  ```
+
+### 9.4 Survive reboots & stay off the open internet
+
+Every compose service has `restart: unless-stopped`; the Docker daemon is
+enabled by default (`sudo systemctl enable docker` to be sure). The stack
+then needs no babysitting.
+
+Do NOT port-forward 8000/3001 on your router. For remote access use
+Tailscale Funnel (real TLS, no opened ports, invite-flow access control):
+follow [`infra/tailscale-funnel-setup.md`](../infra/tailscale-funnel-setup.md)
+and set `TRUST_PROXY_HEADERS=true` in `.env` (§8a walks the friend flow).
+
+### 9.5 Backups on the server
+
+- Nightly at 02:00 UTC the worker writes an encrypted dump to
+  `~/apps/apex-health/backups/` (host-visible, 14 daily + 6 monthly
+  retention, §22.7). B2 offsite upload starts automatically once
+  `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET` are set.
+- Prove restores work on the real server (the §22.7 acceptance run):
+
+```bash
+docker compose -f infra/docker-compose.yml exec api python tools/restore_drill.py
+```
+
+- A real restore into a fresh DB: `tools/restore_backup.py` (§8-4).
+
+### 9.6 Updating the deployment
+
+```bash
+cd ~/apps/apex-health
+git pull
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+```
+
+Data lives in the named volumes (`apex-health_db_data`,
+`apex-health_grafana_data`) and the host `./backups/` dir — code updates
+don't touch them. To move homeservers: `pg_dump` via a fresh backup
+artifact + copy `backups/` + `.env`, then restore into the new host's
+db (§8-4) — the encrypted artifact travels safely over any channel.
+
+## 10. Running the tests
 
 ```bash
 cd backend && uv sync
@@ -328,7 +468,7 @@ uv run pytest -q          # 269 passed is the green baseline
 CI (GitHub Actions) runs the same suite against
 `timescale/timescaledb-ha:pg16` + `redis:7` services on every push.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Cause & fix |
 |---|---|
