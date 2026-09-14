@@ -88,6 +88,17 @@ behind the `telegram` profile: start it once `TELEGRAM_BOT_TOKEN` is set
 unless-stopped`, so a server reboot brings the stack back with the Docker
 daemon.
 
+Opening `:3001` lands on the Apex **Overview** dashboard
+(`GF_USERS_HOME_PAGE`). If a Grafana upgrade ever ignores the env, pin
+the org home once via the API (the same call the host-run
+`grafana/run_grafana.sh` makes):
+
+```bash
+curl -u admin:apex-demo -X PUT http://localhost:3001/api/org/preferences \
+     -H 'Content-Type: application/json' \
+     -d '{"homeDashboardUID":"apex-overview","theme":"dark"}'
+```
+
 Then apply migrations (first boot — the API does **not** auto-migrate;
 owner bootstrap happens on startup):
 
@@ -259,7 +270,9 @@ Full details: [`grafana/README.md`](../grafana/README.md).
 ## 7. Connecting real data sources (owner steps, §0/§16.7)
 
 Automated tests only use recorded fixtures — connecting real accounts is
-deliberately manual:
+deliberately manual: putting `GARMIN_EMAIL`/`GARMIN_PASSWORD` in `.env`
+alone does **nothing** (the sync tasks only poll accounts whose tokens are
+already stored). The one-time connect consumes them:
 
 ```bash
 # Garmin — one-time login, tokens stored app-layer-encrypted
@@ -267,7 +280,41 @@ cd backend
 GARMIN_EMAIL=you@example.com GARMIN_PASSWORD=... \
     uv run python -m tools.garmin_sync connect
 uv run python -m tools.garmin_sync sync            # incremental now
+uv run python -m tools.garmin_sync status          # counts + last_synced_at
+```
 
+Docker form (credentials come from `.env` via `env_file`):
+
+```bash
+docker compose -f infra/docker-compose.yml exec api \
+    env PYTHONPATH=/app python tools/garmin_sync.py connect
+# verify the backfill landed:
+docker compose -f infra/docker-compose.yml exec api \
+    env PYTHONPATH=/app python tools/garmin_sync.py status
+```
+
+`connect` performs the FULL §6.3 backfill — every paginated activity in
+the account's history, plus wellness (sleep/biometrics) walked backwards
+day by day until a sustained 10-day empty gap, i.e. 3–6 months is normal
+and multi-year histories are pulled too. It is paced (§19: unofficial
+client, ban-safe speed), so a large history takes a while — watch
+`status` counts climb or re-run `sync --backfill` later to re-walk.
+
+Scores (readiness/recovery/strain) are computed nightly at 03:00
+user-local for the PRIOR day. To score the freshly backfilled history
+immediately instead of waiting, run the §6.4 correction task over the
+synced range (user 1 = owner; adjust user_id and dates):
+
+```bash
+docker compose -f infra/docker-compose.yml exec worker \
+    celery -A app.tasks.celery_app call features.recompute_range \
+    --args '[1, "2026-03-01", "2026-09-14"]'
+```
+
+After it reports ok, the Overview/Recovery dashboards have scores for the
+whole range.
+
+```bash
 # Technogym — OAuth2; register at developer.technogym.com first
 TECHNOGYM_CLIENT_ID=... TECHNOGYM_CLIENT_SECRET=... \
     uv run python tools/technogym_connect.py start  # prints authorize URL
@@ -280,6 +327,10 @@ uv run python tools/technogym_connect.py complete <code> <state>
 Weather needs no account — set `WEATHER_HOME_LAT`/`WEATHER_HOME_LON` and
 the next 6-hourly beat tick fills the cache and starts enriching
 activities.
+
+Labs, journal, nutrition and gear are manual-entry domains by design
+(§12/§13) — REST POSTs or Telegram; they stay empty until you enter
+data. AI panels need `GLM_API_KEY` plus actual usage.
 
 ## 8. Backups & the restore drill (§22.7)
 

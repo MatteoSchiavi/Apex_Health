@@ -125,6 +125,8 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-apex-demo}
       GF_USERS_DEFAULT_THEME: dark
+      # Land on the Apex Overview instead of the Grafana welcome page.
+      GF_USERS_HOME_PAGE: /d/apex-overview
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_ANONYMOUS_HIDE_VERSION: "true"
