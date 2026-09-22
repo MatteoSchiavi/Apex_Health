@@ -22,11 +22,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
+from app.connectors.strava.flow import (
+    OAuthFlowError as StravaFlowError,
+    complete_authorization as strava_complete,
+    create_pending_authorization as strava_create_pending,
+    flow_settings_ready as strava_flow_ready,
+)
 from app.connectors.technogym.flow import (
     OAuthFlowError,
     complete_authorization,
     create_pending_authorization,
     flow_settings_ready,
+)
+from app.connectors.whoop.flow import (
+    OAuthFlowError as WhoopFlowError,
+    complete_authorization as whoop_complete,
+    create_pending_authorization as whoop_create_pending,
+    flow_settings_ready as whoop_flow_ready,
 )
 from app.core.db import get_session
 from app.core.redis import get_redis
@@ -113,6 +125,120 @@ async def technogym_oauth_callback(
     try:
         return await complete_authorization(session, redis, code=code, state=state)
     except OAuthFlowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+# ------------------------------------------------------------- Whoop (v2)
+
+
+@router.post("/settings/integrations/whoop/authorize")
+async def start_whoop_authorization(
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    """Mint the single-use state and return the Whoop authorization URL.
+    State-changing (Redis write) -> CSRF header required (§22.3)."""
+    if not whoop_flow_ready():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET are not configured — "
+                "register the app at developer.whoop.com first (INSTALL §7b)"
+            ),
+        )
+    state, authorize_url = await whoop_create_pending(redis, user)
+    logger.info("whoop OAuth: pending authorization minted for user %s", user.id)
+    return {
+        "authorize_url": authorize_url,
+        "state": state,
+        "expires_in_seconds": 600,
+        "note": (
+            "Open the URL, log into Whoop, and approve — the provider then "
+            "redirects to the configured redirect URI."
+        ),
+    }
+
+
+@router.get("/integrations/whoop/callback")
+async def whoop_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    """Whoop's browser redirect target (session-less; single-use state is
+    the authentication and account binding)."""
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Whoop authorization failed: {error}",
+        )
+    if not code or not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="callback requires both 'code' and 'state' parameters",
+        )
+    try:
+        return await whoop_complete(session, redis, code=code, state=state)
+    except WhoopFlowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+# ------------------------------------------------------------- Strava (v3)
+
+
+@router.post("/settings/integrations/strava/authorize")
+async def start_strava_authorization(
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    if not strava_flow_ready():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET are not configured — "
+                "register the app at strava.com/settings/api first (INSTALL §7c)"
+            ),
+        )
+    state, authorize_url = await strava_create_pending(redis, user)
+    logger.info("strava OAuth: pending authorization minted for user %s", user.id)
+    return {
+        "authorize_url": authorize_url,
+        "state": state,
+        "expires_in_seconds": 600,
+        "note": (
+            "Open the URL, log into Strava, and approve — the provider then "
+            "redirects to the configured redirect URI."
+        ),
+    }
+
+
+@router.get("/integrations/strava/callback")
+async def strava_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Strava authorization failed: {error}",
+        )
+    if not code or not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="callback requires both 'code' and 'state' parameters",
+        )
+    try:
+        return await strava_complete(session, redis, code=code, state=state)
+    except StravaFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc

@@ -4,7 +4,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import auth, gear, health, integrations, labs, schedule, settings, watch, weather
+from app.api import (
+    auth,
+    challenges,
+    coach,
+    gear,
+    health,
+    imports,
+    integrations,
+    labs,
+    schedule,
+    settings,
+    watch,
+    weather,
+)
 from app.auth.service import ensure_owner
 from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
@@ -35,6 +48,9 @@ def create_app() -> FastAPI:
     app.include_router(integrations.router)
     app.include_router(schedule.router)
     app.include_router(settings.router)
+    app.include_router(coach.router)
+    app.include_router(challenges.router)
+    app.include_router(imports.router)
     app.include_router(watch.router)
     app.include_router(weather.router)
     return app

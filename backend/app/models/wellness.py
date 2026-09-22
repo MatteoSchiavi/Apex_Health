@@ -10,6 +10,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Numeric, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -76,3 +77,9 @@ class DailyBiometric(Base):
     floors: Mapped[int | None] = mapped_column(nullable=True)
     spo2_avg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     hydration_ml: Mapped[int | None] = mapped_column(nullable=True)
+    # Provider-specific quantities that must NOT be folded into the unit-
+    # compatible columns above (Whoop Recovery %, day Strain, skin temp...).
+    # Keyed {"whoop": {...}, ...} — migration 0006.
+    source_metrics: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )

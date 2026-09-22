@@ -169,7 +169,7 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
             assert len(usage) == 3  # 2 tool iterations + final
             assert all(u.call_type == "chat" and u.tier == "cheap" for u in usage)
         # the model saw the tool schemas (§8.4 request build)
-        assert len(llm.calls[0]["tools"]) == 11
+        assert len(llm.calls[0]["tools"]) == 14
 
 
 async def test_tool_error_returns_as_result_and_loop_continues():

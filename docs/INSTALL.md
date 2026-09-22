@@ -280,6 +280,81 @@ Weather needs no account — set `WEATHER_HOME_LAT`/`WEATHER_HOME_LON` and
 the next 6-hourly beat tick fills the cache and starts enriching
 activities.
 
+### 7b. Whoop (official Developer API v2) — a primary device
+
+Whoop is a **first-class alternative to Garmin** (owner decision): recovery,
+sleep and workouts land in the exact same canonical tables the Garmin
+connector writes, with a strict annotation law (HRV in ms as
+`overnight_avg`, sleep stages in **seconds**, Whoop Recovery % and Strain
+0-21 stored in `source_metrics` — never merged into Garmin-comparable
+columns). Whoop has no steps/body-battery; those fields are simply never
+touched.
+
+One-time app registration (manual — you own the Whoop developer account):
+
+1. Sign in at `developer.whoop.com` → **Create an app**.
+2. Data access: pick **USER** (not partner). Request the read scopes
+   `read:profile`, `read:body_measurement`, `read:cycles`, `read:recovery`,
+   `read:sleep`, `read:workout` **plus `offline`** (that last one is what
+   makes Whoop hand out a refresh token).
+3. Redirect URI — copy exactly what goes into `.env`:
+   `http://localhost:8000/integrations/whoop/callback`
+   (behind the funnel/domain instead: `https://<your-domain>/integrations/whoop/callback`
+   — the value in `.env` and the value registered at Whoop must match
+   character for character).
+4. Put `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` / `WHOOP_REDIRECT_URI`
+   into `.env`, then restart the api container.
+
+Connect the account (each user does this themselves; the flow stores tokens
+app-layer-encrypted and binds via a single-use `state`):
+
+```bash
+# 1. logged-in session with CSRF header (see §8a for the cookie jar pattern)
+curl -sk -c /tmp/owner.jar -X POST https://localhost:8000/settings/integrations/whoop/authorize \
+    -H "X-CSRF-Token: x" -b /tmp/owner.jar
+# → {"authorize_url": "https://api.prod.whoop.com/oauth/oauth2/auth?..."}
+# 2. open authorize_url in a browser, log into Whoop, approve — Whoop
+#    redirects to the callback URL and the server stores the tokens.
+# 3. verify:
+curl -sk -b /tmp/owner.jar https://localhost:8000/settings/integrations | python3 -m json.tool
+```
+
+The beat already syncs every 6 hours (`whoop.sync_all` at :05 — rotated
+refresh tokens are persisted automatically). First sync is a full backfill
+back to 2012-or-origin; sleep/recovery/cycles/workouts all paginate via the
+official API — no rate-limit gymnastics needed.
+
+### 7c. Strava (official REST API v3) — GPS companion source
+
+Whoop has no GPS/distance and no public feed; Strava supplies rides, runs
+and their distance/elevation. Same one-time registration:
+
+1. `strava.com/settings/api` → **Create & Manage Your App**.
+2. Authorization Callback Domain: `localhost` (or your domain without
+   scheme); the redirect URI in `.env` must match the registered domain.
+3. `.env`: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
+   `STRAVA_REDIRECT_URI=http://localhost:8000/integrations/strava/callback`.
+
+Connect: `POST /settings/integrations/strava/authorize` → open the URL →
+approve → done. Beat syncs every 6 hours at :07 (rate-limit-aware pacing).
+Strava's `relative_effort` is **not** comparable to Garmin's training load
+and stays in `source_metrics` — the feature engine never mixes them.
+
+### 7d. CSV import (Apple Health / Google Fit / generic)
+
+For histories no API covers (or when a friend just has an export file):
+
+```bash
+curl -sk -b /tmp/owner.jar -X POST https://localhost:8000/imports/csv \
+    -H "X-CSRF-Token: x" -F "file=@apple-health-export.csv"
+```
+
+Two shapes are auto-detected by header sniffing (Apple Health vocabulary
+like `Workout Type` / `Start Time` / `Energy Burned (kcal)` works, as does
+a plain `date,steps,weight_kg,resting_hr,hrv_ms,spo2_avg` daily table —
+see `backend/app/services/csv_import.py` for the alias table). Importing
+is idempotent; CLI form: `python -m tools.import_csv --file export.csv`.
+
 Labs, journal, nutrition and gear are manual-entry domains by design
 (§12/§13) — REST POSTs or Telegram; they stay empty until you enter
 data. AI panels need `GLM_API_KEY` plus actual usage.
@@ -522,12 +597,49 @@ don't touch them. To move homeservers: `pg_dump` via a fresh backup
 artifact + copy `backups/` + `.env`, then restore into the new host's
 db (§8-4) — the encrypted artifact travels safely over any channel.
 
+## 9a. Hosting for friends: remote access on an 8 GB server
+
+The stack is sized for it: compose carries memory limits (db 2.5 GB,
+worker 1.5 GB, api 1 GB, redis 256 MB) leaving ~3.5 GB headroom on 8 GB.
+Multi-user is fully server-side (invite-only accounts, per-user data
+isolation, per-user AI budgets) — remote access is the only missing piece.
+
+Recommended (in order of friend-friendliness):
+
+1. **Cloudflare Tunnel + a real domain — the best friend experience.**
+   A public `https://apex.yourdomain.com` that works in any browser, no
+   VPN, no port forwarding, nothing to explain.
+   - Point a (sub)domain at Cloudflare (free plan is enough).
+   - On the server: `docker run -d --name cloudflared --restart unless-stopped
+     --network apex-health_default cloudflare/cloudflared:latest tunnel --no-autoupdate run
+     --token <TUNNEL_TOKEN>` (create the token in the Cloudflare Zero Trust
+     dashboard → Networks → Tunnels; map `apex.yourdomain.com` to
+     `http://api:8000`).
+   - `.env`: `TRUST_PROXY_HEADERS=true` so the app adopts the forwarded
+     scheme (§15), and set the Whoop/Strava redirect URIs to the public
+     domain (§7b/§7c).
+   - Session cookies are Secure + HttpOnly and HTTPS is automatic; invite
+     redemption (§8a) is the only thing friends ever need from you.
+2. **Tailscale (already documented for the Funnel variant, §15 /
+   `infra/tailscale-funnel-setup.md`).** Zero public exposure; every
+   friend installs the Tailscale app and joins your tailnet (or you
+   enable Funnel for a public HTTPS URL without a domain). Best if you
+   don't want the site on the open internet at all.
+3. **What NOT to do:** plain port-forwarding of :8000 over HTTP. Cookies
+   are `Secure`, so plain HTTP would break logins anyway — always put a
+   TLS terminator (Cloudflare / Funnel / Caddy) in front.
+
+Friend onboarding is §8a verbatim: mint an invite code, send it over a
+trusted channel, friend calls `/auth/invite/redeem` — one request, account
++ session. Friends default to `ai_access_tier=cheap_only` (bounded AI
+cost, §9.2); raise it with `PATCH /settings/users/{id}/ai-tier`.
+
 ## 10. Running the tests
 
 ```bash
 cd backend && uv sync
 # point DATABASE_URL/REDIS_URL at a DEV database (tests create their own DBs)
-uv run pytest -q          # 269 passed is the green baseline
+uv run pytest -q          # 315 passed is the green baseline
 ```
 
 CI (GitHub Actions) runs the same suite against

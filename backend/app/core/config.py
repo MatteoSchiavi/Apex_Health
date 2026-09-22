@@ -55,6 +55,43 @@ class Settings(BaseSettings):
     technogym_page_delay_seconds: float = 2.0
     technogym_activity_page_size: int = 50
 
+    # --- Whoop connector (official Developer API v2, 2026-09 spec) ---
+    # The owner registers an app at developer.whoop.com ("Create an app",
+    # user OAuth type) and sets WHOOP_CLIENT_ID/SECRET; the redirect URI
+    # registered there must equal WHOOP_REDIRECT_URI. Endpoint URLs below are
+    # straight from the published OpenAPI spec (still env-tunable per §24 in
+    # case Whoop revisions them). `offline` in the scope list is what makes
+    # Whoop hand out a refresh token.
+    whoop_client_id: str = ""
+    whoop_client_secret: str = ""
+    whoop_redirect_uri: str = "http://localhost:8000/integrations/whoop/callback"
+    whoop_oauth_authorize_url: str = "https://api.prod.whoop.com/oauth/oauth2/auth"
+    whoop_oauth_token_url: str = "https://api.prod.whoop.com/oauth/oauth2/token"
+    whoop_api_base: str = "https://api.prod.whoop.com/developer/v2"
+    whoop_scope: str = (
+        "offline read:profile read:body_measurement read:cycles "
+        "read:recovery read:sleep read:workout"
+    )
+    # Whoop caps collections at 25 records/page — pages are cheap and paced
+    # like every other connector (§19).
+    whoop_page_size: int = 25
+    whoop_page_delay_seconds: float = 0.5
+
+    # --- Strava connector (official REST API v3) ---
+    # Owner registers an API application at strava.com/settings/api; the
+    # authorization flow is the standard OAuth2 authorization-code grant.
+    # Strava enforces rate limits (100 requests / 15 min, 1000 / day) so
+    # backfills page at 100 activities/request and sleep between pages.
+    strava_client_id: str = ""
+    strava_client_secret: str = ""
+    strava_redirect_uri: str = "http://localhost:8000/integrations/strava/callback"
+    strava_oauth_authorize_url: str = "https://www.strava.com/oauth/authorize"
+    strava_oauth_token_url: str = "https://www.strava.com/oauth/token"
+    strava_api_base: str = "https://www.strava.com/api/v3"
+    strava_scope: str = "activity:read_all"
+    strava_page_delay_seconds: float = 2.0
+    strava_activity_page_size: int = 100
+
     # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
     telegram_bot_token: str = ""
 

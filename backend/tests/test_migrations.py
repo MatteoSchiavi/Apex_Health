@@ -13,6 +13,11 @@ EXPECTED_TABLES = {
     # Phase 10 v2 addition (the rethought watch app — recurring weekly gym
     # routine; §6.4's training_plans are week-scoped, not standing templates)
     "gym_schedule_slots",
+    # Multi-device + coach + social layer (migration 0006): Whoop provider,
+    # events calendar, AI context docs, gym day detail, feedback, challenges
+    "user_events", "user_context_docs", "session_feedback",
+    "gym_exercises", "gym_day_plans", "gym_day_exercises", "gym_set_logs",
+    "challenges", "challenge_members",
     # disciplines & gear
     "disciplines", "gear", "gear_service_logs", "discipline_gear_defaults",
     # activities

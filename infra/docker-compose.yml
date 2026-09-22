@@ -2,9 +2,16 @@
 #
 # Services: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api (uvicorn),
 # worker (Celery worker + embedded beat — beat_schedule lives in
-# app/tasks/celery_app.py, §19), bot (Telegram long polling, §10.1).
+# app/tasks/celery_app.py, §19: Garmin/Whoop/Strava/Technogym syncs every 6h,
+# nightly feature engine 03:00 user-local, gear accumulation, AI budget
+# check, nightly encrypted backup, reports), bot (Telegram long polling, §10.1).
 # The web UI is the next work item (real full UI, spec Appendix A) — the
 # temporary Grafana dashboards were removed by owner decision.
+#
+# Sizing: memory limits are tuned for the owner's 8 GB homeserver (multi-user
+# friends deployment) with ~3.5 GB headroom for the OS/page cache. Remove
+# them on bigger hosts if you like; do NOT raise db's above 3 GB here without
+# checking the host's other duties.
 #
 # Logging: JSON to stdout captured with rotation (§21).
 # Resilience: every service restarts unless stopped, so a homeserver reboot
@@ -33,6 +40,9 @@ services:
       timeout: 5s
       retries: 20
     restart: unless-stopped
+    # 8 GB homeserver sizing — see file header.
+    mem_limit: 2560m
+    mem_reservation: 1024m
     logging: &default_logging
       driver: json-file
       options:
@@ -47,6 +57,8 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    mem_limit: 256m
+    mem_reservation: 64m
     logging: *default_logging
 
   api:
@@ -69,6 +81,8 @@ services:
     # see exactly what the worker wrote.
     volumes:
       - ../backups:/app/backups
+    mem_limit: 1024m
+    mem_reservation: 256m
     logging: *default_logging
 
   worker:
@@ -90,6 +104,8 @@ services:
     restart: unless-stopped
     volumes:
       - ../backups:/app/backups
+    mem_limit: 1536m
+    mem_reservation: 512m
     logging: *default_logging
 
   # §10.1: long polling — outbound-only, no public port, no webhook secret.
@@ -110,6 +126,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
     logging: *default_logging
 
 volumes:

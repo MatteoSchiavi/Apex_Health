@@ -11,12 +11,16 @@ returns it; confirmation happens via Telegram inline buttons. Tool errors
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Awaitable, Callable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.training import TrainingPlan
+from app.models.gym_detail import GymDayPlan
+from app.models.user import User
+from app.queries.gym_detail import PlanNotFoundError, session_view
 from app.queries.journal import get_journal_entries
 from app.queries.labs import get_donation_status, get_lab_trend
 from app.queries.metrics import (
@@ -206,6 +210,110 @@ async def _sync_plan_to_technogym(ctx: ToolContext, training_plan_id: int) -> di
     }
 
 
+# --- coach tools (owner feature batch, 2026-09) ------------------------------
+
+
+async def _get_upcoming_events(ctx: ToolContext, horizon_days: int = 14) -> dict:
+    """The user's calendar for the next N days — the base of every
+    'am I ready for X / what should I train' conversation."""
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from app.models.coach import UserEvent
+
+    horizon = min(max(int(horizon_days), 1), 60)
+    now_start = datetime.combine(ctx.today, datetime.min.time())
+    rows = (
+        (
+            await ctx.session.scalars(
+                select(UserEvent)
+                .where(
+                    UserEvent.user_id == ctx.user_id,
+                    UserEvent.starts_at >= now_start,
+                    UserEvent.starts_at
+                    < now_start + timedelta(days=horizon),
+                )
+                .order_by(UserEvent.starts_at)
+            )
+        )
+        .all()
+    )
+    return {
+        "events": [
+            {
+                "title": e.title,
+                "kind": e.kind,
+                "date": e.starts_at.date().isoformat(),
+                "priority": e.priority,
+                "taper_days": e.taper_days,
+                "notes": e.notes,
+            }
+            for e in rows
+        ]
+    }
+
+
+async def _update_context_doc(ctx: ToolContext, doc_kind: str, content: str) -> dict:
+    """Direct write (NOT a draft): the context docs are the user's own notes
+    — the agent keeping them current is bookkeeping, not a health decision
+    (§8.5's draft law targets plans/protocols). updated_by records the
+    authorship so the user can always tell what the agent changed."""
+    from sqlalchemy import select
+
+    from app.models.coach import UserContextDoc
+
+    allowed = ("profile", "goals", "injuries", "equipment", "preferences", "season_plan")
+    if doc_kind not in allowed:
+        return {"error": f"doc_kind must be one of {', '.join(allowed)}"}
+    if not content.strip():
+        return {"error": "content must not be empty"}
+    doc = await ctx.session.scalar(
+        select(UserContextDoc).where(
+            UserContextDoc.user_id == ctx.user_id,
+            UserContextDoc.doc_kind == doc_kind,
+        )
+    )
+    if doc is None:
+        doc = UserContextDoc(user_id=ctx.user_id, doc_kind=doc_kind, content=content)
+        ctx.session.add(doc)
+    else:
+        doc.content = content
+    doc.updated_by = "ai"
+    await ctx.session.flush()
+    return {
+        "status": "updated",
+        "doc_kind": doc_kind,
+        "chars": len(content),
+        "note": "Context document updated (updated_by=ai).",
+    }
+
+
+async def _get_gym_day(ctx: ToolContext, date: str | None = None) -> dict:
+    """The concrete gym day plan (exercises, sets/reps/rest, progress) —
+    today unless a date is given."""
+    day = _date(date, field_name="date", required=False)
+    if day is None:
+        day = ctx.today
+    plan_id_row = await ctx.session.scalar(
+        select(GymDayPlan.id).where(
+            GymDayPlan.user_id == ctx.user_id, GymDayPlan.date == day
+        )
+    )
+    if plan_id_row is None:
+        return {
+            "date": day.isoformat(),
+            "plan": None,
+            "note": "no concrete plan for this date — the recurring template "
+            "applies; generate one via POST /gym/plan/{date}/generate",
+        }
+    try:
+        view = await session_view(ctx.session, ctx.user_id, plan_id_row)
+    except PlanNotFoundError:  # pragma: no cover - id from same table
+        return {"date": day.isoformat(), "plan": None}
+    return {"date": day.isoformat(), "plan": view}
+
+
 # --- registry ----------------------------------------------------------------
 
 
@@ -356,6 +464,45 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             "(contingent on Technogym access — §11b).",
             parameters=_schema({"training_plan_id": {"type": "integer"}}, ["training_plan_id"]),
             handler=_sync_plan_to_technogym,
+        ),
+        ToolSpec(
+            name="get_upcoming_events",
+            kind="read",
+            description="The user's calendar events (races, trips, ski weeks, "
+            "competitions) for the next N days — the context behind training "
+            "tailoring and tapering.",
+            parameters=_schema(
+                {"horizon_days": {"type": "integer", "description": "default 14, max 60"}},
+                [],
+            ),
+            handler=_get_upcoming_events,
+        ),
+        ToolSpec(
+            name="update_context_doc",
+            kind="write",
+            description="Create/update one of the user's context documents "
+            "(profile, goals, injuries, equipment, preferences, season_plan) "
+            "in compact markdown. Use when the user states durable facts "
+            "(goals, injuries, equipment, season plans).",
+            parameters=_schema(
+                {
+                    "doc_kind": {"type": "string", "enum": ["profile", "goals", "injuries", "equipment", "preferences", "season_plan"]},
+                    "content": {"type": "string"},
+                },
+                ["doc_kind", "content"],
+            ),
+            handler=_update_context_doc,
+        ),
+        ToolSpec(
+            name="get_gym_day",
+            kind="read",
+            description="The concrete gym day plan for a date (default today): "
+            "exercises with sets/reps/rest and completion progress.",
+            parameters=_schema(
+                {"date": {"type": "string", "description": "YYYY-MM-DD, default today"}},
+                [],
+            ),
+            handler=_get_gym_day,
         ),
     ]
 }

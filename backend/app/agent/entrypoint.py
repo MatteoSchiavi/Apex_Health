@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.agent.context import coach_context
 from app.agent.loop import AgentLoopResult, run_agent_loop
 from app.agent.routing import resolve_tier
 from app.core.llm import LLMClient
@@ -183,6 +184,11 @@ async def _build_snapshot(session, user_id: int, now: datetime) -> dict:
             session, feature_name, datetime(local_today.year, local_today.month, local_today.day, tzinfo=tz)
         )
 
+    # Harness v2 (owner feature batch): per-user context docs, the 14-day
+    # event calendar and today's gym plan ride along — all under the char
+    # budgets set in app/agent/context.py so the cached block stays light.
+    coach = await coach_context(session, user_id, now)
+
     return {
         "_local_today": local_today,
         "_timezone": tz.key,
@@ -196,6 +202,7 @@ async def _build_snapshot(session, user_id: int, now: datetime) -> dict:
         "integrations": [
             {"provider": i["provider"], "status": i["status"]} for i in integrations
         ],
+        **coach,
     }
 
 
@@ -209,5 +216,8 @@ def _system_block(snapshot: dict) -> str:
         "trend_14d": snapshot["trend_14d"],
         "open_alerts": snapshot["open_alerts"],
         "integrations": snapshot["integrations"],
+        "context_docs": snapshot["context_docs"],
+        "upcoming_events": snapshot["upcoming_events"],
+        "gym_today": snapshot["gym_today"],
     }
     return f"{SYSTEM_PROMPT}\n\nCurrent context (JSON):\n{json.dumps(context, ensure_ascii=False, default=str)}"

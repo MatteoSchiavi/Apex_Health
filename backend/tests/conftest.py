@@ -63,12 +63,21 @@ async def _wipe_domain_tables() -> None:
     users/disciplines. Without this, a swallowed downgrade error turns the
     following `upgrade head` into a no-op and stale rows (old weight
     versions!) leak across sessions.
+
+    A VIRGIN database (first run on a fresh host) has no tables yet — the
+    truncate is skipped and the upgrade below builds the schema (the
+    tolerant downgrade afterwards is a no-op by construction).
     """
+    from sqlalchemy.exc import ProgrammingError
+
     engine = create_async_engine(os.environ["DATABASE_URL"])
     async with engine.begin() as conn:
-        await conn.execute(
-            text("TRUNCATE users, disciplines, feature_weights RESTART IDENTITY CASCADE")
-        )
+        try:
+            await conn.execute(
+                text("TRUNCATE users, disciplines, feature_weights RESTART IDENTITY CASCADE")
+            )
+        except ProgrammingError:  # virgin schema (UndefinedTableError)
+            pass
     await engine.dispose()
 
 

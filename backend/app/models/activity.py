@@ -30,7 +30,7 @@ class Activity(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    discipline_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    discipline_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     start_tz_offset_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     # §17 day-boundary rule: calendar date of the LOCAL start_time (users.timezone).
@@ -52,6 +52,13 @@ class Activity(Base):
     # JSON 'null' (not SQL NULL), which would make such rows invisible to that
     # sweep forever; none_as_null pins the column to one unambiguous meaning.
     weather_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    # Provider-specific quantities that must NOT be folded into unit-
+    # compatible canonical columns (Whoop Strain 0-21 ≠ training_load,
+    # zone durations, relative effort...). Written by the owning connector,
+    # keyed {"whoop": {...}, "strava": {...}, ...} — migration 0006.
+    source_metrics: Mapped[dict | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

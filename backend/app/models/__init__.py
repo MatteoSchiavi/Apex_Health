@@ -9,7 +9,9 @@ from app.models.activity import (
 from app.models.ai import AgentToolCall, AiReport, Embedding, TokenUsage
 from app.models.alert import Alert
 from app.models.base import Base
+from app.models.challenge import Challenge, ChallengeMember
 from app.models.chat import AiChatMessage, AiChatSession
+from app.models.coach import SessionFeedback, UserContextDoc, UserEvent
 from app.models.features import (
     DailyFeature,
     DisciplineFeature,
@@ -17,6 +19,12 @@ from app.models.features import (
 )
 from app.models.integration import Integration, RawIngest
 from app.models.gym import GymScheduleSlot
+from app.models.gym_detail import (
+    GymDayExercise,
+    GymDayPlan,
+    GymExercise,
+    GymSetLog,
+)
 from app.models.gear import (
     ActivityGearLink,
     DisciplineGearDefault,
@@ -55,6 +63,8 @@ __all__ = [
     "Alert",
     "AuthCredential",
     "Base",
+    "Challenge",
+    "ChallengeMember",
     "DailyBiometric",
     "DailyFeature",
     "DeviceToken",
@@ -66,7 +76,11 @@ __all__ = [
     "ForecastCache",
     "Gear",
     "GearServiceLog",
+    "GymDayExercise",
+    "GymDayPlan",
+    "GymExercise",
     "GymScheduleSlot",
+    "GymSetLog",
     "HrvReading",
     "Integration",
     "JournalEntry",
@@ -75,6 +89,7 @@ __all__ = [
     "NutritionLog",
     "PlannedSession",
     "RawIngest",
+    "SessionFeedback",
     "SleepSession",
     "StressReading",
     "SupplementLog",
@@ -84,5 +99,7 @@ __all__ = [
     "TokenUsage",
     "TrainingPlan",
     "User",
+    "UserContextDoc",
+    "UserEvent",
     "UserSession",
 ]
