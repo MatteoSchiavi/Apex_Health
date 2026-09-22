@@ -60,10 +60,18 @@ async def cmd_connect(args: argparse.Namespace) -> None:
     settings = get_settings()
     if not settings.garmin_email or not settings.garmin_password:
         sys.exit("Set GARMIN_EMAIL and GARMIN_PASSWORD in the environment first.")
+
+    def _mfa_prompt() -> str:
+        # Interactive one-time code (email/authenticator) — connect is a
+        # human step, so input() is available exactly when this runs.
+        return input("Garmin MFA one-time code: ").strip()
+
     async with sessionmaker() as session:
         user = await _owner(session)
         integration = await _integration(session, user)
-        client = LiveGarminClient.from_password(settings.garmin_email, settings.garmin_password)
+        client = LiveGarminClient.from_password(
+            settings.garmin_email, settings.garmin_password, prompt_mfa=_mfa_prompt
+        )
         tokens = client.dump_tokens()
         integration.credentials_encrypted = encrypt_json(tokens)
         await session.commit()
@@ -89,7 +97,17 @@ async def _run(session, user, integration, client, *, backfill: bool) -> None:
     if backfill:
         integration.last_synced_at = None  # §6.3: NULL last_synced_at = full walk
         await session.commit()
-    report = await run_user_sync_with_escalation(session, user, integration, client)
+    settings = get_settings()
+    report = await run_user_sync_with_escalation(
+        session,
+        user,
+        integration,
+        client,
+        page_size=settings.garmin_activity_page_size,
+        page_delay_s=settings.garmin_page_delay_seconds,
+        empty_gap_days=settings.garmin_backfill_empty_gap_days,
+        checkpoint=True,  # live runs: normalize+commit per page — kill-safe
+    )
     if report is None:
         sys.exit("Sync failed — see logs; integrations.consecutive_failures incremented.")
     print(

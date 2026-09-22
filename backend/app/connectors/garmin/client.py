@@ -11,8 +11,9 @@ acceptance): see tools/garmin_sync.py.
 """
 
 import asyncio
+import json
 import logging
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from app.core.config import get_settings
 
@@ -49,12 +50,18 @@ class GarminClient(Protocol):
 
 
 class LiveGarminClient:
-    """Unofficial-API client. Authentication:
+    """Unofficial-API client, garminconnect >= 0.3.13 (native-token era).
 
-    - `from_tokens(garth_dump)`: resume a previously stored session
-      (credentials_encrypted path — preferred; no password needed).
-    - `from_password(email, password)`: fresh login, used once by the owner's
-      manual `tools/garmin_sync.py connect` step.
+    Authentication:
+
+    - `from_tokens(dump)`: resume a previously stored session
+      (credentials_encrypted path — preferred; no password needed). The dump
+      is the 0.3.x native-token triple (di_token / di_refresh_token /
+      di_client_id) — NOT the pre-0.3 garth oauth1/oauth2 pair.
+    - `from_password(email, password, prompt_mfa)`: fresh login, used once by
+      the owner's manual `tools/garmin_sync.py connect` step. `prompt_mfa` is
+      an optional callback returning the one-time code when the account has
+      MFA enabled (the CLI wires input()).
 
     Tokens are NOT cached here — the caller owns persisting them encrypted.
     """
@@ -65,45 +72,86 @@ class LiveGarminClient:
     @classmethod
     def from_tokens(cls, garth_dump: dict[str, Any]) -> "LiveGarminClient":
         gc_client = cls._new_garmin()
-        oauth1, oauth2 = garth_dump.get("oauth1"), garth_dump.get("oauth2")
-        if not oauth1 or not oauth2:
-            raise GarminAuthError("stored garth dump is missing oauth1/oauth2 tokens")
-        gc_client.garth.loads(oauth1, oauth2)
+        if not garth_dump.get("di_token") or not garth_dump.get("di_refresh_token"):
+            raise GarminAuthError(
+                "stored Garmin token dump is missing di_token/di_refresh_token "
+                "(garminconnect 0.3.x native-token format) — re-run "
+                "tools/garmin_sync.py connect to refresh"
+            )
+        try:
+            # login(tokenstore=JSON) loads the native tokens AND the profile —
+            # resuming straight on client.loads would skip profile load.
+            gc_client.login(tokenstore=json.dumps(garth_dump))
+        except Exception as exc:  # noqa: BLE001 — the lib raises bare http errors
+            raise GarminAuthError(f"stored Garmin tokens rejected: {exc}") from exc
         return cls(gc_client)
 
     @classmethod
-    def from_password(cls, email: str, password: str) -> "LiveGarminClient":
+    def from_password(
+        cls,
+        email: str,
+        password: str,
+        prompt_mfa: Callable[[], str] | None = None,
+    ) -> "LiveGarminClient":
         if not email or not password:
             raise GarminAuthError(
                 "Garmin credentials missing: set GARMIN_EMAIL/GARMIN_PASSWORD or "
                 "run tools/garmin_sync.py connect first"
             )
-        gc_client = cls._new_garmin()
+        gc_client = cls._new_garmin(email=email, password=password, prompt_mfa=prompt_mfa)
         try:
-            gc_client.login(email, password)
-        except Exception as exc:  # garminconnect raises bare urllib/http errors
+            needs_mfa, _ = gc_client.login()
+        except Exception as exc:  # noqa: BLE001 — garminconnect raises bare urllib/http errors
             raise GarminAuthError(f"Garmin login failed: {exc}") from exc
+        if needs_mfa:
+            raise GarminAuthError(
+                "Garmin account requires MFA and no prompt_mfa callback was "
+                "provided — connect via tools/garmin_sync.py connect, which "
+                "collects the one-time code interactively"
+            )
         return cls(gc_client)
 
     def dump_tokens(self) -> dict[str, Any]:
-        """Return the garth session dump for the caller to encrypt and store."""
-        return {"oauth1": self._gc.garth.dump()["oauth1"], "oauth2": self._gc.garth.dump()["oauth2"]}
+        """Return the native-token session dump for the caller to encrypt
+        and store (garminconnect 0.3.x replaced garth's oauth1/oauth2 with
+        the di_token triple)."""
+        c = self._gc.client
+        dump: dict[str, Any] = {
+            "di_token": c.di_token,
+            "di_refresh_token": c.di_refresh_token,
+        }
+        client_id = getattr(c, "di_client_id", None)
+        if client_id:
+            dump["di_client_id"] = client_id
+        return dump
 
     @staticmethod
-    def _new_garmin() -> Any:
+    def _new_garmin(
+        email: str | None = None,
+        password: str | None = None,
+        prompt_mfa: Callable[[], str] | None = None,
+    ) -> Any:
         try:
             from garminconnect import Garmin
         except ImportError as exc:  # pragma: no cover - depends on env
             raise GarminAuthError(
                 "garminconnect is not installed in this environment"
             ) from exc
-        return Garmin(logfile=None)
+        # 0.3.x: credentials go to the constructor (the old logfile kwarg and
+        # login(email, password) signature are gone).
+        return Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
 
     async def get_activities(self, start: int, limit: int) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self._gc.get_activities, start, limit)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(self._gc.get_activity_samples, activity_id)
+        # 0.3.x merged the old get_activity_samples into get_activity_details
+        # (same /details endpoint); the stream samples ride under "samples".
+        payload = await asyncio.to_thread(self._gc.get_activity_details, str(activity_id))
+        if isinstance(payload, dict):
+            samples = payload.get("samples", [])
+            return samples if isinstance(samples, list) else []
+        return []
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._gc.get_sleep_data, local_date)
@@ -115,7 +163,7 @@ class LiveGarminClient:
         return await asyncio.to_thread(self._gc.get_stress_data, local_date)
 
     async def get_stats(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_stats_and_body_composition_data, local_date)
+        return await asyncio.to_thread(self._gc.get_stats_and_body, local_date)
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._gc.get_body_composition, local_date)
