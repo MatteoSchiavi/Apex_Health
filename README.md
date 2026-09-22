@@ -6,7 +6,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-269_green-73BF69)
+![Tests](https://img.shields.io/badge/tests-315_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **blood-donation
 lab panels**, **subjective journaling via
@@ -39,14 +39,17 @@ implementation per read** (§8.2).
 
 | Domain | What it does | Access points |
 |---|---|---|
-| **Ingestion** | Garmin (activities + streams, sleep, HRV, stress, biometrics) every 6 h; raw-first into `raw_ingest`, idempotent upserts, ±10 min **multi-source reconciliation** so the same workout from two sources never duplicates (§12). Technogym's API is **B2B-only** (owner-confirmed) — the connector stays dormant, nothing to connect to | Celery beat; owner CLIs |
+| **Ingestion** | Garmin (activities + streams, sleep, HRV, stress, biometrics), **Whoop** (official API v2: recovery, sleep, strain, workouts — annotated into the same canonical shapes, provider-only values kept in `source_metrics`) and **Strava** (activities/GPS) every 6 h; raw-first into `raw_ingest`, idempotent upserts, ±10 min **multi-source reconciliation** so the same workout from two sources never duplicates (§12); **CSV import** for Apple Health / Google Fit / generic exports. Technogym's API is **B2B-only** (owner-confirmed) — the connector stays dormant, nothing to connect to | Celery beat; owner CLIs; `POST /imports/csv` |
 | **Feature engine** | Nightly derived metrics: readiness / recovery / strain, 7d/28d acute-chronic load + ACWR, HRV deviation from rolling baseline, sleep architecture score, illness / injury risk, per-discipline FTP, aerobic decoupling, efficiency factor — with versioned blend weights and `data_completeness` honesty flags (§7, §17) | `daily_features`, bot, agent |
 | **Medical & labs** | Blood panels with per-marker reference ranges, app-layer-**encrypted free-text notes** (Fernet), donation eligibility countdown, low-ferritin alert (§12) | `POST/GET /labs`, `/donate` |
 | **Lifestyle** | Nutrition logs (kcal, macros, water, caffeine, alcohol), supplement protocols + per-dose **adherence tracking** (§13) | ingest API |
 | **Gear** | Activities auto-inherit discipline defaults; nightly **recompute** (never increment) of km/h since service; `gear_service_due` alert once per threshold crossing; logging a service resets + resolves (§13) | `POST /gear/...`, `/gear` bot command |
 | **Weather** | Keyless Open-Meteo forecast + archive; 6-hourly cache refresh; **every activity enriched** with the weather it happened in (`weather_snapshot`); proactive "good window tomorrow" nudge gated on readiness (§14) | `/forecast [days]`, `GET /weather/forecast` |
 | **Telegram bot** | Long polling (no public port): `/link` pairing, **voice notes → Whisper STT → structured draft → ✅ Save / ✏️ Edit**, commands, alert push with severity icons (§10) | the primary daily interface |
-| **AI coach** | Tool-using agent over a compact data snapshot: 11 tools, ≤ 8 loop iterations with best-partial fallback, full audit of every call, three-tier model routing, hard daily token budget (§8) | free text in the bot |
+| **AI coach** | Tool-using agent over a compact data snapshot: 14 tools, ≤ 8 loop iterations with best-partial fallback, full audit of every call, three-tier model routing, hard daily token budget (§8) | free text in the bot |
+| **Coach: events & context** | Calendar of user events (races, ski weeks, trips) + per-user **context documents** (profile, goals, injuries, equipment, season plan) injected into every AI turn under a hard char budget; the **adaptive gym advisor** tapers sessions toward high-priority leg-heavy events and swaps exercises around soreness/injury feedback, with every adjustment explained in a note | `POST/GET /events`, `PUT /context-docs/{kind}`, `/gym/plan/{date}/generate`, `/gym/feedback` |
+| **Gym session tracker** | Concrete day plans (exercises, sets, reps, rest) with the in-gym surface: **next exercise + rest timer** (`GET /gym/session/{id}/next`), per-set logging, completion progress — mirrored on the watch payload (`GET /watch/day.gym_plan`) | `/gym/session/...`, watch app |
+| **Challenges & rankings** | Friendly multi-user leaderboards on live canonical data: 5k record, activities, steps, distance, intensity minutes, sleep score, training load; all-time records independent of challenges | `POST /challenges`, `GET /challenges/{id}`, `GET /rankings?metric=` |
 | **Semantic memory** | Journal entries + reports embedded (pinned `text-embedding-3-small`), pgvector cosine `search_context` scoped to the caller (§6.2) | agent tool |
 | **Reports** | Daily summary **templated at zero LLM cost**; weekly + monthly on the powerful tier; all idempotent per period (§9.2) | `/report`, scheduled push |
 | **Security** | Owner bootstrap, HttpOnly + SameSite session cookies, CSRF header on every write, login rate-limit + lockout, sliding expiry, all routes 401/403 except `/health` (§22) | — |
@@ -56,7 +59,8 @@ implementation per read** (§8.2).
 
 ```
                 ┌─────────────────────────── data sources ───────────────────────────┐
-                │   Garmin Connect                     Open-Meteo (keyless weather)  │
+                │   Garmin Connect        Whoop (official v2)   Strava (v3)          │
+                │   Open-Meteo (keyless)  CSV import (Apple Health / Google Fit)     │
                 │   (Technogym: B2B-only API, connector dormant — no feed)           │
                 └──────┬──────────────────────────────────────┬──────────────────────┘
                        │ 6h beat                              │ 6h beat (:20)
@@ -505,7 +509,7 @@ never blocks on the radio.
   Alembic chain per session, so CI sees the same schema as local.
 - **Hardening re-verified** in the fresh environment: the §20/§21/§22 audit
   suites (sliding-session expiry, served-route auth matrix, JSON logging,
-  alert/log channel separation) all green — 269 tests total.
+  alert/log channel separation) all green — 315 tests total.
 - **Restore drill re-run live** on this deployment: **48/48 tables match**
   (`device_tokens` + `gym_schedule_slots` included), `alembic_version=0005`,
   the encrypted lab note round-trips with the app key. The drill is
@@ -578,7 +582,7 @@ backend/
     schemas/      Pydantic boundary schemas
     tasks/        Celery app + beat schedule (§19)
   alembic/        migrations
-  tests/          39 test files / 269 tests — fixtures only, no live APIs (§20)
+  tests/          48 test files / 315 tests — fixtures only, no live APIs (§20)
   tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
                   restore_backup, restore_drill, demo_phase9 (AC demo)
 connectiq/        Garmin watch app "Apex Day" (Monkey C): gym schedule,
@@ -598,7 +602,7 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 269 tests, fixtures only — no live APIs
+uv run pytest -q                   # 315 tests, fixtures only — no live APIs
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

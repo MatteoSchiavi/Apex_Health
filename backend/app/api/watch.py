@@ -48,6 +48,7 @@ from app.queries import (
     resolve_day,
     resolve_range,
 )
+from app.queries.gym_detail import plan_for_date, session_view
 
 router = APIRouter(prefix="/watch", tags=["watch"])
 
@@ -241,6 +242,9 @@ class WatchDay(BaseModel):
     supplements: list[dict]
     alerts: dict
     journal_streak: int
+    # Concrete gym day plan (owner feature batch): exercises with sets/reps
+    # + rest so the watch window doubles as the in-gym tracker.
+    gym_plan: dict | None = None
 
 
 class WatchWeek(BaseModel):
@@ -255,6 +259,15 @@ async def watch_day(
 ) -> WatchDay:
     user, _token = principal
     local_today = datetime.now(ZoneInfo(user.timezone)).date()
+    # Concrete gym plan (advisor-generated or manual) wins over the raw
+    # template rows; its exercises carry sets/reps/rest for the tracker.
+    gym_plan = None
+    plan = await plan_for_date(session, user.id, local_today)
+    if plan is not None:
+        try:
+            gym_plan = await session_view(session, user.id, plan.id)
+        except Exception:  # pragma: no cover - view built from same rows
+            gym_plan = None
     return WatchDay(
         date=local_today.isoformat(),
         weekday=local_today.weekday(),
@@ -265,6 +278,7 @@ async def watch_day(
         supplements=await active_supplements(session, user.id, local_today),
         alerts=await open_alert_summaries(session, user.id),
         journal_streak=await journal_streak(session, user.id, local_today),
+        gym_plan=gym_plan,
     )
 
 

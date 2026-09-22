@@ -23,6 +23,8 @@ dependencies = [
     # §3: unofficial Garmin client — lazily imported, never exercised by tests (§0, §16.7)
     "garminconnect>=0.1.36",
     "pgvector>=0.5.0",
+    # CSV import endpoint (POST /imports/csv multipart uploads)
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

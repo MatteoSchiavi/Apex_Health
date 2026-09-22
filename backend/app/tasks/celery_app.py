@@ -20,6 +20,8 @@ celery_app = Celery(
         "app.tasks.health_tasks",
         "app.tasks.garmin_sync",
         "app.tasks.technogym_sync",
+        "app.tasks.whoop_sync",
+        "app.tasks.strava_sync",
         "app.tasks.weather_tasks",
         "app.tasks.feature_engine",
         "app.tasks.gear_tasks",
@@ -54,6 +56,19 @@ celery_app.conf.update(
         "technogym-sync-every-6h": {
             "task": "technogym.sync_all",
             "schedule": crontab(minute=10, hour="*/6"),
+        },
+        # Official-API connectors (owner feature batch, 2026-09): Whoop and
+        # Strava sync on the same every-6h cadence, staggered at :05/:07 so
+        # the unofficial-client Garmin poll (:00) and the feature engine
+        # never collide. Official APIs are gentler than the unofficial
+        # Garmin client, but pacing is still §19 law.
+        "whoop-sync-every-6h": {
+            "task": "whoop.sync_all",
+            "schedule": crontab(minute=5, hour="*/6"),
+        },
+        "strava-sync-every-6h": {
+            "task": "strava.sync_all",
+            "schedule": crontab(minute=7, hour="*/6"),
         },
         # §19: forecast refresh every 6 hours, upserts forecast_cache (§6.4).
         # Staggered at :20, after both connector syncs — so activities they
