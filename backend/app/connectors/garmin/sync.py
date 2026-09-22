@@ -38,6 +38,7 @@ from app.connectors.garmin.normalize import (
 from app.models.activity import ActivitySourceLink, Discipline
 from app.models.integration import Integration, RawIngest
 from app.models.user import User
+from app.models.wellness import SleepSession
 
 logger = logging.getLogger("connectors.garmin.sync")
 
@@ -84,6 +85,9 @@ async def fetch_activities(
     page_size: int,
     delay_s: float,
     report: SyncReport,
+    tz: ZoneInfo | None = None,
+    discipline_index: dict[str, int] | None = None,
+    checkpoint: bool = False,
 ) -> list[int]:
     """Store activity summaries as raw rows. Returns ids of NEWLY seen
     activities (no source link yet) — streams are only fetched for those.
@@ -91,6 +95,11 @@ async def fetch_activities(
     Backfill (since=None) walks every page (§6.3). Incremental walks
     newest-first pages and stops once a page's oldest item is at or before
     `since` — upserts make the boundary overlap harmless.
+
+    checkpoint=True (live backfills): after every page, normalize what is
+    pending and COMMIT — a killed multi-hour walk then resumes without
+    duplicating work, because already-normalized activities carry source
+    links and are skipped on the re-walk.
     """
     new_ids: list[int] = []
     start = 0
@@ -102,11 +111,6 @@ async def fetch_activities(
         oldest_start: datetime | None = None
         for summary in page:
             report.activities_seen += 1
-            await fetch.store_raw(
-                session, user_id, fetch.PAYLOAD_ACTIVITY_SUMMARY, summary
-            )
-            report.raw_rows_stored += 1
-
             external_id = str(summary.get("activityId"))
             link = await session.scalar(
                 select(ActivitySourceLink).where(
@@ -114,8 +118,36 @@ async def fetch_activities(
                     ActivitySourceLink.external_id == external_id,
                 )
             )
-            if link is None:
-                new_ids.append(external_id)
+            if link is not None:
+                if checkpoint:
+                    # Checkpoint resume: this activity is already normalized —
+                    # re-storing its raw row would only duplicate work.
+                    try:
+                        oldest_start = _parse_gmt_datetime(
+                            summary.get("startTimeGMT"), "startTimeGMT"
+                        )
+                    except Exception:  # parse problems are the normalizer's to report
+                        oldest_start = None
+                    continue
+                # Incremental default (raw-first audit): the overlap window is
+                # re-recorded in raw_ingest; upserts dedupe the normalized
+                # tables and the activity is NOT treated as new.
+                await fetch.store_raw(
+                    session, user_id, fetch.PAYLOAD_ACTIVITY_SUMMARY, summary
+                )
+                report.raw_rows_stored += 1
+                try:
+                    oldest_start = _parse_gmt_datetime(
+                        summary.get("startTimeGMT"), "startTimeGMT"
+                    )
+                except Exception:  # parse problems are the normalizer's to report
+                    oldest_start = None
+                continue
+            await fetch.store_raw(
+                session, user_id, fetch.PAYLOAD_ACTIVITY_SUMMARY, summary
+            )
+            report.raw_rows_stored += 1
+            new_ids.append(external_id)
 
             try:
                 oldest_start = _parse_gmt_datetime(
@@ -123,6 +155,10 @@ async def fetch_activities(
                 )
             except Exception:  # parse problems are the normalizer's to report
                 oldest_start = None
+
+        if checkpoint and tz is not None and discipline_index is not None:
+            await normalize_pending(session, user_id, tz, discipline_index, report)
+            await session.commit()
 
         if len(page) < page_size:
             break  # short page -> history exhausted
@@ -141,9 +177,13 @@ async def fetch_streams(
     activity_ids: list[str],
     delay_s: float,
     report: SyncReport,
+    tz: ZoneInfo | None = None,
+    discipline_index: dict[str, int] | None = None,
+    checkpoint: bool = False,
 ) -> None:
     """Store per-activity stream samples as raw rows (context carried in
-    payload_type, raw bytes untouched)."""
+    payload_type, raw bytes untouched). checkpoint=True normalizes + commits
+    after each activity so a killed run never re-fetches streams."""
     for external_id in activity_ids:
         try:
             samples = await client.get_activity_samples(int(external_id))
@@ -161,6 +201,9 @@ async def fetch_streams(
         )
         report.raw_rows_stored += 1
         report.streams_fetched += 1
+        if checkpoint and tz is not None and discipline_index is not None:
+            await normalize_pending(session, user_id, tz, discipline_index, report)
+            await session.commit()
         await _pace(delay_s)
 
 
@@ -175,6 +218,8 @@ async def fetch_wellness(
     delay_s: float,
     empty_gap_days: int,
     report: SyncReport,
+    discipline_index: dict[str, int] | None = None,
+    checkpoint: bool = False,
 ) -> None:
     """Store daily wellness payloads (sleep/hrv/stress/stats/body composition).
 
@@ -183,12 +228,33 @@ async def fetch_wellness(
     an empty to_day): walks from from_day backwards, stopping after
     `empty_gap_days` consecutive days with no data at all — that gap is the
     source's history boundary, not a missed fetch.
+
+    checkpoint=True (live backfills): days that already carry a sleep_session
+    are skipped outright (no API calls — the resume walk is fast), and every
+    landed day is normalized + committed as it goes.
     """
     backward = from_day > to_day
     step = -1 if backward else 1
     consecutive_empty = 0
+    skipped_days = 0
     day = from_day
     while True:
+        if checkpoint:
+            already = await session.scalar(
+                select(SleepSession.id).where(
+                    SleepSession.user_id == user_id,
+                    SleepSession.local_date == day,
+                )
+            )
+            if already is not None:
+                # A prior checkpoint pass normalized this day — skip it. The
+                # day had data, so it must not count toward the empty gap.
+                consecutive_empty = 0
+                skipped_days += 1
+                if day == to_day:
+                    break
+                day = day + timedelta(days=step)
+                continue
         payloads = {
             fetch.PAYLOAD_SLEEP: await client.get_sleep_data(day.isoformat()),
             fetch.PAYLOAD_HRV: await client.get_hrv_data(day.isoformat()),
@@ -208,6 +274,10 @@ async def fetch_wellness(
             report.raw_rows_stored += 1
         report.wellness_days += 1
 
+        if checkpoint and discipline_index is not None:
+            await normalize_pending(session, user_id, tz, discipline_index, report)
+            await session.commit()
+
         if day_has_data:
             consecutive_empty = 0
         else:
@@ -223,6 +293,10 @@ async def fetch_wellness(
             break
         day = day + timedelta(days=step)
         await _pace(delay_s)
+    if skipped_days:
+        report.notes.append(
+            f"resume walk skipped {skipped_days} already-synced wellness days"
+        )
 
 
 # --------------------------------------------------------------- normalize
@@ -294,9 +368,15 @@ async def sync_user_garmin(
     page_delay_s: float,
     empty_gap_days: int,
     now: datetime | None = None,
+    checkpoint: bool = False,
 ) -> SyncReport:
     """One full sync pass for one user. Caller owns commit and escalation
-    bookkeeping (§21 lives in run_user_sync_with_escalation)."""
+    bookkeeping (§21 lives in run_user_sync_with_escalation).
+
+    checkpoint=True (live multi-hour backfills): normalize + commit per page,
+    per stream and per wellness day, and skip already-synced days/activities
+    on re-walks — an interrupted backfill resumes instead of restarting from
+    zero. Tests keep the default False (single commit at the end)."""
     now = now or datetime.now(UTC)
     tz = ZoneInfo(user.timezone)
     backfill = integration.last_synced_at is None
@@ -314,9 +394,13 @@ async def sync_user_garmin(
         page_size=page_size,
         delay_s=page_delay_s,
         report=report,
+        tz=tz,
+        discipline_index=discipline_index,
+        checkpoint=checkpoint,
     )
     await fetch_streams(
-        session, user.id, client, new_ids, page_delay_s, report
+        session, user.id, client, new_ids, page_delay_s, report,
+        tz=tz, discipline_index=discipline_index, checkpoint=checkpoint,
     )
 
     local_today = now.astimezone(tz).date()
@@ -331,6 +415,8 @@ async def sync_user_garmin(
             delay_s=page_delay_s,
             empty_gap_days=empty_gap_days,
             report=report,
+            discipline_index=discipline_index,
+            checkpoint=checkpoint,
         )
     else:
         assert integration.last_synced_at is not None
@@ -345,6 +431,8 @@ async def sync_user_garmin(
             delay_s=page_delay_s,
             empty_gap_days=empty_gap_days,
             report=report,
+            discipline_index=discipline_index,
+            checkpoint=checkpoint,
         )
 
     await normalize_pending(session, user.id, tz, discipline_index, report)
@@ -363,6 +451,7 @@ async def run_user_sync_with_escalation(
     page_delay_s: float,
     empty_gap_days: int,
     now: datetime | None = None,
+    checkpoint: bool = False,
 ) -> SyncReport | None:
     """§21: a failing sync increments consecutive_failures; every third
     consecutive failure fires a sync_failure alert. Success resets the
@@ -383,4 +472,5 @@ async def run_user_sync_with_escalation(
         page_delay_s=page_delay_s,
         empty_gap_days=empty_gap_days,
         now=now,
+        checkpoint=checkpoint,
     )
