@@ -35,10 +35,10 @@ from app.connectors.garmin.normalize import (
     normalize_raw_row,
     _parse_gmt_datetime,
 )
-from app.models.activity import ActivitySourceLink, Discipline
+from app.models.activity import Activity, ActivitySourceLink, ActivityStream, Discipline
 from app.models.integration import Integration, RawIngest
 from app.models.user import User
-from app.models.wellness import SleepSession
+from app.models.wellness import DailyBiometric, SleepSession
 
 logger = logging.getLogger("connectors.garmin.sync")
 
@@ -207,6 +207,50 @@ async def fetch_streams(
         await _pace(delay_s)
 
 
+def _wellness_payload_has_content(payload_type: str, payload: Any) -> bool:
+    """Decide whether a wellness payload carries REAL data for its day.
+
+    garminconnect 0.3.x answers even out-of-history days with structured
+    objects — 97-key stat dicts of flags, all-null sleep DTOs, empty arrays —
+    so the naive `if not payload` emptiness test never fires and the §6.3
+    backward walk can never find the history boundary. Emptiness is decided
+    semantically: a day has data when a field the normalizer would upsert is
+    actually present."""
+    if not isinstance(payload, dict) or not payload:
+        return False
+    if payload_type == fetch.PAYLOAD_SLEEP:
+        dto = payload.get("dailySleepDTO")
+        return isinstance(dto, dict) and (
+            dto.get("sleepTimeSeconds") is not None
+            or dto.get("sleepStartTimestampGMT") is not None
+        )
+    if payload_type == fetch.PAYLOAD_HRV:
+        return any(
+            isinstance(r, dict) and r.get("hrvValue") is not None
+            for r in (payload.get("hrvReadings") or [])
+        )
+    if payload_type == fetch.PAYLOAD_STRESS:
+        return bool(payload.get("stressGraph") or payload.get("stressValuesArray"))
+    if payload_type == fetch.PAYLOAD_STATS:
+        if payload.get("includesWellnessData") or payload.get("includesActivityData"):
+            return True
+        return any(
+            payload.get(k) is not None
+            for k in (
+                "restingHeartRate",
+                "totalSteps",
+                "activeKilocalories",
+                "bmrKilocalories",
+            )
+        )
+    if payload_type == fetch.PAYLOAD_BODY_COMPOSITION:
+        if payload.get("dateWeightList"):
+            return True
+        avg = payload.get("totalAverage")
+        return isinstance(avg, dict) and any(v is not None for v in avg.values())
+    return True
+
+
 async def fetch_wellness(
     session: AsyncSession,
     user_id: int,
@@ -246,6 +290,16 @@ async def fetch_wellness(
                     SleepSession.local_date == day,
                 )
             )
+            if already is None:
+                # A day can be fully synced without sleep (stats-only days:
+                # steps/weight from the phone app) — biometric rows mark
+                # those as done just the same.
+                already = await session.scalar(
+                    select(DailyBiometric.user_id).where(
+                        DailyBiometric.user_id == user_id,
+                        DailyBiometric.date == day,
+                    )
+                )
             if already is not None:
                 # A prior checkpoint pass normalized this day — skip it. The
                 # day had data, so it must not count toward the empty gap.
@@ -264,7 +318,10 @@ async def fetch_wellness(
         }
         day_has_data = False
         for payload_type, payload in payloads.items():
-            if not payload:  # upstream returns {} / None outside history
+            # 0.3.x structured-empty payloads carry no upsertable content —
+            # skip them entirely instead of storing rows that normalize to
+            # nothing and never count as a real history day.
+            if not _wellness_payload_has_content(payload_type, payload):
                 continue
             day_has_data = True
             stored_type = payload_type
@@ -358,6 +415,24 @@ async def normalize_pending(
 # ------------------------------------------------------------------ driver
 
 
+async def _external_ids_missing_streams(session: AsyncSession, user_id: int) -> list[str]:
+    """Linked activities of this user that have NO stream rows — activities
+    normalized by a checkpoint pass that was killed before its streams phase
+    would have run. The resume re-fetches exactly these."""
+    rows = await session.execute(
+        select(ActivitySourceLink.external_id)
+        .join(Activity, Activity.id == ActivitySourceLink.activity_id)
+        .where(
+            ActivitySourceLink.source == SOURCE,
+            Activity.user_id == user_id,
+            ~select(ActivityStream.activity_id)
+            .where(ActivityStream.activity_id == Activity.id)
+            .exists(),
+        )
+    )
+    return [str(external_id) for external_id in rows.scalars().all()]
+
+
 async def sync_user_garmin(
     session: AsyncSession,
     user: User,
@@ -398,6 +473,17 @@ async def sync_user_garmin(
         discipline_index=discipline_index,
         checkpoint=checkpoint,
     )
+    if checkpoint:
+        # Activities normalized by a killed earlier pass have links but no
+        # streams — the resume must fetch streams for them too, not just for
+        # the activities that are new in THIS pass.
+        recovered = await _external_ids_missing_streams(session, user.id)
+        if recovered:
+            report.notes.append(
+                f"resume: fetching streams for {len(recovered)} activities "
+                "from an interrupted pass"
+            )
+            new_ids = new_ids + recovered
     await fetch_streams(
         session, user.id, client, new_ids, page_delay_s, report,
         tz=tz, discipline_index=discipline_index, checkpoint=checkpoint,

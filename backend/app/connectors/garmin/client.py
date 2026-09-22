@@ -145,13 +145,45 @@ class LiveGarminClient:
         return await asyncio.to_thread(self._gc.get_activities, start, limit)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
-        # 0.3.x merged the old get_activity_samples into get_activity_details
-        # (same /details endpoint); the stream samples ride under "samples".
+        # 0.3.x removed get_activity_samples: get_activity_details carries the
+        # stream under activityDetailMetrics (rows of values aligned with
+        # metricDescriptors keys) instead of the legacy flat "samples" list.
+        # Rebuild the legacy shape here so the normalizer and fixtures stay
+        # unchanged (§3: the sync pipeline speaks one sample shape).
         payload = await asyncio.to_thread(self._gc.get_activity_details, str(activity_id))
-        if isinstance(payload, dict):
-            samples = payload.get("samples", [])
-            return samples if isinstance(samples, list) else []
-        return []
+        if not isinstance(payload, dict):
+            return []
+        samples = payload.get("samples")
+        if samples is None:
+            legacy_keys = {
+                "directTimestamp": "timestamp",
+                "directHeartRate": "heartRate",
+                "directPower": "power",
+                "directCadence": "cadence",
+                "directSpeed": "speed",
+                "directElevation": "altitude",
+                "directLatitude": "positionLat",
+                "directLongitude": "positionLong",
+            }
+            descriptors = [
+                d.get("key")
+                for d in (payload.get("metricDescriptors") or [])
+                if isinstance(d, dict)
+            ]
+            rebuilt: list[dict[str, Any]] = []
+            for row in payload.get("activityDetailMetrics") or []:
+                values = row.get("metrics") if isinstance(row, dict) else None
+                if not isinstance(values, list):
+                    continue
+                sample: dict[str, Any] = {}
+                for key, value in zip(descriptors, values):
+                    name = legacy_keys.get(key)
+                    if name is not None and value is not None:
+                        sample[name] = value
+                if sample:
+                    rebuilt.append(sample)
+            samples = rebuilt
+        return samples if isinstance(samples, list) else []
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._gc.get_sleep_data, local_date)

@@ -90,6 +90,18 @@ def _epoch_ms(value: Any, label: str) -> datetime:
     return datetime.fromtimestamp(value / 1000.0, tz=UTC)
 
 
+def _timestamp_flex(value: Any, label: str) -> datetime:
+    """garminconnect 0.3.x emits ISO strings ('2026-09-20T21:25:02.0') where
+    older response shapes carried epoch milliseconds — accept both."""
+    if isinstance(value, str) and value.strip():
+        try:
+            dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise NormalizationError(f"{label}: unparsable timestamp {value!r}") from exc
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+    return _epoch_ms(value, label)
+
+
 def _parse_gmt_datetime(value: Any, label: str) -> datetime:
     """Garmin activity summaries carry startTimeGMT like '2025-03-08 05:30:00'
     (wall clock in UTC)."""
@@ -354,6 +366,16 @@ async def _upsert_sleep(
         raise NormalizationError(f"sleep raw row {raw.id}: missing dailySleepDTO")
     dto = payload["dailySleepDTO"]
 
+    # 0.3.x no-recording days (device not worn) arrive as a structured DTO
+    # with every field null instead of an empty payload — a clean skip, not
+    # a parse error.
+    if (
+        dto.get("sleepStartTimestampGMT") is None
+        and dto.get("sleepEndTimestampGMT") is None
+        and dto.get("sleepTimeSeconds") is None
+    ):
+        return
+
     start = _epoch_ms(dto.get("sleepStartTimestampGMT"), "sleepStartTimestampGMT")
     end = _epoch_ms(dto.get("sleepEndTimestampGMT"), "sleepEndTimestampGMT")
     if end <= start:
@@ -409,7 +431,11 @@ async def _upsert_hrv(
     for reading in readings:
         if not isinstance(reading, dict):
             raise NormalizationError(f"hrv raw row {raw.id}: non-dict reading")
-        ts = _epoch_ms(reading.get("timestamp"), "hrv timestamp")
+        # 0.3.x: readingTimeGMT ISO string; legacy: epoch-ms timestamp.
+        raw_ts = reading.get("timestamp")
+        if raw_ts is None:
+            raw_ts = reading.get("readingTimeGMT")
+        ts = _timestamp_flex(raw_ts, "hrv timestamp")
         hrv = _num(reading.get("hrvValue"))
         if hrv is None:
             continue
@@ -468,21 +494,32 @@ async def _upsert_stress(
 ) -> None:
     if not isinstance(payload, dict):
         raise NormalizationError(f"stress raw row {raw.id}: expected object")
-    graph = payload.get("stressGraph") or []
+    # 0.3.x renamed stressGraph -> stressValuesArray and reshaped entries from
+    # {timestamp, stressLevel} dicts to [epoch_ms, level] pairs; accept both.
+    graph = payload.get("stressGraph") or payload.get("stressValuesArray") or []
     if not graph:
-        raise NormalizationError(f"stress raw row {raw.id}: empty stressGraph")
-    battery = {
-        p.get("timestamp"): p.get("value")
-        for p in (payload.get("bodyBatteryChart") or [])
-        if isinstance(p, dict)
-    }
+        # Structured no-data day (0.3.x returns keyed objects with empty
+        # arrays instead of {}) — a clean skip, not a parse error.
+        return
+    battery: dict[Any, Any] = {}
+    for p in payload.get("bodyBatteryChart") or []:
+        if isinstance(p, dict):
+            battery[p.get("timestamp")] = p.get("value")
+    for p in payload.get("bodyBatteryValuesArray") or []:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            battery[p[0]] = p[1]
 
     for point in graph:
-        if not isinstance(point, dict):
-            raise NormalizationError(f"stress raw row {raw.id}: non-dict point")
-        ts = _epoch_ms(point.get("timestamp"), "stress timestamp")
-        level = _num(point.get("stressLevel"))
-        bb = _num(battery.get(point.get("timestamp")))
+        if isinstance(point, dict):
+            ts = _epoch_ms(point.get("timestamp"), "stress timestamp")
+            level = _num(point.get("stressLevel"))
+            bb = _num(battery.get(point.get("timestamp")))
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            ts = _epoch_ms(point[0], "stress timestamp")
+            level = _num(point[1])
+            bb = _num(battery.get(point[0]))
+        else:
+            raise NormalizationError(f"stress raw row {raw.id}: unusable point {point!r}")
         existing = await session.scalar(
             select(StressReading).where(
                 StressReading.user_id == raw.user_id, StressReading.timestamp == ts
