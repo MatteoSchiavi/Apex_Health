@@ -49,10 +49,9 @@ sudo tailscale funnel 443 on
 ```
 
 That publishes `https://$FUNNEL_URL` -> `127.0.0.1:8000` (FastAPI/uvicorn).
-Grafana (:3001) is deliberately NOT funneled — it is a read-only local
-operations view; expose it only if you accept demo-data visibility, and then
-per-view, never anonymously, with `tailscale serve` (tailnet-only) rather
-than `funnel`.
+Only the API is funneled — everything else stays local; the database and
+redis publish no ports at all, and writes always ride the invite-flow
+session + CSRF rules.
 
 Verify from an outside network (phone on mobile data):
 
