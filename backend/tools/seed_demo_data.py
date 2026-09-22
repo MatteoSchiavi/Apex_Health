@@ -1,7 +1,6 @@
 """Seed the local dev database with a realistic ~180-day demo dataset.
 
-Purpose: give the temporary Grafana web UI (grafana/ in the repo root) real,
-meaningful data for every feature surface built in Phases 0-8 — activities,
+Purpose: give the API, Telegram bot and agent real-feeling data for every feature surface built in Phases 0-8 — activities,
 sleep/HRV/stress, biometrics, feature-engine outputs, nutrition, supplements,
 journal + Telegram voice flow, lab panels, gear, plans, AI sessions/tool
 calls/token budget, reports, embeddings, forecasts, raw ingest, rollups.

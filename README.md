@@ -8,8 +8,8 @@
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-269_green-73BF69)
 
-A self-hosted backend that unifies **Garmin biometrics**, **Technogym gym
-sessions**, **blood-donation lab panels**, **subjective journaling via
+A self-hosted backend that unifies **Garmin biometrics**, **blood-donation
+lab panels**, **subjective journaling via
 Telegram voice notes**, **gear maintenance** and **weather data** — runs a
 derived-metrics **feature engine** on top (readiness, recovery, strain,
 load, ACWR, risk scores), and serves it all through a **Telegram bot with a
@@ -19,7 +19,8 @@ your explicit confirmation.
 Single source of truth for product decisions:
 [`MASTER_SPEC.md`](./MASTER_SPEC.md) (§ references throughout this README
 point there). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
-Temporary web UI: [`grafana/README.md`](./grafana/README.md).
+Data currently surfaces via the REST API and the Telegram bot; the real
+full web UI is the next work item (spec Appendix A).
 
 ---
 
@@ -38,28 +39,28 @@ implementation per read** (§8.2).
 
 | Domain | What it does | Access points |
 |---|---|---|
-| **Ingestion** | Garmin (activities + streams, sleep, HRV, stress, biometrics) and Technogym (OAuth2, workouts) every 6 h; raw-first into `raw_ingest`, idempotent upserts, ±10 min **multi-source reconciliation** so the same workout from watch + machine never duplicates (§12) | Celery beat; owner CLIs |
-| **Feature engine** | Nightly derived metrics: readiness / recovery / strain, 7d/28d acute-chronic load + ACWR, HRV deviation from rolling baseline, sleep architecture score, illness / injury risk, per-discipline FTP, aerobic decoupling, efficiency factor — with versioned blend weights and `data_completeness` honesty flags (§7, §17) | `daily_features`, Grafana, bot, agent |
-| **Medical & labs** | Blood panels with per-marker reference ranges, app-layer-**encrypted free-text notes** (Fernet), donation eligibility countdown, low-ferritin alert (§12) | `POST/GET /labs`, `/donate`, Grafana Labs page |
-| **Lifestyle** | Nutrition logs (kcal, macros, water, caffeine, alcohol), supplement protocols + per-dose **adherence tracking** (§13) | ingest API, Grafana Nutrition page |
+| **Ingestion** | Garmin (activities + streams, sleep, HRV, stress, biometrics) every 6 h; raw-first into `raw_ingest`, idempotent upserts, ±10 min **multi-source reconciliation** so the same workout from two sources never duplicates (§12). Technogym's API is **B2B-only** (owner-confirmed) — the connector stays dormant, nothing to connect to | Celery beat; owner CLIs |
+| **Feature engine** | Nightly derived metrics: readiness / recovery / strain, 7d/28d acute-chronic load + ACWR, HRV deviation from rolling baseline, sleep architecture score, illness / injury risk, per-discipline FTP, aerobic decoupling, efficiency factor — with versioned blend weights and `data_completeness` honesty flags (§7, §17) | `daily_features`, bot, agent |
+| **Medical & labs** | Blood panels with per-marker reference ranges, app-layer-**encrypted free-text notes** (Fernet), donation eligibility countdown, low-ferritin alert (§12) | `POST/GET /labs`, `/donate` |
+| **Lifestyle** | Nutrition logs (kcal, macros, water, caffeine, alcohol), supplement protocols + per-dose **adherence tracking** (§13) | ingest API |
 | **Gear** | Activities auto-inherit discipline defaults; nightly **recompute** (never increment) of km/h since service; `gear_service_due` alert once per threshold crossing; logging a service resets + resolves (§13) | `POST /gear/...`, `/gear` bot command |
-| **Weather** | Keyless Open-Meteo forecast + archive; 6-hourly cache refresh; **every activity enriched** with the weather it happened in (`weather_snapshot`); proactive "good window tomorrow" nudge gated on readiness (§14) | `/forecast [days]`, `GET /weather/forecast`, Grafana |
+| **Weather** | Keyless Open-Meteo forecast + archive; 6-hourly cache refresh; **every activity enriched** with the weather it happened in (`weather_snapshot`); proactive "good window tomorrow" nudge gated on readiness (§14) | `/forecast [days]`, `GET /weather/forecast` |
 | **Telegram bot** | Long polling (no public port): `/link` pairing, **voice notes → Whisper STT → structured draft → ✅ Save / ✏️ Edit**, commands, alert push with severity icons (§10) | the primary daily interface |
 | **AI coach** | Tool-using agent over a compact data snapshot: 11 tools, ≤ 8 loop iterations with best-partial fallback, full audit of every call, three-tier model routing, hard daily token budget (§8) | free text in the bot |
 | **Semantic memory** | Journal entries + reports embedded (pinned `text-embedding-3-small`), pgvector cosine `search_context` scoped to the caller (§6.2) | agent tool |
 | **Reports** | Daily summary **templated at zero LLM cost**; weekly + monthly on the powerful tier; all idempotent per period (§9.2) | `/report`, scheduled push |
 | **Security** | Owner bootstrap, HttpOnly + SameSite session cookies, CSRF header on every write, login rate-limit + lockout, sliding expiry, all routes 401/403 except `/health` (§22) | — |
 | **Ops & backups** | JSON structured logs, `sync_failure` escalation after 3 consecutive connector failures, nightly **encrypted-before-disk** pg_dump + retention + B2 offsite + a real, rerunnable **restore drill** (§21, §22.7) | `tools/restore_drill.py` |
-| **Web UI (temporary)** | 8 Grafana dashboards / 147 panels covering every table above — read-only role, versioned JSON, SQL-validated | `grafana/run_grafana.sh` → :3001 |
 
 ## Architecture
 
 ```
                 ┌─────────────────────────── data sources ───────────────────────────┐
-                │   Garmin Connect        Technogym API        Open-Meteo (keyless)  │
-                └──────┬──────────────────────┬──────────────────────┬───────────────┘
-                       │ 6h beat              │ 6h beat (:10)        │ 6h beat (:20)
-                ┌──────▼──────────────────────▼──────────────────────▼───────────────┐
+                │   Garmin Connect                     Open-Meteo (keyless weather)  │
+                │   (Technogym: B2B-only API, connector dormant — no feed)           │
+                └──────┬──────────────────────────────────────┬──────────────────────┘
+                       │ 6h beat                              │ 6h beat (:20)
+                ┌──────▼──────────────────────────────────────▼──────────────────────┐
                 │  connectors/  — raw-first into raw_ingest, then idempotent         │
                 │  normalizers → activities (+streams), sleep, HRV, stress,          │
                 │  biometrics; ±10 min multi-source reconciliation (§12)             │
@@ -85,7 +86,7 @@ implementation per read** (§8.2).
                        │ reads
                 ┌──────▼─────────────────────────────────────────────────────────────┐
                 │  shared query layer app/queries (§8.2 — one implementation/read)   │
-                │  consumed by bot · agent tools · reports · Grafana dashboards      │
+                │  consumed by bot · agent tools · reports · (future web UI)         │
                 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -139,35 +140,28 @@ docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 curl http://localhost:8000/health
 ```
 
-That brings up `db · redis · api · worker(+beat) · grafana` — the API on
-**:8000**, the Apex dashboards on **:3001**, nightly encrypted backups
-into `./backups/` on the host, everything `restart: unless-stopped` for
-headless servers. The Telegram bot joins via
+That brings up `db · redis · api · worker(+beat)` — the API on **:8000**,
+nightly encrypted backups into `./backups/` on the host, everything
+`restart: unless-stopped` for headless servers. The Telegram bot joins via
 `--profile telegram` once `TELEGRAM_BOT_TOKEN` is set. Migrating to a
 homeserver over SSH:
 [`docs/INSTALL.md` §9](./docs/INSTALL.md#9-migrating-to-a-homeserver-over-ssh-docker).
 
-Full walkthrough (env-var reference, Telegram/LLM keys, real Garmin /
-Technogym connections, Grafana UI, backups, restore drill, tests):
+Full walkthrough (env-var reference, Telegram/LLM keys, real Garmin
+connection, backups, restore drill, tests):
 **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
 
-## Temporary web UI (Grafana)
+## Demo data
 
-Until the real dashboard is designed (spec-deferred, Appendix A), a full
-read-only Grafana UI serves every feature: overview, training, recovery &
-sleep, nutrition & supplements, labs & blood health, AI & agent
-observability, journal & mind, system & sync health — **8 dashboards, 147
-panels**, provisioned as versioned JSON talking SELECT-only to the
-database.
+Optional deterministic demo data for a populated API/bot experience
+(synthetic ~240-day story across every table):
 
 ```bash
-bash scripts/start_dev_env.sh   # dev stack first (bare-metal path)
-grafana/run_grafana.sh          # → http://127.0.0.1:3001 (anonymous viewer; admin/apex-demo)
+docker compose -f infra/docker-compose.yml exec api \
+    env PYTHONPATH=/app python tools/seed_demo_data.py --days 240
+# owner login afterwards: owner@apexhealth.dev / demo-owner-1234
+# (bare-metal: cd backend && PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240)
 ```
-
-Optional deterministic demo data for the UI (synthetic ~240-day story):
-`cd backend && PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240`
-— see `grafana/README.md` for coverage, pitfalls and maintenance.
 
 ## Implementation notes by phase
 
@@ -315,7 +309,14 @@ against recorded fixtures only (§0/§20).
   scoped to the caller via the source rows. Without `OPENAI_API_KEY` the
   tool degrades to a readable "unavailable" result.
 
-### Technogym connector (Phase 6)
+### Technogym connector (Phase 6) — RETIRED
+
+> **Owner decision (post-build):** the Technogym API turned out to be
+> **B2B-only** — personal accounts cannot register an OAuth client, so this
+> connector can never be connected. The code stays (dormant, tested against
+> fixtures, degrades honestly when unconfigured); no time is invested in it.
+> If a future source for machine workouts is wanted, §12 reconciliation
+> accepts a second activity source unchanged.
 
 - **Stage 11a (built regardless, §11):** OAuth2 authorization-code flow per
   the enduser-to-enduser sample on developer.technogym.com — authorize URL
@@ -516,10 +517,10 @@ never blocks on the radio.
   §7 journal component of the illness score was still dormant despite the
   seeded weight, `iron_status_flag` was never populated despite Phase 4 —
   all three now wired, golden-tested, and covered by 12 new regression
-  tests); served auth surface re-probed live (401s + CSRF + owner flow);
-  all 152 Grafana panel queries re-validated against a live seeded DB.
-- **Remaining connectors:** unchanged from Phase 8 — every specced connector
-  is built (Garmin, Technogym, weather, Telegram/STT/embeddings); Strava /
+  tests); served auth surface re-probed live (401s + CSRF + owner flow).
+- **Remaining connectors:** Garmin, weather and Telegram/STT/embeddings are
+  built and live; **Technogym is a confirmed dead end** (B2B-only API —
+  connector dormant); Strava /
   MyFitnessPal are deliberately unspecced (§1 substitutes them via the
   feature engine).
 
@@ -536,10 +537,10 @@ never blocks on the radio.
 | 6 | Technogym OAuth2 connector + §12 reconciliation + `/plan today` | ✅ |
 | 7 | Weather: cache, activity enrichment, `/forecast`, §14 nudge | ✅ |
 | 8 | Hardening audit, encrypted backups + B2 offsite + **restore drill 46/46** | ✅ |
-| — | Temporary Grafana web UI (8 dashboards / 147 panels) | ✅ |
 | 9 | Multi-user: invite flow, friend accounts, **data-isolation proof**, Tailscale Funnel readiness + setup guide | ✅ |
 | 10 | Connect IQ watch app **v2 "Apex Day"** (rethought): gym schedule + supplements + alerts + streak on the wrist, NOT native scores; `/watch/day`, `/watch/week`, `/schedule` CRUD, `/gym` bot, recurring `gym_schedule_slots` + plan-override resolution | ✅ source+API, demoed live; `.prg` build needs the owner's SDK + watch |
 | 11 | CI on every push (§20), hardening re-verified, **restore drill re-run live: 48/48** | ✅ |
+| — | Temporary Grafana web UI (8 dashboards / 147 panels) | ❌ removed by owner decision — history keeps it; the real full UI (Appendix A) is next |
 | — | Real dashboard style (Appendix A) | ⏳ deferred by owner |
 
 Out of scope this build round (per the spec): the real web dashboard
@@ -554,10 +555,9 @@ a user-space dev stack (PostgreSQL 16 + TimescaleDB + pgvector on :5433,
 Redis 8 on :6380). **Docker parity is still unproven** until
 `docker compose -f infra/docker-compose.yml up -d --build` runs on the
 owner's host — same for the real-account connections, which are manual owner
-steps by design (§0/§16.7). The compose deployment is now feature-complete
-(grafana service, embedded beat, pg_dump 16 in the images, host-mounted
-backup dir, restart policies) and §9 of the INSTALL guide walks the full
-SSH migration.
+steps by design (§0/§16.7). The compose deployment is feature-complete
+(embedded beat, pg_dump 16 in the images, host-mounted backup dir, restart
+policies) and §9 of the INSTALL guide walks the full SSH migration.
 
 ## Repo layout
 
@@ -581,14 +581,11 @@ backend/
   tests/          39 test files / 269 tests — fixtures only, no live APIs (§20)
   tools/          owner CLIs: garmin_sync, technogym_connect, seed_demo_data,
                   restore_backup, restore_drill, demo_phase9 (AC demo)
-grafana/          temporary web UI: provisioning, generated dashboards,
-                  build/validate tooling, run_grafana.sh
 connectiq/        Garmin watch app "Apex Day" (Monkey C): gym schedule,
                   supplements, alerts, journal streak — talks to /watch/day
                   and /watch/week over the Funnel
-infra/            docker-compose.yml (db · redis · api · worker+beat · bot ·
-                  grafana) + container Grafana provisioning overrides
-                  (infra/grafana/) + tailscale-funnel-setup.md (§15 remote access)
+infra/            docker-compose.yml (db · redis · api · worker+beat · bot)
+                  + tailscale-funnel-setup.md (§15 remote access)
 scripts/          reset-dev.sh · start_dev_env.sh · rebuild_pg_redis.sh
                   (user-space, no-Docker/no-root dev stack helpers)
 .github/workflows/ tests.yml — full pytest on every push (§20)

@@ -2,8 +2,9 @@
 #
 # Services: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api (uvicorn),
 # worker (Celery worker + embedded beat — beat_schedule lives in
-# app/tasks/celery_app.py, §19), bot (Telegram long polling, §10.1), grafana
-# (the Apex Health dashboards, provisioned from ../grafana).
+# app/tasks/celery_app.py, §19), bot (Telegram long polling, §10.1).
+# The web UI is the next work item (real full UI, spec Appendix A) — the
+# temporary Grafana dashboards were removed by owner decision.
 #
 # Logging: JSON to stdout captured with rotation (§21).
 # Resilience: every service restarts unless stopped, so a homeserver reboot
@@ -26,10 +27,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hcc}
     volumes:
       - db_data:/home/postgres/pgdata
-      # First init only (empty data volume): create the read-only Grafana
-      # role. On an existing volume re-apply manually:
-      #   docker compose exec db sh -c 'psql -U hcc -d hcc -f /docker-entrypoint-initdb.d/10-grafana-ro.sql'
-      - ../grafana/sql/bootstrap.sql:/docker-entrypoint-initdb.d/10-grafana-ro.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hcc} -d ${POSTGRES_DB:-hcc}"]
       interval: 5s
@@ -115,38 +112,5 @@ services:
     restart: unless-stopped
     logging: *default_logging
 
-  # The Apex Health dashboards (grafana/dashboards, provisioned read-only).
-  # Container overrides in infra/grafana/ shadow the host-run provisioning
-  # files: the datasource points at the db service, the dashboard path at the
-  # in-container mount. Anonymous Viewer + dark theme, same as the host UI.
-  grafana:
-    image: grafana/grafana:11.6.3
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-apex-demo}
-      GF_USERS_DEFAULT_THEME: dark
-      # Land on the Apex Overview instead of the Grafana welcome page.
-      GF_USERS_HOME_PAGE: /d/apex-overview
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_AUTH_ANONYMOUS_HIDE_VERSION: "true"
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-      GF_NEWS_NEWS_FEED_ENABLED: "false"
-    volumes:
-      - ../grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
-      - ./grafana/provider.yml:/etc/grafana/provisioning/dashboards/provider.yml:ro
-      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "${GRAFANA_PORT:-3001}:3000"
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    logging: *default_logging
-
 volumes:
   db_data:
-  grafana_data:

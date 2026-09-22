@@ -1,8 +1,9 @@
 # Installation Guide
 
 Complete setup for **Apex Health** — from a bare server to a running
-platform with the temporary Grafana web UI, demo data, backups and the
-restore drill. Product background lives in the
+platform with demo data, backups and the restore drill. Data surfaces
+through the REST API and the Telegram bot; the real full web UI is the
+next work item (spec Appendix A). Product background lives in the
 [README](../README.md); every env var referenced here is defined in
 [`MASTER_SPEC.md` §5](../MASTER_SPEC.md).
 
@@ -17,10 +18,10 @@ restore drill. Product background lives in the
 | **Python 3.12** + [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | **PostgreSQL 16** with **TimescaleDB** and **pgvector** extensions | via the compose image `timescale/timescaledb-ha:pg16`, or a local install |
 | **Redis 7+** | broker + one-time codes + dedup keys |
-| ~2 GB RAM, ~5 GB disk for the stack | Grafana tarball adds ~500 MB |
+| ~2 GB RAM, ~5 GB disk for the stack | bare-metal dev needs more for the source-built Postgres |
 
-Ports used by default: **8000** API · **3001** Grafana · **5433** Postgres ·
-**6380** Redis. Option A's compose keeps Postgres/Redis
+Ports used by default: **8000** API · **5433** Postgres · **6380** Redis.
+Option A's compose keeps Postgres/Redis
 container-internal (only the API port is published); host-side commands
 (alembic, pytest) reach the DB through `docker compose exec` or the
 bare-metal recipe ports above.
@@ -79,39 +80,17 @@ docker compose -f infra/docker-compose.yml logs -f api
 
 Services: `db` (TimescaleDB-ha pg16 with shared_preload_libraries),
 `redis`, `api` (uvicorn), `worker` (Celery worker **+ embedded beat** — the
-§19 schedule runs inside the worker process), `grafana` (the Apex
-dashboards on **:3001**, provisioned read-only from `grafana/`; anonymous
-Viewer + dark theme, admin login via `GRAFANA_ADMIN_PASSWORD`, default
-`admin/apex-demo`) — plus `bot` (Telegram long polling), which lives
-behind the `telegram` profile: start it once `TELEGRAM_BOT_TOKEN` is set
-(`--profile telegram up -d`). Every service carries `restart:
-unless-stopped`, so a server reboot brings the stack back with the Docker
-daemon.
-
-Opening `:3001` lands on the Apex **Overview** dashboard
-(`GF_USERS_HOME_PAGE`). If a Grafana upgrade ever ignores the env, pin
-the org home once via the API (the same call the host-run
-`grafana/run_grafana.sh` makes):
-
-```bash
-curl -u admin:apex-demo -X PUT http://localhost:3001/api/org/preferences \
-     -H 'Content-Type: application/json' \
-     -d '{"homeDashboardUID":"apex-overview","theme":"dark"}'
-```
+§19 schedule runs inside the worker process) — plus `bot` (Telegram long
+polling), which lives behind the `telegram` profile: start it once
+`TELEGRAM_BOT_TOKEN` is set (`--profile telegram up -d`). Every service
+carries `restart: unless-stopped`, so a server reboot brings the stack
+back with the Docker daemon.
 
 Then apply migrations (first boot — the API does **not** auto-migrate;
 owner bootstrap happens on startup):
 
 ```bash
 docker compose -f infra/docker-compose.yml exec api alembic upgrade head
-```
-
-The read-only Grafana role is created automatically on first db init
-(empty data volume); on an existing volume re-apply it once:
-
-```bash
-docker compose -f infra/docker-compose.yml exec db \
-  sh -c 'psql -U hcc -d hcc -f /docker-entrypoint-initdb.d/10-grafana-ro.sql'
 ```
 
 Nightly backup artifacts land on the host in `./backups/` (bind-mounted
@@ -206,7 +185,6 @@ uv run alembic upgrade head            # → migration 0005 (gym_schedule_slots)
 uv run uvicorn app.main:app --port 8000                        # API
 uv run celery -A app.tasks.celery_app worker --loglevel=INFO   # worker+beat
 uv run python -m app.connectors.telegram.polling               # bot (optional)
-grafana/run_grafana.sh                                         # UI (optional)
 ```
 
 ### 5a. User-space Postgres/Redis recipe (no root, no Docker)
@@ -228,44 +206,19 @@ bash scripts/start_dev_env.sh      # initdb (first run) + start both, idempotent
 - export `DATABASE_URL=postgresql+asyncpg://hcc@localhost:5433/hcc` and
   `REDIS_URL=redis://localhost:6380/0` for every backend command.
 
-## 6. Temporary web UI (Grafana)
+## 6. Demo data
+
+Optional synthetic demo data (deterministic, wipes user data) — useful to
+exercise every API/bot surface before your real connectors are live:
 
 ```bash
-grafana/run_grafana.sh            # first run downloads the OSS tarball (~180 MB)
-# → http://127.0.0.1:3001  (anonymous Viewer; admin login admin/apex-demo)
+cd backend
+PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240
+# owner login afterwards: owner@apexhealth.dev / demo-owner-1234
 ```
 
-The script defaults its dist/runtime dirs to `/home/z/grafana-dist` and
-`/home/z/grafana-runtime`; override both via `GRAFANA_DIST` / `GRAFANA_RUNTIME`
-env vars. It connects to the DB on `localhost:5433` — override via
-`PGHOST`/`PGPORT` if your Postgres lives elsewhere.
-
-- Provisioned automatically: PostgreSQL datasource (uid `apex-pg`), the 8
-  dashboards from `grafana/dashboards/`, Overview pinned as home, dark
-  theme. The datasource connects as `grafana_ro`, a **SELECT-only** role the
-  script creates in `grafana/sql/bootstrap.sql`.
-- Dashboards are **generated code**:
-
-  ```bash
-  python3 grafana/tools/build_dashboards.py    # regenerate after schema changes
-  python3 grafana/tools/validate_panels.py     # run every panel SQL against PG
-  ```
-
-- **Seed demo data** (synthetic, deterministic, wipes user data):
-
-  ```bash
-  cd backend
-  PYTHONPATH=. .venv/bin/python tools/seed_demo_data.py --days 240
-  # owner login afterwards: owner@apexhealth.dev / demo-owner-1234
-  ```
-
-> **Gotcha:** seed **before** starting Grafana, or restart it after seeding
-> (`grafana/run_grafana.sh stop && grafana/run_grafana.sh start`). Grafana's
-> Postgres pool caches prepared plans that go stale after the seeder's
-> TRUNCATE — the symptom is every panel showing *No data* with
-> `pq: could not open relation with OID …` in the Grafana log.
-
-Full details: [`grafana/README.md`](../grafana/README.md).
+Docker form: `docker compose -f infra/docker-compose.yml exec api env
+PYTHONPATH=/app python tools/seed_demo_data.py --days 240`.
 
 ## 7. Connecting real data sources (owner steps, §0/§16.7)
 
@@ -315,10 +268,9 @@ After it reports ok, the Overview/Recovery dashboards have scores for the
 whole range.
 
 ```bash
-# Technogym — OAuth2; register at developer.technogym.com first
-TECHNOGYM_CLIENT_ID=... TECHNOGYM_CLIENT_SECRET=... \
-    uv run python tools/technogym_connect.py start  # prints authorize URL
-uv run python tools/technogym_connect.py complete <code> <state>
+# Technogym — B2B-ONLY (owner-confirmed dead end): personal accounts cannot
+# register an OAuth client; the connector remains dormant. Leave the
+# TECHNOGYM_* vars unset.
 
 # Telegram — put TELEGRAM_BOT_TOKEN in .env, then /link in the chat,
 # and finish with /confirm <code-from-server-log>
@@ -459,7 +411,7 @@ The full path from your machine to a headless, always-on box.
 Assumptions: `ssh USER@SERVER` works and Docker + Compose v2 are installed
 (on a fresh Debian/Ubuntu: `curl -fsSL https://get.docker.com | sh`, then
 `sudo usermod -aG docker USER` and re-login). Nothing else should listen
-on :8000/:3001.
+on :8000.
 
 ### 9.1 Move the code
 
@@ -469,7 +421,7 @@ on :8000/:3001.
 ssh USER@SERVER 'git clone https://github.com/MatteoSchiavi/Apex_Health.git ~/apps/apex-health'
 
 # …or copy an existing working tree (fastest when you already have .env
-# and demo data tuned locally — .venv/backups/grafana-runtime excluded):
+# tuned locally — .venv/backups excluded):
 rsync -a --exclude .venv --exclude backups --exclude .git \
       /path/to/apex-health/ USER@SERVER:apps/apex-health/
 ```
@@ -512,10 +464,8 @@ curl http://localhost:8000/health                     # → {"status":"ok"}
 docker compose -f infra/docker-compose.yml ps        # all healthy
 ```
 
-- Dashboards: `http://SERVER-LAN-IP:3001` (folder **Apex Health**, 8
-  dashboards; the datasource queries the db service as the read-only
-  `grafana_ro`).
-- Owner login (session cookie + CSRF header for writes, §22.3):
+- Exercise the API (owner login, session cookie + CSRF header for writes,
+  §22.3):
 
 ```bash
 BASE=http://localhost:8000
@@ -538,7 +488,7 @@ Every compose service has `restart: unless-stopped`; the Docker daemon is
 enabled by default (`sudo systemctl enable docker` to be sure). The stack
 then needs no babysitting.
 
-Do NOT port-forward 8000/3001 on your router. For remote access use
+Do NOT port-forward the API on your router. For remote access use
 Tailscale Funnel (real TLS, no opened ports, invite-flow access control):
 follow [`infra/tailscale-funnel-setup.md`](../infra/tailscale-funnel-setup.md)
 and set `TRUST_PROXY_HEADERS=true` in `.env` (§8a walks the friend flow).
@@ -566,8 +516,8 @@ docker compose -f infra/docker-compose.yml up -d --build
 docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 ```
 
-Data lives in the named volumes (`apex-health_db_data`,
-`apex-health_grafana_data`) and the host `./backups/` dir — code updates
+Data lives in the named volume (`apex-health_db_data`) and the host
+`./backups/` dir — code updates
 don't touch them. To move homeservers: `pg_dump` via a fresh backup
 artifact + copy `backups/` + `.env`, then restore into the new host's
 db (§8-4) — the encrypted artifact travels safely over any channel.
@@ -587,7 +537,6 @@ CI (GitHub Actions) runs the same suite against
 
 | Symptom | Cause & fix |
 |---|---|
-| Grafana panels all "No data", log shows `could not open relation with OID …` | stale prepared plans after the demo seeder TRUNCATEd tables — restart Grafana (`grafana/run_grafana.sh stop && grafana/run_grafana.sh start`) |
 | `UndefinedTable` / migration errors | run `uv run alembic upgrade head`; for a scorched-earth reset use `scripts/reset-dev.sh` |
 | TimescaleDB error on restore | run inside `timescaledb_pre_restore()` / `timescaledb_post_restore()` — `tools/restore_backup.py` already does this |
 | Bot silent | the bot is a separate long-polling process — check it is running and `TELEGRAM_BOT_TOKEN` is set; pairing requires `/link` then `/confirm <code>` from the server log |
