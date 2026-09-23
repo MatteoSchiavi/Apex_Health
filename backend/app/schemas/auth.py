@@ -24,12 +24,16 @@ class LoginResponse(AuthUserOut):
 
 class RedeemInviteRequest(BaseModel):
     """§18 /auth/invite/redeem — the friend picks their own email+password
-    here; the invite code alone authorizes account creation."""
+    here; the invite code alone authorizes account creation. locale/theme
+    are the onboarding screen's choices (migration 0007: prefs live on the
+    account, so the language picked here follows the user)."""
 
     code: str = Field(min_length=8, max_length=256)
     name: str = Field(min_length=1, max_length=80)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    locale: Literal["en", "it"] = "en"
+    theme: Literal["dark", "light"] = "dark"
 
 
 class InviteCreateRequest(BaseModel):

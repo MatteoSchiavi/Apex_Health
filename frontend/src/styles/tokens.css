@@ -1,0 +1,199 @@
+/*
+ * APEX PRECISION — design tokens (ui-language/apex_precision_1/DESIGN.md).
+ *
+ * One token set, two palettes. Dark is the default (:root); the light theme
+ * is the same semantic variables resolved against the surgical off-white
+ * palette under html.light. Components consume ONLY semantic aliases
+ * (--bg, --surface, --hairline, --text, ...) — never raw hex — which is
+ * what guarantees the two themes cannot drift apart.
+ *
+ * Type law: Geist everywhere, JetBrains Mono for micro-telemetry/timestamps,
+ * tabular figures ("tnum") on every numeric readout, label-caps eyebrows.
+ */
+
+@import "tailwindcss";
+
+:root {
+  /* --- dark palette (default) ------------------------------------------ */
+  --c-bg: #0a0c10;                 /* base canvas, level 0 */
+  --c-bg-accent: #111318;          /* main surface behind content */
+  --c-surface: #13161d;            /* level-1 panels/cards */
+  --c-surface-2: #181c26;          /* level-2 controls/flyouts */
+  --c-surface-3: #1f2430;          /* hover / nested */
+  --c-hairline: rgba(255, 255, 255, 0.08);
+  --c-hairline-strong: rgba(255, 255, 255, 0.14);
+
+  --c-text: #e2e2e8;               /* on-surface */
+  --c-text-2: #c2c6d6;             /* on-surface-variant */
+  --c-text-muted: #8c909f;         /* outline / labels */
+  --c-text-faint: #5c6070;
+
+  --c-primary: #3b82f6;            /* telemetry blue — interactive only */
+  --c-primary-soft: rgba(59, 130, 246, 0.12);
+  --c-primary-text: #93c5fd;
+
+  --c-positive: #10b981;           /* positive biological delta */
+  --c-positive-soft: rgba(16, 185, 129, 0.12);
+  --c-positive-text: #4edea3;
+
+  --c-alert: #ef4444;              /* acute strain / risk */
+  --c-alert-soft: rgba(239, 68, 68, 0.12);
+  --c-alert-text: #ff8a85;
+
+  --c-warning: #f59e0b;            /* borderline */
+  --c-warning-soft: rgba(245, 158, 11, 0.12);
+  --c-warning-text: #fbbf24;
+
+  /* sleep-stage hues (hypnogram) */
+  --c-stage-awake: #ef4444;
+  --c-stage-rem: #60a5fa;
+  --c-stage-core: #3b5bdb;
+  --c-stage-deep: #3730a3;
+
+  --c-shadow-flyout: 0 4px 16px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+html.light {
+  --c-bg: #f1f4f9;
+  --c-bg-accent: #f8fafc;
+  --c-surface: #ffffff;
+  --c-surface-2: #ffffff;
+  --c-surface-3: #eef2f7;
+  --c-hairline: rgba(15, 23, 42, 0.08);
+  --c-hairline-strong: rgba(15, 23, 42, 0.16);
+
+  --c-text: #0f172a;
+  --c-text-2: #334155;
+  --c-text-muted: #64748b;
+  --c-text-faint: #94a3b8;
+
+  --c-primary: #2563eb;
+  --c-primary-soft: rgba(37, 99, 235, 0.10);
+  --c-primary-text: #1d4ed8;
+
+  --c-positive: #059669;
+  --c-positive-soft: rgba(5, 150, 105, 0.10);
+  --c-positive-text: #047857;
+
+  --c-alert: #dc2626;
+  --c-alert-soft: rgba(220, 38, 38, 0.10);
+  --c-alert-text: #b91c1c;
+
+  --c-warning: #d97706;
+  --c-warning-soft: rgba(217, 119, 6, 0.10);
+  --c-warning-text: #b45309;
+
+  --c-stage-awake: #dc2626;
+  --c-stage-rem: #3b82f6;
+  --c-stage-core: #3b5bdb;
+  --c-stage-deep: #4338ca;
+
+  --c-shadow-flyout: 0 4px 12px rgba(15, 23, 42, 0.06);
+  color-scheme: light;
+}
+
+@theme {
+  --color-bg: var(--c-bg);
+  --color-canvas: var(--c-bg-accent);
+  --color-surface: var(--c-surface);
+  --color-surface2: var(--c-surface-2);
+  --color-surface3: var(--c-surface-3);
+  --color-hairline: var(--c-hairline);
+  --color-hairline2: var(--c-hairline-strong);
+
+  --color-ink: var(--c-text);
+  --color-ink2: var(--c-text-2);
+  --color-muted: var(--c-text-muted);
+  --color-faint: var(--c-text-faint);
+
+  --color-primary: var(--c-primary);
+  --color-primarySoft: var(--c-primary-soft);
+  --color-primaryText: var(--c-primary-text);
+  --color-positive: var(--c-positive);
+  --color-positiveSoft: var(--c-positive-soft);
+  --color-positiveText: var(--c-positive-text);
+  --color-alert: var(--c-alert);
+  --color-alertSoft: var(--c-alert-soft);
+  --color-alertText: var(--c-alert-text);
+  --color-warning: var(--c-warning);
+  --color-warningSoft: var(--c-warning-soft);
+  --color-warningText: var(--c-warning-text);
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-card: 0.5rem;    /* telemetry cards: 8px — design law */
+  --radius-control: 0.375rem; /* buttons/inputs: 6px (4px law + touch ergonomics) */
+}
+
+/* ------------------------------------------------ fonts (bundled, zero CDN) */
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable-Italic.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Variable.woff2") format("woff2-variations");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ------------------------------------------------ base styles ------------ */
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--c-bg-accent);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* tabular figures on every numeric element — the anti-jitter law */
+.num, td, .tnum {
+  font-feature-settings: "tnum" 1, "cv03" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* label-caps eyebrow */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+/* scrollbar restraint */
+* { scrollbar-width: thin; scrollbar-color: var(--c-hairline-strong) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--c-hairline-strong); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* focus: 1px primary stroke, no glow ring — design law */
+:focus-visible {
+  outline: 1px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+::selection { background: var(--c-primary-soft); }
