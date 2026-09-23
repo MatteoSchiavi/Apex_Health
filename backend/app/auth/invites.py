@@ -66,15 +66,27 @@ async def claim_invite(session: AsyncSession, code: str) -> Invite:
 
 
 async def redeem_invite(
-    session: AsyncSession, code: str, name: str, email: str, password: str
+    session: AsyncSession,
+    code: str,
+    name: str,
+    email: str,
+    password: str,
+    *,
+    locale: str = "en",
+    theme: str = "dark",
 ) -> tuple[User, AuthCredential, Invite]:
     """Create the friend account for a valid invite and mark it used.
 
     Same-transaction guarantee: the invite claim, the user row, and the
     credential commit together — a crash mid-redemption leaves the invite
     unused rather than half-consumed.
+
+    locale/theme: chosen on the onboarding screen (migration 0007 UI prefs
+    live on the account). Invalid values fall back to the defaults.
     """
     email = email.strip().lower()
+    locale = locale if locale in ("en", "it") else "en"
+    theme = theme if theme in ("dark", "light") else "dark"
 
     existing_cred = await session.scalar(
         select(AuthCredential).where(AuthCredential.email == email)
@@ -84,7 +96,7 @@ async def redeem_invite(
 
     invite = await claim_invite(session, code)
 
-    user = User(name=name.strip())
+    user = User(name=name.strip(), locale=locale, theme=theme)
     session.add(user)
     await session.flush()  # assign user.id
 

@@ -17,7 +17,7 @@
 | Frontend | React 18 + TypeScript + Vite 6 | react 18.3 | The official web UI |
 | Frontend styling | Tailwind CSS v4 | 4.x | Apex Precision tokens as CSS variables |
 | Charts | Apache ECharts 5 | 5.x | Telemetry streams, hypnogram, zones, load curves |
-| Map | MapLibre GL JS | 5.x | Activity GPS traces (CARTO dark tiles, offline fallback) |
+| Map | SVG contour trace (mockup-faithful) | — | Activity GPS traces colored by elevation/pace; MapLibre GL basemap documented as optional upgrade |
 | Router | React Router v7 (library mode) | 7.x | URL-per-page; deep-linkable metric pages |
 | Server state | TanStack Query v5 | 5.x | Cache, refetch, pagination |
 | Client state | zustand | 5.x | Theme, locale, session user |
@@ -74,15 +74,15 @@ too low-level — every composite chart becomes hand-rolled code), D3 (same, mor
 so). Bundle uses tree-shaken ECharts (~300 KB gz with only the needed chart
 types).
 
-### 2.4 MapLibre GL with free dark raster tiles + graceful offline fallback
+### 2.4 GPS trace: SVG contour canvas now, MapLibre as an optional upgrade
 
-Activity pages show the GPS trace over a dark topographic canvas. MapLibre GL is
-open-source (no billing account), renders smooth with `vector`/`raster` sources.
-We use **CARTO basemaps** (free, no key required) with the `dark_matter` style,
-matching the mockup. If the homeserver has no internet (the "all data local"
-posture), the map component **falls back to a pure canvas polyline** colored by
-pace/elevation — the page never breaks, it just loses basemap context. GPS data
-itself is always served from the local DB.
+The approved activity mockup renders the GPS trace on a **dark topo-contour
+canvas with an SVG polyline** — not a slippy tile map — and the implementation
+is faithful to that: the trace is drawn from the local `lat/lon/altitude`
+streams, colored by elevation, and never depends on internet tiles. This keeps
+production installs fully offline-clean. When a real basemap is wanted later,
+MapLibre GL (open-source, CARTO free tiles, canvas polyline fallback) slots in
+behind the same `/activities/{id}/streams` payload without touching the API.
 
 ### 2.5 Session-cookie auth reused — the SPA is a first-class client
 

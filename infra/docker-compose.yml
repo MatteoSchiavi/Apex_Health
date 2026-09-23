@@ -62,7 +62,12 @@ services:
     logging: *default_logging
 
   api:
-    build: ../backend
+    # Root context + backend/Dockerfile: the multi-stage build compiles the
+    # SPA into the image (stage 1 node build -> /app/spa), so `docker compose
+    # build` is the only UI deploy step and no Node runtime ships to prod.
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     env_file: ../.env
     environment:
       # Container-network URLs override host-side .env values.
@@ -86,8 +91,10 @@ services:
     logging: *default_logging
 
   worker:
-    build: ../backend
-    # --beat: the embedded beat runs the §19 schedule (Garmin/Technogym syncs
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    # --beat: the embedded beat runs the §19 schedule (Garmin/Whoop/Oura syncs
     # every 6h, nightly feature engine 03:00 user-local, gear accumulation,
     # AI budget check 23:45 UTC, nightly encrypted backup 02:00 UTC, reports).
     # Without it the schedule is DEFINED but never ticked.
@@ -113,7 +120,9 @@ services:
   # healthy instead of crash-looping the bot container:
   #   docker compose -f infra/docker-compose.yml --profile telegram up -d
   bot:
-    build: ../backend
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     command: python -m app.connectors.telegram.polling
     profiles: ["telegram"]
     env_file: ../.env

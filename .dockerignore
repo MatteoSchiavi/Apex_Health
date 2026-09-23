@@ -1,0 +1,18 @@
+# Root build context (infra compose builds ../ with backend/Dockerfile).
+# Keep the context lean: node_modules alone would be hundreds of MB.
+.git
+frontend/node_modules
+frontend/dist
+backend/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+backups
+connectiq
+docs
+ui-language
+scripts
+my-project
+*.log
+.env

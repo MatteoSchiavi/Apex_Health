@@ -107,6 +107,8 @@ async def redeem(
             name=payload.name,
             email=payload.email,
             password=payload.password,
+            locale=payload.locale,
+            theme=payload.theme,
         )
     except InviteError as exc:
         if exc.kind == "email_taken":

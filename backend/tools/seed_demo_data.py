@@ -128,7 +128,7 @@ async def seed_owner(session) -> User:
         created_at=now - timedelta(days=170),
     ))
     session.add(Integration(
-        user_id=user.id, provider="technogym", status="active",
+        user_id=user.id, provider="whoop", status="active",
         credentials_encrypted=b"demo-encrypted-creds",
         consecutive_failures=0, last_synced_at=now - timedelta(hours=9),
         created_at=now - timedelta(days=60),
@@ -275,7 +275,7 @@ async def seed_activities(session, user_id: int, days: int, rng: random.Random):
     # source links — every activity came from somewhere
     for act, disc, flavour in acts:
         source = "garmin" if disc.name not in ("strength", "gym_general") else \
-                 ("technogym" if rng.random() < 0.6 else "garmin")
+                 ("whoop" if rng.random() < 0.6 else "garmin")
         session.add(ActivitySourceLink(
             activity_id=act.id, source=source,
             external_id=f"{source}-demo-{act.id}", raw_ingest_id=None))
@@ -759,7 +759,7 @@ async def seed_system(session, user_id: int, rng: random.Random,
                 user_id=user_id, source="garmin", payload_type=ptype,
                 fetched_at=datetime(day.year, day.month, day.day, 6, 10, tzinfo=UTC),
                 raw_json={"demo": ptype, "date": str(day)}, processed=True))
-    session.add(RawIngest(user_id=user_id, source="technogym",
+    session.add(RawIngest(user_id=user_id, source="whoop",
                           payload_type="workouts", fetched_at=now - timedelta(hours=9),
                           raw_json={"count": 2}, processed=True))
     # sync logs (raw SQL — no ORM models for these tables)
