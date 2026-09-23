@@ -30,18 +30,49 @@ logger = logging.getLogger("app.agent.routing")
 CLASSIFY_SYSTEM_PROMPT = (
     "You classify one message from an athlete for routing. Reply with ONLY a "
     "JSON object, no prose: {\"category\": \"lookup\"} or "
-    "{\"category\": \"strategic\"}.\n"
+    "{\"category\": \"strategic\"} or {\"category\": \"medical\"}.\n"
     "\"lookup\" = simple data questions answerable from stored metrics or "
     "tools (statuses, trends, facts, schedules).\n"
     "\"strategic\" = planning, periodization, plan generation, multi-step "
-    "analysis, open-ended coaching advice."
+    "analysis, open-ended coaching advice.\n"
+    "\"medical\" = questions about lab results, blood panels, medical "
+    "reports, symptoms, medications, or clinical interpretation of vitals."
 )
+
+MEDICAL_INTENT_MARKERS = (
+    "blood work", "blood test", "blood panel", "lab result", "ferritin",
+    "hemoglobin", "ferritina", "esame del sangue", "analisi", "cholesterol",
+    "colesterolo", "thyroid", "tiroide", "vitamin d", "vitamina d",
+    "testosterone", "symptom", "sintomo", "medication", "medicinale",
+    "farmaco", "injury diagnosis", "doctor", "medico", "medicale",
+)
+
+MEDICAL_DISCLAIMER_EN = (
+    "Educational information, not medical advice — discuss with a "
+    "physician before acting on it. "
+)
+MEDICAL_DISCLAIMER_IT = (
+    "Informazione educativa, non un consiglio medico: parlane con un "
+    "medico prima di metterla in pratica. "
+)
+
+
+def is_medical_intent(text: str) -> bool:
+    """Deterministic pre-filter so medical questions are recognizable even
+    when the free classifier (which sees the same categories) mislabels a
+    short question. Case-insensitive marker match; the classifier's
+    'medical' category also routes here."""
+    lowered = text.lower()
+    return any(marker in lowered for marker in MEDICAL_INTENT_MARKERS)
+
+
+MEDICAL_DISCLAIMER = MEDICAL_DISCLAIMER_EN
 
 
 @dataclass
 class RoutingDecision:
-    tier: str  # the tier this turn runs at: 'cheap' or 'powerful'
-    classification: str | None  # 'lookup' | 'strategic' — None when capped
+    tier: str  # the tier this turn runs at: 'cheap' | 'powerful' | 'medical'
+    classification: str | None  # 'lookup' | 'strategic' | 'medical' — None when capped
     cap: str  # the account's ai_access_tier
 
 
@@ -62,6 +93,15 @@ async def resolve_tier(
         return RoutingDecision(tier="cheap", classification=None, cap=cap)
 
     classification = await _classify(session, user_id, text, llm)
+    if classification == "medical":
+        # Medical tier requires BOTH an owner-enabled MedGemma endpoint and a
+        # full-tier account; anything less degrades to powerful (the reply
+        # still carries the disclaimer at the call site).
+        from app.core.config import get_settings
+
+        if get_settings().medical_tier_enabled:
+            return RoutingDecision(tier="medical", classification=classification, cap=cap)
+        return RoutingDecision(tier="powerful", classification=classification, cap=cap)
     tier = "cheap" if classification == "lookup" else "powerful"
     return RoutingDecision(tier=tier, classification=classification, cap=cap)
 
@@ -92,6 +132,6 @@ async def _classify(session: AsyncSession, user_id: int, text: str, llm: LLMClie
     except (LLMError, ValueError) as exc:
         logger.warning("unparsable classification %r — defaulting to lookup", response.content)
         return "lookup"
-    if category not in ("lookup", "strategic"):
+    if category not in ("lookup", "strategic", "medical"):
         return "lookup"
     return category

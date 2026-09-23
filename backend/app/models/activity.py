@@ -90,3 +90,29 @@ class ActivityStream(Base):
     altitude: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     lat: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     lon: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+
+class ActivityLap(Base):
+    """Per-lap splits parsed from FIT files (migration 0007).
+
+    Garmin Connect's JSON API carries lap summaries only for some sports and
+    inconsistently; the FIT file is authoritative. Keyed
+    (activity_id, lap_index) — the enrichment pass upserts idempotently.
+    """
+
+    __tablename__ = "activity_laps"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activity_id: Mapped[int] = mapped_column(
+        ForeignKey("activities.id"), nullable=False
+    )
+    lap_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    duration_s: Mapped[int | None] = mapped_column(nullable=True)
+    distance_m: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    avg_hr: Mapped[int | None] = mapped_column(nullable=True)
+    max_hr: Mapped[int | None] = mapped_column(nullable=True)
+    avg_power: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    calories: Mapped[int | None] = mapped_column(nullable=True)
+    extras: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

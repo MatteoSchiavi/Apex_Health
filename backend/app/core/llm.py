@@ -70,22 +70,58 @@ class LLMClient(Protocol):
 
 
 class LiveGLMClient:
-    """GLM family via an OpenAI-compatible chat-completions endpoint (§2).
+    """OpenAI-compatible chat-completions client with per-tier endpoints.
 
-    Model per tier comes from settings (LLM_PROVIDER_CHEAP /
-    LLM_PROVIDER_POWERFUL); the §9.1 free tier rides the flash model, so
-    "free" resolves to model_cheap here and free-tier call sites simply pass
-    tier="free" for honest token_usage accounting.
+    Harness v3: each tier may point at a different vendor (owner decision:
+    DeepSeek serves the main 'cheap' tier, GLM-5.2 stays powerful, and an
+    optional 'medical' tier rides a MedGemma-compatible endpoint). Per-tier
+    (base_url, api_key) pairs fall back to the shared GLM endpoint when the
+    specific override is empty — one key still runs the whole stack.
     """
 
-    def __init__(self, api_key: str, api_base: str, model_cheap: str, model_powerful: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        api_base: str,
+        model_cheap: str,
+        model_powerful: str,
+        *,
+        api_key_cheap: str = "",
+        api_base_cheap: str = "",
+        api_key_powerful: str = "",
+        api_base_powerful: str = "",
+        provider_medical: str = "",
+        api_key_medical: str = "",
+        api_base_medical: str = "",
+    ) -> None:
         if not api_key:
             raise LLMError("GLM_API_KEY is not set — live LLM calls are unavailable")
-        self._api_key = api_key
-        self._api_base = api_base.rstrip("/")
+        shared = (api_base.rstrip("/"), api_key)
+        self._endpoints: dict[str, tuple[str, str]] = {
+            "cheap": (
+                (api_base_cheap.rstrip("/") or shared[0]),
+                api_key_cheap or shared[1],
+            ),
+            "powerful": (
+                (api_base_powerful.rstrip("/") or shared[0]),
+                api_key_powerful or shared[1],
+            ),
+        }
+        # The medical tier is only registered when an endpoint was provided;
+        # unregistered tiers raise LLMError which routing degrades gracefully.
+        if api_base_medical and api_key_medical:
+            self._endpoints["medical"] = (
+                api_base_medical.rstrip("/"),
+                api_key_medical,
+            )
         # §9.1: the free tier IS the flash model — free-tier call sites pass
-        # tier="free" and ride the same model as cheap.
-        self._models = {"free": model_cheap, "cheap": model_cheap, "powerful": model_powerful}
+        # tier="free" and ride the same endpoint as cheap.
+        self._models = {
+            "free": model_cheap,
+            "cheap": model_cheap,
+            "powerful": model_powerful,
+            "medical": provider_medical or model_powerful,
+        }
         self._client = httpx.AsyncClient(timeout=120.0)
 
     async def complete(
@@ -97,6 +133,9 @@ class LiveGLMClient:
     ) -> LLMResponse:
         if tier not in self._models:
             raise LLMError(f"unknown tier {tier!r} (expected one of {sorted(self._models)})")
+        if tier not in self._endpoints:
+            raise LLMError(f"tier {tier!r} has no endpoint configured")
+        api_base, api_key = self._endpoints[tier]
         payload_messages: list[dict[str, Any]] = []
         if system:
             payload_messages.append({"role": "system", "content": system})
@@ -106,14 +145,14 @@ class LiveGLMClient:
             payload["tools"] = tools
         try:
             resp = await self._client.post(
-                f"{self._api_base}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
+                f"{api_base}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
             )
             resp.raise_for_status()
             body = resp.json()
         except httpx.HTTPError as exc:
-            raise LLMError(f"GLM completion failed: {exc}") from exc
+            raise LLMError(f"LLM completion failed ({tier}): {exc}") from exc
         return parse_completion(body, fallback_model=self._models[tier])
 
 
@@ -193,4 +232,11 @@ def build_llm_client() -> LLMClient:
         api_base=settings.glm_api_base,
         model_cheap=settings.llm_provider_cheap,
         model_powerful=settings.llm_provider_powerful,
+        api_key_cheap=settings.llm_api_key_cheap,
+        api_base_cheap=settings.llm_api_base_cheap,
+        api_key_powerful=settings.llm_api_key_powerful,
+        api_base_powerful=settings.llm_api_base_powerful,
+        provider_medical=settings.llm_provider_medical,
+        api_key_medical=settings.llm_api_key_medical,
+        api_base_medical=settings.llm_api_base_medical,
     )

@@ -62,7 +62,7 @@ async def login(
         key=session_cookie_name(),
         value=token,
         max_age=cookie_max_age_seconds(),
-        secure=True,  # §22.2 — unconditional; clients reach the API over TLS or localhost tooling
+        secure=settings.cookie_secure,  # §22.2 — TLS paths default; LAN-HTTP opts out via COOKIE_SECURE=false
         httponly=True,
         samesite="lax",
         path="/",
@@ -126,7 +126,7 @@ async def redeem(
         key=session_cookie_name(),
         value=token,
         max_age=cookie_max_age_seconds(),
-        secure=True,
+        secure=get_settings().cookie_secure,
         httponly=True,
         samesite="lax",
         path="/",

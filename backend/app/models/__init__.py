@@ -2,6 +2,7 @@
 
 from app.models.activity import (
     Activity,
+    ActivityLap,
     ActivitySourceLink,
     ActivityStream,
     Discipline,
@@ -53,6 +54,7 @@ from app.models.wellness import (
 
 __all__ = [
     "Activity",
+    "ActivityLap",
     "ActivityGearLink",
     "ActivitySourceLink",
     "ActivityStream",

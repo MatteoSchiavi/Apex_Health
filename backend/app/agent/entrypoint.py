@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agent.context import coach_context
 from app.agent.loop import AgentLoopResult, run_agent_loop
+from app.core.llm import LLMError
 from app.agent.routing import resolve_tier
 from app.core.llm import LLMClient
 from app.models.chat import AiChatMessage, AiChatSession
@@ -67,13 +68,24 @@ async def run_agent_turn(
     now: datetime | None = None,
     tier: str | None = None,
     embedding_client: Any | None = None,
+    session_id: int | None = None,
 ) -> AgentTurnResult:
     """One free-text turn: log user message, build the §8.4 system block,
     resolve the tier (§9.2 routing — None = auto), run the tool loop, log
-    the assistant reply with referenced_data + model_tier."""
+    the assistant reply with referenced_data + model_tier.
+
+    session_id: explicit resume (web UI). None = resolve via the §6.4
+    30-minute idle rule (telegram behaviour, unchanged)."""
     now = now or datetime.now(UTC)
     async with sessionmaker() as session:
-        chat_session = await _resolve_session(session, user_id, now)
+        if session_id is not None:
+            chat_session = await session.get(AiChatSession, session_id)
+            if chat_session is None or chat_session.user_id != user_id:
+                raise ValueError(f"chat session {session_id} not found for user")
+            chat_session.last_activity_at = now
+            await session.flush()
+        else:
+            chat_session = await _resolve_session(session, user_id, now)
         session.add(AiChatMessage(session_id=chat_session.id, role="user", content=text))
         await session.flush()
         snapshot = await _build_snapshot(session, user_id, now)
@@ -82,17 +94,29 @@ async def run_agent_turn(
             tier = (await resolve_tier(session, user_id, text, llm)).tier
         await session.commit()  # persist session + user message before the loop runs
 
-    loop_result = await run_agent_loop(
-        sessionmaker,
-        llm,
-        user_id=user_id,
-        session_id=chat_session.id,
-        text=text,
-        system=system,
-        tier=tier,
-        today=snapshot.get("_local_today") or now.date(),
-        embedding_client=embedding_client,
-    )
+    async def _run(selected_tier: str) -> AgentLoopResult:
+        return await run_agent_loop(
+            sessionmaker,
+            llm,
+            user_id=user_id,
+            session_id=chat_session.id,
+            text=text,
+            system=system,
+            tier=selected_tier,
+            today=snapshot.get("_local_today") or now.date(),
+            embedding_client=embedding_client,
+        )
+
+    try:
+        loop_result = await _run(tier)
+    except LLMError as exc:
+        if tier != "medical":
+            raise
+        # Medical endpoint misconfigured/unreachable → degrade to powerful
+        # and make the disclaimer explicit (never a silent downgrade).
+        logger.warning("medical tier failed — degrading to powerful: %s", exc)
+        tier = "powerful"
+        loop_result = await _run(tier)
 
     referenced = {k: v for k, v in snapshot.items() if not k.startswith("_")}
     referenced["tool_calls"] = loop_result.tool_audit

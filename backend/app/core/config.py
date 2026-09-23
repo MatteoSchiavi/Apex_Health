@@ -92,6 +92,35 @@ class Settings(BaseSettings):
     strava_page_delay_seconds: float = 2.0
     strava_activity_page_size: int = 100
 
+    # --- Oura connector (official API v2 — personal apps ARE allowed, so the
+    # owner can register this one in minutes at cloud.ouraring.com) ---
+    # Sleep stages (the ring's core advantage: 30s-class hypnogram), HRV,
+    # temperature deviation, SpO2. Same normalization law: canonical columns
+    # only where unit+semantics match Garmin; ring-specific values stay in
+    # source_metrics.
+    oura_client_id: str = ""
+    oura_client_secret: str = ""
+    oura_redirect_uri: str = "http://localhost:8000/integrations/oura/callback"
+    oura_oauth_authorize_url: str = "https://cloud.ouraring.com/oauth/authorize"
+    oura_oauth_token_url: str = "https://api.ouraring.com/oauth/token"
+    oura_api_base: str = "https://api.ouraring.com/v2/usercollection"
+    oura_scope: str = "daily sleep heartrate personal spo2 temperature"
+    oura_page_size: int = 25
+    oura_page_delay_seconds: float = 0.5
+
+    # --- COROS connector (Open API, doc-first shell) ---
+    # COROS requires a manual developer-portal application review before any
+    # live key exists, so this ships as an approved-scope shell: config,
+    # OAuth URLs, sync driver skeleton — owner applies, fills env, flow is
+    # already wired.
+    coros_client_id: str = ""
+    coros_client_secret: str = ""
+    coros_redirect_uri: str = "http://localhost:8000/integrations/coros/callback"
+    coros_oauth_authorize_url: str = "https://open.coros.com/oauth2/authorize"
+    coros_oauth_token_url: str = "https://open.coros.com/oauth2/token"
+    coros_api_base: str = "https://open.coros.com"
+    coros_scope: str = "base"
+
     # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
     telegram_bot_token: str = ""
 
@@ -101,6 +130,23 @@ class Settings(BaseSettings):
     glm_api_key: str = ""
     # OpenAI-compatible chat-completions endpoint for the GLM family.
     glm_api_base: str = "https://open.bigmodel.cn/api/paas/v4"
+
+    # Harness v3 (2026-09): per-tier endpoints so the MAIN model can be a
+    # different vendor than the strategic one. Owner decision: DeepSeek is the
+    # main (cheap) model. Empty values inherit glm_api_base/glm_api_key — one
+    # key still runs the whole stack.
+    llm_api_key_cheap: str = ""
+    llm_api_base_cheap: str = ""      # e.g. https://api.deepseek.com/v1
+    llm_api_key_powerful: str = ""
+    llm_api_base_powerful: str = ""
+
+    # Optional clinical tier (MedGemma or any OpenAI-compatible medical model).
+    # Disabled by default; when enabled it only serves lab/medical intent and
+    # always degrades to 'powerful' with a disclaimer prefix on any failure.
+    medical_tier_enabled: bool = False
+    llm_provider_medical: str = "medgemma-27b-it"
+    llm_api_base_medical: str = ""
+    llm_api_key_medical: str = ""
 
     # --- STT (§2, §5: OpenAI Whisper — voice notes are short) ---
     openai_api_key: str = ""
@@ -158,6 +204,11 @@ class Settings(BaseSettings):
     trust_proxy_headers: bool = False
     # §22: session cookies are short-lived with sliding expiry.
     session_ttl_minutes: int = 720
+    # §22.2 / STACK.md: Secure-flagged cookie for the TLS paths (Cloudflare
+    # Tunnel / Tailscale serve / Caddy). Plain-HTTP LAN installs set
+    # COOKIE_SECURE=false once in .env — browsers drop Secure cookies on
+    # http:// origins, which would make login impossible there.
+    cookie_secure: bool = True
     # §22.1: 5 failed attempts per email per 15 minutes -> temporary lockout.
     login_window_minutes: int = 15
     login_max_attempts: int = 5

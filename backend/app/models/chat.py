@@ -19,6 +19,10 @@ class AiChatSession(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Web chat session list shows a human title per conversation (generated
+    # from the first user message; local truncation fallback). NULL until the
+    # first exchange completes.
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )

@@ -25,6 +25,9 @@ dependencies = [
     "pgvector>=0.5.0",
     # CSV import endpoint (POST /imports/csv multipart uploads)
     "python-multipart>=0.0.9",
+    # FIT enrichment (§3b): parse Garmin FIT files for laps/streams the
+    # Connect JSON API hides (DATA_COVERAGE.md)
+    "fitdecode>=0.10",
 ]
 
 [dependency-groups]
