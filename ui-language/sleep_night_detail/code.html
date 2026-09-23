@@ -1,0 +1,555 @@
+<!DOCTYPE html><html class="dark" lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-tertiary-fixed":"#410004","on-error":"#690005","surface-variant":"#333539","outline-variant":"#424754","surface-container-lowest":"#0c0e12","inverse-primary":"#005ac2","surface-tint":"#adc6ff","outline":"#8c909f","primary":"#adc6ff","error":"#ffb4ab","background":"#111318","surface-container-highest":"#333539","secondary-container":"#00a572","tertiary-container":"#ff5451","surface-bright":"#37393e","on-primary-fixed":"#001a42","primary-fixed":"#d8e2ff","tertiary":"#ffb3ad","inverse-on-surface":"#2f3035","secondary-fixed":"#6ffbbe","surface-container-low":"#1a1c20","inverse-surface":"#e2e2e8","on-tertiary":"#68000a","secondary":"#4edea3","on-error-container":"#ffdad6","surface":"#111318","on-secondary-fixed-variant":"#005236","on-surface-variant":"#c2c6d6","primary-fixed-dim":"#adc6ff","on-primary":"#002e6a","on-primary-fixed-variant":"#004395","on-secondary-container":"#00311f","on-background":"#e2e2e8","on-tertiary-container":"#5c0008","surface-dim":"#111318","error-container":"#93000a","secondary-fixed-dim":"#4edea3","on-surface":"#e2e2e8","on-secondary-fixed":"#002113","on-primary-container":"#00285d","surface-container-high":"#282a2e","on-tertiary-fixed-variant":"#930013","on-secondary":"#003824","surface-container":"#1e2024","tertiary-fixed":"#ffdad7","primary-container":"#4d8eff","tertiary-fixed-dim":"#ffb3ad"},borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem",full:"9999px"},spacing:{"space-md":"1rem",margin:"1rem","space-xl":"2rem","space-xs":"0.25rem",gutter:"1rem","space-sm":"0.5rem","gutter-desktop":"1.5rem","space-lg":"1.5rem","margin-tablet":"1.5rem","margin-desktop":"2rem"},fontFamily:{"display-hero-mobile":["Geist"],"label-caps":["Geist"],caption:["Geist"],"display-hero":["Geist"],"headline-lg-mobile":["Geist"],"headline-lg":["Geist"],"micro-telemetry":["Geist"],"stat-xl":["Geist"],"body-base":["Geist"],"body-medium":["Geist"],"headline-md":["Geist"]},fontSize:{"display-hero-mobile":["30px",{lineHeight:"36px",letterSpacing:"-0.025em",fontWeight:"600"}],"label-caps":["11px",{lineHeight:"14px",letterSpacing:"0.06em",fontWeight:"600"}],caption:["12px",{lineHeight:"16px",letterSpacing:"0em",fontWeight:"400"}],"display-hero":["40px",{lineHeight:"48px",letterSpacing:"-0.03em",fontWeight:"600"}],"headline-lg-mobile":["22px",{lineHeight:"28px",letterSpacing:"-0.015em",fontWeight:"600"}],"headline-lg":["28px",{lineHeight:"36px",letterSpacing:"-0.02em",fontWeight:"600"}],"micro-telemetry":["10px",{lineHeight:"12px",letterSpacing:"0.04em",fontWeight:"500"}],"stat-xl":["24px",{lineHeight:"30px",letterSpacing:"-0.02em",fontWeight:"700"}],"body-base":["14px",{lineHeight:"20px",letterSpacing:"-0.005em",fontWeight:"400"}],"body-medium":["14px",{lineHeight:"20px",letterSpacing:"0em",fontWeight:"500"}],"headline-md":["20px",{lineHeight:"26px",letterSpacing:"-0.015em",fontWeight:"600"}]}}}}</script></head><body class="bg-background font-body-base text-body-base text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-lowest flex flex-col justify-between z-40 shadow-[0_1px_8px_rgba(0,0,0,0.25)]"><div class="flex flex-col flex-1 min-h-0"><div class="h-16 px-space-lg flex items-center gap-space-sm bg-surface-container-lowest"><span class="flex items-center justify-center w-7 h-7 rounded bg-surface-container-high text-primary font-headline-md text-headline-md tracking-tighter">▲</span><span class="font-headline-md text-headline-md tracking-tight font-bold text-on-surface">APEX <span class="font-body-base text-body-base font-normal text-on-surface-variant uppercase tracking-widest pl-1">HEALTH</span></span></div><div class="px-space-md py-space-xs"><p class="px-space-sm py-space-xs font-label-caps text-label-caps uppercase tracking-wider text-outline">TELEMETRY &amp; ANALYSIS</p></div><nav class="flex-1 px-space-md space-y-1 overflow-y-auto" data-active-classes="bg-surface-container-high text-on-surface font-body-medium rounded-lg"><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="overview" href="#"><span class="material-symbols-outlined text-outline">vital_signs</span><span class="">Overview</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="activities" href="#"><span class="material-symbols-outlined text-outline">directions_run</span><span class="">Activities</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="sleep-and-recovery" href="#"><span class="material-symbols-outlined text-outline">bedtime</span><span class="">Sleep &amp; Recovery</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="biometrics-and-lab-data" href="#"><span class="material-symbols-outlined text-outline">monitor_heart</span><span class="">Biometrics &amp; Lab Data</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="training-plan-and-load" href="#"><span class="material-symbols-outlined text-outline">candlestick_chart</span><span class="">Training Plan &amp; Load</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="ai-coach-insights" href="#"><span class="material-symbols-outlined text-outline">smart_toy</span><span class="">AI Coach Insights</span></a></nav></div><div class="p-space-md bg-surface-container-low space-y-space-md"><div class="p-space-sm rounded-lg bg-surface-container-lowest flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-secondary inline-block animate-pulse"></span><span class="font-micro-telemetry text-micro-telemetry text-on-surface-variant uppercase tracking-wider">Garmin • Strava • Oura</span></div><span class="font-micro-telemetry text-micro-telemetry text-outline">2m ago</span></div><div class="flex items-center justify-between px-space-xs"><span class="font-caption text-caption text-outline">Theme Protocol</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-caption text-primary">dark_mode</span><span class="font-caption text-caption">Dark</span></button></div><div class="pt-space-xs flex items-center gap-space-sm"><div class="relative"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1WBeqw3BSMde7e0QnQW5q6VVaWvKA-c2YUOLRXG94dldO9GS9VJgjhZEBcuqMmQy5gOOgjl45npuX6mjxOkKxvm8gzgp3IZ6uUnwlM6-nm2mlpb14rlpf2OApfo14VUn8AoF7kTc6JtUbGgYqos3UHg1RaQyjRhlLaxfwC0QyaHs7DZ2diaRkXSTlN97I38ZiQnkQKTSQRRVnpoHqYEQ-eiEF4tEaa_JImw1UKuSm8Fvcdu55M1GKdcPxQE7RvyXQM1L-MgLoetnt4"><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-secondary"></span></div><div class="flex flex-col min-w-0 flex-1"><span class="font-body-medium text-body-medium truncate text-on-surface">Matteo S.</span><span class="font-micro-telemetry text-micro-telemetry text-outline uppercase tracking-wider truncate">Peak Threshold</span></div><span class="material-symbols-outlined text-outline text-body-base">expand_more</span></div></div></aside><div class="pl-72"><header class="fixed top-0 left-72 right-0 h-16 bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.15)] z-30 flex items-center justify-between px-space-lg"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs font-caption text-caption text-outline"><span class="text-on-surface">Apex Health</span><span class="">/</span><span class="text-on-surface-variant">Physiological Telemetry</span></div><div class="hidden md:flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined text-caption text-secondary">verified</span><span class="font-micro-telemetry text-micro-telemetry text-on-surface font-medium uppercase tracking-wider">100% Measured Data</span></div></div><div class="flex items-center gap-space-md"><div class="relative flex items-center"><div class="flex items-center gap-space-sm bg-surface-container-low px-space-sm py-1.5 rounded-lg text-outline w-64 justify-between"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-body-base">search</span><span class="font-caption text-caption text-outline">Quick telemetry...</span></div><kbd class="px-1.5 py-0.5 rounded bg-surface-container font-micro-telemetry text-micro-telemetry text-outline">⌘K</kbd></div></div><div class="flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-container-low text-on-surface"><span class="material-symbols-outlined text-body-base text-outline">calendar_today</span><span class="font-caption text-caption font-medium">Today, Oct 24 • Last 7 Days</span><span class="material-symbols-outlined text-caption text-outline">expand_more</span></div><div class="flex items-center pl-space-xs"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1WBeqw3BSMde7e0QnQW5q6VVaWvKA-c2YUOLRXG94dldO9GS9VJgjhZEBcuqMmQy5gOOgjl45npuX6mjxOkKxvm8gzgp3IZ6uUnwlM6-nm2mlpb14rlpf2OApfo14VUn8AoF7kTc6JtUbGgYqos3UHg1RaQyjRhlLaxfwC0QyaHs7DZ2diaRkXSTlN97I38ZiQnkQKTSQRRVnpoHqYEQ-eiEF4tEaa_JImw1UKuSm8Fvcdu55M1GKdcPxQE7RvyXQM1L-MgLoetnt4"></div></div></header><main class="relative pt-16 bg-background min-h-screen w-full px-space-lg py-space-lg"><div class="flex flex-col w-full space-y-space-lg text-on-surface">
+<!-- Header Context & Micro-Bar -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
+<div class="space-y-space-xs">
+<div class="flex items-center gap-space-xs font-label-caps text-label-caps tracking-widest text-outline uppercase"><span class="inline-block w-2 h-2 rounded-full bg-secondary"></span><span class="">Biometric Sleep Telemetry</span><span class="">•</span><span class="text-on-surface-variant">Multi-Sensor Sleep Tracking</span></div>
+<h1 class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-semibold">
+        Night of Tuesday, Oct 22 <span class="text-outline font-normal">→</span> Wednesday, Oct 23
+      </h1>
+<p class="font-caption text-caption text-outline">
+        Oura Ring Gen 3 + Withings Sleep Mat • Dual-Vector Pipeline • <span class="text-secondary font-medium">100% Measured Data</span>
+</p>
+</div>
+<!-- Time Horizon & Export Switcher -->
+<div class="flex items-center gap-space-sm">
+<div class="inline-flex p-1 rounded-xl bg-surface-container-low">
+<button class="px-space-md py-1 rounded-lg bg-surface-container-high text-on-surface font-caption text-caption font-medium shadow-sm transition-all">Day</button>
+<button class="px-space-md py-1 rounded-lg text-outline hover:text-on-surface font-caption text-caption font-medium transition-all">Week</button>
+<button class="px-space-md py-1 rounded-lg text-outline hover:text-on-surface font-caption text-caption font-medium transition-all">Month</button>
+<button class="px-space-md py-1 rounded-lg text-outline hover:text-on-surface font-caption text-caption font-medium transition-all">6M</button>
+</div>
+<button class="p-2 rounded-xl bg-surface-container-low text-outline hover:text-on-surface transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-body-base">tune</span>
+</button>
+<button class="p-2 rounded-xl bg-surface-container-low text-outline hover:text-on-surface transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-body-base">ios_share</span>
+</button>
+</div>
+</div>
+<!-- Hero Score & Macro Metric Bento -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
+<!-- Sleep Score Metric Card (Inspiration 2 Style) -->
+<div class="lg:col-span-4 rounded-xl bg-surface-container-low p-space-lg flex flex-col justify-between relative overflow-hidden shadow-sm">
+<div class="flex items-start justify-between z-10">
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Recovery Index</span>
+<h2 class="font-headline-md text-headline-md font-semibold text-on-surface mt-0.5">Sleep Score</h2>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-outline">
+<span class="material-symbols-outlined text-body-base">north_east</span>
+</div>
+</div>
+<div class="my-space-md flex flex-col items-center justify-center relative py-space-sm z-10"><div class="relative w-48 h-36 flex flex-col items-center justify-end"><svg class="w-48 h-48 absolute top-0" viewBox="0 0 160 120"><path d="M 24 100 A 56 56 0 1 1 136 100" fill="none" stroke="#333539" stroke-width="8" stroke-linecap="round"></path><path d="M 24 100 A 56 56 0 1 1 136 100" fill="none" stroke="#4edea3" stroke-width="8" stroke-dasharray="242" stroke-dashoffset="26" stroke-linecap="round"></path></svg><div class="flex flex-col items-center relative z-10 mb-2"><div class="flex items-baseline gap-1"><span class="font-display-hero text-display-hero font-bold tracking-tight text-on-surface">89</span><span class="font-headline-md text-headline-md text-outline font-normal">/100</span></div><span class="font-micro-telemetry text-micro-telemetry text-secondary font-semibold uppercase tracking-wider">Optimal Recovery</span></div></div><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary/10 text-secondary font-caption text-caption font-medium mt-2"><span class="material-symbols-outlined text-caption">trending_up</span><span class="">+6 pts vs 30-day baseline</span></div></div>
+<div class="grid grid-cols-2 gap-space-sm pt-space-sm bg-surface-container-lowest/60 -mx-space-lg -mb-space-lg p-space-md">
+<div>
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Efficiency</span>
+<p class="font-stat-xl text-stat-xl font-semibold text-on-surface">91.2<span class="font-caption text-caption text-outline font-normal">%</span></p>
+</div>
+<div>
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Sleep Latency</span>
+<p class="font-stat-xl text-stat-xl font-semibold text-on-surface">11<span class="font-caption text-caption text-outline font-normal">min</span></p>
+</div>
+</div>
+</div>
+<!-- Duration Diagnostic Breakdown -->
+<div class="lg:col-span-8 rounded-xl bg-surface-container-low p-space-lg flex flex-col justify-between shadow-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between pb-space-md gap-space-sm">
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Duration Analysis</span>
+<h2 class="font-headline-md text-headline-md font-semibold text-on-surface">Asleep vs Time in Bed</h2>
+</div>
+<div class="flex items-center gap-space-md">
+<div class="flex items-center gap-space-xs">
+<span class="w-2.5 h-2.5 rounded bg-primary"></span>
+<span class="font-caption text-caption text-outline">Time Asleep</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="w-2.5 h-2.5 rounded bg-surface-variant"></span>
+<span class="font-caption text-caption text-outline">Restless/Awake</span>
+</div>
+</div>
+</div>
+<!-- Large Numbers Display (Apple Health Inspired) -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-space-md py-space-sm">
+<div class="space-y-0.5">
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider text-outline">Time In Bed</span>
+<div class="flex items-baseline">
+<span class="font-display-hero text-display-hero font-bold tracking-tight text-on-surface">8</span>
+<span class="font-body-base text-body-base text-outline px-1">hr</span>
+<span class="font-display-hero text-display-hero font-bold tracking-tight text-on-surface">42</span>
+<span class="font-body-base text-body-base text-outline pl-1">min</span>
+</div>
+<span class="font-caption text-caption text-outline">22:45 → 07:27</span>
+</div>
+<div class="space-y-0.5">
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider text-primary">Time Asleep</span>
+<div class="flex items-baseline text-primary">
+<span class="font-display-hero text-display-hero font-bold tracking-tight text-primary">7</span>
+<span class="font-body-base text-body-base opacity-75 px-1">hr</span>
+<span class="font-display-hero text-display-hero font-bold tracking-tight text-primary">56</span>
+<span class="font-body-base text-body-base opacity-75 pl-1">min</span>
+</div>
+<span class="font-caption text-caption text-secondary flex items-center gap-0.5">
+<span class="material-symbols-outlined text-caption">arrow_drop_up</span>
+            +38m vs optimal target
+          </span>
+</div>
+<div class="space-y-0.5">
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider text-outline">Awake Intervals</span>
+<div class="flex items-baseline">
+<span class="font-stat-xl text-stat-xl font-bold text-on-surface">46</span>
+<span class="font-body-base text-body-base text-outline pl-1">min</span>
+</div>
+<span class="font-caption text-caption text-outline">2 micro-disturbances</span>
+</div>
+<div class="space-y-0.5">
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider text-outline">Sleep Debt</span>
+<div class="flex items-baseline">
+<span class="font-stat-xl text-stat-xl font-bold text-secondary">0</span>
+<span class="font-body-base text-body-base text-outline pl-1">min</span>
+</div>
+<span class="font-caption text-caption text-outline">Fully satisfied buffer</span>
+</div>
+</div>
+<!-- Quick Distribution Stacked Bar -->
+<div class="space-y-space-xs pt-space-md">
+<div class="w-full h-3 bg-surface-container rounded flex overflow-hidden">
+<div class="h-full bg-error/80" style="width: 9%;" title="Awake: 46m (9%)"></div>
+<div class="h-full bg-primary" style="width: 23%;" title="REM: 1h 48m (23%)"></div>
+<div class="h-full bg-primary-container" style="width: 43%;" title="Core: 4h 08m (43%)"></div>
+<div class="h-full bg-indigo-600" style="width: 25%;" title="Deep: 2h 00m (25%)"></div>
+</div>
+<div class="flex items-center justify-between font-micro-telemetry text-micro-telemetry text-outline">
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-error"></span>Awake 9%</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>REM 23%</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>Core 43%</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>Deep 25%</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Primary Sleep Stage Hypnogram (Exact clinical Apple Health / Lab inspiration) -->
+<div class="rounded-xl bg-surface-container-low p-space-lg shadow-sm space-y-space-md relative">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
+<div class="space-y-0.5">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-body-base">stacked_bar_chart</span>
+<h2 class="font-headline-md text-headline-md font-semibold text-on-surface">Continuous Sleep Stage Hypnogram</h2>
+</div>
+<p class="font-caption text-caption text-outline">High-frequency stage segmentation derived from 30s polysomnography epoch alignment</p>
+</div>
+<!-- Stage Legend Controls -->
+<div class="flex flex-wrap items-center gap-space-md font-caption text-caption">
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-sm bg-tertiary-container"></span>
+<span class="text-on-surface font-medium">Awake</span>
+<span class="text-outline">46m (9%)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-sm bg-primary"></span>
+<span class="text-on-surface font-medium">REM</span>
+<span class="text-outline">1h 48m (23%)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-sm bg-primary-container"></span>
+<span class="text-on-surface font-medium">Core</span>
+<span class="text-outline">4h 08m (43%)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-sm bg-indigo-600"></span>
+<span class="text-on-surface font-medium">Deep</span>
+<span class="text-outline">2h 00m (25%)</span>
+</div>
+</div>
+</div>
+<!-- Hypnogram Canvas Area -->
+<div class="relative bg-surface-container-lowest rounded-xl p-space-md overflow-x-auto">
+<div class="min-w-[720px] relative h-64 flex flex-col justify-between py-2">
+<!-- Grid Lines & Horizontal Stage Bands -->
+<div class="absolute inset-0 flex flex-col justify-between pointer-events-none py-4 px-12">
+<div class="w-full border-b border-surface-variant/40 flex items-center justify-between pb-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Awake</span>
+</div>
+<div class="w-full border-b border-surface-variant/30 flex items-center justify-between pb-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">REM</span>
+</div>
+<div class="w-full border-b border-surface-variant/30 flex items-center justify-between pb-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Core</span>
+</div>
+<div class="w-full flex items-center justify-between pb-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Deep</span>
+</div>
+</div>
+<!-- Hypnogram Vector Graphic Rendering (Apple Health precise look) -->
+<div class="relative h-48 w-full z-10 pl-16 pr-4">
+<svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 900 180">
+<!-- Vertical Timeline Reference Guides -->
+<line stroke="#333539" stroke-dasharray="3 3" stroke-width="1" x1="100" x2="100" y1="0" y2="180"></line>
+<line stroke="#333539" stroke-dasharray="3 3" stroke-width="1" x1="300" x2="300" y1="0" y2="180"></line>
+<line stroke="#333539" stroke-dasharray="3 3" stroke-width="1" x1="500" x2="500" y1="0" y2="180"></line>
+<line stroke="#333539" stroke-dasharray="3 3" stroke-width="1" x1="700" x2="700" y1="0" y2="180"></line>
+<!-- Seamless Connected Stepped Hypnogram Curve -->
+<!-- Stage Y Coordinates: Awake: 15, REM: 60, Core: 110, Deep: 160 -->
+<!-- Core Block 1 (Onset) -->
+<path d="M 10 110 L 45 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="16"></path>
+<!-- Drop into Awake disturbance -->
+<path d="M 45 110 L 45 15" stroke="#333539" stroke-width="2"></path>
+<path d="M 45 15 L 58 15" stroke="#ff5451" stroke-linecap="round" stroke-width="14"></path>
+<!-- Plunge into Deep Sleep Block 1 -->
+<path d="M 58 15 L 58 160" stroke="#333539" stroke-width="2"></path>
+<path d="M 58 160 L 115 160" stroke="#4338ca" stroke-linecap="round" stroke-width="20"></path>
+<!-- Core interval -->
+<path d="M 115 160 L 115 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 115 110 L 140 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="16"></path>
+<!-- Deep Sleep Block 2 (First sleep cycle dominant) -->
+<path d="M 140 110 L 140 160" stroke="#333539" stroke-width="2"></path>
+<path d="M 140 160 L 195 160" stroke="#4338ca" stroke-linecap="round" stroke-width="20"></path>
+<!-- Ascent to Core -->
+<path d="M 195 160 L 195 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 195 110 L 260 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="18"></path>
+<!-- REM Epoch 1 -->
+<path d="M 260 110 L 260 60" stroke="#333539" stroke-width="2"></path>
+<path d="M 260 60 L 285 60" stroke="#adc6ff" stroke-linecap="round" stroke-width="16"></path>
+<!-- Quick micro transition -->
+<path d="M 285 60 L 285 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 285 110 L 305 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="14"></path>
+<path d="M 305 110 L 305 60" stroke="#333539" stroke-width="2"></path>
+<path d="M 305 60 L 335 60" stroke="#adc6ff" stroke-linecap="round" stroke-width="16"></path>
+<!-- Deep Restorative Block 3 -->
+<path d="M 335 60 L 335 160" stroke="#333539" stroke-width="2"></path>
+<path d="M 335 160 L 365 160" stroke="#4338ca" stroke-linecap="round" stroke-width="20"></path>
+<!-- Main Extended Core Sleep Segment -->
+<path d="M 365 160 L 365 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 365 110 L 460 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="22"></path>
+<!-- REM Epoch 2 -->
+<path d="M 460 110 L 460 60" stroke="#333539" stroke-width="2"></path>
+<path d="M 460 60 L 520 60" stroke="#adc6ff" stroke-linecap="round" stroke-width="18"></path>
+<!-- Brief Mid-night Awakening -->
+<path d="M 520 60 L 520 15" stroke="#333539" stroke-width="2"></path>
+<path d="M 520 15 L 532 15" stroke="#ff5451" stroke-linecap="round" stroke-width="14"></path>
+<!-- Return to Core Baseline -->
+<path d="M 532 15 L 532 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 532 110 L 610 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="18"></path>
+<!-- Late Night REM Phase (Longest, high parasympathetic activity) -->
+<path d="M 610 110 L 610 60" stroke="#333539" stroke-width="2"></path>
+<path d="M 610 60 L 690 60" stroke="#adc6ff" stroke-linecap="round" stroke-width="20"></path>
+<!-- Final Core segment -->
+<path d="M 690 60 L 690 110" stroke="#333539" stroke-width="2"></path>
+<path d="M 690 110 L 760 110" stroke="#4d8eff" stroke-linecap="round" stroke-width="18"></path>
+<!-- Morning REM Surge -->
+<path d="M 760 110 L 760 60" stroke="#333539" stroke-width="2"></path>
+<path d="M 760 60 L 820 60" stroke="#adc6ff" stroke-linecap="round" stroke-width="20"></path>
+<!-- Terminal Wake Up -->
+<path d="M 820 60 L 820 15" stroke="#333539" stroke-width="2"></path>
+<path d="M 820 15 L 850 15" stroke="#ff5451" stroke-linecap="round" stroke-width="14"></path>
+<!-- Interactive Cursor datum marker at 03:45 AM (Lowest HR datum) -->
+<g transform="translate(485, 0)">
+<line stroke="#adc6ff" stroke-dasharray="2 2" stroke-width="1.5" x1="0" x2="0" y1="0" y2="180"></line>
+<circle cx="0" cy="60" fill="#adc6ff" r="4"></circle>
+<rect fill="#181c26" height="18" rx="4" stroke="#424754" stroke-width="0.5" width="70" x="-35" y="-5"></rect>
+<text fill="#adc6ff" font-family="Geist" font-size="9" font-weight="600" text-anchor="middle" x="0" y="7">03:45 REM</text>
+</g>
+</svg>
+</div>
+<!-- Hypnogram Bottom Time Axis -->
+<div class="flex justify-between pl-16 pr-4 pt-2 border-t border-surface-variant/40 font-micro-telemetry text-micro-telemetry text-outline">
+<span class="">11:00 PM</span>
+<span class="">12:00 AM</span>
+<span class="">01:00 AM</span>
+<span class="">02:00 AM</span>
+<span class="">03:00 AM</span>
+<span class="">04:00 AM</span>
+<span class="">05:00 AM</span>
+<span class="">06:00 AM</span>
+<span class="">07:00 AM</span>
+</div>
+</div>
+</div>
+<!-- Restlessness & Movement Telemetry Track -->
+<div class="p-space-md rounded-xl bg-surface-container flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-outline">motion_sensor_active</span>
+<div>
+<span class="font-body-medium text-body-medium font-medium text-on-surface">Nocturnal Movement &amp; Micro-Arousals</span>
+<p class="font-caption text-caption text-outline">Low disturbance index • 98.4% calm physical state</p>
+</div>
+</div>
+<div class="flex items-center gap-space-md">
+<!-- Visual Movement Ticks -->
+<div class="flex items-end gap-1 h-6">
+<span class="w-1 h-2 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-5 bg-tertiary-container rounded-full" title="Toss &amp; turn 23:14"></span>
+<span class="w-1 h-1.5 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-1 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-1 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-2 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-1 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-6 bg-tertiary-container rounded-full" title="Wakefulness 04:12"></span>
+<span class="w-1 h-2 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-1.5 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-1 bg-surface-variant rounded-full"></span>
+<span class="w-1 h-3 bg-secondary rounded-full"></span>
+<span class="w-1 h-1.5 bg-surface-variant rounded-full"></span>
+</div>
+<div class="text-right">
+<span class="font-label-caps text-label-caps uppercase text-outline">Movement Index</span>
+<p class="font-body-medium text-body-medium text-secondary font-semibold">Optimal Calm</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Biomarker & Autonomic Recovery Grid (5 Clinical Cards) -->
+<div>
+<div class="flex items-center justify-between mb-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-body-base">ecg_heart</span>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface">Autonomic Biometrics &amp; Clinical Vitals</h3>
+</div>
+<span class="font-caption text-caption text-outline">Overnight Optical PPG &amp; Sensor Vitals</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-md">
+<!-- Card 1: Resting Heart Rate -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between shadow-sm hover:bg-surface-container transition-all"><div class="flex items-center justify-between text-outline"><span class="font-label-caps text-label-caps uppercase">Resting HR (RHR)</span><span class="material-symbols-outlined text-body-base text-primary">favorite</span></div><div class="my-space-sm"><div class="flex items-baseline gap-1"><span class="font-display-hero-mobile text-display-hero-mobile font-bold text-on-surface">42</span><span class="font-caption text-caption text-outline">bpm</span></div><div class="flex items-center gap-1 text-secondary font-caption text-caption mt-0.5 mb-2.5"><span class="material-symbols-outlined text-caption">arrow_downward</span><span class="">−3 bpm vs baseline (45)</span></div><div class="space-y-1"><div class="relative w-full h-2 bg-surface-container rounded-full overflow-hidden flex"><div class="h-full bg-secondary" style="width: 45%;" title="Optimal: 38-50 bpm"></div><div class="h-full bg-surface-variant" style="width: 35%;" title="Elevated: 50-65 bpm"></div><div class="h-full bg-error/70" style="width: 20%;" title="High: 65+ bpm"></div></div><div class="relative w-full h-1"><div class="absolute -top-3 w-2 h-2 rounded-full bg-on-surface border border-background shadow-sm" style="left: 28%;"></div></div><div class="flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">38 optimal</span><span class="">45 base</span><span class="">65+</span></div></div></div><div class="pt-space-xs border-t border-surface-variant/40 flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">Trough 03:45 AM</span><span class="text-secondary font-semibold">Optimal Dip</span></div></div>
+<!-- Card 2: HRV (rMSSD) -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between shadow-sm hover:bg-surface-container transition-all"><div class="flex items-center justify-between text-outline"><span class="font-label-caps text-label-caps uppercase">HRV (rMSSD)</span><span class="material-symbols-outlined text-body-base text-secondary">monitor_heart</span></div><div class="my-space-sm"><div class="flex items-baseline gap-1"><span class="font-display-hero-mobile text-display-hero-mobile font-bold text-on-surface">74</span><span class="font-caption text-caption text-outline">ms</span></div><div class="flex items-center gap-1 text-secondary font-caption text-caption mt-0.5 mb-2.5"><span class="material-symbols-outlined text-caption">arrow_upward</span><span class="">+11 ms vs baseline (63)</span></div><div class="space-y-1"><div class="relative w-full h-2 bg-surface-container rounded-full overflow-hidden flex"><div class="h-full bg-surface-variant" style="width: 30%;" title="Low recovery: &lt;55 ms"></div><div class="h-full bg-secondary/80" style="width: 45%;" title="Normal target window: 55-85 ms"></div><div class="h-full bg-primary" style="width: 25%;" title="Peak tone: 85+ ms"></div></div><div class="relative w-full h-1"><div class="absolute -top-3 w-2 h-2 rounded-full bg-on-surface border border-background shadow-sm" style="left: 62%;"></div></div><div class="flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">35 ms</span><span class="text-secondary">55-85 window</span><span class="">100 ms</span></div></div></div><div class="pt-space-xs border-t border-surface-variant/40 flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">Peak 96 ms</span><span class="text-secondary font-semibold">High Parasympathetic</span></div></div>
+<!-- Card 3: Respiratory Rate -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between shadow-sm hover:bg-surface-container transition-all"><div class="flex items-center justify-between text-outline"><span class="font-label-caps text-label-caps uppercase">Respiration Rate</span><span class="material-symbols-outlined text-body-base text-primary">air</span></div><div class="my-space-sm"><div class="flex items-baseline gap-1"><span class="font-display-hero-mobile text-display-hero-mobile font-bold text-on-surface">13.4</span><span class="font-caption text-caption text-outline">br/min</span></div><div class="flex items-center gap-1 text-on-surface-variant font-caption text-caption mt-0.5 mb-2.5"><span class="material-symbols-outlined text-caption">check</span><span class="">Baseline steady (±0.0)</span></div><div class="space-y-1"><div class="relative w-full h-2 bg-surface-container rounded-full overflow-hidden flex"><div class="h-full bg-surface-variant" style="width: 25%;"></div><div class="h-full bg-secondary/80" style="width: 50%;" title="Optimal: 12-16 br/min"></div><div class="h-full bg-error/70" style="width: 25%;"></div></div><div class="relative w-full h-1"><div class="absolute -top-3 w-2 h-2 rounded-full bg-on-surface border border-background shadow-sm" style="left: 42%;"></div></div><div class="flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">10</span><span class="text-secondary">12-16 normal</span><span class="">20</span></div></div></div><div class="pt-space-xs border-t border-surface-variant/40 flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">Stability 99%</span><span class="text-secondary font-semibold">Normal</span></div></div>
+<!-- Card 4: Body Temp Deviation -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between shadow-sm hover:bg-surface-container transition-all"><div class="flex items-center justify-between text-outline"><span class="font-label-caps text-label-caps uppercase">Skin Temperature</span><span class="material-symbols-outlined text-body-base text-tertiary">device_thermostat</span></div><div class="my-space-sm"><div class="flex items-baseline gap-1"><span class="font-display-hero-mobile text-display-hero-mobile font-bold text-on-surface">−0.15</span><span class="font-caption text-caption text-outline">°C</span></div><div class="flex items-center gap-1 text-secondary font-caption text-caption mt-0.5 mb-2.5"><span class="material-symbols-outlined text-caption">check_circle</span><span class="">Optimal recovery window</span></div><div class="space-y-1"><div class="relative w-full h-2 bg-surface-container rounded-full overflow-hidden flex"><div class="h-full bg-primary/70" style="width: 30%;" title="Cool: &lt;-0.4°C"></div><div class="h-full bg-secondary" style="width: 40%;" title="Thermoneutral: ±0.3°C"></div><div class="h-full bg-error/70" style="width: 30%;" title="Elevated: &gt;+0.4°C"></div></div><div class="relative w-full h-1"><div class="absolute -top-3 w-2 h-2 rounded-full bg-on-surface border border-background shadow-sm" style="left: 45%;"></div></div><div class="flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">−0.8°C</span><span class="text-secondary">±0.3°C</span><span class="">+0.8°C</span></div></div></div><div class="pt-space-xs border-t border-surface-variant/40 flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">Nadir 04:10 AM</span><span class="text-secondary font-semibold">Thermoneutral</span></div></div>
+<!-- Card 5: Blood Oxygen (SpO2) -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between shadow-sm hover:bg-surface-container transition-all"><div class="flex items-center justify-between text-outline"><span class="font-label-caps text-label-caps uppercase">Blood Oxygen (SpO2)</span><span class="material-symbols-outlined text-body-base text-secondary">water_drop</span></div><div class="my-space-sm"><div class="flex items-baseline gap-1"><span class="font-display-hero-mobile text-display-hero-mobile font-bold text-on-surface">98.8</span><span class="font-caption text-caption text-outline">%</span></div><div class="flex items-center gap-1 text-secondary font-caption text-caption mt-0.5 mb-2.5"><span class="material-symbols-outlined text-caption">verified</span><span class="">Optimal saturation</span></div><div class="space-y-1"><div class="relative w-full h-2 bg-surface-container rounded-full overflow-hidden flex"><div class="h-full bg-error/70" style="width: 30%;" title="Warning: &lt;93%"></div><div class="h-full bg-surface-variant" style="width: 25%;" title="Borderline: 93-95%"></div><div class="h-full bg-secondary" style="width: 45%;" title="Optimal: 95-100%"></div></div><div class="relative w-full h-1"><div class="absolute -top-3 w-2 h-2 rounded-full bg-on-surface border border-background shadow-sm" style="left: 88%;"></div></div><div class="flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">90%</span><span class="text-secondary">95–100% target</span><span class="">100%</span></div></div></div><div class="pt-space-xs border-t border-surface-variant/40 flex justify-between font-micro-telemetry text-micro-telemetry text-outline"><span class="">Min 97.4%</span><span class="text-secondary font-semibold">Zero Drops</span></div></div>
+</div>
+</div>
+<!-- Deep Architecture Analysis & Clinical AI Assessment (Split Bento Grid) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
+<!-- Clinical Performance Physiology Assessment (Inspiration Card 2 "Industry Insights" Style) -->
+<div class="lg:col-span-7 rounded-xl bg-surface-container-low p-space-lg flex flex-col justify-between shadow-sm relative overflow-hidden">
+<div class="space-y-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs text-primary">
+<span class="material-symbols-outlined text-body-base">auto_awesome</span>
+<span class="font-label-caps text-label-caps uppercase tracking-wider font-semibold">Physiological Context &amp; Adaptation</span>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">Engine ID: APX-409</span>
+</div>
+<blockquote class="font-headline-md text-headline-md font-medium text-on-surface leading-snug">
+          “Deep sleep stage duration expanded by <span class="text-secondary font-semibold">+28 minutes</span> following your threshold cycling load. Parasympathetic rebound observed early in the cycle, driving nocturnal cardiac stabilization.”
+        </blockquote>
+<p class="font-body-base text-body-base text-on-surface-variant leading-relaxed">
+          Your minimum heart rate reached its trough (<span class="text-on-surface font-medium">42 bpm</span>) at 03:45 AM during epoch 2 of deep slow-wave activity, indicating prompt central nervous system deceleration. Core body temperature nadir remained balanced, confirming complete metabolic recovery from yesterday's 1,420 kJ training strain.
+        </p>
+</div>
+<div class="pt-space-md mt-space-md border-t border-surface-variant/40 flex flex-wrap items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-caption text-caption text-outline">Validated Pipeline:</span>
+<div class="flex items-center gap-1.5 font-micro-telemetry text-micro-telemetry">
+<span class="px-2 py-0.5 rounded bg-surface-container font-medium text-on-surface">Oura 3</span>
+<span class="px-2 py-0.5 rounded bg-surface-container font-medium text-on-surface">Withings Sleep</span>
+<span class="px-2 py-0.5 rounded bg-surface-container font-medium text-on-surface">Garmin HRV</span>
+</div>
+</div>
+<div class="flex items-center gap-1 text-secondary font-caption text-caption font-medium">
+<span class="material-symbols-outlined text-caption">check_circle</span>
+<span class="">Recovery Readiness: Ready for Peak Effort</span>
+</div>
+</div>
+</div>
+<!-- Sleep Consistency & Circadian Rhythm Alignment -->
+<div class="lg:col-span-5 rounded-xl bg-surface-container-low p-space-lg flex flex-col justify-between shadow-sm">
+<div class="flex items-center justify-between pb-space-sm">
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Circadian Synchronization</span>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface">Sleep Regularity</h3>
+</div>
+<span class="px-2.5 py-1 rounded bg-secondary/10 text-secondary font-caption text-caption font-semibold">94% Stable</span>
+</div>
+<!-- Schedule Midpoint & Drift Tracker -->
+<div class="space-y-space-md py-space-sm">
+<div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-outline">bedtime</span>
+<div>
+<span class="font-caption text-caption text-outline">Sleep Midpoint</span>
+<p class="font-stat-xl text-stat-xl font-bold text-on-surface">03:06 <span class="font-caption text-caption text-outline font-normal">AM</span></p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Variance</span>
+<p class="font-caption text-caption text-secondary font-medium">±8 min (Ideal)</p>
+</div>
+</div>
+<!-- 7-Day Consistency Spark Bars -->
+<div class="space-y-space-xs">
+<div class="flex justify-between font-caption text-caption text-outline">
+<span class="">7-Day Sleep Rhythm Alignment</span>
+<span class="text-on-surface font-medium">Avg: 8h 12m</span>
+</div>
+<div class="grid grid-cols-7 gap-1.5 h-16 items-end pt-2">
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 78%;" title="Thu: 7h 45m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">T</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 82%;" title="Fri: 8h 10m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">F</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 94%;" title="Sat: 8h 50m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">S</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 85%;" title="Sun: 8h 15m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">S</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 75%;" title="Mon: 7h 30m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">M</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-primary/70 rounded-sm" style="height: 80%;" title="Tue: 7h 55m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">T</span>
+</div>
+<div class="flex flex-col items-center gap-1 h-full justify-end">
+<div class="w-full bg-secondary rounded-sm shadow-sm" style="height: 92%;" title="Wed (Tonight): 8h 42m"></div>
+<span class="font-micro-telemetry text-micro-telemetry text-secondary font-bold">W</span>
+</div>
+</div>
+</div>
+</div>
+<div class="pt-space-xs flex items-center justify-between font-caption text-caption text-outline">
+<span class="">Optimal Sleep Window</span>
+<span class="text-on-surface font-medium">22:30 – 07:00</span>
+</div>
+</div>
+</div>
+<!-- Clinical Epoch Telemetry Detail Drawer / Table -->
+<div class="rounded-xl bg-surface-container-low p-space-lg shadow-sm space-y-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Cycle Breakdown</span>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface">Epoch Staging &amp; Micro-Intervals</h3>
+</div>
+<div class="flex items-center gap-space-xs text-outline">
+<span class="material-symbols-outlined text-body-base">filter_list</span>
+<span class="font-caption text-caption font-medium">4 Discrete Sleep Cycles Completed</span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left font-caption text-caption">
+<thead>
+<tr class="border-b border-surface-variant/40 text-outline font-label-caps text-label-caps uppercase">
+<th class="py-space-sm px-space-xs">Cycle Phase</th>
+<th class="py-space-sm px-space-xs">Interval Window</th>
+<th class="py-space-sm px-space-xs">Net Duration</th>
+<th class="py-space-sm px-space-xs">Composition (Deep / REM / Core)</th>
+<th class="py-space-sm px-space-xs">Mean HR</th>
+<th class="py-space-sm px-space-xs">Mean HRV</th>
+<th class="py-space-sm px-space-xs text-right">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-variant/20 font-body-base text-body-base">
+<!-- Cycle 1 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3 px-space-xs font-body-medium text-body-medium text-on-surface flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+              Cycle 1 (SWS Heavy)
+            </td>
+<td class="py-3 px-space-xs text-outline font-caption text-caption">22:45 – 00:32</td>
+<td class="py-3 px-space-xs text-on-surface">1h 47m</td>
+<td class="py-3 px-space-xs">
+<div class="flex items-center gap-2 w-32">
+<div class="w-full h-1.5 rounded-full bg-surface-variant overflow-hidden flex">
+<div class="bg-indigo-600 h-full" style="width: 58%"></div>
+<div class="bg-primary-container h-full" style="width: 32%"></div>
+<div class="bg-primary h-full" style="width: 10%"></div>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">58% Deep</span>
+</div>
+</td>
+<td class="py-3 px-space-xs text-on-surface">45 bpm</td>
+<td class="py-3 px-space-xs text-on-surface">62 ms</td>
+<td class="py-3 px-space-xs text-right">
+<span class="px-2 py-0.5 rounded bg-secondary/10 text-secondary font-micro-telemetry text-micro-telemetry font-semibold uppercase">Restorative</span>
+</td>
+</tr>
+<!-- Cycle 2 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3 px-space-xs font-body-medium text-body-medium text-on-surface flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+              Cycle 2 (Nadir Trough)
+            </td>
+<td class="py-3 px-space-xs text-outline font-caption text-caption">00:32 – 02:24</td>
+<td class="py-3 px-space-xs text-on-surface">1h 52m</td>
+<td class="py-3 px-space-xs">
+<div class="flex items-center gap-2 w-32">
+<div class="w-full h-1.5 rounded-full bg-surface-variant overflow-hidden flex">
+<div class="bg-indigo-600 h-full" style="width: 38%"></div>
+<div class="bg-primary-container h-full" style="width: 42%"></div>
+<div class="bg-primary h-full" style="width: 20%"></div>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">38% Deep</span>
+</div>
+</td>
+<td class="py-3 px-space-xs text-secondary font-medium">42 bpm</td>
+<td class="py-3 px-space-xs text-on-surface">81 ms</td>
+<td class="py-3 px-space-xs text-right">
+<span class="px-2 py-0.5 rounded bg-secondary/10 text-secondary font-micro-telemetry text-micro-telemetry font-semibold uppercase">Lowest HR</span>
+</td>
+</tr>
+<!-- Cycle 3 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3 px-space-xs font-body-medium text-body-medium text-on-surface flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+              Cycle 3 (Balanced)
+            </td>
+<td class="py-3 px-space-xs text-outline font-caption text-caption">02:24 – 04:58</td>
+<td class="py-3 px-space-xs text-on-surface">2h 34m</td>
+<td class="py-3 px-space-xs">
+<div class="flex items-center gap-2 w-32">
+<div class="w-full h-1.5 rounded-full bg-surface-variant overflow-hidden flex">
+<div class="bg-indigo-600 h-full" style="width: 12%"></div>
+<div class="bg-primary-container h-full" style="width: 54%"></div>
+<div class="bg-primary h-full" style="width: 34%"></div>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">34% REM</span>
+</div>
+</td>
+<td class="py-3 px-space-xs text-on-surface">44 bpm</td>
+<td class="py-3 px-space-xs text-secondary font-medium">96 ms</td>
+<td class="py-3 px-space-xs text-right">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-micro-telemetry text-micro-telemetry font-semibold uppercase">Peak HRV</span>
+</td>
+</tr>
+<!-- Cycle 4 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3 px-space-xs font-body-medium text-body-medium text-on-surface flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+              Cycle 4 (Cognitive REM)
+            </td>
+<td class="py-3 px-space-xs text-outline font-caption text-caption">04:58 – 07:27</td>
+<td class="py-3 px-space-xs text-on-surface">2h 29m</td>
+<td class="py-3 px-space-xs">
+<div class="flex items-center gap-2 w-32">
+<div class="w-full h-1.5 rounded-full bg-surface-variant overflow-hidden flex">
+<div class="bg-indigo-600 h-full" style="width: 0%"></div>
+<div class="bg-primary-container h-full" style="width: 58%"></div>
+<div class="bg-primary h-full" style="width: 42%"></div>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">42% REM</span>
+</div>
+</td>
+<td class="py-3 px-space-xs text-on-surface">48 bpm</td>
+<td class="py-3 px-space-xs text-on-surface">74 ms</td>
+<td class="py-3 px-space-xs text-right">
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-micro-telemetry text-micro-telemetry font-semibold uppercase">Optimal Arousal</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div></main></div>
+
+</body></html>

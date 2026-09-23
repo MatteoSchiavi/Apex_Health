@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-tertiary-fixed":"#410004","on-error":"#690005","surface-variant":"#333539","outline-variant":"#424754","surface-container-lowest":"#0c0e12","inverse-primary":"#005ac2","surface-tint":"#adc6ff","outline":"#8c909f","primary":"#adc6ff","error":"#ffb4ab","background":"#111318","surface-container-highest":"#333539","secondary-container":"#00a572","tertiary-container":"#ff5451","surface-bright":"#37393e","on-primary-fixed":"#001a42","primary-fixed":"#d8e2ff","tertiary":"#ffb3ad","inverse-on-surface":"#2f3035","secondary-fixed":"#6ffbbe","surface-container-low":"#1a1c20","inverse-surface":"#e2e2e8","on-tertiary":"#68000a","secondary":"#4edea3","on-error-container":"#ffdad6","surface":"#111318","on-secondary-fixed-variant":"#005236","on-surface-variant":"#c2c6d6","primary-fixed-dim":"#adc6ff","on-primary":"#002e6a","on-primary-fixed-variant":"#004395","on-secondary-container":"#00311f","on-background":"#e2e2e8","on-tertiary-container":"#5c0008","surface-dim":"#111318","error-container":"#93000a","secondary-fixed-dim":"#4edea3","on-surface":"#e2e2e8","on-secondary-fixed":"#002113","on-primary-container":"#00285d","surface-container-high":"#282a2e","on-tertiary-fixed-variant":"#930013","on-secondary":"#003824","surface-container":"#1e2024","tertiary-fixed":"#ffdad7","primary-container":"#4d8eff","tertiary-fixed-dim":"#ffb3ad"},borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem",full:"9999px"},spacing:{"space-md":"1rem",margin:"1rem","space-xl":"2rem","space-xs":"0.25rem",gutter:"1rem","space-sm":"0.5rem","gutter-desktop":"1.5rem","space-lg":"1.5rem","margin-tablet":"1.5rem","margin-desktop":"2rem"},fontFamily:{"display-hero-mobile":["Geist"],"label-caps":["Geist"],caption:["Geist"],"display-hero":["Geist"],"headline-lg-mobile":["Geist"],"headline-lg":["Geist"],"micro-telemetry":["Geist"],"stat-xl":["Geist"],"body-base":["Geist"],"body-medium":["Geist"],"headline-md":["Geist"]},fontSize:{"display-hero-mobile":["30px",{lineHeight:"36px",letterSpacing:"-0.025em",fontWeight:"600"}],"label-caps":["11px",{lineHeight:"14px",letterSpacing:"0.06em",fontWeight:"600"}],caption:["12px",{lineHeight:"16px",letterSpacing:"0em",fontWeight:"400"}],"display-hero":["40px",{lineHeight:"48px",letterSpacing:"-0.03em",fontWeight:"600"}],"headline-lg-mobile":["22px",{lineHeight:"28px",letterSpacing:"-0.015em",fontWeight:"600"}],"headline-lg":["28px",{lineHeight:"36px",letterSpacing:"-0.02em",fontWeight:"600"}],"micro-telemetry":["10px",{lineHeight:"12px",letterSpacing:"0.04em",fontWeight:"500"}],"stat-xl":["24px",{lineHeight:"30px",letterSpacing:"-0.02em",fontWeight:"700"}],"body-base":["14px",{lineHeight:"20px",letterSpacing:"-0.005em",fontWeight:"400"}],"body-medium":["14px",{lineHeight:"20px",letterSpacing:"0em",fontWeight:"500"}],"headline-md":["20px",{lineHeight:"26px",letterSpacing:"-0.015em",fontWeight:"600"}]}}}}</script></head><body class="bg-background font-body-base text-body-base text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-lowest flex flex-col justify-between z-40 shadow-[0_1px_8px_rgba(0,0,0,0.25)]"><div class="flex flex-col flex-1 min-h-0"><div class="h-16 px-space-lg flex items-center gap-space-sm bg-surface-container-lowest"><span class="flex items-center justify-center w-7 h-7 rounded bg-surface-container-high text-primary font-headline-md text-headline-md tracking-tighter">▲</span><span class="font-headline-md text-headline-md tracking-tight font-bold text-on-surface">APEX <span class="font-body-base text-body-base font-normal text-on-surface-variant uppercase tracking-widest pl-1">HEALTH</span></span></div><div class="px-space-md py-space-xs"><p class="px-space-sm py-space-xs font-label-caps text-label-caps uppercase tracking-wider text-outline">TELEMETRY &amp; ANALYSIS</p></div><nav class="flex-1 px-space-md space-y-1 overflow-y-auto" data-active-classes="bg-surface-container-high text-on-surface font-body-medium rounded-lg"><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="overview" href="#"><span class="material-symbols-outlined text-outline">vital_signs</span><span>Overview</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-sm py-space-sm transition-colors bg-surface-container-high text-on-surface font-body-medium rounded-lg" data-path="activities" href="#"><span class="material-symbols-outlined text-outline">directions_run</span><span>Activities</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="sleep-and-recovery" href="#"><span class="material-symbols-outlined text-outline">bedtime</span><span>Sleep &amp; Recovery</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="biometrics-and-lab-data" href="#"><span class="material-symbols-outlined text-outline">monitor_heart</span><span>Biometrics &amp; Lab Data</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="training-plan-and-load" href="#"><span class="material-symbols-outlined text-outline">candlestick_chart</span><span>Training Plan &amp; Load</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-medium text-body-medium" data-path="ai-coach-insights" href="#"><span class="material-symbols-outlined text-outline">smart_toy</span><span>AI Coach Insights</span></a></nav></div><div class="p-space-md bg-surface-container-low space-y-space-md"><div class="p-space-sm rounded-lg bg-surface-container-lowest flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-secondary inline-block animate-pulse"></span><span class="font-micro-telemetry text-micro-telemetry text-on-surface-variant uppercase tracking-wider">Garmin • Strava • Oura</span></div><span class="font-micro-telemetry text-micro-telemetry text-outline">2m ago</span></div><div class="flex items-center justify-between px-space-xs"><span class="font-caption text-caption text-outline">Theme Protocol</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-caption text-primary">dark_mode</span><span class="font-caption text-caption">Dark</span></button></div><div class="pt-space-xs flex items-center gap-space-sm"><div class="relative"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1WBeqw3BSMde7e0QnQW5q6VVaWvKA-c2YUOLRXG94dldO9GS9VJgjhZEBcuqMmQy5gOOgjl45npuX6mjxOkKxvm8gzgp3IZ6uUnwlM6-nm2mlpb14rlpf2OApfo14VUn8AoF7kTc6JtUbGgYqos3UHg1RaQyjRhlLaxfwC0QyaHs7DZ2diaRkXSTlN97I38ZiQnkQKTSQRRVnpoHqYEQ-eiEF4tEaa_JImw1UKuSm8Fvcdu55M1GKdcPxQE7RvyXQM1L-MgLoetnt4"/><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-secondary"></span></div><div class="flex flex-col min-w-0 flex-1"><span class="font-body-medium text-body-medium truncate text-on-surface">Matteo S.</span><span class="font-micro-telemetry text-micro-telemetry text-outline uppercase tracking-wider truncate">Peak Threshold</span></div><span class="material-symbols-outlined text-outline text-body-base">expand_more</span></div></div></aside><div class="pl-72"><header class="fixed top-0 left-72 right-0 h-16 bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.15)] z-30 flex items-center justify-between px-space-lg"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs font-caption text-caption text-outline"><span class="text-on-surface">Apex Health</span><span>/</span><span class="text-on-surface-variant">Physiological Telemetry</span></div><div class="hidden md:flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined text-caption text-secondary">verified</span><span class="font-micro-telemetry text-micro-telemetry text-on-surface font-medium uppercase tracking-wider">100% Measured Data</span></div></div><div class="flex items-center gap-space-md"><div class="relative flex items-center"><div class="flex items-center gap-space-sm bg-surface-container-low px-space-sm py-1.5 rounded-lg text-outline w-64 justify-between"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-body-base">search</span><span class="font-caption text-caption text-outline">Quick telemetry...</span></div><kbd class="px-1.5 py-0.5 rounded bg-surface-container font-micro-telemetry text-micro-telemetry text-outline">⌘K</kbd></div></div><div class="flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-container-low text-on-surface"><span class="material-symbols-outlined text-body-base text-outline">calendar_today</span><span class="font-caption text-caption font-medium">Today, Oct 24 • Last 7 Days</span><span class="material-symbols-outlined text-caption text-outline">expand_more</span></div><div class="flex items-center pl-space-xs"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1WBeqw3BSMde7e0QnQW5q6VVaWvKA-c2YUOLRXG94dldO9GS9VJgjhZEBcuqMmQy5gOOgjl45npuX6mjxOkKxvm8gzgp3IZ6uUnwlM6-nm2mlpb14rlpf2OApfo14VUn8AoF7kTc6JtUbGgYqos3UHg1RaQyjRhlLaxfwC0QyaHs7DZ2diaRkXSTlN97I38ZiQnkQKTSQRRVnpoHqYEQ-eiEF4tEaa_JImw1UKuSm8Fvcdu55M1GKdcPxQE7RvyXQM1L-MgLoetnt4"/></div></div></header><main class="relative pt-16 bg-background min-h-screen w-full px-space-lg py-space-lg"><div class="flex flex-col w-full gap-space-lg text-on-surface">
+<!-- Activity Header Bar -->
+<section class="flex flex-col gap-space-md">
+<div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-space-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<a class="flex items-center gap-1 font-caption text-caption text-outline hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-caption">arrow_back</span>
+<span>All Activities</span>
+</a>
+<span class="text-outline-variant">•</span>
+<span class="px-2 py-0.5 rounded bg-primary-container/20 text-primary font-micro-telemetry text-micro-telemetry uppercase tracking-wider">Road Race • Threshold</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-secondary font-micro-telemetry text-micro-telemetry uppercase tracking-wider flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>FIT V2.4 Synchronized
+          </span>
+</div>
+<h1 class="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">
+          Passo del Ghisallo &amp; Sormano Threshold Loop
+        </h1>
+<p class="font-caption text-caption text-outline flex items-center flex-wrap gap-x-2 gap-y-1">
+<span>Wednesday, Oct 23, 2024</span>
+<span>•</span>
+<span>07:14 AM CET</span>
+<span>•</span>
+<span class="text-on-surface-variant">Lake Como, Lombardy, Italy</span>
+<span>•</span>
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider text-outline">Garmin Edge 1040 Solar + Favero Assioma Duo</span>
+</p>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface transition-colors font-body-medium text-body-medium" type="button">
+<span class="material-symbols-outlined text-body-base text-outline">file_download</span>
+<span>Export .FIT</span>
+</button>
+<button class="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface transition-colors font-body-medium text-body-medium" type="button">
+<span class="material-symbols-outlined text-body-base text-outline">tune</span>
+<span>Adjust Segments</span>
+</button>
+<button class="flex items-center justify-center w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-outline hover:text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-body-base">share</span>
+</button>
+</div>
+</div>
+<!-- Primary Metric Band -->
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-space-xs bg-surface-container-lowest p-space-xs rounded-xl">
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Distance</span>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-on-surface">84.6</span>
+<span class="font-caption text-caption text-outline">km</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-caption">check_circle</span> Target: 80-85 km
+        </span>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Duration</span>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-on-surface">2:48:12</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-outline">
+          Elapsed 2:54:18 (96.5% moving)
+        </span>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Elevation Gain</span>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-on-surface">+1,842</span>
+<span class="font-caption text-caption text-outline">m</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-outline">
+          Peak 1,124m • Min 198m
+        </span>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Norm Power (NP)</span>
+<span class="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-micro-telemetry text-micro-telemetry font-bold">Z4</span>
+</div>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-primary">278</span>
+<span class="font-caption text-caption text-outline">W</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-outline-variant">
+          Avg 242 W • <span class="text-on-surface">3.71 W/kg</span>
+</span>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Speed Mean / Max</span>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-on-surface">30.2</span>
+<span class="font-caption text-caption text-outline">km/h</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-outline">
+          Top descent 68.4 km/h
+        </span>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Strain &amp; Load</span>
+<span class="material-symbols-outlined text-caption text-secondary">bolt</span>
+</div>
+<div class="mt-2 flex items-baseline gap-1">
+<span class="font-stat-xl text-stat-xl font-bold text-secondary">184</span>
+<span class="font-caption text-caption text-outline">TSS</span>
+</div>
+<span class="mt-1 font-micro-telemetry text-micro-telemetry text-outline">
+          IF 0.84 • Work: 2,448 kJ
+        </span>
+</div>
+</div>
+</section>
+<!-- Main Surface: Dark Topographic GPS Route & Floating Analytical Telemetry HUD -->
+<section class="relative w-full rounded-xl overflow-hidden bg-surface-container-lowest shadow-2xl">
+<!-- Topographic Lake Como GPS Map Canvas -->
+<div class="relative w-full h-[520px] bg-surface-container-lowest overflow-hidden">
+<!-- Dark Topo Contour Background Vector Simulation -->
+<svg class="absolute inset-0 w-full h-full object-cover opacity-25 pointer-events-none" preserveaspectratio="none" viewbox="0 0 1200 600" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<radialgradient cx="50%" cy="50%" id="topo-fade" r="60%">
+<stop offset="0%" stop-color="#333539" stop-opacity="0.9"></stop>
+<stop offset="100%" stop-color="#0c0e12" stop-opacity="1"></stop>
+</radialgradient>
+</defs>
+<rect fill="url(#topo-fade)" height="600" width="1200"></rect>
+<!-- Lake Como Fjord contours -->
+<path d="M480,0 Q520,120 540,240 T510,380 T430,480 L380,600 L320,600 Q390,460 420,360 T460,200 Q460,110 430,0 Z" fill="#111318"></path>
+<path d="M540,240 Q620,320 720,410 L780,480 L730,510 Q640,430 550,330 Z" fill="#111318"></path>
+<!-- Topo isolines -->
+<path d="M 0,140 Q 250,110 400,160 T 800,200 T 1200,120" fill="none" opacity="0.3" stroke="#333539" stroke-width="1"></path>
+<path d="M 0,220 Q 270,230 420,240 T 820,260 T 1200,210" fill="none" opacity="0.3" stroke="#333539" stroke-width="1"></path>
+<path d="M 0,310 Q 300,280 440,320 T 860,340 T 1200,290" fill="none" opacity="0.3" stroke="#333539" stroke-width="1"></path>
+<path d="M 0,400 Q 320,410 470,390 T 900,430 T 1200,380" fill="none" opacity="0.3" stroke="#333539" stroke-width="1"></path>
+<path d="M 0,490 Q 280,520 500,480 T 920,510 T 1200,470" fill="none" opacity="0.3" stroke="#333539" stroke-width="1"></path>
+</svg>
+<!-- Satellite Texture Underlay -->
+<div class="absolute inset-0 bg-cover bg-center mix-blend-luminosity opacity-20 pointer-events-none" data-alt="High-resolution dark satellite orthophoto view of Lake Como, Bellagio peninsula and Italian alpine ridge, monochrome dark tones, moody top down view" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA0PT7r8biyGNLekstzmbkuox9MRz9eEdIdR20m5QeoqnzYSBD_BF2Wnqka--AIFuyboJsOSXSn7QgIXz2rVI5URC3cup2pOi-EyeRGg7KQiKLzEEhtIBNo-kGGGB9AtW1K6iy65SrLm38at4YK1WedipFs7V0C84-vzA2Itg4Hcnfmf582ztWDn5UCpJFm2wCw-VhjJKWs3W7aTJUMnEaD2S8cWlXWLIdQTy04lAbdcC6s8kJdF4_PCw')">
+</div>
+<!-- High-Precision GPS Track Render -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" preserveaspectratio="none" viewbox="0 0 1000 500">
+<defs>
+<lineargradient id="gpsGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#4edea3" stop-opacity="0.9"></stop>
+<stop offset="35%" stop-color="#adc6ff" stop-opacity="1"></stop>
+<stop offset="65%" stop-color="#ffb3ad" stop-opacity="1"></stop>
+<stop offset="85%" stop-color="#4d8eff" stop-opacity="1"></stop>
+<stop offset="100%" stop-color="#4edea3" stop-opacity="0.9"></stop>
+</lineargradient>
+<filter height="140%" id="trackGlow" width="140%" x="-20%" y="-20%">
+<fegaussianblur result="blur" stddeviation="3"></fegaussianblur>
+<femerge>
+<femergenode in="blur"></femergenode>
+<femergenode in="SourceGraphic"></femergenode>
+</femerge>
+</filter>
+</defs>
+<!-- Route Path Halo -->
+<path d="M 320,380 C 340,310 390,260 430,230 C 470,200 485,150 510,120 C 535,90 560,95 580,130 C 600,165 620,230 635,275 C 650,320 610,360 570,390 C 530,420 460,430 400,420 C 350,410 330,415 320,380 Z" fill="none" opacity="0.6" stroke="#000000" stroke-width="7"></path>
+<!-- Active Route Path -->
+<path d="M 320,380 C 340,310 390,260 430,230 C 470,200 485,150 510,120 C 535,90 560,95 580,130 C 600,165 620,230 635,275 C 650,320 610,360 570,390 C 530,420 460,430 400,420 C 350,410 330,415 320,380 Z" fill="none" filter="url(#trackGlow)" stroke="url(#gpsGradient)" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></path>
+<!-- Direction Indicators -->
+<circle cx="320" cy="380" fill="#4edea3" r="4"></circle>
+<circle cx="510" cy="120" fill="#ffffff" r="5" stroke="#adc6ff" stroke-width="2"></circle>
+<circle cx="635" cy="275" fill="#ff5451" r="5" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="570" cy="390" fill="#adc6ff" r="4"></circle>
+</svg>
+<!-- Waypoint Pins HTML Overlays -->
+<div class="absolute top-[20%] left-[49%] transform -translate-x-1/2 -translate-y-full flex flex-col items-center group cursor-pointer z-10">
+<div class="px-2 py-1 rounded bg-surface-container-high/90 backdrop-blur-md shadow-md flex items-center gap-1.5 whitespace-nowrap">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="font-micro-telemetry text-micro-telemetry text-on-surface uppercase tracking-wider font-semibold">Bellagio Descent (22.4 km)</span>
+</div>
+<div class="w-px h-3 bg-primary/60"></div>
+</div>
+<div class="absolute top-[52%] left-[64%] transform -translate-x-1/2 -translate-y-full flex flex-col items-center group cursor-pointer z-10">
+<div class="px-2 py-1 rounded bg-tertiary-container text-white shadow-lg flex items-center gap-1.5 whitespace-nowrap animate-pulse">
+<span class="material-symbols-outlined text-caption">warning</span>
+<span class="font-micro-telemetry text-micro-telemetry uppercase tracking-wider font-bold">Muro di Sormano (54.1 km)</span>
+</div>
+<div class="w-px h-3 bg-tertiary"></div>
+</div>
+<div class="absolute top-[75%] left-[32%] transform -translate-x-1/2 -translate-y-full flex flex-col items-center group cursor-pointer z-10">
+<div class="px-2 py-1 rounded bg-surface-container-high/90 backdrop-blur-md shadow-md flex items-center gap-1.5 whitespace-nowrap">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="font-micro-telemetry text-micro-telemetry text-on-surface uppercase tracking-wider font-semibold">Start / Finish • Como Marina</span>
+</div>
+<div class="w-px h-3 bg-secondary/60"></div>
+</div>
+<!-- Top Overlay Controls -->
+<div class="absolute top-space-md left-space-md flex items-center gap-space-xs z-20">
+<div class="flex items-center bg-surface-container-lowest/90 backdrop-blur-md rounded-lg p-1">
+<button class="px-space-sm py-1 rounded bg-surface-container-high text-on-surface font-caption text-caption font-medium" type="button">Topographic 3D</button>
+<button class="px-space-sm py-1 rounded text-outline hover:text-on-surface font-caption text-caption transition-colors" type="button">Gradient Heatmap</button>
+<button class="px-space-sm py-1 rounded text-outline hover:text-on-surface font-caption text-caption transition-colors" type="button">Power Output</button>
+</div>
+<div class="hidden sm:flex items-center gap-2 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md text-outline">
+<span class="material-symbols-outlined text-caption text-secondary">air</span>
+<span class="font-micro-telemetry text-micro-telemetry text-on-surface">14°C • NW 6 km/h • Humidity 58%</span>
+</div>
+</div>
+<!-- Zoom and Layer Controls Floating Right -->
+<div class="absolute top-space-md right-space-md flex flex-col gap-1 z-20">
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md text-outline hover:text-on-surface flex items-center justify-center transition-colors" type="button">
+<span class="material-symbols-outlined text-body-base">add</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md text-outline hover:text-on-surface flex items-center justify-center transition-colors" type="button">
+<span class="material-symbols-outlined text-body-base">remove</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md text-outline hover:text-on-surface flex items-center justify-center transition-colors" type="button">
+<span class="material-symbols-outlined text-body-base">my_location</span>
+</button>
+</div>
+<!-- Floating Segment HUD: Muro di Sormano (ce4e4a004f53657e4979565e8240e096.webp style) -->
+<div class="absolute bottom-space-md left-space-md z-20 w-80 max-w-[calc(100%-2rem)]">
+<div class="p-space-md rounded-xl bg-surface-container-lowest/95 backdrop-blur-xl shadow-2xl flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline font-bold">Current Focus Segment</span>
+</div>
+<span class="font-micro-telemetry text-micro-telemetry text-tertiary font-bold uppercase">HC Wall</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight leading-none">Muro di Sormano</h3>
+<p class="mt-1 font-caption text-caption text-outline">1.7 km • 16.8% avg (max 27.2%) • +286 m</p>
+</div>
+<div class="grid grid-cols-3 gap-2 pt-2 bg-surface-container-low/60 p-2 rounded-lg">
+<div>
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline block">Avg Power</span>
+<span class="font-body-medium text-body-medium font-bold text-primary">398 W</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline-variant block">5.45 W/kg</span>
+</div>
+<div>
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline block">Peak 5m</span>
+<span class="font-body-medium text-body-medium font-bold text-tertiary">410 W</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline-variant block">HR 182 bpm</span>
+</div>
+<div>
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline block">Cadence</span>
+<span class="font-body-medium text-body-medium font-bold text-on-surface">68 rpm</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline-variant block">34x32 gear</span>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="font-micro-telemetry text-micro-telemetry text-outline">Segment Time: 9m 42s</span>
+<span class="font-micro-telemetry text-micro-telemetry text-secondary font-semibold">PR • Top 3% All-Time</span>
+</div>
+</div>
+</div>
+<!-- Floating Lap Summary Podium (Right Side ce4e4a004f53657e4979565e8240e096.webp style) -->
+<div class="hidden md:flex flex-col gap-2 absolute bottom-space-md right-space-md z-20 w-72">
+<div class="p-space-sm rounded-xl bg-surface-container-lowest/90 backdrop-blur-xl shadow-2xl flex flex-col gap-space-xs">
+<div class="flex items-center justify-between px-space-xs">
+<span class="font-label-caps text-label-caps uppercase text-outline">Key Laps &amp; Checkpoints</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">4 Identified</span>
+</div>
+<div class="space-y-1">
+<div class="flex items-center justify-between px-space-xs py-1.5 rounded bg-surface-container-low text-caption text-caption">
+<span class="text-on-surface">L1 Ghisallo Climb</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">284W • 24m 10s</span>
+</div>
+<div class="flex items-center justify-between px-space-xs py-1.5 rounded bg-surface-container-high/80 text-caption text-caption">
+<span class="text-on-surface font-medium">L2 Bellagio Fast Roll</span>
+<span class="font-micro-telemetry text-micro-telemetry text-secondary">46.2 km/h • 218W</span>
+</div>
+<div class="flex items-center justify-between px-space-xs py-1.5 rounded bg-surface-container-low text-caption text-caption">
+<span class="text-on-surface">L3 Colma di Sormano</span>
+<span class="font-micro-telemetry text-micro-telemetry text-tertiary">398W • 9m 42s</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Multi-Stream Time Series Analysis: Power, Heart Rate, Elevation, Cadence -->
+<section class="flex flex-col gap-space-md p-space-lg rounded-xl bg-surface-container-lowest shadow-md">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-xs">
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Telemetry Stream</span>
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight">
+          Synchronized Timeline Stream
+        </h2>
+</div>
+<!-- Metric Stream Selectors -->
+<div class="flex items-center flex-wrap gap-space-sm">
+<label class="flex items-center gap-1.5 font-caption text-caption text-on-surface cursor-pointer">
+<span class="w-3 h-0.5 rounded-full bg-primary-container"></span>
+<span>Power (W)</span>
+</label>
+<label class="flex items-center gap-1.5 font-caption text-caption text-on-surface cursor-pointer">
+<span class="w-3 h-0.5 rounded-full bg-tertiary"></span>
+<span>Heart Rate (bpm)</span>
+</label>
+<label class="flex items-center gap-1.5 font-caption text-caption text-on-surface cursor-pointer">
+<span class="w-3 h-0.5 rounded-full bg-secondary"></span>
+<span>Cadence (rpm)</span>
+</label>
+<label class="flex items-center gap-1.5 font-caption text-caption text-on-surface cursor-pointer">
+<span class="w-3 h-0.5 rounded-full bg-outline"></span>
+<span>Elevation (m)</span>
+</label>
+</div>
+</div>
+<!-- Interactive SVG Telemetry Scrubbing Chart -->
+<div class="relative w-full h-72 bg-surface-container-low rounded-lg p-space-sm flex flex-col justify-between overflow-hidden">
+<!-- Gridlines -->
+<div class="absolute inset-x-space-sm top-space-sm bottom-8 flex flex-col justify-between pointer-events-none opacity-10">
+<div class="w-full h-px bg-on-surface"></div>
+<div class="w-full h-px bg-on-surface"></div>
+<div class="w-full h-px bg-on-surface"></div>
+<div class="w-full h-px bg-on-surface"></div>
+<div class="w-full h-px bg-on-surface"></div>
+</div>
+<!-- Live Hover Guide Tooltip Mock -->
+<div class="absolute left-[62%] top-2 bottom-8 w-px bg-primary/70 pointer-events-none flex flex-col items-center">
+<div class="mt-2 px-2 py-1 rounded bg-surface-container-highest/95 backdrop-blur shadow-xl text-on-surface flex flex-col gap-0.5 whitespace-nowrap transform -translate-x-1/2">
+<span class="font-micro-telemetry text-micro-telemetry text-outline">Km 52.8 • 01:52:14</span>
+<div class="flex items-center gap-3">
+<span class="font-caption text-caption text-primary font-bold">410 W</span>
+<span class="font-caption text-caption text-tertiary font-bold">178 bpm</span>
+<span class="font-caption text-caption text-secondary font-bold">72 rpm</span>
+<span class="font-caption text-caption text-outline">1,020m (18%)</span>
+</div>
+</div>
+</div>
+<!-- Continuous Vector Streams -->
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 900 230">
+<defs>
+<lineargradient id="elevationArea" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#8c909f" stop-opacity="0.25"></stop>
+<stop offset="100%" stop-color="#8c909f" stop-opacity="0.0"></stop>
+</lineargradient>
+<lineargradient id="powerArea" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#4d8eff" stop-opacity="0.3"></stop>
+<stop offset="100%" stop-color="#4d8eff" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<!-- Elevation Profile Silhouette (Background) -->
+<path d="M 0,210 L 80,205 L 160,195 L 240,120 L 320,80 L 380,180 L 450,195 L 530,140 L 590,30 L 640,160 L 730,190 L 820,200 L 900,205 L 900,230 L 0,230 Z" fill="url(#elevationArea)"></path>
+<path d="M 0,210 L 80,205 L 160,195 L 240,120 L 320,80 L 380,180 L 450,195 L 530,140 L 590,30 L 640,160 L 730,190 L 820,200 L 900,205" fill="none" opacity="0.6" stroke="#8c909f" stroke-dasharray="2 2" stroke-width="1.5"></path>
+<!-- Power Stream Line -->
+<path d="M 0,160 Q 40,140 80,150 T 160,155 T 240,90 T 320,105 T 380,175 T 450,150 T 530,60 T 570,35 T 600,80 T 660,160 T 740,140 T 820,150 T 900,165" fill="none" stroke="#4d8eff" stroke-width="2"></path>
+<!-- Heart Rate Line -->
+<path d="M 0,175 Q 40,160 80,165 T 160,160 T 240,110 T 320,95 T 380,150 T 450,140 T 530,70 T 570,50 T 600,75 T 660,135 T 740,130 T 820,140 T 900,150" fill="none" opacity="0.9" stroke="#ffb3ad" stroke-width="1.8"></path>
+<!-- Cadence Line -->
+<path d="M 0,135 Q 40,130 80,132 T 160,130 T 240,145 T 320,150 T 380,110 T 450,125 T 530,155 T 570,165 T 600,140 T 660,115 T 740,125 T 820,130 T 900,135" fill="none" opacity="0.75" stroke="#4edea3" stroke-width="1.2"></path>
+</svg>
+<!-- Distance Datum Axis -->
+<div class="w-full flex items-center justify-between pt-1 font-micro-telemetry text-micro-telemetry text-outline">
+<span>0 km</span>
+<span>15 km</span>
+<span>30 km (Ghisallo Summit)</span>
+<span>45 km</span>
+<span>55 km (Muro di Sormano)</span>
+<span>70 km</span>
+<span>84.6 km</span>
+</div>
+</div>
+<!-- Power Zone Breakdown & Bilateral Analysis -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md pt-space-xs">
+<!-- Power Zones Bar & Percentages (7 cols) -->
+<div class="lg:col-span-7 flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Power Zone Distribution (FTP: 310 W)</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">Total 2h 48m</span>
+</div>
+<!-- Stacked Horizontal Zone Bar -->
+<div class="w-full h-4 rounded-full overflow-hidden flex bg-surface-container-high">
+<div class="h-full bg-outline" style="width: 14%;" title="Zone 1 Active Recovery (14%)"></div>
+<div class="h-full bg-secondary" style="width: 42%;" title="Zone 2 Endurance (42%)"></div>
+<div class="h-full bg-primary" style="width: 22%;" title="Zone 3 Tempo (22%)"></div>
+<div class="h-full bg-primary-container" style="width: 16%;" title="Zone 4 Threshold (16%)"></div>
+<div class="h-full bg-tertiary-container" style="width: 6%;" title="Zone 5+ VO2 Max (6%)"></div>
+</div>
+<div class="grid grid-cols-5 gap-2 pt-1">
+<div class="flex flex-col">
+<span class="font-micro-telemetry text-micro-telemetry text-outline truncate">Z1 Active Rec</span>
+<span class="font-body-medium text-body-medium font-bold text-on-surface">14%</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">23m 32s</span>
+</div>
+<div class="flex flex-col">
+<span class="font-micro-telemetry text-micro-telemetry text-secondary truncate">Z2 Endurance</span>
+<span class="font-body-medium text-body-medium font-bold text-secondary">42%</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">1h 10m</span>
+</div>
+<div class="flex flex-col">
+<span class="font-micro-telemetry text-micro-telemetry text-primary truncate">Z3 Tempo</span>
+<span class="font-body-medium text-body-medium font-bold text-primary">22%</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">37m 00s</span>
+</div>
+<div class="flex flex-col">
+<span class="font-micro-telemetry text-micro-telemetry text-primary-container truncate">Z4 Threshold</span>
+<span class="font-body-medium text-body-medium font-bold text-on-surface">16%</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">26m 55s</span>
+</div>
+<div class="flex flex-col">
+<span class="font-micro-telemetry text-micro-telemetry text-tertiary truncate">Z5+ Anaerobic</span>
+<span class="font-body-medium text-body-medium font-bold text-tertiary">6%</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">10m 05s</span>
+</div>
+</div>
+</div>
+<!-- Bilateral Left/Right Pedal Balance & Torque Effectiveness (5 cols) -->
+<div class="lg:col-span-5 flex flex-col justify-between bg-surface-container-low p-space-md rounded-xl">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Bilateral Pedaling Telemetry</span>
+<span class="font-micro-telemetry text-micro-telemetry text-secondary">Favero Assioma Dual</span>
+</div>
+<div class="my-2 flex flex-col gap-1.5">
+<div class="flex items-center justify-between font-body-medium text-body-medium">
+<span class="font-bold text-on-surface">49.8% L</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline uppercase tracking-wider">Left / Right Balance</span>
+<span class="font-bold text-on-surface">50.2% R</span>
+</div>
+<!-- Dual Balance Slider Bar -->
+<div class="w-full h-2 rounded-full bg-surface-container-high flex overflow-hidden">
+<div class="h-full bg-primary" style="width: 49.8%;"></div>
+<div class="w-0.5 h-full bg-background"></div>
+<div class="h-full bg-primary-container" style="width: 50.2%;"></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-space-sm pt-2 bg-surface-container-lowest/60 p-2 rounded-lg">
+<div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline block">Torque Effectiveness</span>
+<span class="font-caption text-caption text-on-surface font-semibold">78% L • 79% R</span>
+</div>
+<div>
+<span class="font-micro-telemetry text-micro-telemetry text-outline block">Pedal Smoothness</span>
+<span class="font-caption text-caption text-on-surface font-semibold">22% L • 23% R</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Coach Diagnostic Synthesis & Physiological Impact Card -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
+<!-- Coach AI Observation Pod (8 cols) -->
+<div class="lg:col-span-8 p-space-lg rounded-xl bg-surface-container-low flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-body-base">neurology</span>
+</div>
+<div>
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-outline">Apex Diagnostic Engine</span>
+<h3 class="font-body-medium text-body-medium font-bold text-on-surface">Aerobic Decoupling &amp; Efficiency Synthesis</h3>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded bg-secondary/15 text-secondary font-micro-telemetry text-micro-telemetry font-bold uppercase tracking-wider">Optimal Durability</span>
+</div>
+<p class="font-body-base text-body-base text-on-surface-variant leading-relaxed">
+        Aerobic decoupling (<span class="text-on-surface font-medium">Pw:HR</span>) across this 84.6 km route was exceptionally low at <span class="text-secondary font-bold">2.4%</span> (threshold &lt; 5.0%). Your cardiac drift remained negligible despite enduring the severe 16.8% gradient ramps on the Muro di Sormano in the final 45 minutes of the effort. Your cardiac output re-stabilized to baseline within 4 minutes following the crest.
+      </p>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm pt-space-xs">
+<div class="p-space-sm rounded-lg bg-surface-container-lowest">
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Carbohydrate Burn</span>
+<div class="mt-1 font-body-medium text-body-medium font-bold text-on-surface">482 g <span class="font-micro-telemetry text-micro-telemetry font-normal text-outline">(114g/h)</span></div>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest">
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Fat Oxidation</span>
+<div class="mt-1 font-body-medium text-body-medium font-bold text-on-surface">118 g <span class="font-micro-telemetry text-micro-telemetry font-normal text-outline">(28g/h)</span></div>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest">
+<span class="font-micro-telemetry text-micro-telemetry uppercase text-outline">Estimated Fluid Deficit</span>
+<div class="mt-1 font-body-medium text-body-medium font-bold text-primary">1,620 mL <span class="font-micro-telemetry text-micro-telemetry font-normal text-outline">(Replenish)</span></div>
+</div>
+</div>
+</div>
+<!-- Recovery Prescription & Next Session Impact (4 cols) -->
+<div class="lg:col-span-4 p-space-lg rounded-xl bg-surface-container-low flex flex-col justify-between gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Post-Session Recovery</span>
+<span class="material-symbols-outlined text-caption text-outline">timelapse</span>
+</div>
+<div>
+<div class="flex items-baseline gap-1">
+<span class="font-display-hero text-headline-lg font-bold text-on-surface">36</span>
+<span class="font-caption text-caption text-outline">Hours Suggested Rest</span>
+</div>
+<p class="mt-1 font-caption text-caption text-outline">
+          High glycogen depletion detected. Prioritize 70g CHO intake within 90 minutes.
+        </p>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-body-base">bedtime</span>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-on-surface font-medium">Tonight's Sleep Target</span>
+<span class="font-micro-telemetry text-micro-telemetry text-outline">Optimal REM/Deep allocation</span>
+</div>
+</div>
+<span class="font-body-medium text-body-medium font-bold text-secondary">8h 45m</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="font-micro-telemetry text-micro-telemetry text-outline uppercase tracking-wider">Next: Recovery Spin (Z1)</span>
+<button class="font-caption text-caption text-primary hover:underline flex items-center gap-0.5" type="button">
+<span>View Plan</span>
+<span class="material-symbols-outlined text-caption">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</div></main></div></body></html>
