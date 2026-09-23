@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.tasks.technogym_sync",
         "app.tasks.whoop_sync",
         "app.tasks.strava_sync",
+        "app.tasks.oura_sync",
         "app.tasks.weather_tasks",
         "app.tasks.feature_engine",
         "app.tasks.gear_tasks",
@@ -69,6 +70,12 @@ celery_app.conf.update(
         "strava-sync-every-6h": {
             "task": "strava.sync_all",
             "schedule": crontab(minute=7, hour="*/6"),
+        },
+        # Oura (official API v2, personal apps allowed) rides the same 6h
+        # cadence at :09 — after Whoop/Strava, before the weather refresh.
+        "oura-sync-every-6h": {
+            "task": "oura.sync_all",
+            "schedule": crontab(minute=9, hour="*/6"),
         },
         # §19: forecast refresh every 6 hours, upserts forecast_cache (§6.4).
         # Staggered at :20, after both connector syncs — so activities they

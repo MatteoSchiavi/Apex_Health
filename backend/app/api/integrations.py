@@ -22,6 +22,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
+from app.connectors.coros.flow import (
+    OAuthFlowError as CorosFlowError,
+    complete_authorization as coros_complete,
+    create_pending_authorization as coros_create_pending,
+    flow_settings_ready as coros_flow_ready,
+)
+from app.connectors.oura.flow import (
+    OAuthFlowError as OuraFlowError,
+    complete_authorization as oura_complete,
+    create_pending_authorization as oura_create_pending,
+    flow_settings_ready as oura_flow_ready,
+)
 from app.connectors.strava.flow import (
     OAuthFlowError as StravaFlowError,
     complete_authorization as strava_complete,
@@ -239,6 +251,118 @@ async def strava_oauth_callback(
     try:
         return await strava_complete(session, redis, code=code, state=state)
     except StravaFlowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+# ------------------------------------------------------- Oura (API v2)
+
+
+@router.post("/settings/integrations/oura/authorize")
+async def start_oura_authorization(
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    """Mint the single-use state and return the Oura authorization URL."""
+    if not oura_flow_ready():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "OURA_CLIENT_ID / OURA_CLIENT_SECRET are not configured — "
+                "register a personal app at cloud.ouraring.com first "
+                "(INSTALL §7e)"
+            ),
+        )
+    state, authorize_url = await oura_create_pending(redis, user)
+    logger.info("oura OAuth: pending authorization minted for user %s", user.id)
+    return {
+        "authorize_url": authorize_url,
+        "state": state,
+        "expires_in_seconds": 600,
+        "note": (
+            "Open the URL, log into Oura, and approve — the provider then "
+            "redirects to the configured redirect URI."
+        ),
+    }
+
+
+@router.get("/integrations/oura/callback")
+async def oura_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oura authorization failed: {error}",
+        )
+    if not code or not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="callback requires both 'code' and 'state' parameters",
+        )
+    try:
+        return await oura_complete(session, redis, code=code, state=state)
+    except OuraFlowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+# ------------------------------------------------- COROS (Open API shell)
+
+
+@router.post("/settings/integrations/coros/authorize")
+async def start_coros_authorization(
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    """COROS gates API access behind a manual developer-portal review — this
+    endpoint 400s with the explanation until COROS_CLIENT_ID/SECRET exist."""
+    if not coros_flow_ready():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "COROS_CLIENT_ID / COROS_CLIENT_SECRET are not configured — "
+                "apply at open.coros.com (manual review); when approved, set "
+                "the env pair and this flow works unchanged (INSTALL §7f)"
+            ),
+        )
+    state, authorize_url = await coros_create_pending(redis, user)
+    logger.info("coros OAuth: pending authorization minted for user %s", user.id)
+    return {
+        "authorize_url": authorize_url,
+        "state": state,
+        "expires_in_seconds": 600,
+        "note": "Open the URL, log into COROS, and approve.",
+    }
+
+
+@router.get("/integrations/coros/callback")
+async def coros_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COROS authorization failed: {error}",
+        )
+    if not code or not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="callback requires both 'code' and 'state' parameters",
+        )
+    try:
+        return await coros_complete(session, redis, code=code, state=state)
+    except CorosFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc

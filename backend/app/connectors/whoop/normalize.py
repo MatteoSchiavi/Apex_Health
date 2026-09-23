@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.whoop.fetch import SOURCE
 from app.models.activity import Activity, ActivitySourceLink
+from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.connectors.garmin.normalize import NormalizerStats
 
@@ -314,6 +315,44 @@ async def _upsert_workout(
     )
     activity_id: int
     if link is None:
+        # Device priority law (services/device_merge.py): when the MAIN
+        # device already recorded this same effort, Whoop does NOT get its
+        # own canonical row — its identity link attaches to the winner and
+        # the Whoop-specific quantities (strain, zone minutes) merge into
+        # source_metrics so nothing measured is lost.
+        from app.services.device_merge import resolve_activity_winner
+
+        decision = await resolve_activity_winner(
+            session,
+            await session.get(User, getattr(raw, "user_id")),
+            start,
+            duration_s,
+            SOURCE,
+        )
+        if not decision.write and decision.winner_activity_id is not None:
+            winner = await session.get(Activity, decision.winner_activity_id)
+            if winner is not None:
+                session.add(
+                    ActivitySourceLink(
+                        activity_id=winner.id,
+                        source=SOURCE,
+                        external_id=external_id,
+                        raw_ingest_id=getattr(raw, "id", None),
+                    )
+                )
+                whoop_meta = {
+                    "sport_name": sport_name,
+                    "strain": strain,
+                    "duration_s": duration_s,
+                    "avg_hr": avg_hr,
+                    "calories": calories,
+                }
+                merged = dict(winner.source_metrics or {})
+                whoop_block = merged.get("whoop") or {}
+                merged["whoop"] = {**whoop_block, **whoop_meta}
+                winner.source_metrics = merged
+                stats.activities_merged += 1
+                return
         activity = Activity(
             user_id=user_id,
             discipline_id=discipline_id,

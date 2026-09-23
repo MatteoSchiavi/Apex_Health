@@ -66,6 +66,7 @@ class NormalizerStats:
     """Counters for one normalization pass (per raw rows consumed)."""
 
     activities_upserted: int = 0
+    activities_merged: int = 0  # secondary rows folded into a main-device row (device priority law)
     activity_streams_upserted: int = 0
     sleep_upserted: int = 0
     hrv_upserted: int = 0

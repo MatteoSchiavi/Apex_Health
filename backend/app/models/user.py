@@ -33,6 +33,23 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(
         Text, nullable=False, default="Europe/Rome", server_default="Europe/Rome"
     )
+    # UI preferences (migration 0007) — live on the account so the choice
+    # follows the user across browsers/devices. The SPA mirrors them in
+    # localStorage for instant first paint before the profile loads.
+    locale: Mapped[str] = mapped_column(
+        Text, nullable=False, default="en", server_default="en"
+    )  # 'en' | 'it'
+    theme: Mapped[str] = mapped_column(
+        Text, nullable=False, default="dark", server_default="dark"
+    )  # 'dark' | 'light'
+    units: Mapped[str] = mapped_column(
+        Text, nullable=False, default="metric", server_default="metric"
+    )  # 'metric' | 'imperial'
+    # Device priority law: the MAIN device integration. NULL = first
+    # connected wins (legacy). services/device_merge.py owns the rule.
+    main_integration_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )

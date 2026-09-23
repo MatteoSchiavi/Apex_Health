@@ -20,6 +20,8 @@ EXPECTED_TABLES = {
     "challenges", "challenge_members",
     # disciplines & gear
     "disciplines", "gear", "gear_service_logs", "discipline_gear_defaults",
+    # Web UI foundation (migration 0007): laps from FIT enrichment
+    "activity_laps",
     # activities
     "activities", "activity_source_links", "activity_gear_links",
     "activity_streams", "segments", "segment_efforts",
