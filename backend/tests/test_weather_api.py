@@ -1,3 +1,4 @@
+import os
 """Phase 7 API + shared-query tests (§18, §14, §8.2, §23 AC2).
 
 GET /weather/forecast reads forecast_cache through the same get_forecast
@@ -20,8 +21,8 @@ from app.models.weather import ForecastCache
 # CSRF header; POST /auth/login does (§22.3).
 CSRF = {"X-CSRF-Token": "test"}
 
-OWNER_EMAIL = "owner@apexhealth.dev"
-OWNER_PASSWORD = "test-owner-password"
+OWNER_EMAIL = os.environ["OWNER_EMAIL"]
+OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 HOME = {"weather_home_lat": 45.075, "weather_home_lon": 9.725}
 

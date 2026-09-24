@@ -1,3 +1,4 @@
+import os
 """Coach API end-to-end: events, context docs, gym plan generation,
 in-gym session tracking (next exercise + rest timer), feedback — with the
 multi-user isolation law asserted where it matters most."""
@@ -13,7 +14,7 @@ from app.models.gym_detail import GymDayPlan, GymExercise, GymSetLog
 from app.models.user import User
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER = ("owner@apexhealth.dev", "test-owner-password")
+OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 
 
 async def _login(client: AsyncClient, email: str, password: str) -> None:

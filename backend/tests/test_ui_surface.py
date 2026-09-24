@@ -1,3 +1,4 @@
+import os
 """Web UI surface tests (migration 0007 batch): /me prefs, /dashboard/overview,
 /activities (+detail+streams), /sleep, /metrics, /settings/devices (main-device
 law), services/device_merge, FIT lap upserts.
@@ -28,7 +29,7 @@ from app.services.fit_enrichment import upsert_laps
 pytestmark = pytest.mark.asyncio
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER = ("owner@apexhealth.dev", "test-owner-password")
+OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 TODAY = date(2026, 9, 22)
 
 

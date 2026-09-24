@@ -1,3 +1,4 @@
+import os
 """Strava connector tests: OAuth flow + activity sync into canonical
 activities (source='strava', idempotent by ActivitySourceLink)."""
 
@@ -17,8 +18,8 @@ from app.models.integration import Integration, RawIngest
 from app.models.user import User
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER_EMAIL = "owner@apexhealth.dev"
-OWNER_PASSWORD = "test-owner-password"
+OWNER_EMAIL = os.environ["OWNER_EMAIL"]
+OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 SETTINGS = SimpleNamespace(
     strava_client_id="strava-cid",

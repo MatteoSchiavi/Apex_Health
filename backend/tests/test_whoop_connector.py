@@ -1,3 +1,4 @@
+import os
 """Whoop connector tests: OAuth flow (MockTransport) + sync pipeline
 (fixture client) + the annotation law that motivated the connector.
 
@@ -26,8 +27,8 @@ from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER_EMAIL = "owner@apexhealth.dev"
-OWNER_PASSWORD = "test-owner-password"
+OWNER_EMAIL = os.environ["OWNER_EMAIL"]
+OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 SETTINGS = SimpleNamespace(
     whoop_client_id="whoop-cid",
