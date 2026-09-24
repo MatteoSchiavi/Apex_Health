@@ -1,3 +1,4 @@
+import os
 """Phase 6 AC1 tests — Technogym OAuth connection (§11 Stage 11a, §18,
 §23 Phase 6: "OAuth completes (manual connection)").
 
@@ -20,8 +21,8 @@ from app.core.encryption import decrypt_json
 from app.models.integration import Integration
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER_EMAIL = "owner@apexhealth.dev"
-OWNER_PASSWORD = "test-owner-password"
+OWNER_EMAIL = os.environ["OWNER_EMAIL"]
+OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "technogym"
 
 SETTINGS = SimpleNamespace(

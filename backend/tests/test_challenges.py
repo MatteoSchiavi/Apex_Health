@@ -1,3 +1,4 @@
+import os
 """Challenges & rankings tests: metric math from seeded canonical data,
 leaderboard ordering (times ASC, volumes DESC), isolation, records."""
 
@@ -14,7 +15,7 @@ from app.models.wellness import DailyBiometric, SleepSession
 from app.queries.rankings import compute_metric, global_records, leaderboard
 
 CSRF = {"X-CSRF-Token": "test"}
-OWNER = ("owner@apexhealth.dev", "test-owner-password")
+OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
 
