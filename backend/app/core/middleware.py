@@ -31,7 +31,13 @@ from starlette.responses import JSONResponse, Response
 
 CSRF_HEADER = "X-CSRF-Token"
 CSRF_COOKIE = "csrf_token"
-_EXEMPT_PATHS = {"/health"}
+# F-04 audit: auth bootstrap endpoints are CSRF-exempt because they MINT
+# the CSRF cookie — they cannot possibly send a matching cookie+header
+# before the cookie exists. Login/redeem are protected by argon2id +
+# lockout + invite-code single-use instead. All OTHER state-changing
+# endpoints (the entire app surface behind a session) require the matching
+# cookie+header pair.
+_EXEMPT_PATHS = {"/health", "/auth/login", "/auth/invite/redeem", "/auth/logout"}
 
 
 def _csrf_cookie_value(token: str) -> str:

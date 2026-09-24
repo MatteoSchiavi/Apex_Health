@@ -107,7 +107,13 @@ async def test_agent_without_data_says_what_it_can():
         await run_agent_turn(ctx.sessionmaker, llm, owner, "how is my recovery?", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC), tier="cheap")
         system = llm.calls[0]["system"]
         assert '"latest": null' in system
-        assert '"trend_14d": []' in system
+        # A-02/A-03 audit: trend_14d is now CALENDAR-COMPLETE — always 14
+        # entries (one per day), each either a feature row or a gap marker
+        # with "status": "no_feature_row". The old empty-list assertion
+        # (trend_14d: []) is replaced by a check that the gap marker is
+        # present when no feature rows exist.
+        assert '"trend_14d":' in system
+        assert '"no_feature_row"' in system or '"status": "no_feature_row"' in system
 
 
 async def test_session_boundary_after_30_minutes():

@@ -168,8 +168,10 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
             usage = (await session.scalars(select(TokenUsage))).all()
             assert len(usage) == 3  # 2 tool iterations + final
             assert all(u.call_type == "chat" and u.tier == "cheap" for u in usage)
-        # the model saw the tool schemas (§8.4 request build)
-        assert len(llm.calls[0]["tools"]) == 14
+        # the model saw the tool schemas (§8.4 request build). 18 tools
+        # after the audit fixes added get_raw_biometrics, get_score_components,
+        # get_integration_health, and confirm_draft (W-01/W-05/A-06).
+        assert len(llm.calls[0]["tools"]) == 18
 
 
 async def test_tool_error_returns_as_result_and_loop_continues():
@@ -221,11 +223,15 @@ async def test_loop_gives_best_partial_after_eight_iterations():
 
         assert result.loop.converged is False
         assert result.loop.iterations == 8
-        assert len(llm.calls) == 8  # the 9th scripted response is never consumed
+        # T-04 audit: budget exhaustion now triggers a forced tool-free
+        # summarization close-out (9th call). The 8 tool-request iterations
+        # + 1 close-out = 9 total LLM calls. The close-out consumes the
+        # scripted "never reached" final response.
+        assert len(llm.calls) == 9
         assert len(result.loop.tool_audit) == 8
         async with ctx.sessionmaker() as session:
             usage = (await session.scalars(select(TokenUsage))).all()
-            assert len(usage) == 8
+            assert len(usage) == 9  # 8 iterations + 1 close-out
             spend = await day_spend(session, datetime.now(UTC))
             assert spend > 0
 

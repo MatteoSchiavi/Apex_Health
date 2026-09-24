@@ -192,13 +192,19 @@ async def test_day_boundary_local_not_utc(db_session, golden_world):
     await run_range(db_session, user, "2025-03-08", "2025-04-11")
     rows = await daily_rows(db_session, user.id)
 
-    # acute7 at 03-21 includes the boundary session (90 of the 445)
+    # acute7 at 03-21 includes the boundary session. The exact value
+    # depends on the HRmax formula (P-05: Tanaka 208−0.7·age) and the
+    # Garmin training_load conversion (P-06: ×0.35); the golden fixture
+    # carries the pinned number and this test reads it from there so the
+    # assertion stays in sync with the formulas.
+    expected_acute_0321 = fixture["expected"]["daily_rows"]["2025-03-21"]["training_load_acute"]
     assert float(rows[date(2025, 3, 21)].training_load_acute) == pytest.approx(
-        445.0, abs=RAT_TOL
+        expected_acute_0321, abs=RAT_TOL
     )
-    # and 03-20's acute7 does NOT include it (95 from the FTP test only)
+    # and 03-20's acute7 does NOT include the boundary session
+    expected_acute_0320 = fixture["expected"]["daily_rows"]["2025-03-20"]["training_load_acute"]
     assert float(rows[date(2025, 3, 20)].training_load_acute) == pytest.approx(
-        355.0, abs=RAT_TOL
+        expected_acute_0320, abs=RAT_TOL
     )
 
 

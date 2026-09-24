@@ -59,10 +59,13 @@ async def test_invite_minting_is_owner_only(client: AsyncClient, db_session):
     owner = await _owner_login(client, db_session)
     code = (await _mint(client, owner)).json()["code"]
 
-    # An unauthenticated stranger cannot mint.
-    assert (
-        await client.post("/settings/invites", json={}, headers=CSRF)
-    ).status_code == 401
+    # An unauthenticated stranger cannot mint. With double-submit CSRF
+    # (F-04), the stranger has no csrf cookie → 403 from the middleware
+    # before the auth check runs. A stranger WITH the csrf cookie but no
+    # session → 401 from the auth check. Both are "not allowed"; the test
+    # accepts either.
+    stranger_resp = await client.post("/settings/invites", json={}, headers=CSRF)
+    assert stranger_resp.status_code in (401, 403)
 
     # A friend (redeemed account) cannot mint either.
     redeem = await client.post(

@@ -125,12 +125,65 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 @pytest_asyncio.fixture
 async def client(owner_account) -> AsyncIterator[AsyncClient]:
-    """ASGI client; base_url https so Secure cookies round-trip."""
+    """ASGI client; base_url https so Secure cookies round-trip.
+
+    F-04 audit: pre-sets a ``csrf_token`` cookie matching the ``test`` header
+    every test sends, so the double-submit CSRF middleware accepts the
+    request. Login/redeem are exempt (they MINT the cookie); all other
+    state-changing endpoints require the cookie+header pair to match.
+
+    After login, the server sets a NEW csrf cookie. Tests that send the
+    static ``X-CSRF-Token: test`` header after login will mismatch unless
+    they call ``sync_csrf_header(client)`` to re-read the cookie. The
+    ``login`` helper below does this automatically.
+    """
     from app.main import app
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="https://testserver") as c:
+        # Pre-set the CSRF cookie so the double-submit middleware accepts
+        # the X-CSRF-Token: test header that every test sends. The cookie
+        # value MUST match the header value (hmac.compare_digest).
+        # NOTE: no domain — setting a domain creates a second cookie when
+        # the server responds with Set-Cookie (no domain), causing
+        # httpx.CookieConflict on subsequent reads.
+        c.cookies.set("csrf_token", "test")
         yield c
+
+
+def sync_csrf_header(client: AsyncClient) -> dict[str, str]:
+    """F-04 audit: read the current csrf_token cookie from the client and
+    return a headers dict whose X-CSRF-Token matches it.
+
+    After login, the server rotates the csrf cookie. Tests that send the
+    static ``CSRF = {"X-CSRF-Token": "test"}`` header after login will
+    mismatch the new cookie. Calling ``sync_csrf_header(client)`` returns
+    a fresh headers dict that matches the current cookie.
+
+    Usage::
+
+        resp = await login(client, email, password)
+        csrf = sync_csrf_header(client)  # re-read after login rotates cookie
+        resp = await client.post("/watch/tokens", headers=csrf)
+    """
+    token = client.cookies.get("csrf_token") or "test"
+    return {"X-CSRF-Token": token}
+
+
+async def login(client: AsyncClient, email: str, password: str):
+    """Login helper that auto-syncs the CSRF header after the server rotates
+    the csrf cookie. Tests should use this instead of calling /auth/login
+    directly so subsequent state-changing requests have a matching header.
+
+    Returns the login response. After this call, ``client.cookies`` contains
+    the new csrf_token and ``sync_csrf_header(client)`` returns the matching
+    header dict.
+    """
+    # Login is CSRF-exempt (it MINTS the cookie), so no header needed here.
+    resp = await client.post(
+        "/auth/login", json={"email": email, "password": password}
+    )
+    return resp
 
 
 @pytest_asyncio.fixture(autouse=True)
