@@ -1,8 +1,9 @@
 /**
- * Biometrics hub — the index of EVERY metric. Each entry is a link to its
- * own telemetry page (/app/biometrics/{key}), so "every metric has a
- * detailed page" is structural, not aspirational: the catalog comes from
- * GET /metrics and pages render generically.
+ * Biometrics hub — the index of EVERY metric (mockup: HR telemetry's
+ * metric-card row aesthetic). Each entry: name, live readout, assessment
+ * badge, 60-day sparkline — a link to its own telemetry page
+ * (/app/biometrics/{key}), so "every metric has a detailed page" is
+ * structural, not aspirational.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -10,13 +11,12 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
-import { Badge, Card, ErrorNote, Loading, fmtNum } from "../../components/kit";
-import { EChart, useChartTheme } from "../../components/charts/EChart";
+import { Badge, Card, ErrorNote, Loading, PageHeader, Sparkline, fmtNum } from "../../components/kit";
 
 /** Grouped catalog — keys mirror the backend CATALOG dict. */
 const GROUPS: { title: string; keys: [string, string][] }[] = [
   {
-    title: "biometrics.title",
+    title: "biometrics.group_cardiac",
     keys: [
       ["resting_hr", "biometrics.resting_hr"],
       ["hrv_deviation", "biometrics.hrv"],
@@ -49,7 +49,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     ],
   },
   {
-    title: "settings.profile",
+    title: "biometrics.group_body",
     keys: [
       ["weight", "biometrics.weight"],
       ["body_fat", "biometrics.body_fat"],
@@ -61,34 +61,57 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
   },
 ];
 
-/** One 60-day sparkline per group shown on the hub via the shared trend API. */
-function GroupSpark({ keys }: { keys: string[] }) {
-  const c = useChartTheme();
-  const first = keys[0];
+/** One metric card: 60-day trend + latest readout + assessment badge. */
+function MetricCard({ metricKey, labelKey, unit, direction }: { metricKey: string; labelKey: string; unit: string; direction: string }) {
+  const { t } = useTranslation();
   const { data } = useQuery({
-    queryKey: ["spark", first],
-    queryFn: () => api.get<MetricTrend>(`/metrics/${first}?days=60`),
+    queryKey: ["spark", metricKey],
+    queryFn: () => api.get<MetricTrend>(`/metrics/${metricKey}?days=60`),
   });
-  if (!data || !data.points.some((p) => p.value !== null)) return null;
+  const points = data?.points ?? [];
+  const values = points.filter((p) => p.value !== null).map((p) => p.value!);
+  const latest = values.at(-1) ?? null;
+  const mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  const tone =
+    latest === null || mean === null
+      ? "neutral"
+      : (direction === "down" ? latest <= mean : latest >= mean)
+        ? "positive"
+        : "warning";
+  const toneLabel =
+    tone === "positive" ? t("biometrics.assess_optimal") : tone === "warning" ? t("biometrics.assess_watch") : t("biometrics.assess_no_data");
+
   return (
-    <EChart
-      option={{
-        grid: { left: 0, right: 0, top: 4, bottom: 0 },
-        xAxis: { type: "category", show: false, data: data.points.map((p) => p.date) },
-        yAxis: { type: "value", show: false },
-        series: [
-          {
-            type: "line",
-            data: data.points.map((p) => p.value),
-            showSymbol: false,
-            smooth: true,
-            lineStyle: { color: c.primary, width: 1.4 },
-            areaStyle: { color: c.primary, opacity: 0.1 },
-          },
-        ]}
-      }
-      height={56}
-    />
+    <Link to={`/app/biometrics/${metricKey}`} className="group">
+      <Card className="h-full transition-colors group-hover:bg-surface2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold text-ink">{t(labelKey)}</div>
+            <div className="num mt-1 flex items-baseline gap-1">
+              <span className="text-[22px] font-bold text-ink">
+                {latest === null ? "—" : fmtNum(latest, latest >= 100 ? 0 : 1)}
+              </span>
+              <span className="text-[10px] font-medium text-muted">{unit}</span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={tone as "neutral" | "positive" | "warning"}>{toneLabel}</Badge>
+            <ChevronRight size={14} className="text-faint transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </div>
+        <div className="mt-2 -mx-1">
+          <Sparkline
+            points={points.map((p) => p.value)}
+            color={tone === "warning" ? "var(--c-warning)" : "var(--c-primary)"}
+            height={44}
+          />
+        </div>
+        <div className="num mt-1 flex justify-between text-[9px] text-faint">
+          <span>60d</span>
+          <span>{values.length} {t("sleep.readings")}</span>
+        </div>
+      </Card>
+    </Link>
   );
 }
 
@@ -103,46 +126,18 @@ export default function BiometricsHubPage() {
   if (catalog.isError) return <ErrorNote />;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <div className="eyebrow">{t("app.name")} {t("app.suffix")}</div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">
-          {t("biometrics.title")}
-        </h1>
-        <div className="mt-0.5 text-[12px] text-muted">{t("biometrics.subtitle")}</div>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader title={t("biometrics.title")} subtitle={t("biometrics.subtitle")} />
 
       {GROUPS.map((group) => (
         <div key={group.title}>
           <div className="eyebrow mb-2">{t(group.title)}</div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {group.keys.map(([key, labelKey]) => {
               const meta = catalog.data?.[key];
               if (!meta) return null;
               return (
-                <Link key={key} to={`/app/biometrics/${key}`}>
-                  <Card className="transition-colors hover:bg-surface2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-[14px] font-semibold text-ink">{t(labelKey)}</div>
-                        <div className="num mt-0.5 text-[11px] text-muted">{meta.unit}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge tone="neutral">
-                          {meta.direction === "down"
-                            ? t("common.low")
-                            : meta.direction === "up"
-                              ? t("common.high")
-                              : t("common.fair")}
-                        </Badge>
-                        <ChevronRight size={14} className="text-faint" />
-                      </div>
-                    </div>
-                    <div className="mt-2 -mx-1">
-                      <GroupSpark keys={[key]} />
-                    </div>
-                  </Card>
-                </Link>
+                <MetricCard key={key} metricKey={key} labelKey={labelKey} unit={meta.unit} direction={meta.direction} />
               );
             })}
           </div>
@@ -150,8 +145,4 @@ export default function BiometricsHubPage() {
       ))}
     </div>
   );
-}
-
-export function fmtStat(v: number | null | undefined, digits = 1): string {
-  return fmtNum(v, digits);
 }

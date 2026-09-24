@@ -30,6 +30,10 @@ def _ensure_usable(name: str, default: str, *ok_prefixes: str) -> None:
 
 _ensure_usable("DATABASE_URL", "postgresql+asyncpg://hcc@localhost:5433/hcc", "postgresql")
 _ensure_usable("REDIS_URL", "redis://localhost:6380/0", "redis")
+# The hardened-cookie tests assert Secure on session cookies; a local dev
+# .env (COOKIE_SECURE=false for LAN-HTTP) must not leak into the suite —
+# pydantic prefers real env over dotenv, so pin it before any app import.
+os.environ["COOKIE_SECURE"] = "true"
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key")
 os.environ.setdefault("OWNER_EMAIL", "owner@apexhealth.dev")

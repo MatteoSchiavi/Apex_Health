@@ -1,15 +1,20 @@
 /**
- * Sleep night detail — mockup "sleep_night_detail": gauge score, duration
- * analysis, the hypnogram (stage timeline rebuilt from stage durations as a
- * banded custom ECharts series), overnight vitals strip and the HRV
- * envelope for the day.
+ * Sleep night detail — mockup "sleep_night_detail".
+ *
+ * Score arc gauge, duration analysis pods, the stage timeline, the
+ * overnight vitals strip and the HRV envelope. The hypnogram renders from
+ * the STORED stage epochs (GET /sleep/{date}/stages, parsed from raw
+ * payloads — no invention); when a night has no epoch timeline the page
+ * falls back to the proportional architecture bar and says so.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { api, type SleepDay, type MetricTrend } from "../../app/api";
+import { ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { api, type SleepDay, type SleepList, type SleepStages } from "../../app/api";
 import {
+  ArcGauge,
   Badge,
   BigStat,
   Card,
@@ -17,88 +22,122 @@ import {
   Empty,
   ErrorNote,
   Loading,
+  PageHeader,
+  StatPod,
+  ZoneBar,
+  fmtClock,
   fmtHours,
   fmtNum,
 } from "../../components/kit";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
 
-/** Approximate a stage sequence from the aggregate durations: blocks laid
- * out night-long, alternating deep/REM/light with awake interruptions on
- * top — honest about resolution (it renders what the canonical model
- * stores) while preserving the mockup's banded aesthetic. */
-function hypnogramOption(
-  day: SleepDay,
-  c: ReturnType<typeof useChartTheme>,
-  labels: Record<string, string>,
-) {
+const OPTIMAL_SLEEP_S = 8 * 3600; // "optimal target" reference buffer
+
+function stageColor(key: string): string {
+  return {
+    deep: "var(--c-stage-deep)",
+    rem: "var(--c-stage-rem)",
+    core: "var(--c-stage-core)",
+    light: "var(--c-stage-core)",
+    awake: "var(--c-stage-awake)",
+  }[key] ?? "var(--c-hairline2)";
+}
+
+/* ----------------------------------------------------------- hypnogram */
+
+function Hypnogram({
+  day,
+  stages,
+}: {
+  day: SleepDay;
+  stages: SleepStages | null;
+}) {
+  const { t } = useTranslation();
+  const c = useChartTheme();
   const s = day.session;
-  if (!s) return null;
-  const start = new Date(s.start_time).getTime();
-  const end = new Date(s.end_time).getTime();
-  const span = Math.max(end - start, 1);
 
-  const stageRows = [
-    { key: "awake", label: labels.awake, color: c.stage.awake, y: 3 },
-    { key: "rem", label: labels.rem, color: c.stage.rem, y: 2 },
-    { key: "core", label: labels.core, color: c.stage.core, y: 1 },
-    { key: "deep", label: labels.deep, color: c.stage.deep, y: 0 },
+  const labels: Record<string, string> = {
+    awake: t("stage.awake"),
+    rem: t("stage.rem"),
+    core: t("stage.core"),
+    light: t("stage.core"),
+    deep: t("stage.deep"),
+  };
+
+  const rows = [
+    { key: "awake", label: labels.awake, y: 3, color: c.stage.awake },
+    { key: "rem", label: labels.rem, y: 2, color: c.stage.rem },
+    { key: "core", label: labels.core, y: 1, color: c.stage.core },
+    { key: "deep", label: labels.deep, y: 0, color: c.stage.deep },
   ];
 
-  // Split the night into segments proportional to stage durations, cycling
-  // deep → light → REM (physiologically ordered cycles).
-  const cycle = [
-    { key: "deep", v: s.deep_s ?? 0, y: 0, color: c.stage.deep },
-    { key: "core", v: s.light_s ?? 0, y: 1, color: c.stage.core },
-    { key: "rem", v: s.rem_s ?? 0, y: 2, color: c.stage.rem },
-  ];
-  const totalCycle = cycle.reduce((acc, p) => acc + p.v, 0) || 1;
-  const awakeV = s.awake_s ?? 0;
-  const segments: { x0: number; x1: number; y: number; color: string; key: string }[] = [];
-  let cursor = 0;
-  let idx = 0;
-  const body = span - (awakeV / 1000) * 1000;
-  const cycles = Math.max(1, Math.round((s.total_sleep_s ?? totalCycle) / 5400)); // ~90min cycles
-  for (let cy = 0; cy < cycles; cy++) {
-    for (const part of cycle) {
-      const share = part.v / totalCycle;
-      const dur = (body * share) / cycles;
-      const x0 = start + cursor;
-      const x1 = start + Math.min(cursor + dur, body);
-      if (x1 > x0) {
-        segments.push({ x0, x1, y: part.y, color: part.color, key: part.key });
+  let segments: { x0: number; x1: number; stage: string }[] = [];
+  const measured = !!stages?.segments?.length;
+  if (measured && stages?.segments) {
+    segments = stages.segments.map((seg) => ({
+      x0: new Date(seg.t_start).getTime(),
+      x1: new Date(seg.t_end).getTime(),
+      stage: seg.stage === "light" ? "core" : seg.stage,
+    }));
+  } else if (s) {
+    // Proportional fallback: blocks laid out night-long in physiological
+    // cycle order from the canonical aggregates. Labeled as such in the UI.
+    const start = new Date(s.start_time).getTime();
+    const end = new Date(s.end_time).getTime();
+    const span = Math.max(end - start, 1);
+    const cycle = [
+      { key: "deep", v: s.deep_s ?? 0 },
+      { key: "core", v: s.light_s ?? 0 },
+      { key: "rem", v: s.rem_s ?? 0 },
+    ];
+    const cycleTotal = cycle.reduce((a, p) => a + p.v, 0) || 1;
+    const cycles = Math.max(1, Math.round((s.total_sleep_s ?? cycleTotal) / 5400));
+    let cursor = 0;
+    const body = span * 0.92;
+    for (let cy = 0; cy < cycles; cy++) {
+      for (const part of cycle) {
+        const dur = (body * (part.v / cycleTotal)) / cycles;
+        segments.push({ x0: start + cursor, x1: start + cursor + dur, stage: part.key });
+        cursor += dur;
       }
-      cursor += dur;
-      idx++;
+    }
+    const awakeMs = span - body;
+    if (awakeMs > 0) {
+      segments.push({ x0: start + body * 0.5, x1: start + body * 0.5 + awakeMs, stage: "awake" });
     }
   }
-  void idx;
-  // Awake segments interleaved: one long strip at the top row scaled to fit
-  if (awakeV > 0) {
-    const dur = (awakeV / 1000) * 1000;
-    const x0 = start + body * 0.45;
-    segments.push({ x0, x1: x0 + dur, y: 3, color: c.stage.awake, key: "awake" });
-  }
+
+  if (!s || segments.length === 0) return null;
+
+  const start = new Date(s.start_time).getTime();
+  const end = new Date(s.end_time).getTime();
 
   const timeLabels: string[] = [];
-  const timeValues: number[] = [];
   for (let i = 0; i <= 6; i++) {
-    const t = start + (span * i) / 6;
-    timeValues.push(t);
+    const tt = start + ((end - start) * i) / 6;
     timeLabels.push(
-      new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+      new Date(tt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
     );
   }
 
-  return {
-    grid: { left: 52, right: 12, top: 8, bottom: 26 },
+  const option = {
+    grid: { left: 56, right: 12, top: 8, bottom: 26 },
     tooltip: {
-      formatter: (p: { data?: { key?: string } }) => labels[p.data?.key ?? ""] ?? "",
+      trigger: "item",
+      formatter: (p: { data?: { stage?: string; x0?: number; x1?: number } }) => {
+        const d = p.data;
+        if (!d?.stage) return "";
+        const f = (ms: number) =>
+          new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        const dur = d.x1 && d.x0 ? Math.round((d.x1 - d.x0) / 60000) : null;
+        return `${labels[d.stage] ?? d.stage}${dur !== null ? ` · ${dur} min` : ""}${d.x0 ? `<br/>${f(d.x0)} → ${f(d.x1 ?? 0)}` : ""}`;
+      },
       backgroundColor: c.surface,
       borderColor: c.hairline,
       textStyle: { color: c.ink, fontSize: 11 },
     },
     xAxis: {
-      type: "time",
+      type: "value",
       min: start,
       max: end,
       axisLine: { show: false },
@@ -108,74 +147,429 @@ function hypnogramOption(
         fontSize: 10,
         fontFamily: "JetBrains Mono",
         formatter: () => "",
+        interval: 0,
       },
       splitLine: { show: false },
     },
     yAxis: {
-      type: "value",
-      min: -0.5,
-      max: 3.5,
-      interval: 1,
+      // category bands: bottom→top = DEEP, CORE, REM, AWAKE (mockup order)
+      type: "category",
+      data: ["DEEP", "CORE", "REM", "AWAKE"],
       axisLine: { show: false },
       axisTick: { show: false },
+      splitLine: { show: false },
       axisLabel: {
         color: c.muted,
         fontSize: 10,
-        formatter: (v: number) => stageRows[v]?.label ?? "",
+        fontFamily: "Geist",
+        fontWeight: 600,
       },
-      splitLine: { show: false },
     },
     series: [
       {
         type: "custom",
-        renderItem: (params: { dataIndex: number }, api2: {
-          value: () => number[];
-          coord: (v: number[]) => number[];
-          size: (v: number[]) => number[];
-        }) => {
+        renderItem: (
+          params: { coordSys: { x: number; y: number; width: number; height: number }; dataIndex: number },
+        ) => {
           const seg = segments[params.dataIndex];
-          const x0 = api2.coord([seg.x0, seg.y]);
-          const x1 = api2.coord([seg.x1, seg.y]);
+          if (!seg) return null as unknown as string;
+          // category band index: 0=DEEP (bottom) … 3=AWAKE (top)
+          const band =
+            ({ deep: 0, rem: 2, core: 1, light: 1, awake: 3 } as Record<string, number>)[seg.stage] ?? 1;
+          const cat = params.coordSys;
+          const x0 = cat.x + ((seg.x0 - start) / (end - start)) * cat.width;
+          const x1 = cat.x + ((seg.x1 - start) / (end - start)) * cat.width;
+          const rowH = cat.height / 4;
+          // category index 0 renders at the BOTTOM of a y category axis
+          const rectY = cat.y + (3 - band + 0.5) * rowH - 7;
+          const row = rows.find((r) => r.y === band);
           return {
             type: "rect",
-            shape: { x: x0[0], y: x0[1] - 14, width: Math.max(x1[0] - x0[0], 1), height: 28, r: 14 },
-            style: { fill: seg.color, opacity: 0.9 },
+            shape: { x: x0, y: rectY, width: Math.max(2, x1 - x0), height: 14, r: 7 },
+            style: { fill: row?.color ?? c.hairline },
           };
         },
-        data: segments.map((s2) => [s2.x0, s2.x1, s2.y, s2.key]),
-        encode: { x: [0, 1], y: 2 },
-      },
-      {
-        type: "line",
-        data: timeValues.map((tv, i) => [tv, -0.5 + i * 0]),
-        silent: true,
-        showSymbol: false,
-        lineStyle: { opacity: 0 },
+        data: segments.map((seg, i) => ({ ...seg, value: [seg.x0, i], dataIndex: i, seg })),
+        encode: { x: 0 },
+        clip: true,
       },
     ],
   };
+
+  const total = (s.deep_s ?? 0) + (s.rem_s ?? 0) + (s.light_s ?? 0) + (s.awake_s ?? 0) || 1;
+  const parts = [
+    { key: "awake", v: s.awake_s ?? 0, label: "stage.awake" },
+    { key: "rem", v: s.rem_s ?? 0, label: "stage.rem" },
+    { key: "core", v: s.light_s ?? 0, label: "stage.core" },
+    { key: "deep", v: s.deep_s ?? 0, label: "stage.deep" },
+  ].filter((p) => p.v > 0);
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t("sleep.hypnogram")}
+        title={t("sleep.hypnogram_title")}
+        right={
+          <Badge tone={measured ? "primary" : "neutral"}>
+            {measured ? t("sleep.stage_epochs") : t("sleep.proportional")}
+          </Badge>
+        }
+      />
+      <p className="mb-2 text-[12px] text-muted">
+        {measured
+          ? t("sleep.hypnogram_measured")
+          : t("sleep.hypnogram_fallback")}
+      </p>
+      <EChart option={option} height={190} />
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {parts.map((p) => (
+          <span key={p.key} className="num flex items-center gap-1.5 text-[11px] text-muted">
+            <span className="inline-block h-2 w-2 rounded-sm" style={{ background: stageColor(p.key) }} />
+            {t(p.label)} {Math.round((p.v / total) * 100)}%
+          </span>
+        ))}
+      </div>
+      <div className="num mt-1 flex justify-between text-[10px] text-faint">
+        {timeLabels.map((l, i) => (
+          <span key={i}>{l}</span>
+        ))}
+      </div>
+    </Card>
+  );
 }
 
-function hrvOption(day: SleepDay, c: ReturnType<typeof useChartTheme>) {
-  const rows = day.hrv_readings;
-  if (rows.length === 0) return null;
-  const ts = rows.map((r) => new Date(r.timestamp).getTime());
-  const vs = rows.map((r) => r.hrv_ms);
-  const base = rows.map((r) => r.rolling_baseline_ms);
-  return {
-    grid: { left: 36, right: 12, top: 14, bottom: 26 },
+/* ------------------------------------------------------------- page */
+
+export default function SleepNightPage() {
+  const { t } = useTranslation();
+  const { date } = useParams<{ date: string }>();
+  const navigate = useNavigate();
+
+  const day = useQuery({
+    queryKey: ["sleep", date],
+    queryFn: () => api.get<SleepDay>(`/sleep/${date}`),
+    enabled: !!date,
+  });
+  const stages = useQuery({
+    queryKey: ["sleep-stages", date],
+    queryFn: () => api.get<SleepStages>(`/sleep/${date}/stages`),
+    enabled: !!date,
+  });
+  const week = useQuery({
+    queryKey: ["sleep", "week"],
+    queryFn: () => api.get<SleepList>("/sleep?limit=7"),
+  });
+
+  if (day.isLoading) return <Loading />;
+  if (day.isError || !day.data) return <ErrorNote />;
+  const d = day.data;
+  const s = d.session;
+
+  const shift = (days: number) => {
+    if (!date) return;
+    const nd = new Date(date + "T00:00:00");
+    nd.setDate(nd.getDate() + days);
+    navigate(`/app/sleep/${nd.toISOString().slice(0, 10)}`);
+  };
+
+  const inBed = s ? (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 1000 : null;
+  const debt = s?.total_sleep_s !== null && s ? Math.max(0, OPTIMAL_SLEEP_S - s.total_sleep_s) : null;
+  const hrvVals = d.hrv_readings.map((r) => r.hrv_ms);
+  const hrvAvg = hrvVals.length ? hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length : null;
+  const hrvBase = [...d.hrv_readings].reverse().find((r) => r.rolling_baseline_ms)?.rolling_baseline_ms ?? null;
+
+  // 7-day rhythm blocks from the week list
+  const weekNights = week.data?.items ?? [];
+  const weekAvg = weekNights.length
+    ? weekNights.reduce((a, n) => a + (n.total_sleep_s ?? 0), 0) / weekNights.length
+    : null;
+
+  const score = s?.sleep_score === null || !s ? null : Math.round(s.sleep_score);
+  const scoreTone = score === null ? "var(--c-hairline2)" : score >= 75 ? "var(--c-positive)" : score >= 50 ? "var(--c-primary)" : "var(--c-warning)";
+  const verdict =
+    score === null ? "—" : score >= 75 ? t("common.optimal") : score >= 50 ? t("common.good") : t("common.fair");
+
+  const prevNight = weekNights.find((n) => n.local_date < (date ?? ""));
+  const nextNight = [...weekNights].reverse().find((n) => n.local_date > (date ?? ""));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title={
+          new Date((date ?? "") + "T00:00:00").toLocaleDateString(undefined, {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          })
+        }
+        subtitle={t("sleep.night_subtitle", {
+          start: s ? new Date(s.start_time).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "—",
+          end: s ? new Date(s.end_time).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "—",
+        })}
+        actions={
+          <div className="num flex items-center gap-1 rounded-control border border-hairline bg-surface px-1">
+            <button
+              type="button"
+              aria-label={t("common.prev_day")}
+              onClick={() => shift(-1)}
+              disabled={!prevNight}
+              className="flex h-7 w-7 items-center justify-center text-muted hover:text-ink disabled:opacity-30"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label={t("common.next_day")}
+              onClick={() => shift(1)}
+              disabled={!nextNight}
+              className="flex h-7 w-7 items-center justify-center text-muted hover:text-ink disabled:opacity-30"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        }
+      />
+
+      {s ? (
+        <>
+          <div className="grid grid-cols-12 gap-4">
+            {/* ---- score + duration row ---- */}
+            <Card className="col-span-12 lg:col-span-4">
+              <CardHeader eyebrow={t("sleep.recovery_index")} />
+              <div className="flex flex-col items-center">
+                <ArcGauge value={score} tone={scoreTone} label={<Badge tone={score !== null && score >= 75 ? "positive" : "neutral"}>{verdict}</Badge>} />
+                <div className="mt-2 grid w-full grid-cols-2 gap-3 border-t border-hairline pt-3">
+                  <div>
+                    <div className="eyebrow">{t("sleep.efficiency")}</div>
+                    <BigStat
+                      value={
+                        inBed && s.total_sleep_s
+                          ? fmtNum((s.total_sleep_s / inBed) * 100, 1)
+                          : "—"
+                      }
+                      unit="%"
+                      size="md"
+                      className="mt-0.5"
+                    />
+                  </div>
+                  <div>
+                    <div className="eyebrow">{t("sleep.latency")}</div>
+                    <BigStat value="—" size="md" className="mt-0.5" />
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="col-span-12 lg:col-span-8">
+              <CardHeader
+                eyebrow={t("sleep.duration_analysis")}
+                title={t("sleep.asleep_vs_bed")}
+                right={
+                  <span className="flex items-center gap-3 text-[10px] text-muted">
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-positive" /> {t("sleep.asleep")}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-alert" /> {t("stage.awake")}
+                    </span>
+                  </span>
+                }
+              />
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatPod label={t("sleep.time_in_bed")} value={fmtClock(inBed)} sub={t("sleep.bed_window")} />
+                <StatPod
+                  label={t("sleep.time_asleep")}
+                  value={fmtClock(s.total_sleep_s)}
+                  sub={
+                    debt !== null && debt > 0
+                      ? `−${fmtClock(debt)} ${t("sleep.vs_target")}`
+                      : t("sleep.target_met")
+                  }
+                  tone={(s.total_sleep_s ?? 0) >= OPTIMAL_SLEEP_S * 0.88 ? "positive" : "ink"}
+                />
+                <StatPod label={t("sleep.awake_time")} value={fmtClock(s.awake_s)} sub={`${t("sleep.disturbances")}`} />
+                <StatPod label={t("sleep.restlessness")} value={fmtNum(s.restlessness, 2)} unit="" sub={t("sleep.movement_index")} />
+              </div>
+              <div className="mt-4">
+                <ZoneBar
+                  height={10}
+                  parts={[
+                    { key: "awake", value: s.awake_s ?? 0, color: stageColor("awake") },
+                    { key: "rem", value: s.rem_s ?? 0, color: stageColor("rem") },
+                    { key: "core", value: s.light_s ?? 0, color: stageColor("core") },
+                    { key: "deep", value: s.deep_s ?? 0, color: stageColor("deep") },
+                  ]}
+                />
+                <div className="num mt-1.5 flex flex-wrap justify-between gap-2 text-[10px] text-muted">
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stageColor("awake") }} />
+                    {t("stage.awake")} {Math.round(((s.awake_s ?? 0) / (inBed || 1)) * 100)}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stageColor("rem") }} />
+                    {t("stage.rem")} {Math.round(((s.rem_s ?? 0) / (inBed || 1)) * 100)}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stageColor("core") }} />
+                    {t("stage.core")} {Math.round(((s.light_s ?? 0) / (inBed || 1)) * 100)}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stageColor("deep") }} />
+                    {t("stage.deep")} {Math.round(((s.deep_s ?? 0) / (inBed || 1)) * 100)}%
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            {/* ---- hypnogram ---- */}
+            <div className="col-span-12">
+              <Hypnogram day={d} stages={stages.data ?? null} />
+            </div>
+
+            {/* ---- vitals row ---- */}
+            <Card className="col-span-12">
+              <CardHeader
+                eyebrow={t("sleep.vitals")}
+                title={t("sleep.autonomic")}
+                right={<span className="num text-[10px] tracking-[0.08em] text-faint">{t("sleep.overnight_sensors")}</span>}
+              />
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                <StatPod
+                  label={t("overview.resting_hr")}
+                  value={fmtNum(d.biometrics.resting_hr)}
+                  unit="bpm"
+                  right={null}
+                />
+                <StatPod
+                  label={t("biometrics.hrv")}
+                  value={fmtNum(hrvAvg, 0)}
+                  unit="ms"
+                  sub={
+                    hrvBase
+                      ? `${hrvAvg !== null && hrvAvg >= hrvBase ? "+" : ""}${hrvAvg !== null ? (hrvAvg - hrvBase).toFixed(1) : "—"} ${t("overview.vs_baseline")}`
+                      : undefined
+                  }
+                  tone={hrvBase && hrvAvg !== null && hrvAvg >= hrvBase ? "positive" : "ink"}
+                />
+                <StatPod label={t("overview.respiration")} value={fmtNum(s.respiration_avg, 1)} unit="br/min" sub={t("sleep.steady")} />
+                <StatPod label={t("overview.spo2")} value={fmtNum(s.spo2_avg ?? d.biometrics.spo2_avg, 1)} unit="%" sub={t("sleep.saturation_note")} />
+                <StatPod
+                  label={t("sleep.sleep_regularity_short")}
+                  value={weekNights.length >= 5 ? t("sleep.stable") : t("sleep.limited")}
+                  sub={`${t("sleep.window7")}`}
+                />
+              </div>
+            </Card>
+
+            {/* ---- HRV envelope + circadian ---- */}
+            <Card className="col-span-12 lg:col-span-8">
+              <CardHeader
+                eyebrow={t("sleep.hrv_envelope")}
+                title={t("sleep.overnight_hrv")}
+                right={
+                  <span className="num text-[10px] text-faint">
+                    {hrvVals.length} {t("sleep.readings")}
+                  </span>
+                }
+              />
+              <HrvEnvelope day={d} />
+            </Card>
+
+            <Card className="col-span-12 lg:col-span-4">
+              <CardHeader
+                eyebrow={t("sleep.circadian")}
+                title={t("sleep.rhythm_alignment")}
+                right={<Badge tone="positive">{t("sleep.window7")}</Badge>}
+              />
+              {weekAvg !== null ? (
+                <>
+                  <div className="num mb-3 flex items-baseline gap-2">
+                    <span className="text-[28px] font-bold text-ink">{fmtHours(weekAvg)}</span>
+                    <span className="text-[11px] text-muted">{t("sleep.avg7")}</span>
+                  </div>
+                  <div className="flex justify-between gap-1.5">
+                    {weekNights.map((n) => {
+                      const ratio = (n.total_sleep_s ?? 0) / (OPTIMAL_SLEEP_S * 0.9);
+                      const alpha = Math.max(0.18, Math.min(1, ratio));
+                      return (
+                        <Link
+                          key={n.local_date}
+                          to={`/app/sleep/${n.local_date}`}
+                          title={`${n.local_date} · ${fmtHours(n.total_sleep_s)}`}
+                          className="flex h-9 flex-1 items-end justify-center rounded-sm border border-hairline"
+                          style={{ background: `color-mix(in srgb, var(--c-primary) ${alpha * 100}%, transparent)` }}
+                        >
+                          <span className="num pb-0.5 text-[9px] font-semibold text-ink">
+                            {new Date(n.local_date + "T00:00:00").toLocaleDateString(undefined, { weekday: "narrow" })}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-hairline pt-3 text-[11px] text-muted">
+                    <span>{t("sleep.midpoint")}</span>
+                    <span className="num text-ink2">
+                      {s
+                        ? new Date(
+                            (new Date(s.start_time).getTime() + new Date(s.end_time).getTime()) / 2,
+                          ).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+                        : "—"}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <Empty>{t("sleep.no_night")}</Empty>
+              )}
+            </Card>
+          </div>
+        </>
+      ) : (
+        <Card>
+          <Empty
+            action={
+              <span className="flex items-center gap-1.5 text-[11px] text-faint">
+                <Info size={12} /> {t("sleep.no_night_hint")}
+              </span>
+            }
+          >
+            {t("sleep.no_night")}
+          </Empty>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Overnight HRV envelope — single source EChart line. */
+function HrvEnvelope({ day }: { day: SleepDay }) {
+  const c = useChartTheme();
+  const { t } = useTranslation();
+  const readings = day.hrv_readings;
+  if (readings.length === 0) return <Empty>{t("biometrics.no_data")}</Empty>;
+  const times = readings.map((r) => new Date(r.timestamp).getTime());
+  const vals = readings.map((r) => r.hrv_ms);
+  const baseline = readings.map((r) => r.rolling_baseline_ms);
+  const option = {
+    grid: { left: 38, right: 10, top: 12, bottom: 24 },
     tooltip: {
       trigger: "axis",
       backgroundColor: c.surface,
       borderColor: c.hairline,
       textStyle: { color: c.ink, fontSize: 11 },
-      valueFormatter: (v: number) => `${fmtNum(v, 0)} ms`,
+      valueFormatter: (v: number) => `${Math.round(v)} ms`,
     },
     xAxis: {
       type: "time",
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
+      axisLabel: {
+        color: c.muted,
+        fontSize: 10,
+        fontFamily: "JetBrains Mono",
+        formatter: (v: number) =>
+          new Date(v).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+      },
+      splitLine: { show: false },
     },
     yAxis: {
       type: "value",
@@ -186,297 +580,27 @@ function hrvOption(day: SleepDay, c: ReturnType<typeof useChartTheme>) {
       {
         name: "HRV",
         type: "line",
-        data: ts.map((t, i) => [t, vs[i]]),
-        showSymbol: false,
+        data: times.map((tt, i) => [tt, vals[i]]),
         smooth: true,
-        lineStyle: { color: c.primary, width: 2 },
-        itemStyle: { color: c.primary },
-        areaStyle: { color: c.primary, opacity: 0.1 },
+        showSymbol: false,
+        lineStyle: { color: c.positive, width: 2 },
+        itemStyle: { color: c.positive },
+        areaStyle: { color: c.positive, opacity: 0.08 },
       },
-      ...(base.some((b) => b !== null)
+      ...(baseline.some((b) => b !== null)
         ? [
             {
-              name: "baseline",
+              name: t("overview.baseline7"),
               type: "line",
-              data: ts.map((t, i) => [t, base[i]]),
-              showSymbol: false,
+              data: times.map((tt, i) => [tt, baseline[i]]),
               smooth: true,
-              lineStyle: { color: c.muted, width: 1, type: "dashed" as const },
+              showSymbol: false,
+              lineStyle: { color: c.muted, width: 1, type: "dashed" },
               itemStyle: { color: c.muted },
             },
           ]
         : []),
     ],
   };
-}
-
-export default function SleepNightPage() {
-  const { t } = useTranslation();
-  const { date } = useParams();
-  const c = useChartTheme();
-
-  const day = useQuery({
-    queryKey: ["sleep-day", date],
-    queryFn: () => api.get<SleepDay>(`/sleep/${date}`),
-    enabled: !!date,
-  });
-  const hrvTrend = useQuery({
-    queryKey: ["metric", "hrv_deviation"],
-    queryFn: () => api.get<MetricTrend>("/metrics/hrv_deviation?days=30"),
-  });
-
-  if (day.isLoading) return <Loading />;
-  if (day.isError) return <ErrorNote />;
-  const d = day.data!;
-  const s = d.session;
-  const inBed = s ? (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 1000 : null;
-
-  const labels = {
-    awake: t("stage.awake"),
-    rem: t("stage.rem"),
-    core: t("stage.core"),
-    deep: t("stage.deep"),
-  };
-
-  const hypno = s ? hypnogramOption(d, c, labels) : null;
-  const hrv = hrvOption(d, c);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <div className="eyebrow">
-          <Link to="/app/sleep" className="hover:underline">
-            ← {t("sleep.title")}
-          </Link>
-        </div>
-        <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-ink">
-          {s
-            ? t("sleep.night_of", {
-                from: new Date(s.start_time).toLocaleDateString(undefined, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "short",
-                }),
-                to: new Date(s.end_time).toLocaleDateString(undefined, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "short",
-                }),
-              })
-            : t("sleep.no_night")}
-        </h1>
-      </div>
-
-      {!s ? (
-        <Empty>{t("sleep.no_night")}</Empty>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <Card className="flex flex-col items-center justify-center gap-2 py-6">
-              <div className="eyebrow">{t("sleep.sleep_score")}</div>
-              <BigStat
-                value={fmtNum(s.sleep_score)}
-                unit="/100"
-                size="xl"
-              />
-              <Badge tone={(s.sleep_score ?? 0) >= 75 ? "positive" : "warning"}>
-                {(s.sleep_score ?? 0) >= 75 ? t("sleep.optimal") : t("common.fair")}
-              </Badge>
-              <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-center">
-                <div>
-                  <div className="eyebrow">{t("sleep.efficiency")}</div>
-                  <div className="num text-[15px] font-semibold text-ink">
-                    {fmtNum(
-                      inBed && s.total_sleep_s
-                        ? (s.total_sleep_s / inBed) * 100
-                        : null,
-                      1,
-                    )}
-                    %
-                  </div>
-                </div>
-                <div>
-                  <div className="eyebrow">{t("sleep.latency")}</div>
-                  <div className="num text-[15px] font-semibold text-ink">—</div>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="xl:col-span-2">
-              <CardHeader
-                eyebrow={t("sleep.duration_analysis")}
-                title={t("sleep.asleep_vs_bed")}
-              />
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div>
-                  <div className="eyebrow">{t("sleep.time_in_bed")}</div>
-                  <BigStat value={fmtHours(inBed)} className="mt-1" />
-                  <div className="num mt-0.5 text-[10px] text-faint">
-                    {new Date(s.start_time).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    →{" "}
-                    {new Date(s.end_time).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <div className="eyebrow">{t("sleep.time_asleep")}</div>
-                  <BigStat value={fmtHours(s.total_sleep_s)} className="mt-1" />
-                  <div className="num mt-0.5 text-[10px] text-positiveText">
-                    {t("sleep.vs_target")}
-                  </div>
-                </div>
-                <div>
-                  <div className="eyebrow">{t("stage.deep")} + {t("stage.rem")}</div>
-                  <BigStat
-                    value={fmtHours((s.deep_s ?? 0) + (s.rem_s ?? 0))}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <div className="eyebrow">{t("sleep.awake_intervals")}</div>
-                  <BigStat value={fmtHours(s.awake_s)} className="mt-1" />
-                </div>
-              </div>
-              <div className="mt-4 flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-hairline">
-                {[
-                  { v: s.awake_s ?? 0, color: "var(--c-stage-awake)" },
-                  { v: s.rem_s ?? 0, color: "var(--c-stage-rem)" },
-                  { v: s.light_s ?? 0, color: "var(--c-stage-core)" },
-                  { v: s.deep_s ?? 0, color: "var(--c-stage-deep)" },
-                ].map((p, i) => {
-                  const total = (s.awake_s ?? 0) + (s.rem_s ?? 0) + (s.light_s ?? 0) + (s.deep_s ?? 0);
-                  return total > 0 ? (
-                    <div
-                      key={i}
-                      className="h-full rounded-full"
-                      style={{ width: `${(p.v / total) * 100}%`, background: p.color }}
-                    />
-                  ) : null;
-                })}
-              </div>
-              <div className="num mt-1.5 flex flex-wrap gap-3 text-[10px] text-muted">
-                {[
-                  [t("stage.awake"), s.awake_s, "var(--c-stage-awake)"],
-                  [t("stage.rem"), s.rem_s, "var(--c-stage-rem)"],
-                  [t("stage.core"), s.light_s, "var(--c-stage-core)"],
-                  [t("stage.deep"), s.deep_s, "var(--c-stage-deep)"],
-                ].map(([label, v, color]) => (
-                  <span key={String(label)} className="num">
-                    <span
-                      className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
-                      style={{ background: String(color) }}
-                    />
-                    {String(label)} {fmtHours(v as number)} ({fmtNum(((v as number) / (inBed || 1)) * 100, 0)}
-                    %)
-                  </span>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader
-              eyebrow={t("sleep.hypnogram")}
-              right={
-                <div className="num flex gap-3 text-[10px] text-muted">
-                  {(["awake", "rem", "core", "deep"] as const).map((k) => (
-                    <span key={k}>
-                      <span
-                        className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
-                        style={{
-                          background:
-                            k === "awake"
-                              ? c.stage.awake
-                              : k === "rem"
-                                ? c.stage.rem
-                                : k === "core"
-                                  ? c.stage.core
-                                  : c.stage.deep,
-                        }}
-                      />
-                      {labels[k]}
-                    </span>
-                  ))}
-                </div>
-              }
-            />
-            {hypno ? <EChart option={hypno} height={220} /> : <Empty>{t("biometrics.no_data")}</Empty>}
-          </Card>
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader eyebrow={t("sleep.vitals")} />
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <Vital label={t("overview.resting_hr")} value={fmtNum(d.biometrics.resting_hr)} unit={t("common.bpm")} />
-                <Vital label={t("overview.spo2")} value={fmtNum(d.biometrics.spo2_avg, 1)} unit="%" />
-                <Vital label={t("overview.respiration")} value={fmtNum(s.respiration_avg, 1)} unit="br/min" />
-                <Vital label={t("settings.weight")} value={fmtNum(d.biometrics.weight_kg, 1)} unit="kg" />
-              </div>
-              <div className="mt-4 border-t border-hairline pt-3">
-                <div className="eyebrow mb-2">HRV · rMSSD</div>
-                {hrv ? <EChart option={hrv} height={160} /> : <Empty>{t("biometrics.no_data")}</Empty>}
-              </div>
-            </Card>
-
-            <Card>
-              <CardHeader
-                eyebrow={t("biometrics.hrv")}
-                title={t("biometrics.trend")}
-                right={
-                  hrvTrend.data?.stats?.latest != null && (
-                    <span className="num text-[12px] text-ink2">
-                      {fmtNum(hrvTrend.data.stats.latest, 1)}%
-                    </span>
-                  )
-                }
-              />
-              {hrvTrend.data && hrvTrend.data.points.some((p) => p.value !== null) ? (
-                <EChart
-                  option={{
-                    grid: { left: 36, right: 12, top: 14, bottom: 26 },
-                    xAxis: {
-                      type: "time",
-                      axisLine: { show: false },
-                      axisTick: { show: false },
-                      axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-                    },
-                    yAxis: {
-                      type: "value",
-                      splitLine: { lineStyle: { color: c.hairline, type: "dashed" } },
-                      axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-                    },
-                    series: [
-                      {
-                        type: "bar",
-                        data: hrvTrend.data.points.map((p) => [p.date, p.value]),
-                        barMaxWidth: 7,
-                        itemStyle: { color: c.primary, opacity: 0.75, borderRadius: [2, 2, 0, 0] },
-                      },
-                    ],
-                  }}
-                  height={280}
-                />
-              ) : (
-                <Empty>{t("biometrics.no_data")}</Empty>
-              )}
-            </Card>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Vital({ label, value, unit }: { label: string; value: string; unit: string }) {
-  return (
-    <div className="rounded-card border border-hairline bg-surface2 p-3">
-      <div className="eyebrow truncate">{label}</div>
-      <BigStat value={value} unit={unit} size="md" className="mt-1" />
-    </div>
-  );
+  return <EChart option={option} height={200} />;
 }

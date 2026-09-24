@@ -88,7 +88,26 @@
     "load": "Load",
     "strain_label": "Strain",
     "readiness_label": "Readiness",
-    "recovery_label": "Recovery"
+    "recovery_label": "Recovery",
+    "subtitle": "Physiological telemetry & analysis",
+    "telemetry_state": "Telemetry state",
+    "live": "Live acquisition",
+    "paused": "Paused",
+    "no_devices": "no device connected",
+    "validated": "Validated biosignal",
+    "showing_history": "History day",
+    "epoch": "EPOCH",
+    "zone": "Zone",
+    "avg7": "7d avg",
+    "vs_mean": "vs mean",
+    "vs_baseline": "vs baseline",
+    "rolling": "rolling",
+    "band": "Band",
+    "sleep_epochs": "sleep epochs",
+    "para_tone": "Parasympathetic Tone",
+    "history_notice": "Today has no records yet — showing the most recent measured day ({{date}}).",
+    "connect_cta": "Connect a device",
+    "empty_body": "Nothing measured for this day yet. Connect Garmin to start the telemetry pipeline — the backfill walks your whole history."
   },
   "activities": {
     "title": "Activities",
@@ -129,7 +148,18 @@
     "wkg": "W/kg",
     "export": "Export",
     "moving": "Moving",
-    "elapsed": "Elapsed"
+    "elapsed": "Elapsed",
+    "subtitle": "Every recorded session, full telemetry",
+    "ago": "ago",
+    "sessions": "Sessions",
+    "in_range": "in range",
+    "time_total": "Total time",
+    "distance_total": "Total distance",
+    "load_total": "Total load",
+    "altitude_color": "colored by altitude",
+    "timeline_title": "Synchronized Timeline Stream",
+    "channels": "channels",
+    "identified": "identified"
   },
   "sleep": {
     "title": "Sleep & Recovery",
@@ -149,12 +179,50 @@
     "movement": "Nocturnal Movement & Micro-Arousals",
     "vitals": "Autonomic Biometrics & Clinical Vitals",
     "regularity": "Sleep Regularity",
-    "midpoint": "Sleep Midpoint",
+    "midpoint": "Sleep midpoint",
     "no_night": "No sleep session recorded for this night.",
     "history": "Recent Nights",
     "hrs": "h {{m}}m",
     "vs_target": "vs optimal target",
-    "restless": "Restlessness"
+    "restless": "Restlessness",
+    "subtitle": "Multi-sensor sleep tracking & recovery",
+    "architecture": "Architecture",
+    "night_detail": "Night detail",
+    "asleep": "Asleep",
+    "avg_score7": "Avg score · 7d",
+    "avg_duration7": "Avg duration · 7d",
+    "avg_deep7": "Avg deep · 7d",
+    "restorative": "restorative share",
+    "nights_tracked": "Nights tracked",
+    "window42": "last 6 weeks",
+    "recovery_index": "Recovery Index",
+    "stage_epochs": "Measured epochs",
+    "proportional": "Proportional view",
+    "hypnogram_title": "Continuous Sleep Stage Hypnogram",
+    "hypnogram_measured": "Epoch-level stage segmentation read from the stored device payload.",
+    "hypnogram_fallback": "No epoch timeline stored for this night — blocks are proportional to the measured stage totals.",
+    "night_subtitle": "Bed window {{start}} → {{end}}",
+    "bed_window": "window",
+    "target_met": "optimal buffer met",
+    "awake_time": "Awake",
+    "disturbances": "micro-disturbances",
+    "movement_index": "movement index",
+    "autonomic": "Autonomic Biometrics",
+    "overnight_sensors": "overnight optical & PPG sensors",
+    "steady": "steady",
+    "saturation_note": "mean saturation",
+    "sleep_regularity_short": "Regularity",
+    "stable": "Stable",
+    "limited": "Limited data",
+    "window7": "7-day window",
+    "avg7": "avg",
+    "hrv_envelope": "rMSSD Envelope",
+    "overnight_hrv": "Overnight HRV",
+    "readings": "readings",
+    "circadian": "Circadian Synchronization",
+    "rhythm_alignment": "Sleep Rhythm Alignment",
+    "no_night_hint": "Nights appear as soon as a device reports sleep.",
+    "restlessness": "Restlessness"
   },
   "stage": {
     "awake": "Awake",
@@ -204,7 +272,13 @@
     "365d": "1 year",
     "no_data": "No data for this metric yet.",
     "delta": "vs previous",
-    "resting_hr": "Resting Heart Rate"
+    "resting_hr": "Resting Heart Rate",
+    "page_subtitle": "Single-metric telemetry with measured history",
+    "group_cardiac": "Cardiac & Autonomic",
+    "group_body": "Body & Capacity",
+    "assess_optimal": "Optimal",
+    "assess_watch": "Watch",
+    "assess_no_data": "No data"
   },
   "training": {
     "title": "Training Plan & Load",
@@ -252,7 +326,8 @@
     "done": "Done",
     "exercise": "Exercise",
     "sets": "Sets × Reps",
-    "load_kg": "Load"
+    "load_kg": "Load",
+    "subtitle": "Events calendar, load management and gym prescription"
   },
   "coach": {
     "title": "AI Coach Insights",
@@ -270,7 +345,9 @@
     "delete_confirm": "Delete this conversation?",
     "no_chats": "No conversations yet.",
     "thinking": "Coach is thinking…",
-    "saved_locally": "Conversations are saved — resume any of them from this list."
+    "saved_locally": "Conversations are saved — resume any of them from this list.",
+    "subtitle": "Ask about any metric — conversations persist locally and on the server",
+    "conversation": "Conversation"
   },
   "social": {
     "title": "Challenges & Rankings",
@@ -294,7 +371,8 @@
     "value": "Value",
     "you": "You",
     "records": "All-Time Records",
-    "no_data": "Nothing here yet — connect a device and start training."
+    "no_data": "Nothing here yet — connect a device and start training.",
+    "subtitle": "Challenges and rankings with your friends"
   },
   "settings": {
     "title": "Settings",
@@ -339,7 +417,19 @@
     "invite_expired": "Expired",
     "revoke": "Revoke",
     "copy": "Copy code",
-    "expires": "Expires"
+    "expires": "Expires",
+    "page_subtitle": "Profile, appearance, devices and account",
+    "garmin_not_connected": "Not linked yet — connect below, tokens are stored encrypted.",
+    "provider_setup": "Awaiting provider setup",
+    "garmin_connect_hint": "Sign in with your Garmin account once — Apex exchanges the credentials for session tokens, stores them app-layer-encrypted, and never keeps the password. The first sync walks your entire history.",
+    "garmin_email": "Garmin email",
+    "garmin_password": "Garmin password",
+    "garmin_mfa": "One-time code (MFA)",
+    "connecting": "Connecting…",
+    "verify_code": "Verify code",
+    "mfa_sent": "Enter the code Garmin sent you.",
+    "sync_now": "Sync now",
+    "tokens_note": "Access tokens are handled for you: stored encrypted on the owner's server and refreshed automatically — there is nothing to copy or manage by hand."
   },
   "common": {
     "loading": "Loading…",
@@ -370,6 +460,63 @@
     "good": "Good",
     "fair": "Fair",
     "low": "Low",
-    "high": "High"
+    "high": "High",
+    "prev_day": "Previous day",
+    "next_day": "Next day"
+  },
+  "search": {
+    "placeholder": "Quick telemetry…",
+    "no_results": "No matches"
+  },
+  "sync": {
+    "no_devices": "No device connected"
+  },
+  "disc": {
+    "unknown": "Activity",
+    "running": "Running",
+    "road_cycling": "Road Cycling",
+    "gravel_cycling": "Gravel Cycling",
+    "mountain_biking": "Mountain Biking",
+    "strength": "Strength",
+    "gym_general": "Gym",
+    "yoga": "Yoga",
+    "pilates": "Pilates",
+    "swimming": "Swimming",
+    "rowing": "Rowing",
+    "tennis": "Tennis",
+    "cardio": "Cardio",
+    "walking": "Walking",
+    "hiking": "Hiking"
+  },
+  "synth": {
+    "title": "Synthesis Diagnosis",
+    "body_prefix": "Autonomic status suggests",
+    "level_optimal": "Central sympathetic tone is attenuated and parasympathetic recovery is primed.",
+    "level_good": "Recovery reserves are adequate for moderate-to-hard work.",
+    "level_low": "Autonomic friction is elevated — prioritize rest and hydration.",
+    "level_unknown": "Not enough measured data for a diagnosis yet.",
+    "acwr_high": "Acute load is running above the chronic base — cap intensity.",
+    "acwr_low": "Detraining risk: chronic base is decaying — schedule stimulus.",
+    "acwr_ok": "Load sits inside the optimal 0.8–1.3 window.",
+    "no_load": "No measured load yet.",
+    "hrv_up": "Overnight HRV is above baseline — parasympathetic response is strong.",
+    "hrv_down": "Overnight HRV sits below baseline — monitor recovery.",
+    "load_ceiling": "Today's sensible load ceiling",
+    "badge": "DETERMINISTIC SYNTHESIS"
+  },
+  "weather": {
+    "temp": "Temperature",
+    "wind": "Wind max",
+    "precip": "Precipitation",
+    "clear": "Clear sky",
+    "mostly_clear": "Mostly clear",
+    "partly_cloudy": "Partly cloudy",
+    "overcast": "Overcast",
+    "fog": "Fog",
+    "drizzle": "Drizzle",
+    "rain": "Rain",
+    "snow": "Snow",
+    "showers": "Showers",
+    "storm": "Thunderstorm"
   }
 }

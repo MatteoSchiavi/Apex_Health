@@ -1,13 +1,30 @@
 /**
- * Apex Precision component kit — the ONLY place raw styling vocabulary
+ * Apex Precision component kit v2 — the ONLY place raw styling vocabulary
  * lives. Pages compose these; nothing in a feature folder invents its own
  * card/badge/button look. Coherence law (owner: "be coherent and do not
  * break the flow of the design").
+ *
+ * v2 vocabulary (approved mockups): PageHeader, StatPod, ArcGauge, ZoneBar,
+ * SportIcon, Sparkline, labeled RangeBar. Hierarchy = tonal layering +
+ * hairlines; color = semantic discipline only; numbers = mono + tnum.
  */
 
 import { type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import {
+  TrendingDown,
+  TrendingUp,
+  Activity,
+  Bike,
+  Dumbbell,
+  Footprints,
+  HeartPulse,
+  Mountain,
+  PersonStanding,
+  Rows,
+  Waves,
+  type LucideIcon,
+} from "lucide-react";
 
 /* ------------------------------------------------------------------ Card */
 
@@ -48,7 +65,10 @@ export function CardHeader({
       <div className="min-w-0">
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         {title && (
-          <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">{title}</div>
+          <div className="mt-0.5 flex items-center gap-2 truncate text-[15px] font-semibold text-ink">
+            {icon}
+            {title}
+          </div>
         )}
       </div>
       {(right || icon) && (
@@ -57,6 +77,30 @@ export function CardHeader({
           {right}
         </div>
       )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- page header */
+
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  className = "",
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-wrap items-end justify-between gap-3 ${className}`}>
+      <div className="min-w-0">
+        <h1 className="page-title">{title}</h1>
+        {subtitle && <div className="mt-1 text-[13px] text-muted">{subtitle}</div>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -87,20 +131,65 @@ export function BigStat({
   );
 }
 
+/**
+ * StatPod — the mockup's metric pod: label-caps eyebrow, oversized mono-ish
+ * numeric readout, inline muted unit, optional sub-line and accent tone.
+ */
+export function StatPod({
+  label,
+  value,
+  unit,
+  sub,
+  tone = "ink",
+  right,
+  className = "",
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  unit?: ReactNode;
+  sub?: ReactNode;
+  tone?: "ink" | "positive" | "alert" | "warning" | "primary";
+  right?: ReactNode;
+  className?: string;
+}) {
+  const toneCls = {
+    ink: "text-ink",
+    positive: "text-positiveText",
+    alert: "text-alertText",
+    warning: "text-warningText",
+    primary: "text-primaryText",
+  }[tone];
+  return (
+    <div className={`rounded-card border border-hairline bg-surface2 p-3 ${className}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="eyebrow truncate">{label}</div>
+        {right}
+      </div>
+      <div className={`num mt-1 flex items-baseline gap-1 text-[22px] font-bold leading-7 ${toneCls}`}>
+        {value}
+        {unit && <span className="text-[10px] font-medium text-muted">{unit}</span>}
+      </div>
+      {sub && <div className="num mt-0.5 text-[10px] text-faint">{sub}</div>}
+    </div>
+  );
+}
+
 /** Directional delta chip: green up / red down by semantic direction. */
 export function DeltaChip({
   delta,
   unit,
   goodWhen = "up",
   compact = false,
+  suffix,
 }: {
   delta: number | null | undefined;
   unit?: string;
   goodWhen?: "up" | "down" | "none";
   compact?: boolean;
+  suffix?: string;
 }) {
   const { t } = useTranslation();
-  if (delta === null || delta === undefined) return null;
+  if (delta === null || delta === undefined || !Number.isFinite(delta)) return null;
   const positive = delta >= 0;
   const good = goodWhen === "none" ? null : positive === (goodWhen === "up");
   const color = good === null ? "muted" : good ? "positive" : "alert";
@@ -120,7 +209,9 @@ export function DeltaChip({
     >
       <Icon size={11} strokeWidth={2.4} />
       {text}
-      {!compact && <span className="font-normal opacity-80">{t("overview.vs7d", { value: "" })}</span>}
+      {!compact && (
+        <span className="font-normal opacity-80">{suffix ?? t("overview.vs7d", { value: "" })}</span>
+      )}
     </span>
   );
 }
@@ -141,15 +232,21 @@ export function Badge({
   } as const;
   return (
     <span
-      className={`eyebrow inline-flex items-center rounded-sm px-1.5 py-0.5 !text-[10px] ${tones[tone]}`}
+      className={`eyebrow inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 !text-[10px] ${tones[tone]}`}
     >
       {children}
     </span>
   );
 }
 
-/** Score gauge bar: 0-100 with a floor/cap context stripe. */
-export function ScoreBar({ value, tone = "primary" }: { value: number | null; tone?: "primary" | "positive" | "warning" | "alert" | "muted" }) {
+/** Score gauge bar: 0-100 with a semantic tone. */
+export function ScoreBar({
+  value,
+  tone = "primary",
+}: {
+  value: number | null;
+  tone?: "primary" | "positive" | "warning" | "alert" | "muted";
+}) {
   const colors = {
     primary: "bg-primary",
     positive: "bg-positive",
@@ -168,25 +265,206 @@ export function ScoreBar({ value, tone = "primary" }: { value: number | null; to
   );
 }
 
-/** Horizontal range bar with a value marker (biomarker context strip). */
-export function RangeBar({ min, max, value, marker }: { min: number; max: number; value?: number; marker?: number }) {
-  const pct = (v: number) => ((v - min) / (max - min)) * 100;
+export function RangeBar({
+  min,
+  max,
+  value,
+  marker,
+  markers,
+  tone = "positive",
+}: {
+  min: number;
+  max: number;
+  value?: number;
+  /** legacy single-marker prop (value dot) */
+  marker?: number;
+  markers?: { label: ReactNode; at: number; className?: string }[];
+  tone?: "positive" | "primary" | "muted";
+}) {
+  const pct = (v: number) => Math.min(100, Math.max(0, ((v - min) / (max - min)) * 100));
+  const fill = { positive: "bg-positive/60", primary: "bg-primary/60", muted: "bg-hairline2" }[tone];
+  const dots: { at: number; className?: string }[] =
+    markers ?? (marker !== undefined ? [{ at: marker }] : []);
   return (
     <div className="relative h-1.5 w-full rounded-full bg-hairline">
       {value !== undefined && (
         <div
-          className="absolute h-full rounded-full bg-positive/60"
-          style={{ left: `${Math.max(0, pct(value))}%`, right: 0 }}
+          className={`absolute h-full rounded-full ${fill}`}
+          style={{ left: 0, width: `${pct(value)}%` }}
         />
       )}
-      {marker !== undefined && (
+      {dots.map((m, i) => (
         <div
-          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-surface bg-ink"
-          style={{ left: `${Math.min(100, Math.max(0, pct(marker)))}%` }}
+          key={i}
+          className={`absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-surface bg-ink ${m.className ?? ""}`}
+          style={{ left: `${pct(m.at)}%` }}
         />
-      )}
+      ))}
     </div>
   );
+}
+
+/**
+ * ArcGauge — the mockup's sleep-score arc: 240° sweep, rounded caps,
+ * score readout inside, verdict chip below.
+ */
+export function ArcGauge({
+  value,
+  size = 150,
+  tone = "var(--c-positive)",
+  label,
+}: {
+  value: number | null;
+  size?: number;
+  tone?: string;
+  label?: ReactNode;
+}) {
+  const v = Math.max(0, Math.min(100, value ?? 0));
+  const stroke = 9;
+  const r = (size - stroke) / 2 - 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  // 240° arc centered at top (from -210° to +30°)
+  const start = (-210 * Math.PI) / 180;
+  const end = (30 * Math.PI) / 180;
+  const arc = (a0: number, a1: number) => {
+    const x0 = cx + r * Math.cos(a0);
+    const y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1);
+    const y1 = cy + r * Math.sin(a1);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+  };
+  const t = start + (end - start) * (v / 100);
+  return (
+    <div className="relative" style={{ width: size, height: size * 0.86 }}>
+      <svg width={size} height={size * 0.86} viewBox={`0 0 ${size} ${size * 0.86}`}>
+        <g transform={`translate(0 ${-size * 0.07})`}>
+          <path d={arc(start, end)} fill="none" stroke="var(--c-hairline)" strokeWidth={stroke} strokeLinecap="round" />
+          <path
+            d={arc(start, t)}
+            fill="none"
+            stroke={tone}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            style={{ transition: "d 500ms" }}
+          />
+        </g>
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+        <div className="num flex items-baseline gap-1">
+          <span className="text-[40px] font-bold leading-none tracking-[-0.03em] text-ink">
+            {value === null ? "—" : Math.round(v)}
+          </span>
+          <span className="text-[12px] font-medium text-muted">/100</span>
+        </div>
+        {label && <div className="mt-1.5">{label}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ZoneBar — segmented proportion strip (sleep stages, HR zones): every
+ * segment ≥1%, hairline gaps, legend rendered by the caller.
+ */
+export function ZoneBar({
+  parts,
+  height = 8,
+  gap = 2,
+}: {
+  parts: { key: string; value: number; color: string; label?: string }[];
+  height?: number;
+  gap?: number;
+}) {
+  const total = parts.reduce((a, p) => a + Math.max(0, p.value), 0);
+  if (total <= 0) return <div className="h-2 w-full rounded-full bg-hairline" />;
+  return (
+    <div className="flex w-full overflow-hidden rounded-full" style={{ height, gap }}>
+      {parts.map((p) => (
+        <div
+          key={p.key}
+          title={p.label}
+          className="h-full rounded-full transition-all"
+          style={{ width: `${Math.max(1, (p.value / total) * 100)}%`, background: p.color }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Inline SVG sparkline — hub-card trend without a chart engine. */
+export function Sparkline({
+  points,
+  width = 220,
+  height = 40,
+  color = "var(--c-primary)",
+  fill = true,
+}: {
+  points: (number | null)[];
+  width?: number;
+  height?: number;
+  color?: string;
+  fill?: boolean;
+}) {
+  const vals = points.filter((v): v is number => v !== null && Number.isFinite(v));
+  if (vals.length < 2) return <div style={{ height }} className="rounded-sm bg-hairline/40" />;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const step = width / (points.length - 1);
+  let d = "";
+  let started = false;
+  points.forEach((p, i) => {
+    if (p === null || !Number.isFinite(p)) {
+      started = false;
+      return;
+    }
+    const x = i * step;
+    const y = height - 3 - ((p - min) / span) * (height - 6);
+    d += `${started ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)} `;
+    started = true;
+  });
+  const area = `${d} L ${width} ${height} L 0 ${height} Z`;
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      {fill && <path d={area} fill={color} opacity={0.1} />}
+      <path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* --------------------------------------------------------- sport icons */
+
+const SPORT_ICONS: Record<string, LucideIcon> = {
+  running: Footprints,
+  road_cycling: Bike,
+  gravel_cycling: Bike,
+  mountain_biking: Mountain,
+  strength: Dumbbell,
+  gym_general: Dumbbell,
+  yoga: PersonStanding,
+  pilates: PersonStanding,
+  swimming: Waves,
+  rowing: Rows,
+  tennis: PersonStanding,
+  cardio: HeartPulse,
+  walking: Footprints,
+  hiking: Mountain,
+};
+
+export function SportIcon({ discipline, size = 15, className = "" }: { discipline: string | null | undefined; size?: number; className?: string }) {
+  const Icon = (discipline && SPORT_ICONS[discipline]) || Activity;
+  return <Icon size={size} strokeWidth={1.8} className={className} />;
+}
+
+export function friendlyDiscipline(name: string | null | undefined, t: (k: string) => string): string {
+  if (!name) return t("disc.unknown");
+  const key = `disc.${name}`;
+  const translated = t(key);
+  // i18next returns the key itself when missing — fall back to a humanized name
+  if (translated === key) return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return translated;
 }
 
 /* --------------------------------------------------------------- Controls */
@@ -204,8 +482,8 @@ export function Segmented<T extends string>({
 }) {
   return (
     <div
-      className={`inline-flex items-center rounded-control border border-hairline bg-surface ${
-        size === "sm" ? "h-7" : "h-9"
+      className={`inline-flex items-center rounded-control border border-hairline bg-bg p-0.5 ${
+        size === "sm" ? "h-8" : "h-10"
       }`}
     >
       {options.map((o) => (
@@ -213,9 +491,9 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`num h-full rounded-[5px] px-2.5 text-[12px] font-medium transition-colors ${
+          className={`num h-full rounded-[3px] px-2.5 text-[12px] font-medium transition-colors ${
             value === o.value
-              ? "bg-surface3 text-ink"
+              ? "bg-surface2 text-ink shadow-[0_1px_0_var(--c-hairline)]"
               : "text-muted hover:text-ink2"
           }`}
         >
@@ -247,14 +525,14 @@ export function Button({
     primary: "bg-primary text-white hover:brightness-110",
     ghost: "border border-hairline bg-transparent text-ink2 hover:bg-surface3",
     subtle: "bg-hairline text-ink hover:bg-surface3",
-    danger: "bg-alertSoft text-alertText hover:brightness-110",
+    danger: "border border-alert/40 bg-alertSoft text-alertText hover:brightness-110",
   } as const;
   return (
     <button
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-control px-3.5 text-[13px] font-medium transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex h-8 items-center justify-center gap-2 rounded-control px-3 text-[13px] font-medium transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
     >
       {icon}
       {children}
@@ -272,6 +550,7 @@ export function Input({
   min,
   max,
   step,
+  autoComplete,
   className = "",
 }: {
   value: string | number;
@@ -283,6 +562,7 @@ export function Input({
   min?: number;
   max?: number;
   step?: number;
+  autoComplete?: string;
   className?: string;
 }) {
   return (
@@ -296,6 +576,7 @@ export function Input({
         max={max}
         step={step}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         className="h-9 w-full rounded-control border border-hairline bg-surface2 px-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
       />
@@ -344,19 +625,15 @@ export function Toggle({
   label?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className="flex items-center gap-2"
-    >
+    <button type="button" onClick={() => onChange(!checked)} className="flex items-center gap-2">
       <span
-        className={`relative inline-block h-4.5 w-8 rounded-full transition-colors ${
+        className={`relative inline-block rounded-full transition-colors ${
           checked ? "bg-primary" : "bg-hairline2"
         }`}
         style={{ height: 18, width: 32 }}
       >
         <span
-          className="absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all"
+          className="absolute top-0.5 rounded-full bg-white transition-all"
           style={{ left: checked ? 16 : 2, height: 14, width: 14 }}
         />
       </span>
@@ -386,10 +663,17 @@ export function ErrorNote({ message }: { message?: string }) {
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+export function Empty({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
-      <div className="text-[13px] text-muted">{children}</div>
+    <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+      <div className="max-w-sm text-[13px] text-muted">{children}</div>
+      {action}
     </div>
   );
 }
@@ -417,5 +701,23 @@ export function fmtHours(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
-  return m ? `${h}${"h"} ${String(m).padStart(2, "0")}m` : `${h}h`;
+  return m ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`;
+}
+
+export function fmtClock(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m`;
+}
+
+export function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }

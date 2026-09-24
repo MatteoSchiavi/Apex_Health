@@ -1,25 +1,27 @@
 /*
- * APEX PRECISION — design tokens (ui-language/apex_precision_1/DESIGN.md).
+ * APEX PRECISION — design tokens v2 (ui-language/apex_precision_1+2/DESIGN.md,
+ * approved mockups: home dashboard, sleep night, HR telemetry, activity detail).
  *
  * One token set, two palettes. Dark is the default (:root); the light theme
- * is the same semantic variables resolved against the surgical off-white
+ * resolves the same semantic variables against the surgical off-white
  * palette under html.light. Components consume ONLY semantic aliases
  * (--bg, --surface, --hairline, --text, ...) — never raw hex — which is
  * what guarantees the two themes cannot drift apart.
  *
- * Type law: Geist everywhere, JetBrains Mono for micro-telemetry/timestamps,
+ * Type law: Geist for structure/prose, JetBrains Mono for numeric telemetry,
  * tabular figures ("tnum") on every numeric readout, label-caps eyebrows.
+ * Hierarchy lives in TONAL LAYERING + 1px hairlines — never drop shadows.
  */
 
 @import "tailwindcss";
 
 :root {
   /* --- dark palette (default) ------------------------------------------ */
-  --c-bg: #0a0c10;                 /* base canvas, level 0 */
-  --c-bg-accent: #111318;          /* main surface behind content */
-  --c-surface: #13161d;            /* level-1 panels/cards */
-  --c-surface-2: #181c26;          /* level-2 controls/flyouts */
-  --c-surface-3: #1f2430;          /* hover / nested */
+  --c-bg: #0d0f13;                 /* level-0 ground plane (sidebar/topbar) */
+  --c-bg-accent: #111318;          /* content canvas */
+  --c-surface: #11141b;            /* level-1 panels/cards (mockup surface) */
+  --c-surface-2: #181c26;          /* level-2 controls/flyouts/active */
+  --c-surface-3: #1f2430;          /* hover / nested wells */
   --c-hairline: rgba(255, 255, 255, 0.08);
   --c-hairline-strong: rgba(255, 255, 255, 0.14);
 
@@ -55,7 +57,7 @@
 }
 
 html.light {
-  --c-bg: #f1f4f9;
+  --c-bg: #f1f3f6;
   --c-bg-accent: #f8fafc;
   --c-surface: #ffffff;
   --c-surface-2: #ffffff;
@@ -63,7 +65,7 @@ html.light {
   --c-hairline: rgba(15, 23, 42, 0.08);
   --c-hairline-strong: rgba(15, 23, 42, 0.16);
 
-  --c-text: #0f172a;
+  --c-text: #0d0f12;
   --c-text-2: #334155;
   --c-text-muted: #64748b;
   --c-text-faint: #94a3b8;
@@ -123,8 +125,8 @@ html.light {
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --radius-card: 0.5rem;    /* telemetry cards: 8px — design law */
-  --radius-control: 0.375rem; /* buttons/inputs: 6px (4px law + touch ergonomics) */
+  --radius-card: 0.5rem;      /* telemetry cards: 8px — design law */
+  --radius-control: 0.25rem;  /* buttons/inputs: 4px — design law */
 }
 
 /* ------------------------------------------------ fonts (bundled, zero CDN) */
@@ -184,6 +186,18 @@ body {
   color: var(--c-text-muted);
 }
 
+/* hero page title (headline-lg) */
+.page-title {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+}
+@media (max-width: 767px) {
+  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
+}
+
 /* scrollbar restraint */
 * { scrollbar-width: thin; scrollbar-color: var(--c-hairline-strong) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -197,3 +211,8 @@ body {
 }
 
 ::selection { background: var(--c-primary-soft); }
+
+/* reduced-motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

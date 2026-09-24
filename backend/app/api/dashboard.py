@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.db import get_session
-from app.models.activity import Activity
+from app.models.activity import Activity, Discipline
 from app.models.features import DailyFeature
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
@@ -27,6 +27,11 @@ from app.schemas.ui import OverviewOut, ScoreBlock
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 WINDOW_DAYS = 7
+# How far the anchor may fall back when "today" has nothing recorded at all
+# (fresh connect reality: the backfill populated history, today's row only
+# appears once the device reports it — without this the home page renders
+# empty for days despite years of data).
+ANCHOR_FALLBACK_DAYS = 45
 
 
 def _fl(value) -> float | None:
@@ -52,14 +57,71 @@ async def dashboard_overview(
     tz = ZoneInfo(tzname)
     now = datetime.now(UTC).astimezone(tz)
     anchor = now.date()
+    explicit_date = False
     if date:
         try:
             anchor = datetime.strptime(date, "%Y-%m-%d").date()
+            explicit_date = True
         except ValueError as exc:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, "date must be YYYY-MM-DD"
             ) from exc
     window_start = anchor - timedelta(days=WINDOW_DAYS - 1)
+
+    # --- anchor fallback -------------------------------------------------------
+    # When the caller did not pin a date and "today" carries nothing recorded
+    # (no feature row, no biometric, no sleep, no activity, no HRV sample),
+    # slide the anchor back to the most recent day that does — within
+    # ANCHOR_FALLBACK_DAYS. The UI labels this state so the dashboard never
+    # renders a full panel of dashes while real history exists.
+    anchor_is_today = anchor == now.date()
+    if anchor_is_today and not explicit_date:
+        from sqlalchemy import func, union_all
+
+        fallback_floor = anchor - timedelta(days=ANCHOR_FALLBACK_DAYS)
+        feat_days = select(DailyFeature.date).where(
+            DailyFeature.user_id == user.id,
+            DailyFeature.date >= fallback_floor,
+            DailyFeature.date <= anchor,
+        )
+        bio_days = select(DailyBiometric.date).where(
+            DailyBiometric.user_id == user.id,
+            DailyBiometric.date >= fallback_floor,
+            DailyBiometric.date <= anchor,
+        )
+        sleep_days = select(SleepSession.local_date).where(
+            SleepSession.user_id == user.id,
+            SleepSession.local_date >= fallback_floor,
+            SleepSession.local_date <= anchor,
+        )
+        act_days = select(Activity.local_date).where(
+            Activity.user_id == user.id,
+            Activity.local_date >= fallback_floor,
+            Activity.local_date <= anchor,
+        )
+        hrv_days = (
+            select(func.date(HrvReading.timestamp).label("date"))
+            .where(
+                HrvReading.user_id == user.id,
+                HrvReading.timestamp
+                >= datetime(
+                    fallback_floor.year, fallback_floor.month, fallback_floor.day,
+                    tzinfo=tz,
+                ),
+                HrvReading.timestamp
+                < datetime(anchor.year, anchor.month, anchor.day, tzinfo=tz)
+                + timedelta(days=1),
+            )
+        )
+        latest = (
+            await session.execute(
+                select(func.max(union_all(feat_days, bio_days, sleep_days, act_days, hrv_days).subquery().c.date))
+            )
+        ).scalar()
+        if latest is not None and latest != anchor:
+            anchor = latest
+            window_start = anchor - timedelta(days=WINDOW_DAYS - 1)
+    anchor_is_today = anchor == now.date()
 
     # --- DailyFeature window: anchor + the 7 days before it ------------------
     feat_rows = (
@@ -140,8 +202,9 @@ async def dashboard_overview(
 
     # --- today's activities (compact cards) ------------------------------------
     acts = (
-        await session.scalars(
-            select(Activity)
+        await session.execute(
+            select(Activity, Discipline.name)
+            .outerjoin(Discipline, Activity.discipline_id == Discipline.id)
             .where(Activity.user_id == user.id, Activity.local_date == anchor)
             .order_by(Activity.start_time.desc())
         )
@@ -150,6 +213,7 @@ async def dashboard_overview(
         {
             "id": a.id,
             "start_time": a.start_time.isoformat(),
+            "discipline": dname,
             "duration_s": a.duration_s,
             "distance_m": _fl(a.distance_m),
             "avg_hr": a.avg_hr,
@@ -158,7 +222,7 @@ async def dashboard_overview(
             "calories": a.calories,
             "data_completeness": a.data_completeness,
         }
-        for a in acts
+        for a, dname in acts
     ]
 
     sleep_block = None
@@ -179,6 +243,21 @@ async def dashboard_overview(
             "restlessness": _fl(night.restlessness),
         }
 
+    norm_start = datetime(anchor.year, anchor.month, anchor.day, tzinfo=tz) - timedelta(days=30)
+    norm_rows = (
+        await session.scalars(
+            select(HrvReading.hrv_ms).where(
+                HrvReading.user_id == user.id,
+                HrvReading.timestamp >= norm_start,
+                HrvReading.timestamp
+                < datetime(anchor.year, anchor.month, anchor.day, tzinfo=tz) + timedelta(days=1),
+            )
+        )
+    ).all()
+    hrv_norm_30d = (
+        round(sum(float(v) for v in norm_rows) / len(norm_rows), 1) if norm_rows else None
+    )
+
     integration_status = await integrations_overview(session, user.id)
     alerts = await open_alerts(session, user.id)
 
@@ -190,6 +269,7 @@ async def dashboard_overview(
 
     return OverviewOut(
         date=anchor.isoformat(),
+        anchor_is_today=anchor_is_today,
         readiness=_score("readiness_score"),
         recovery=_score("recovery_score"),
         strain=_score("strain_score"),
@@ -200,6 +280,7 @@ async def dashboard_overview(
         sleep_hours=total_sleep_h,
         hrv_ms=hrv_avg,
         hrv_baseline_ms=hrv_baseline,
+        hrv_norm_30d=hrv_norm_30d,
         resting_hr=rhr,
         resting_hr_delta_7d=_delta(rhr, _bio_mean(lambda b: b.resting_hr)),
         spo2_avg=spo2,

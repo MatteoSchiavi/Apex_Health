@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivityLap, ActivitySourceLink, Discipline
-from app.models.integration import Integration
+from app.models.integration import Integration, RawIngest
 from app.models.user import AuthCredential, User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.services.device_merge import (
@@ -480,3 +480,216 @@ async def test_lap_upsert_idempotent(db_session):
     assert len(rows) == 2
     assert rows[0].avg_hr == 148
     assert rows[1].avg_power == 240.0
+
+
+# ------------------------------------------------------------------ anchor
+# fallback (fresh-connect reality: today unsynced but history populated)
+
+
+async def test_overview_falls_back_to_latest_measured_day(
+    client: AsyncClient, db_session: AsyncSession
+):
+    await _login(client)
+    user = await _owner_user(db_session)
+
+    old_day = date.today() - timedelta(days=12)
+    db_session.add(
+        DailyBiometric(
+            user_id=user.id, date=old_day, resting_hr=46, steps=8000, spo2_avg=97.1
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get("/dashboard/overview")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == old_day.isoformat()
+    assert body["anchor_is_today"] is False
+    assert body["resting_hr"] == 46
+
+
+async def test_overview_pinned_date_wins_over_fallback(
+    client: AsyncClient, db_session: AsyncSession
+):
+    await _login(client)
+    user = await _owner_user(db_session)
+
+    old_day = date.today() - timedelta(days=20)
+    db_session.add(
+        DailyBiometric(user_id=user.id, date=old_day, resting_hr=44)
+    )
+    await db_session.commit()
+
+    resp = await client.get("/dashboard/overview?date=2020-01-01")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == "2020-01-01"
+    # explicit date never falls back, even when empty
+    assert body["anchor_is_today"] is False
+
+
+# ------------------------------------------------------------- sleep stages
+
+
+async def test_sleep_stages_from_raw_payload(
+    client: AsyncClient, db_session: AsyncSession
+):
+    await _login(client)
+    user = await _owner_user(db_session)
+
+    night_date = date.today()
+    start = datetime(night_date.year, night_date.month, night_date.day, 22, 30, tzinfo=UTC) - timedelta(days=1)
+    end = start + timedelta(hours=8)
+    session_row = SleepSession(
+        user_id=user.id,
+        local_date=night_date,
+        start_time=start,
+        end_time=end,
+        total_sleep_s=27000,
+        deep_s=5000,
+        light_s=15000,
+        rem_s=6000,
+        awake_s=800,
+        sleep_score=88,
+    )
+    db_session.add(session_row)
+    levels = [
+        {"activityLevel": {"value": 1}, "startGMT": "2026-09-23T21:30:00.0", "endGMT": "2026-09-23T22:15:00.0"},
+        {"activityLevel": {"value": 2}, "startGMT": "2026-09-23T22:15:00.0", "endGMT": "2026-09-23T23:00:00.0"},
+        {"activityLevel": {"value": 3}, "startGMT": "2026-09-23T23:00:00.0", "endGMT": "2026-09-24T00:05:00.0"},
+    ]
+    db_session.add(
+        RawIngest(
+            user_id=user.id,
+            source="garmin",
+            payload_type="sleep",
+            raw_json={
+                "dailySleepDTO": {
+                    "sleepStartTimestampGMT": int(start.timestamp() * 1000),
+                    "sleepEndTimestampGMT": int(end.timestamp() * 1000),
+                    "sleepLevels": levels,
+                }
+            },
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(f"/sleep/{night_date.isoformat()}/stages")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == night_date.isoformat()
+    assert body["source"] == "garmin"
+    segs = body["segments"]
+    assert segs is not None and len(segs) == 3
+    assert [s["stage"] for s in segs] == ["deep", "light", "rem"]
+
+
+async def test_sleep_stages_null_when_no_raw_timeline(
+    client: AsyncClient, db_session: AsyncSession
+):
+    await _login(client)
+    user = await _owner_user(db_session)
+    night_date = date.today()
+    db_session.add(
+        SleepSession(
+            user_id=user.id,
+            local_date=night_date,
+            start_time=datetime(night_date.year, night_date.month, night_date.day, 23, 0, tzinfo=UTC),
+            end_time=datetime(night_date.year, night_date.month, night_date.day, 7, 0, tzinfo=UTC) + timedelta(days=1),
+            total_sleep_s=20000,
+        )
+    )
+    await db_session.commit()
+    resp = await client.get(f"/sleep/{night_date.isoformat()}/stages")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["segments"] is None
+
+
+# ----------------------------------------------------------- garmin connect
+
+
+async def test_garmin_connect_mfa_then_success(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch
+):
+    await _login(client)
+
+    from app.api import integrations as integrations_mod
+    from app.api.integrations import _MfaRequired
+
+    state = {"login_calls": 0, "codes": []}
+
+    class FakeClient:
+        def dump_tokens(self):
+            return {"di_token": "tok", "di_refresh_token": "ref"}
+
+    def fake_from_password(email, password, prompt_mfa):
+        state["login_calls"] += 1
+        code = prompt_mfa()  # raises _MfaRequired when the API got no code
+        state["codes"].append(code)
+        return FakeClient()
+
+    monkeypatch.setattr(
+        integrations_mod.LiveGarminClient,
+        "from_password",
+        staticmethod(fake_from_password),
+    )
+
+    # Step 1: no mfa code -> the login thread sees MFA required
+    resp = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "a@b.c", "password": "pw"},
+        headers=CSRF,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["mfa_required"] is True
+    assert state["login_calls"] == 1
+
+    # Step 2: with mfa code -> connected, tokens stored encrypted
+    resp = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "a@b.c", "password": "pw", "mfa_code": "123456"},
+        headers=CSRF,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["connected"] is True
+    assert body["mfa_required"] is False
+    assert state["codes"] == ["123456"]
+
+    integration = (
+        await db_session.execute(
+            select(Integration).where(Integration.provider == "garmin")
+        )
+    ).scalars().first()
+    await db_session.refresh(integration)
+    assert integration is not None
+    assert integration.status == "active"
+    assert integration.credentials_encrypted is not None
+    assert integration.last_synced_at is None
+
+
+async def test_garmin_connect_bad_credentials_400(client: AsyncClient, monkeypatch):
+    await _login(client)
+    from app.api import integrations as integrations_mod
+    from app.connectors.garmin.client import GarminAuthError
+
+    def fail_login(email, password, prompt_mfa):
+        raise GarminAuthError("Garmin login failed: nope")
+
+    monkeypatch.setattr(
+        integrations_mod.LiveGarminClient, "from_password", staticmethod(fail_login)
+    )
+    resp = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "a@b.c", "password": "pw"},
+        headers=CSRF,
+    )
+    assert resp.status_code == 400
+    assert "Garmin connect failed" in resp.json()["detail"]
+
+
+async def test_garmin_sync_now_requires_connection(client: AsyncClient):
+    await _login(client)
+    resp = await client.post("/settings/integrations/garmin/sync", headers=CSRF)
+    assert resp.status_code == 400

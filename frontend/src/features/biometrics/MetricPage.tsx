@@ -10,17 +10,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api, type MetricTrend } from "../../app/api";
 import {
-  Badge,
-  BigStat,
   Card,
   CardHeader,
+  DeltaChip,
   Empty,
   ErrorNote,
   Loading,
+  PageHeader,
   Segmented,
+  StatPod,
   fmtNum,
 } from "../../components/kit";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
@@ -62,11 +63,6 @@ const RANGE_DAYS: Record<Range, number> = {
   "180d": 180,
   "365d": 365,
 };
-
-/** special-page hint: hr gets the HR analysis framing */
-function isHr(key: string) {
-  return key === "hr";
-}
 
 export default function MetricPage() {
   const { key = "" } = useParams();
@@ -128,6 +124,14 @@ export default function MetricPage() {
         lineStyle: { color: c.primary, width: 2 },
         itemStyle: { color: c.primary },
         areaStyle: { color: c.primary, opacity: 0.08 },
+        markArea:
+          stats.min != null && stats.max != null
+            ? {
+                silent: true,
+                itemStyle: { color: c.primary, opacity: 0.04 },
+                data: [[{ yAxis: stats.min }, { yAxis: stats.max }]],
+              }
+            : undefined,
         markLine:
           stats.mean != null
             ? {
@@ -144,54 +148,40 @@ export default function MetricPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <div className="eyebrow">
-          <Link to="/app/biometrics" className="hover:underline">
-            ← {t("biometrics.title")}
-          </Link>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink">
-            {t(labelKey)}
-            {isHr(key) && (
-              <span className="ml-3">
-                <Badge tone="positive">{t("app.measured")}</Badge>
-              </span>
-            )}
-          </h1>
+      <PageHeader
+        title={t(labelKey)}
+        subtitle={t("biometrics.page_subtitle", { unit: data.unit })}
+        actions={
           <Segmented
             value={range}
             onChange={setRange}
             options={RANGES.map((r) => ({ value: r, label: t(`biometrics.${r}`) }))}
           />
-        </div>
-      </div>
+        }
+      />
 
       {!hasData ? (
         <Empty>{t("biometrics.no_data")}</Empty>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
-            <Card className="!p-3">
-              <div className="eyebrow">{t("biometrics.latest")}</div>
-              <BigStat value={fmtNum(latest, 1)} unit={data.unit} size="md" className="mt-1" />
-              {delta != null && Number.isFinite(delta) && (
-                <div
-                  className={`num mt-1 text-[11px] font-semibold ${
-                    (goodWhen === "down" ? delta <= 0 : delta >= 0)
-                      ? "text-positiveText"
-                      : "text-alertText"
-                  }`}
-                >
-                  {delta >= 0 ? "+" : "−"}
-                  {Math.abs(delta).toFixed(1)} {t("biometrics.delta")}
-                </div>
-              )}
-            </Card>
-            <StatCard label={t("biometrics.mean")} value={fmtNum(stats.mean as number, 1)} unit={data.unit} />
-            <StatCard label={t("biometrics.min")} value={fmtNum(stats.min as number, 1)} unit={data.unit} />
-            <StatCard label={t("biometrics.max")} value={fmtNum(stats.max as number, 1)} unit={data.unit} />
-            <StatCard label={t("biometrics.count")} value={fmtNum(stats.count as number, 0)} unit="" />
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <StatPod
+              label={t("biometrics.latest")}
+              value={fmtNum(latest, 1)}
+              unit={data.unit}
+              right={
+                <DeltaChip
+                  delta={delta}
+                  unit=""
+                  goodWhen={goodWhen === "down" ? "down" : "up"}
+                  compact
+                />
+              }
+            />
+            <StatPod label={t("biometrics.mean")} value={fmtNum(stats.mean as number, 1)} unit={data.unit} />
+            <StatPod label={t("biometrics.min")} value={fmtNum(stats.min as number, 1)} unit={data.unit} />
+            <StatPod label={t("biometrics.max")} value={fmtNum(stats.max as number, 1)} unit={data.unit} />
+            <StatPod label={t("biometrics.count")} value={fmtNum(stats.count as number, 0)} unit="" />
           </div>
 
           <Card>
@@ -208,14 +198,5 @@ export default function MetricPage() {
         </>
       )}
     </div>
-  );
-}
-
-function StatCard({ label, value, unit }: { label: string; value: string; unit: string }) {
-  return (
-    <Card className="!p-3">
-      <div className="eyebrow truncate">{label}</div>
-      <BigStat value={value} unit={unit || undefined} size="md" className="mt-1" />
-    </Card>
   );
 }
