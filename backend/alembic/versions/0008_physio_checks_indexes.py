@@ -73,15 +73,20 @@ def upgrade() -> None:
         "ON sessions(expires_at)"
     )
     # daily_biometrics had NO user_id index at all — every biometric read
-    # scaled linearly with the table.
+    # scaled linearly with the table. NOTE: the column is `date` (not
+    # `local_date` — that's sleep_sessions); the audit's suggested name
+    # idx_bio_user_date is preserved but the column reference is corrected.
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_bio_user_date "
-        "ON daily_biometrics(user_id, local_date DESC)"
+        "ON daily_biometrics(user_id, date DESC)"
     )
-    # workout_sessions gym-advisor query (D-06) was unbounded.
+    # D-06: the gym-advisor's recent_feedback query was unbounded. The
+    # actual table is session_feedback (the audit referenced
+    # `workout_sessions.scheduled_date` which does not exist in this
+    # schema); session_feedback.date is the column the query filters on.
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ws_user_sched "
-        "ON workout_sessions(user_id, scheduled_date DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_session_feedback_user_date "
+        "ON session_feedback(user_id, date DESC)"
     )
     # activity_streams lookups by (user_id, activity_id, stream_type) — D-05.
     # Note: activity_streams PK is (activity_id, t_offset_s); add a

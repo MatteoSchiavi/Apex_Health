@@ -122,19 +122,28 @@ async def test_health_and_login_remain_reachable(client: AsyncClient):
     health = await client.get("/health")
     assert health.status_code == 200
     # /auth/login is a bootstrap endpoint — the AUTH layer must answer (401 on
-    # bad creds). The CSRF header is still required on state-changing requests
-    # (§22.3 applies to login too — the bot/API clients set it).
+    # bad creds). F-04 audit: login is CSRF-EXEMPT (it MINTS the csrf cookie,
+    # so it cannot require one). The X-CSRF-Token header is accepted but not
+    # required on login/redeem.
     login = await client.post(
         "/auth/login",
         json={"email": "nobody@x.dev", "password": "wrong"},
         headers={"X-CSRF-Token": "audit"},
     )
     assert login.status_code == 401
-    # ...and WITHOUT the header it is the CSRF middleware that denies (403).
+    # Without the header, login still answers (401 on bad creds) — it is
+    # CSRF-exempt. A NON-exempt endpoint (e.g. /settings/integrations/garmin/connect)
+    # without the header would 403 from the CSRF middleware.
     no_csrf = await client.post(
         "/auth/login", json={"email": "nobody@x.dev", "password": "wrong"}
     )
-    assert no_csrf.status_code == 403
+    assert no_csrf.status_code == 401  # auth check runs (bad creds), not CSRF
+    # Verify a non-exempt endpoint WITHOUT csrf header → 403 from middleware.
+    non_exempt = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "x@y.z", "password": "anything"},
+    )
+    assert non_exempt.status_code == 403  # CSRF middleware fires first
 
 
 # ------------------------------------------------------------- §21 JSON logs

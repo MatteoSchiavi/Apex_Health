@@ -32,6 +32,12 @@ EXPECTED_TOOLS = {
     "get_upcoming_events": "read",
     "update_context_doc": "write",
     "get_gym_day": "read",
+    # audit-fix tools (W-01/W-05/A-06): raw biometrics, score decomposition,
+    # integration health, and web draft confirmation.
+    "get_raw_biometrics": "read",
+    "get_score_components": "read",
+    "get_integration_health": "read",
+    "confirm_draft": "write",
 }
 
 
@@ -40,7 +46,7 @@ def test_registry_matches_section_8_3():
     for name, kind in EXPECTED_TOOLS.items():
         assert TOOL_REGISTRY[name].kind == kind
     schemas = tool_schemas()
-    assert len(schemas) == 14
+    assert len(schemas) == len(EXPECTED_TOOLS)  # 18 tools after audit fixes
     by_name = {s["function"]["name"]: s for s in schemas}
     assert by_name["get_metric_trend"]["function"]["parameters"]["required"] == [
         "metric",

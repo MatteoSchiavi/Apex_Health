@@ -13,12 +13,48 @@ OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 
 async def test_state_change_without_csrf_header_rejected(client: AsyncClient):
-    """§22.3: state-changing requests require a custom header."""
+    """§22.3 + F-04 audit: state-changing requests require a matching
+    X-CSRF-Token header + csrf_token cookie (double-submit).
+
+    Login/redeem are exempt (they MINT the cookie). All OTHER state-changing
+    endpoints — e.g. /settings/integrations/garmin/connect — require the
+    header+cookie pair. This test targets a non-exempt endpoint without the
+    header and asserts the 403.
+    """
+    # /settings/integrations/garmin/connect requires a session + CSRF.
+    # Without the CSRF header (and without a session), the CSRF middleware
+    # fires first and returns 403.
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}
+        "/settings/integrations/garmin/connect",
+        json={"email": "x@y.z", "password": "anything"},
+        # No X-CSRF-Token header → middleware 403s before the route runs.
     )
     assert resp.status_code == 403
-    assert "X-CSRF-Token" in resp.json()["detail"]
+    assert "CSRF" in resp.json()["detail"] or "csrf" in resp.json()["detail"].lower()
+
+
+async def test_csrf_mismatch_rejected(client: AsyncClient):
+    """F-04 audit: a header value that doesn't match the cookie is rejected."""
+    # The conftest pre-sets csrf_token=test. Send a DIFFERENT header value.
+    resp = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "x@y.z", "password": "anything"},
+        headers={"X-CSRF-Token": "wrong-value"},
+    )
+    assert resp.status_code == 403
+    assert "CSRF" in resp.json()["detail"] or "csrf" in resp.json()["detail"].lower()
+
+
+async def test_csrf_match_accepted_past_middleware(client: AsyncClient):
+    """F-04 audit: when header == cookie, the request passes the middleware
+    (it may still 401 from missing session, but NOT 403 from CSRF)."""
+    resp = await client.post(
+        "/settings/integrations/garmin/connect",
+        json={"email": "x@y.z", "password": "anything"},
+        headers={"X-CSRF-Token": "test"},  # matches the conftest cookie
+    )
+    # 401 (no session) or 400 (bad creds) — NOT 403 (CSRF passed).
+    assert resp.status_code != 403
 
 
 async def test_unknown_email_is_uniform_401(client: AsyncClient):

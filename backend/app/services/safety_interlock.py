@@ -145,19 +145,31 @@ def exertion_veto(
     # P-03: ACWR < 0.8 — detraining band, NOT a veto. Informative note only.
     # The athlete is undertrained; prescribing hard work is wrong but
     # prescription is not blocked — they need progressive rebuild, not rest.
+    # Tracked separately so it doesn't flip `vetoed` (a veto requires an
+    # intensity_ceiling; an informative note does not block prescription).
+    advisory_notes: list[str] = []
     if acwr_v is not None and acwr_v < ACWR_LOW_DETRAINING:
-        if ceiling is None:
-            reasons.append(
-                f"ACWR {acwr_v:.2f} < 0.8 indicates detraining — recommend progressive "
-                "rebuild rather than peak intensity."
-            )
+        advisory_notes.append(
+            f"ACWR {acwr_v:.2f} < 0.8 indicates detraining — recommend progressive "
+            "rebuild rather than peak intensity."
+        )
 
-    if not reasons:
+    # A veto requires an intensity_ceiling — informative notes alone do NOT
+    # count as a veto (the prescription proceeds, with the note appended).
+    if ceiling is None:
+        if advisory_notes:
+            # Advisory notes only — no veto, but the caller still surfaces them.
+            return VetoDecision(
+                vetoed=False,
+                intensity_ceiling=None,
+                reasons=tuple(advisory_notes),
+            )
         return VetoDecision(vetoed=False, intensity_ceiling=None, reasons=())
+    # Veto + any advisory notes are merged so the caller sees everything.
     return VetoDecision(
         vetoed=True,
         intensity_ceiling=ceiling,
-        reasons=tuple(reasons),
+        reasons=tuple(reasons + advisory_notes),
     )
 
 
