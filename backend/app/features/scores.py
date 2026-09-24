@@ -113,10 +113,26 @@ def acwr_spike_component(acwr: float) -> float:
     return clamp01((acwr - 1.3) / 0.7)
 
 
-def load_spike_component(day_load: float, mean28: float, std28: float) -> float:
+def load_spike_component(
+    day_load: float,
+    mean28: float,
+    std28: float,
+    *,
+    active_days: int | None = None,
+) -> float:
     """Today's load vs. the personal distribution; 2 std above the mean is a
     full spike. A degenerate (zero-variance) distribution spikes only if
-    today actually exceeds the mean."""
+    today actually exceeds the mean.
+
+    P-13 audit: when ``active_days`` is provided and < 7 (baseline
+    rebuilding — e.g. returning from a 4-week break), the component returns
+    0.0 (neutral) instead of the degenerate std=0 spike=1.0 path. An athlete
+    returning from a break should NOT max injury risk on their first normal
+    session — the baseline is rebuilding, not established.
+    """
+    # P-13: baseline-rebuilding gate — require ≥7 active days in the window.
+    if active_days is not None and active_days < 7:
+        return 0.0
     if std28 <= 0:
         return 1.0 if day_load > mean28 else 0.0
     return clamp01((day_load - mean28) / (2.0 * std28))
@@ -265,13 +281,15 @@ def injury_risk_score(
     day_load: float | None,
     mean28: float | None,
     std28: float | None,
+    *,
+    active_days: int | None = None,
 ) -> float | None:
     value = blend(
         {
             "acwr_spike": None if acwr is None else acwr_spike_component(acwr),
             "load_spike": None
             if day_load is None or mean28 is None or std28 is None
-            else load_spike_component(day_load, mean28, std28),
+            else load_spike_component(day_load, mean28, std28, active_days=active_days),
         },
         weights,
     )

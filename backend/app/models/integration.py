@@ -6,7 +6,7 @@ schema is created by the Alembic migration regardless.
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, LargeBinary, SmallInteger, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, LargeBinary, SmallInteger, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,7 +17,10 @@ class Integration(Base):
     __tablename__ = "integrations"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # F-07 audit: ForeignKey + index added for ORM↔DDL parity.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         Text, nullable=False, default="active", server_default="active"
@@ -43,11 +46,27 @@ class RawIngest(Base):
     __tablename__ = "raw_ingest"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    source: Mapped[str] = mapped_column(Text, nullable=False)
+    # F-07 audit: ForeignKey added for ORM↔DDL parity. Composite index below
+    # backs the partial unprocessed-rows index from migration 0008.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     payload_type: Mapped[str] = mapped_column(Text, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )
     raw_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    processed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+
+
+# Composite index for normalize_pending's per-user+source unprocessed scan.
+Index(
+    "idx_raw_user_source_unproc",
+    RawIngest.user_id,
+    RawIngest.source,
+    RawIngest.id,
+    postgresql_where=RawIngest.processed.is_(False),
+)

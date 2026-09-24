@@ -3,7 +3,13 @@ that have landed so far: Garmin + Technogym syncs every 6 hours (Phases 1/6),
 the forecast refresh every 6 hours (Phase 7, §19), the nightly feature engine
 at 03:00 user-local (Phase 2), nightly gear accumulation right after it
 (Phase 4), the daily AI budget check at 23:45 UTC (Phase 5, §8.6), and the
-nightly encrypted database backup at 02:00 UTC (Phase 8, §22.7/§19)."""
+nightly encrypted database backup at 02:00 UTC (Phase 8, §22.7/§19).
+
+F-02 audit: acks_late + reject_on_worker_lost + visibility_timeout + retry
+defaults + soft/hard time limits are now set globally so a worker restart
+mid-backfill no longer loses the task and a transient third-party outage
+retries with exponential backoff instead of failing the whole batch.
+"""
 
 from celery import Celery
 from celery.schedules import crontab
@@ -30,6 +36,7 @@ celery_app = Celery(
         "app.tasks.ai_reports",
         "app.tasks.telegram_voice",
         "app.tasks.backups",
+        "app.tasks.maintenance",
     ],
 )
 
@@ -39,6 +46,31 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # ---- F-02 audit: task durability --------------------------------------
+    # acks_late=True: a task is acked ONLY after it completes successfully.
+    # A worker crash mid-backfill redelivers the task to another worker
+    # instead of losing it silently.
+    task_acks_late=True,
+    # reject_on_worker_lost=True: if the worker process dies (OOM, kill),
+    # the task is requeued instead of being marked failed.
+    task_reject_on_worker_lost=True,
+    # visibility_timeout MUST exceed the longest task (the redis broker
+    # uses it to redeliver tasks whose ack is overdue). 5h comfortably
+    # covers the 4h hard time limit below.
+    broker_transport_options={"visibility_timeout": 5 * 3600},
+    # Hard ceiling on any single task: 4h wall-clock, 3h soft. Long enough
+    # for a multi-year Garmin backfill; short enough that a wedged task
+    # cannot pin a worker indefinitely.
+    task_time_limit=4 * 3600,
+    task_soft_time_limit=3 * 3600,
+    # Default retry policy for tasks that don't override: 3 retries with
+    # exponential backoff (1 → 2 → 4 minutes) capped at 10 minutes.
+    task_default_retry_delay=60,
+    task_default_max_retries=3,
+    # Prefetch: one task per worker at a time so a long-running backfill
+    # doesn't starve short tasks behind it. Critical for an 8 GB single-node
+    # box where 2 workers each holding 4 tasks would OOM under load.
+    worker_prefetch_multiplier=1,
     # §19: Garmin sync every 6 hours — not real-time, an unofficial client
     # polled continuously raises ban risk.
     #
@@ -128,6 +160,21 @@ celery_app.conf.update(
         "nightly-backup": {
             "task": "backups.nightly",
             "schedule": crontab(minute=0, hour=2),
+        },
+        # F-08 audit: nightly session purge at 04:00 UTC — bounded by the
+        # idx_sessions_expires_at index added in migration 0008.
+        "session-purge-nightly": {
+            "task": "maintenance.purge_sessions",
+            "schedule": crontab(minute=0, hour=4),
+        },
+        # D-01/D-10 audit: nightly retention + maintenance at 04:30 UTC.
+        "retention-nightly": {
+            "task": "maintenance.prune_streams",
+            "schedule": crontab(minute=30, hour=4),
+        },
+        "vacuum-weekly": {
+            "task": "maintenance.vacuum_analyze",
+            "schedule": crontab(minute=0, hour=4, day_of_week=0),
         },
     },
 )

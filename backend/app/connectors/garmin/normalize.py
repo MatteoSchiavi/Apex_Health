@@ -42,6 +42,17 @@ from app.connectors.reconciliation import (
     find_reconcilable_activity,
     reconcile_activity,
 )
+from app.connectors.validation import (
+    valid_body_battery,
+    valid_body_fat_pct,
+    valid_hrv_ms,
+    valid_respiration_bpm,
+    valid_resting_hr_bpm,
+    valid_sleep_score,
+    valid_spo2_pct,
+    valid_stress_level,
+    valid_weight_kg,
+)
 from app.gear.service import auto_link_gear
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream
 from app.models.integration import RawIngest
@@ -396,9 +407,9 @@ async def _upsert_sleep(
         light_s=_int_or_none(dto.get("lightSleepSeconds")),
         rem_s=_int_or_none(dto.get("remSleepSeconds")),
         awake_s=_int_or_none(dto.get("awakeSleepSeconds")),
-        sleep_score=score,
-        respiration_avg=_num(dto.get("avgRespirationValue")),
-        spo2_avg=_num(dto.get("avgSpO2Value")),
+        sleep_score=valid_sleep_score(score),
+        respiration_avg=valid_respiration_bpm(dto.get("avgRespirationValue")),
+        spo2_avg=valid_spo2_pct(dto.get("avgSpO2Value")),
         restlessness=_num(dto.get("restlessness")),
     )
 
@@ -437,21 +448,30 @@ async def _upsert_hrv(
         if raw_ts is None:
             raw_ts = reading.get("readingTimeGMT")
         ts = _timestamp_flex(raw_ts, "hrv timestamp")
-        hrv = _num(reading.get("hrvValue"))
+        # P-02 audit: drop implausible HRV values BEFORE they enter typed
+        # tables. A 0.5 ms glitch or a 9999 ms stuck reading must never
+        # reach daily aggregates or illness-risk scoring. Raw stays for
+        # replay.
+        hrv = valid_hrv_ms(reading.get("hrvValue"))
         if hrv is None:
             continue
         last_ts = max(last_ts, ts) if last_ts else ts
         baseline = _num(summary.get("baseline", {}).get("avg")) if isinstance(summary.get("baseline"), dict) else None
         await _upsert_hrv_reading(session, raw.user_id, ts, hrv, "5min", baseline, stats)
 
-    if last_ts is not None and _num(summary.get("lastNightAvg")) is not None:
-        # Garmin's overnight average has no first-class timestamp of its own;
-        # anchor it at the night's last 5-min reading (documented choice). It
-        # coexists with the 5-min row at the same timestamp: reading_type is
-        # part of the natural key.
-        await _upsert_hrv_reading(
-            session, raw.user_id, last_ts, float(summary["lastNightAvg"]), "overnight_avg", None, stats
-        )
+    if last_ts is not None:
+        # P-02 audit: validate the overnight average too — Garmin's own
+        # summary can occasionally carry a corrupt aggregate even when the
+        # 5-min readings look fine.
+        overnight = valid_hrv_ms(summary.get("lastNightAvg"))
+        if overnight is not None:
+            # Garmin's overnight average has no first-class timestamp of its own;
+            # anchor it at the night's last 5-min reading (documented choice). It
+            # coexists with the 5-min row at the same timestamp: reading_type is
+            # part of the natural key.
+            await _upsert_hrv_reading(
+                session, raw.user_id, last_ts, overnight, "overnight_avg", None, stats
+            )
 
 
 async def _upsert_hrv_reading(
@@ -513,12 +533,12 @@ async def _upsert_stress(
     for point in graph:
         if isinstance(point, dict):
             ts = _epoch_ms(point.get("timestamp"), "stress timestamp")
-            level = _num(point.get("stressLevel"))
-            bb = _num(battery.get(point.get("timestamp")))
+            level = valid_stress_level(point.get("stressLevel"))
+            bb = valid_body_battery(battery.get(point.get("timestamp")))
         elif isinstance(point, (list, tuple)) and len(point) >= 2:
             ts = _epoch_ms(point[0], "stress timestamp")
-            level = _num(point[1])
-            bb = _num(battery.get(point[0]))
+            level = valid_stress_level(point[1])
+            bb = valid_body_battery(battery.get(point[0]))
         else:
             raise NormalizationError(f"stress raw row {raw.id}: unusable point {point!r}")
         existing = await session.scalar(
@@ -533,7 +553,12 @@ async def _upsert_stress(
                 )
             )
         else:
-            existing.stress_level = level
+            # P-02: only overwrite with plausibly-ranged values; an
+            # out-of-range upstream value does NOT erase a previously-stored
+            # plausible one (it is dropped at ingest, leaving existing
+            # data intact).
+            if level is not None:
+                existing.stress_level = level
             if bb is not None:
                 existing.body_battery = bb
         stats.stress_upserted += 1
@@ -564,17 +589,18 @@ async def _upsert_biometrics(
 
     if kind == fetch.PAYLOAD_STATS:
         values = dict(
-            resting_hr=_int_or_none(payload.get("restingHeartRate")),
+            resting_hr=valid_resting_hr_bpm(payload.get("restingHeartRate")),
             steps=_int_or_none(payload.get("totalSteps")),
             floors=_int_or_none(payload.get("floorsAscended")),
-            spo2_avg=_num(payload.get("averageSpo2")),
+            spo2_avg=valid_spo2_pct(payload.get("averageSpo2")),
         )
     else:  # body composition — weight is reported in grams upstream
         total = payload.get("totalAverage") or {}
         weight_g = _num(total.get("weight"))
+        weight_kg = (weight_g / 1000.0) if weight_g is not None else None
         values = dict(
-            weight_kg=(weight_g / 1000.0) if weight_g is not None else None,
-            body_fat_pct=_num(total.get("bodyFat")),
+            weight_kg=valid_weight_kg(weight_kg),
+            body_fat_pct=valid_body_fat_pct(total.get("bodyFat")),
         )
 
     existing = await session.scalar(

@@ -21,6 +21,7 @@ from app.auth.service import (
 )
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.middleware import mint_csrf_token, set_csrf_cookie
 from app.core.redis import get_redis
 from app.models.user import AuthCredential, User, UserSession
 from app.schemas.auth import LoginRequest, LoginResponse, RedeemInviteRequest
@@ -67,6 +68,12 @@ async def login(
         samesite="lax",
         path="/",
     )
+    # F-04 audit: mint a CSRF double-submit token and set it as a non-HttpOnly
+    # cookie. The SPA reads this cookie and mirrors the value in the
+    # X-CSRF-Token header on every unsafe method; the middleware verifies
+    # the two match with hmac.compare_digest.
+    csrf_token = mint_csrf_token()
+    set_csrf_cookie(response, csrf_token, secure=settings.cookie_secure)
     return LoginResponse(
         user_id=user.id,
         email=cred.email,
@@ -124,15 +131,19 @@ async def redeem(
         ) from exc
 
     token, _ = await create_session(session, user.id)
+    settings = get_settings()
     response.set_cookie(
         key=session_cookie_name(),
         value=token,
         max_age=cookie_max_age_seconds(),
-        secure=get_settings().cookie_secure,
+        secure=settings.cookie_secure,
         httponly=True,
         samesite="lax",
         path="/",
     )
+    # F-04 audit: CSRF double-submit token (same path as login).
+    csrf_token = mint_csrf_token()
+    set_csrf_cookie(response, csrf_token, secure=settings.cookie_secure)
     return LoginResponse(
         user_id=user.id,
         email=cred.email,

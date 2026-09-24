@@ -51,6 +51,7 @@ from app.queries.usage import (
     estimate_llm_cost_usd,
     log_embedding_usage,
     log_llm_usage,
+    user_day_spend,
 )
 from app.queries.weather import describe_weather_code, get_forecast
 
@@ -85,4 +86,5 @@ __all__ = [
     "search_context",
     "sleep_on_local_date",
     "store_embedding",
+    "user_day_spend",
 ]

@@ -30,10 +30,15 @@ from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
 from app.core.logging import configure_logging
 from app.core.middleware import CSRFMiddleware, ProxyHeadersMiddleware
+from app.core.secret_validation import validate_startup_secrets
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # F-12 audit: validate startup secrets BEFORE ensure_owner so a
+    # misconfigured production boot fails loudly instead of creating a
+    # compromised owner account from an empty/default password.
+    validate_startup_secrets()
     # §15: owner account is bootstrapped from OWNER_EMAIL/OWNER_PASSWORD at startup.
     async with sessionmaker() as session:
         await ensure_owner(session)

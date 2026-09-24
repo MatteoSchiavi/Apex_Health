@@ -63,17 +63,74 @@ def _local_day_instant_bounds(day: date, tz: ZoneInfo) -> tuple[datetime, dateti
     return start_local.astimezone(), end_local.astimezone()
 
 
+def _strain_ceiling(
+    loads: dict[date, float], day: date, window_days: int
+) -> float:
+    """P-16 audit: single shared strain-ceiling window function.
+
+    Returns the peak daily load over [day - window_days + 1, day] inclusive.
+    Both the nightly path (ceiling for today) and the recompute path
+    (ceiling for the prior day) call this with the same window_days, so a
+    given date always gets the same ceiling regardless of which path
+    computed it — no more nightly-vs-backfill divergence at window edges.
+    """
+    return max(
+        (loads.get(day - timedelta(days=i), 0.0) for i in range(window_days)),
+        default=0.0,
+    )
+
+
 def _readings_by_local_day(
     readings: list[HrvReading], tz: ZoneInfo, first_day: date, last_day: date
 ) -> dict[date, float]:
     """Mean HRV per LOCAL day (§17: an instant belongs to the day its local
-    wall clock says — readings near midnight land on the right day)."""
-    buckets: dict[date, list[float]] = {}
+    wall clock says — readings near midnight land on the right day).
+
+    P-01/P-18 audit: OVERNIGHT-AVG PRIORITY. The previous implementation took
+    the arithmetic mean of ALL readings (overnight_avg + 5min daytime),
+    which mixed parasympathetic (~60-80 ms) and sympathetic (~20-50 ms)
+    readings and weighted the baseline by wear-time. Daytime wear
+    artificially lowered baselines; circadian confounding corrupted trends.
+
+    The new implementation:
+    - When overnight_avg readings exist for a day, use their mean
+      (parasympathetic, sleep-derived rMSSD — the consensus baseline).
+    - Otherwise fall back to the MEDIAN of 5min readings (median is robust
+      to the daytime sympathetic dips that pulled the mean down).
+    - Days with no readings at all are absent from the dict (baseline
+      computation correctly treats them as missing observations).
+    """
+    overnight: dict[date, list[float]] = {}
+    fivemin: dict[date, list[float]] = {}
     for reading in readings:
         local_day = reading.timestamp.astimezone(tz).date()
-        if first_day <= local_day <= last_day:
-            buckets.setdefault(local_day, []).append(float(reading.hrv_ms))
-    return {day: sum(values) / len(values) for day, values in buckets.items()}
+        if not (first_day <= local_day <= last_day):
+            continue
+        # P-02 validators already filtered implausible values at ingest; the
+        # float() here is a defensive coercion for Decimal columns.
+        try:
+            value = float(reading.hrv_ms)
+        except (TypeError, ValueError):
+            continue
+        if reading.reading_type == "overnight_avg":
+            overnight.setdefault(local_day, []).append(value)
+        else:
+            fivemin.setdefault(local_day, []).append(value)
+
+    out: dict[date, float] = {}
+    all_days = set(overnight) | set(fivemin)
+    for day in all_days:
+        if day in overnight:
+            # P-01: overnight_avg is the canonical baseline (parasympathetic,
+            # sleep-derived). Mean of multiple overnight rows (rare — most
+            # devices emit one per night).
+            out[day] = sum(overnight[day]) / len(overnight[day])
+        elif fivemin[day]:
+            # P-01 fallback: median of 5min readings. Median is robust to
+            # the daytime sympathetic dips that corrupted the arithmetic mean.
+            import statistics
+            out[day] = statistics.median(fivemin[day])
+    return out
 
 
 async def _load_window(
@@ -277,21 +334,14 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     )
 
     # --- strain & ceiling ---------------------------------------------------
-    # Today's ceiling: peak of the SAME 28-day window the chronic load uses.
-    peak28 = max(
-        (loads.get(day - timedelta(days=i), 0.0) for i in range(WINDOW_DAYS)),
-        default=0.0,
-    )
-    # The prior day's strain score must be exactly what its own row saw:
-    # ceiling = peak of ITS 28-day window ([D-29, D-1] from here).
+    # P-16 audit: shared strain-ceiling window function — both nightly and
+    # recompute paths use the SAME window definition ([D-28, D] inclusive
+    # for today's ceiling; [D-29, D-1] inclusive for prior day's ceiling).
+    # The previous code had an off-by-one between nightly and recompute that
+    # produced two different strain values for the same date.
+    peak28 = _strain_ceiling(loads, day, WINDOW_DAYS)
     prior_day = day - timedelta(days=1)
-    prior_peak = max(
-        (
-            loads.get(prior_day - timedelta(days=i), 0.0)
-            for i in range(WINDOW_DAYS)
-        ),
-        default=0.0,
-    )
+    prior_peak = _strain_ceiling(loads, prior_day, WINDOW_DAYS)
     prior_strain = scores.strain_score(loads.get(prior_day, 0.0), prior_peak)
 
     # --- weights (§6.4 selection rule; loaded by the async caller with
@@ -343,7 +393,13 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         w["illness_risk_score"], hrv_dev, rhr_dev, resp_dev, journal_component
     )
     mean28, std28 = load.load_distribution(loads, day)
-    injury = scores.injury_risk_score(w["injury_risk_score"], acwr, day_load, mean28, std28)
+    # P-13 audit: gate the injury-risk load-spike component on a minimum
+    # active-day count so an athlete returning from a 4-week break does not
+    # max injury risk on their first normal session.
+    active_days = load.active_day_count(loads, day)
+    injury = scores.injury_risk_score(
+        w["injury_risk_score"], acwr, day_load, mean28, std28, active_days=active_days
+    )
     cdfi = scores.cross_discipline_fatigue_index(loads_by_discipline, day)
 
     # --- honesty flags (§17) ------------------------------------------------

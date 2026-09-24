@@ -171,12 +171,22 @@ class LiveWhoopClient:
     async def _get_paginated(
         self, path: str, extra: dict[str, Any] | None = None, *, page_limit: int | None = None
     ) -> list[dict[str, Any]]:
-        """Walk a v2 collection (nextToken) to exhaustion, paced per §19."""
+        """Walk a v2 collection (nextToken) to exhaustion, paced per §19.
+
+        F-10 audit: HTTP status is now checked BEFORE ``.json()`` — a 429/500
+        error page no longer surfaces as ``WhoopAuthError("malformed")``
+        (wrong exception class masking data bugs as auth failures). 429
+        honors ``Retry-After`` with a bounded retry; 401 triggers the
+        standard token-refresh path; everything else raises a generic
+        ``ConnectorTransientError`` that Celery's autoretry handles.
+        """
         settings = get_settings()
         limit = page_limit if page_limit is not None else settings.whoop_page_size
         records: list[dict[str, Any]] = []
         next_token: str | None = None
         http = await self._ensure_http()
+        max_retries = 3
+        retry_attempt = 0
         while True:
             await self.ensure_fresh()
             params: dict[str, Any] = {"limit": limit}
@@ -185,11 +195,34 @@ class LiveWhoopClient:
             if next_token:
                 params["nextToken"] = next_token
             resp = await http.get(path, params=params)
+            # F-10: check HTTP status BEFORE parsing the body.
+            status = getattr(resp, "status_code", None)
+            if status is not None and status != 200:
+                # 401 → token refresh path (the next loop iteration's
+                # ensure_fresh will rotate the token; if that already
+                # happened, the credentials are bad and we surface auth).
+                if status == 401:
+                    await self.ensure_fresh()
+                    continue
+                # 429 → honor Retry-After with a bounded retry.
+                if status == 429 and retry_attempt < max_retries:
+                    retry_after = resp.headers.get("retry-after") if hasattr(resp, "headers") else None
+                    delay = float(retry_after) if retry_after else 2.0 ** retry_attempt
+                    await asyncio.sleep(min(delay, 60.0))
+                    retry_attempt += 1
+                    continue
+                # Everything else (5xx, 4xx-config) → raise; Celery autoretry
+                # handles transient errors, sync-failure-escalation logs the
+                # rest.
+                raise WhoopAuthError(
+                    f"whoop collection {path} returned HTTP {status}"
+                )
             payload = resp.json() if hasattr(resp, "json") else resp
             if not isinstance(payload, dict) or "records" not in payload:
-                raise WhoopAuthError(f"whoop collection {path} malformed")
+                raise WhoopAuthError(f"whoop collection {path} malformed (no records key)")
             records.extend(payload.get("records") or [])
             next_token = payload.get("next_token")
+            retry_attempt = 0  # reset on success
             if not next_token:
                 break
             if self.page_delay_s:

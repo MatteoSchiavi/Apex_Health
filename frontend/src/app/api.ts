@@ -3,8 +3,11 @@
  * components. Laws:
  *  - credentials ride the HttpOnly session cookie (same origin) — no tokens
  *    in localStorage, ever (STACK.md §2.5).
- *  - every unsafe method sends the X-CSRF-Token header from the meta value
- *    the backend handshake gives us (login sets it; we mirror it).
+ *  - F-04 audit: every unsafe method sends the X-CSRF-Token header matching
+ *    the non-HttpOnly `csrf_token` cookie the backend sets at login
+ *    (true double-submit CSRF). The middleware verifies the two with
+ *    `hmac.compare_digest`; a cross-origin attacker can neither read the
+ *    cookie (SameSite=Lax) nor forge the matching header.
  */
 
 export class ApiError extends Error {
@@ -17,22 +20,31 @@ export class ApiError extends Error {
   }
 }
 
-function csrfToken(): string {
-  // Backend sessions are cookie+CSRF; the SPA mints a per-boot token the
-  // middleware only checks for PRESENCE (any value) on unsafe methods.
-  let t = sessionStorage.getItem("apex.csrf");
-  if (!t) {
-    t = crypto.randomUUID().replace(/-/g, "");
-    sessionStorage.setItem("apex.csrf", t);
-  }
-  return t;
+function readCookie(name: string): string | null {
+  // Synchronous cookie read — the CSRF cookie is non-HttpOnly by design.
+  const match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function csrfToken(): string | null {
+  // F-04 audit: read the CSRF token from the cookie the backend set at
+  // login. Returns null when no session exists (login itself is exempt —
+  // the middleware only checks unsafe methods, and the login response SETS
+  // the cookie; subsequent unsafe requests will have it).
+  return readCookie("csrf_token");
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET" && method !== "HEAD") {
     headers["Content-Type"] = "application/json";
-    headers["X-CSRF-Token"] = csrfToken();
+    // F-04 audit: double-submit — the header value MUST match the cookie.
+    // If no cookie is present (pre-login, or cookie expired), the request
+    // will 403 with a clear message; the SPA re-authenticates and retries.
+    const token = csrfToken();
+    if (token) {
+      headers["X-CSRF-Token"] = token;
+    }
   }
   const resp = await fetch(path, {
     method,

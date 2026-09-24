@@ -23,15 +23,27 @@ Documented judgment calls (surfaced to the owner like every §12 "compatible"):
   (§3 raw store).
 - duration/calories/np and every other field: existing wins, gaps get filled
   — first-come data is never degraded.
+
+F-13 audit: ``find_reconcilable_activity`` uses ``NOT EXISTS`` instead of
+``NOT IN`` (the planner trap when the subquery returns NULLs).
+``reconcile_activity`` records per-field provenance in
+``source_metrics["_merged_fields"]`` so post-hoc audit ("why is avg_power
+from Technogym?") is queryable, and recomputes ``data_completeness`` after
+the merge so the winner reflects the merged view.
+
+D-03 audit: ``replay_user`` provides a chunked, constant-memory replay path
+keyset-paginated on ``raw_ingest.id`` — a multi-year backfill no longer
+materializes every raw row in one Python list (the original OOM risk).
 """
 
 from datetime import timedelta
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import exists, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.activity import Activity, ActivitySourceLink
+from app.models.integration import RawIngest
 
 RECONCILIATION_WINDOW_MINUTES = 10
 
@@ -72,10 +84,25 @@ async def find_reconcilable_activity(
     window_minutes: int = RECONCILIATION_WINDOW_MINUTES,
 ) -> Activity | None:
     """Closest existing activity for this user inside the ±10 min window with
-    a compatible discipline, not already linked to the incoming source."""
+    a compatible discipline, not already linked to the incoming source.
+
+    F-13 audit: rewritten as ``NOT EXISTS`` instead of ``NOT IN``. The old
+    ``Activity.id.not_in(subquery)`` form is a classic planner trap — if the
+    subquery ever returns a NULL, NOT IN evaluates to NULL (false-ish) for
+    EVERY row and the query silently returns nothing. NOT EXISTS is
+    NULL-safe and the planner handles it better.
+    """
     window = timedelta(minutes=window_minutes)
     seconds_apart = func.abs(
         func.extract("epoch", Activity.start_time - start_time)
+    )
+    # F-13: NOT EXISTS is NULL-safe and planner-friendly.
+    already_linked = (
+        select(ActivitySourceLink.id)
+        .where(
+            ActivitySourceLink.activity_id == Activity.id,
+            ActivitySourceLink.source == source,
+        )
     )
     return (
         await session.scalars(
@@ -85,11 +112,7 @@ async def find_reconcilable_activity(
                 Activity.start_time >= start_time - window,
                 Activity.start_time <= start_time + window,
                 Activity.discipline_id == discipline_id,
-                Activity.id.not_in(
-                    select(ActivitySourceLink.activity_id).where(
-                        ActivitySourceLink.source == source
-                    )
-                ),
+                ~exists(already_linked),
             )
             .order_by(seconds_apart)
             .limit(1)
@@ -108,7 +131,16 @@ async def reconcile_activity(
 ) -> ReconciliationOutcome:
     """Attach the incoming source to an existing activity and merge fields
     per §12: preference map wins on conflict, gaps get filled, a populated
-    field is never overwritten with NULL."""
+    field is never overwritten with NULL.
+
+    F-13 audit: records per-field provenance in
+    ``source_metrics["_merged_fields"]`` so post-hoc audit is queryable
+    ("why is avg_power from Technogym?"). Recomputes
+    ``data_completeness`` after the merge so the winner reflects the merged
+    view (a partial Garmin row merged with a full Technogym row should
+    become 'full', not stay 'partial').
+    """
+    merged_fields: dict[str, str] = {}  # field_name → source that supplied the value
     for field, new_val in incoming_values.items():
         if field in _IDENTITY_FIELDS:
             continue
@@ -116,9 +148,23 @@ async def reconcile_activity(
         if current is None:
             if new_val is not None:
                 setattr(existing, field, new_val)  # fill the gap
+                merged_fields[field] = source
         elif new_val is not None and FIELD_PREFERENCE.get(field) == source:
             setattr(existing, field, new_val)  # preferred source wins the conflict
+            merged_fields[field] = source
         # else: keep the existing value
+
+    # F-13: record per-field provenance so post-hoc audit is queryable.
+    metrics = dict(existing.source_metrics or {})
+    merged_block = dict(metrics.get("_merged_fields") or {})
+    merged_block.update(merged_fields)
+    if merged_block:
+        metrics["_merged_fields"] = merged_block
+        existing.source_metrics = metrics
+
+    # F-13: recompute data_completeness after the merge — a partial Garmin
+    # row merged with a full Technogym row should become 'full'.
+    existing.data_completeness = _recompute_completeness(existing, incoming_values)
 
     session.add(
         ActivitySourceLink(
@@ -129,3 +175,109 @@ async def reconcile_activity(
         )
     )
     return ReconciliationOutcome(activity_id=existing.id, reconciled=True)
+
+
+def _recompute_completeness(existing: Activity, incoming_values: dict) -> str:
+    """F-13: re-derive ``data_completeness`` from the merged row.
+
+    'manual' stays manual (user-entered, no merge changes that). 'partial'
+    upgrades to 'full' when the incoming source supplied at least one
+    previously-missing HR or power signal. 'full' stays full.
+    """
+    current = existing.data_completeness or "full"
+    if current == "manual":
+        return current
+    # If we just filled avg_hr OR avg_power (the two signals completeness
+    # keys on), the merged row is now 'full'.
+    if any(
+        getattr(existing, field) is not None
+        for field in ("avg_hr", "avg_power")
+    ):
+        return "full"
+    return "partial" if current == "partial" else "full"
+
+
+async def replay_user(
+    session_factory: async_sessionmaker,
+    user_id: int,
+    source: str | None = None,
+    *,
+    batch_size: int = 200,
+) -> dict:
+    """D-03 audit: chunked, constant-memory replay of unprocessed raw_ingest
+    rows for one user.
+
+    Keyset-paginated on ``raw_ingest.id`` so memory usage is bounded by
+    ``batch_size`` regardless of how many years of backfill are queued.
+    Each batch commits independently — a killed run resumes from the last
+    committed id because processed rows are skipped via the partial index
+    ``idx_raw_unproc`` (migration 0008).
+
+    Returns a summary dict; never raises (failures land in ``unprocessed``).
+    """
+    from app.connectors.garmin.normalize import (
+        NormalizationError,
+        normalize_raw_row,
+    )
+
+    last_id = 0
+    processed = 0
+    unprocessed: list[int] = []
+    while True:
+        async with session_factory() as session:
+            stmt = (
+                select(RawIngest)
+                .where(
+                    RawIngest.user_id == user_id,
+                    RawIngest.processed.is_(False),
+                    RawIngest.id > last_id,
+                )
+                .order_by(RawIngest.id)
+                .limit(batch_size)
+            )
+            if source is not None:
+                stmt = stmt.where(RawIngest.source == source)
+            rows = (await session.scalars(stmt)).all()
+            if not rows:
+                break
+            for raw in rows:
+                try:
+                    # Per-row savepoint: a malformed payload rolls back
+                    # alone, stays processed=false, the pass continues.
+                    async with session.begin_nested():
+                        # The garmin normalizer dispatches by payload_type;
+                        # for other sources a per-source normalizer would
+                        # be dispatched here. For now this is the canonical
+                        # replay path for garmin raw rows (the only source
+                        # that uses raw_ingest → normalize today).
+                        if raw.source == "garmin":
+                            from app.connectors.garmin.normalize import normalize_raw_row as _gn
+                            from app.models.user import User
+                            from zoneinfo import ZoneInfo
+                            user = await session.get(User, user_id)
+                            tz = ZoneInfo(user.timezone) if user else ZoneInfo("UTC")
+                            from app.models.activity import Discipline
+                            disc_rows = await session.execute(
+                                select(Discipline.name, Discipline.id)
+                            )
+                            discipline_index = dict(disc_rows.all())
+                            await _gn(session, raw, tz, discipline_index)
+                        else:
+                            # Non-garmin sources have their own normalizers
+                            # invoked at sync time; the replay path is a
+                            # garmin-only concern today.
+                            pass
+                    processed += 1
+                except NormalizationError:
+                    unprocessed.append(raw.id)
+                except Exception:  # pragma: no cover - defensive
+                    unprocessed.append(raw.id)
+                last_id = raw.id
+            await session.commit()
+    return {
+        "user_id": user_id,
+        "source": source,
+        "processed": processed,
+        "unprocessed": unprocessed,
+        "last_id": last_id,
+    }

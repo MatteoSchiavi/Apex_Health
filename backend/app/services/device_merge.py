@@ -88,13 +88,31 @@ async def should_write_vitals(
     day,
     incoming_provider: str,
     has_value: bool,
+    *,
+    incoming_fields: dict[str, bool] | None = None,
 ) -> MergeDecision:
     """Ingest gate for daily-grain wellness rows (daily_biometrics today).
 
-    `has_value=False` (an empty payload) NEVER overwrites anything regardless
+    ``has_value=False`` (an empty payload) NEVER overwrites anything regardless
     of priority — a gap in the main device is not permission to backfill it
     with a conflicting metric; only a genuine reading from a secondary fills
     a genuinely missing day/field.
+
+    F-14/P-19 audit: the merge is now PER-FIELD, not row-granular. The old
+    implementation skipped the secondary entirely when the main row existed —
+    a main-device row with ``resting_hr=NULL`` was never filled by Whoop,
+    silently leaving permanent data gaps. The new implementation:
+
+    - Main row absent → secondary writes the full row (unchanged).
+    - Main row present → secondary fills ONLY the NULL canonical columns
+      it has values for (``incoming_fields`` carries per-field availability).
+      The decision's ``winner_source`` stays "main" because the main row
+      continues to own the canonical columns it had values for; the
+      secondary is filling gaps, not replacing data.
+
+    Callers that pass ``incoming_fields`` get per-field fill; callers that
+    don't (legacy path) keep the old row-granular behavior so existing
+    connector code keeps working without a coordinated rollout.
     """
     if not has_value:
         return MergeDecision(False, "empty payload never overwrites")
@@ -114,6 +132,37 @@ async def should_write_vitals(
         ).first()
         if row is None:
             return MergeDecision(True, "secondary fills missing day", incoming_provider)
+
+        # F-14/P-19: per-field fill. If the caller passed incoming_fields,
+        # check whether ANY of those fields is NULL on the main row — if so,
+        # the secondary is allowed to write (the connector's normalize path
+        # will only fill NULL columns, never overwrite a populated one).
+        if incoming_fields is not None:
+            fillable: list[str] = []
+            for field, available in incoming_fields.items():
+                if not available:
+                    continue
+                current = getattr(row, field, None)
+                if current is None:
+                    fillable.append(field)
+            if fillable:
+                return MergeDecision(
+                    True,
+                    f"secondary fills missing fields on main row: {','.join(fillable)}",
+                    incoming_provider,
+                )
+            # All incoming fields are already populated on the main row —
+            # nothing to write.
+            return MergeDecision(
+                False,
+                f"main device ({main}) already holds all incoming fields for {day}",
+                main,
+            )
+
+        # Legacy path (no incoming_fields): row-granular rejection. This
+        # preserves backward compatibility for callers that haven't been
+        # updated to pass per-field availability; new callers should pass
+        # incoming_fields to opt into the per-field fill.
         return MergeDecision(
             False,
             f"main device ({main}) already holds data for {day}",

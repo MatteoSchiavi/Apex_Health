@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    ForeignKey,
     Numeric,
     SmallInteger,
     Text,
@@ -47,6 +48,9 @@ class User(Base):
     )  # 'metric' | 'imperial'
     # Device priority law: the MAIN device integration. NULL = first
     # connected wins (legacy). services/device_merge.py owns the rule.
+    # NOTE: deliberately NO database-level FK to integrations — see migration
+    # 0007 for the topology reasoning (a users→integrations FK reverses the
+    # TRUNCATE ... CASCADE topology the test helpers rely on).
     main_integration_id: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True
     )
@@ -58,7 +62,11 @@ class User(Base):
 class AuthCredential(Base):
     __tablename__ = "auth_credentials"
 
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # F-07 audit: ForeignKey added so ORM↔DDL parity holds and a future
+    # `alembic revision --autogenerate` does not emit DROP CONSTRAINT.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), primary_key=True
+    )
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(
@@ -85,12 +93,24 @@ class UserSession(Base):
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # F-07 audit: ForeignKey + index added so ORM↔DDL parity holds and the
+    # hot-path token-hash lookup is index-backed in autogenerate too.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(
+        Text, nullable=False, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # F-21 audit: absolute maximum lifetime — sliding expiry alone leaves a
+    # stolen session valid forever if used ≥1×/half-TTL. This column caps the
+    # total lifetime (default 30d, set at creation).
+    absolute_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Invite(Base):
@@ -105,7 +125,10 @@ class Invite(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # F-07 audit: ForeignKey added for ORM↔DDL parity.
+    created_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False
+    )
     used_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

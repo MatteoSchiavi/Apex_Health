@@ -8,10 +8,17 @@ Write tools (§8.5) never commit directly: propose_* drafts a row and
 returns it; confirmation happens via Telegram inline buttons. Tool errors
 (surface as exceptions) are converted to tool RESULTS by the agent loop
 (§8.4) — they never kill it.
+
+W-01 audit: ``get_raw_biometrics`` exposes raw device values (HRV, RHR,
+SpO2, respiration, weight) so the Anomaly Explainer role can answer
+"why did my HRV tank?" without round-trips.
+
+A-06 audit: ``confirm_draft`` mirrors the Telegram inline-button path so
+web users can confirm training-plan and supplement drafts from the SPA.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy import select
@@ -20,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.training import TrainingPlan
 from app.models.gym_detail import GymDayPlan
 from app.models.user import User
+from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.queries.gym_detail import PlanNotFoundError, session_view
 from app.queries.journal import get_journal_entries
 from app.queries.labs import get_donation_status, get_lab_trend
@@ -29,9 +37,14 @@ from app.queries.metrics import (
     get_metric_trend,
 )
 from app.queries.plans import (
+    confirm_plan_draft,
+    confirm_supplement_draft,
     create_plan_draft,
     create_supplement_draft,
+    get_plan_sessions_for_day,
     get_training_plan,
+    reject_plan_draft,
+    reject_supplement_draft,
 )
 from app.queries.search import search_context
 from app.queries.snapshot import gear_overview
@@ -142,6 +155,191 @@ async def _get_donation_status(ctx: ToolContext) -> dict:
 async def _get_gear_status(ctx: ToolContext, gear_id: int | None = None) -> dict:
     items = await gear_overview(ctx.session, ctx.user_id, gear_id=gear_id)
     return {"items": items}
+
+
+async def _get_raw_biometrics(
+    ctx: ToolContext,
+    start_date: str,
+    end_date: str,
+    fields: list[str] | None = None,
+) -> dict:
+    """W-01 audit: raw device values for the Anomaly Explainer role.
+
+    Returns daily_biometrics rows (resting_hr, spo2_avg, weight_kg,
+    body_fat_pct, vo2max, steps) and hrv_readings (overnight_avg + 5min)
+    over the requested range. ``fields=None`` returns all; otherwise
+    filters to the named fields. NULL values are preserved verbatim —
+    the model needs to see "not measured" honestly, not zero-invented.
+    """
+    start, end = _date_range(start_date, end_date)
+    # Cap the range to prevent unbounded scans (D-02 audit pattern).
+    if (end - start).days > 90:
+        raise ValueError(
+            "raw_biometrics range capped at 90 days — narrow the window for "
+            "anomaly explanation"
+        )
+
+    allowed_fields = {
+        "resting_hr", "spo2_avg", "weight_kg", "body_fat_pct", "vo2max",
+        "steps", "floors", "hydration_ml", "hrv_ms", "hrv_reading_type",
+    }
+    if fields is not None:
+        invalid = set(fields) - allowed_fields
+        if invalid:
+            raise ValueError(
+                f"unknown fields {sorted(invalid)} (allowed: {sorted(allowed_fields)})"
+            )
+
+    bio_rows = (
+        await ctx.session.scalars(
+            select(DailyBiometric)
+            .where(
+                DailyBiometric.user_id == ctx.user_id,
+                DailyBiometric.date >= start,
+                DailyBiometric.date <= end,
+            )
+            .order_by(DailyBiometric.date)
+        )
+    ).all()
+
+    from datetime import datetime as _dt, time as _time
+    from zoneinfo import ZoneInfo
+    user = await ctx.session.get(User, ctx.user_id)
+    tz = ZoneInfo(user.timezone) if user else ZoneInfo("UTC")
+    start_dt = _dt.combine(start, _time.min, tzinfo=tz)
+    end_dt = _dt.combine(end + timedelta(days=1), _time.min, tzinfo=tz)
+
+    hrv_rows = (
+        await ctx.session.scalars(
+            select(HrvReading)
+            .where(
+                HrvReading.user_id == ctx.user_id,
+                HrvReading.timestamp >= start_dt.astimezone(),
+                HrvReading.timestamp < end_dt.astimezone(),
+            )
+            .order_by(HrvReading.timestamp)
+        )
+    ).all()
+
+    def _pick(d: dict, keys: set[str] | None) -> dict:
+        if keys is None:
+            return d
+        return {k: v for k, v in d.items() if k in keys}
+
+    bio_out = []
+    for b in bio_rows:
+        row = {
+            "date": b.date.isoformat(),
+            "resting_hr": b.resting_hr,
+            "spo2_avg": float(b.spo2_avg) if b.spo2_avg is not None else None,
+            "weight_kg": float(b.weight_kg) if b.weight_kg is not None else None,
+            "body_fat_pct": float(b.body_fat_pct) if b.body_fat_pct is not None else None,
+            "vo2max": float(b.vo2max) if b.vo2max is not None else None,
+            "steps": b.steps,
+            "floors": b.floors,
+            "hydration_ml": b.hydration_ml,
+        }
+        bio_out.append(_pick(row, set(fields) if fields else None))
+
+    hrv_out = []
+    hrv_field_set = set(fields) if fields and {"hrv_ms", "hrv_reading_type"} & set(fields) else None
+    if hrv_field_set is not None or fields is None:
+        for h in hrv_rows:
+            row = {
+                "timestamp": h.timestamp.isoformat(),
+                "hrv_ms": float(h.hrv_ms) if h.hrv_ms is not None else None,
+                "hrv_reading_type": h.reading_type,
+                "date": h.timestamp.astimezone(tz).date().isoformat(),
+            }
+            hrv_out.append(_pick(row, hrv_field_set))
+
+    return {
+        "rows": bio_out,
+        "hrv_readings": hrv_out,
+        "note": "raw device values; null = not measured (never invented)",
+    }
+
+
+async def _confirm_draft(
+    ctx: ToolContext,
+    draft_type: str,
+    draft_id: int,
+    action: str = "confirm",
+) -> dict:
+    """A-06 audit: web draft-confirmation mirror of the Telegram inline-button path.
+
+    ``draft_type`` is "training_plan" or "supplement". ``action`` is
+    "confirm" or "reject". The underlying confirm/reject functions in
+    app.queries.plans are the SAME ones the Telegram callback path uses —
+    one implementation, two surfaces (§8.2 law).
+    """
+    if draft_type not in ("training_plan", "supplement"):
+        return {"error": "draft_type must be 'training_plan' or 'supplement'"}
+    if action not in ("confirm", "reject"):
+        return {"error": "action must be 'confirm' or 'reject'"}
+    try:
+        if draft_type == "training_plan":
+            if action == "confirm":
+                result = await confirm_plan_draft(ctx.session, ctx.user_id, draft_id)
+            else:
+                result = await reject_plan_draft(ctx.session, ctx.user_id, draft_id)
+        else:
+            if action == "confirm":
+                result = await confirm_supplement_draft(ctx.session, ctx.user_id, draft_id)
+            else:
+                result = await reject_supplement_draft(ctx.session, ctx.user_id, draft_id)
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    return {"status": action, "draft_type": draft_type, "draft_id": draft_id, "result": result}
+
+
+async def _get_score_components(ctx: ToolContext, date: str | None = None) -> dict:
+    """W-01 audit: decompose the latest DailyFeature into its component
+    contributions so the Anomaly Explainer can answer "why is recovery low?"
+    without the model guessing at causality."""
+    from app.models.features import DailyFeature
+    day = _date(date, field_name="date", required=False) or ctx.today
+    row = await ctx.session.get(DailyFeature, {"user_id": ctx.user_id, "date": day})
+    if row is None:
+        return {"date": day.isoformat(), "components": None, "note": "no feature row for this date"}
+    return {
+        "date": day.isoformat(),
+        "components": {
+            "recovery_score": float(row.recovery_score) if row.recovery_score is not None else None,
+            "readiness_score": float(row.readiness_score) if row.readiness_score is not None else None,
+            "strain_score": float(row.strain_score) if row.strain_score is not None else None,
+            "acwr": float(row.acwr) if row.acwr is not None else None,
+            "hrv_deviation_pct": float(row.hrv_deviation_from_baseline) if row.hrv_deviation_from_baseline is not None else None,
+            "illness_risk_score": float(row.illness_risk_score) if row.illness_risk_score is not None else None,
+            "injury_risk_score": float(row.injury_risk_score) if row.injury_risk_score is not None else None,
+            "sleep_architecture_score": float(row.sleep_architecture_score) if row.sleep_architecture_score is not None else None,
+            "data_completeness": row.data_completeness,
+        },
+    }
+
+
+async def _get_integration_health(ctx: ToolContext) -> dict:
+    """W-05 audit: integration health with failure streaks + last_synced_at
+    so the Data-Health Steward can accurately answer "is my data synced?"."""
+    from app.models.integration import Integration
+    rows = (
+        await ctx.session.scalars(
+            select(Integration)
+            .where(Integration.user_id == ctx.user_id)
+            .order_by(Integration.provider)
+        )
+    ).all()
+    return {
+        "integrations": [
+            {
+                "provider": i.provider,
+                "status": i.status,
+                "consecutive_failures": i.consecutive_failures,
+                "last_synced_at": i.last_synced_at.isoformat() if i.last_synced_at else None,
+            }
+            for i in rows
+        ]
+    }
 
 
 # --- write tools (§8.5: draft only, confirm via Telegram) --------------------
@@ -503,6 +701,66 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
                 [],
             ),
             handler=_get_gym_day,
+        ),
+        ToolSpec(
+            name="get_raw_biometrics",
+            kind="read",
+            description="W-01: raw device values (resting_hr, spo2_avg, weight_kg, "
+            "body_fat_pct, vo2max, steps, hrv_ms + reading_type) over a date range. "
+            "Use for anomaly explanation ('why did my HRV tank?'). NULL = not "
+            "measured (never invented). Range capped at 90 days.",
+            parameters=_schema(
+                {
+                    "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "fields": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional field filter (resting_hr, spo2_avg, weight_kg, "
+                        "body_fat_pct, vo2max, steps, floors, hydration_ml, hrv_ms, hrv_reading_type)",
+                    },
+                },
+                ["start_date", "end_date"],
+            ),
+            handler=_get_raw_biometrics,
+        ),
+        ToolSpec(
+            name="get_score_components",
+            kind="read",
+            description="W-01: decompose one day's DailyFeature into its component "
+            "contributions (recovery, readiness, strain, ACWR, hrv_deviation_pct, "
+            "illness_risk, injury_risk, sleep_architecture, data_completeness) so "
+            "the model can explain 'why is recovery low?' without guessing.",
+            parameters=_schema(
+                {"date": {"type": "string", "description": "YYYY-MM-DD, default today"}},
+                [],
+            ),
+            handler=_get_score_components,
+        ),
+        ToolSpec(
+            name="get_integration_health",
+            kind="read",
+            description="W-05: integration status with consecutive_failures and "
+            "last_synced_at so the model can accurately answer 'is my data synced?' "
+            "instead of reporting 'connected' while sync has failed.",
+            parameters=_schema({}, []),
+            handler=_get_integration_health,
+        ),
+        ToolSpec(
+            name="confirm_draft",
+            kind="write",
+            description="A-06: confirm or reject a training_plan or supplement draft "
+            "from the web UI (mirrors the Telegram inline-button path). action=confirm "
+            "applies the draft; action=reject discards it.",
+            parameters=_schema(
+                {
+                    "draft_type": {"type": "string", "enum": ["training_plan", "supplement"]},
+                    "draft_id": {"type": "integer"},
+                    "action": {"type": "string", "enum": ["confirm", "reject"]},
+                },
+                ["draft_type", "draft_id"],
+            ),
+            handler=_confirm_draft,
         ),
     ]
 }

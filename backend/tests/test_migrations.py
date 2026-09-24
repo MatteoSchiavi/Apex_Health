@@ -123,3 +123,72 @@ async def test_day_boundary_columns_are_tz_aware(db_session):
     )
     offenders = rows.fetchall()
     assert offenders == []
+
+
+# ---- F-08/D-05/F-21/F-19 audit: migration 0008 indexes + columns ----------
+
+
+async def test_migration_0008_session_indexes(db_session):
+    """F-08/D-05: sessions.token_hash and expires_at are indexed."""
+    rows = await db_session.execute(
+        text("SELECT indexname FROM pg_indexes WHERE tablename='sessions'")
+    )
+    indexes = {r[0] for r in rows}
+    assert "idx_sessions_token_hash" in indexes
+    assert "idx_sessions_expires_at" in indexes
+
+
+async def test_migration_0008_biometrics_index(db_session):
+    """D-05: daily_biometrics has a user_id+date composite index."""
+    rows = await db_session.execute(
+        text("SELECT indexname FROM pg_indexes WHERE tablename='daily_biometrics'")
+    )
+    assert "idx_bio_user_date" in {r[0] for r in rows}
+
+
+async def test_migration_0008_raw_ingest_partial_index(db_session):
+    """D-05: raw_ingest has a partial index on unprocessed rows."""
+    rows = await db_session.execute(
+        text(
+            "SELECT indexdef FROM pg_indexes WHERE tablename='raw_ingest' "
+            "AND indexname='idx_raw_unproc'"
+        )
+    )
+    defn = rows.scalar()
+    assert defn is not None
+    assert "processed = false" in defn.lower()
+
+
+async def test_migration_0008_session_absolute_expires(db_session):
+    """F-21: sessions.absolute_expires_at column exists."""
+    rows = await db_session.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='sessions' AND column_name='absolute_expires_at'"
+        )
+    )
+    assert rows.scalar() == "absolute_expires_at"
+
+
+async def test_migration_0008_device_token_absolute_expires(db_session):
+    """F-19: device_tokens.absolute_expires_at column exists."""
+    rows = await db_session.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='device_tokens' AND column_name='absolute_expires_at'"
+        )
+    )
+    assert rows.scalar() == "absolute_expires_at"
+
+
+async def test_migration_0008_physio_check_constraints(db_session):
+    """P-02: physiological CHECK constraints are present on hrv_readings."""
+    rows = await db_session.execute(
+        text(
+            "SELECT con.conname FROM pg_constraint con "
+            "JOIN pg_class cls ON con.conrelid = cls.oid "
+            "WHERE cls.relname='hrv_readings' AND con.contype='c'"
+        )
+    )
+    constraint_names = {r[0] for r in rows}
+    assert "ck_hrv_readings_hrv_ms_plausible" in constraint_names

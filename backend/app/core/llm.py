@@ -179,9 +179,26 @@ def parse_completion(body: dict[str, Any], fallback_model: str) -> LLMResponse:
 
     Pure function so the live client's parsing is unit-testable without HTTP.
     Tool calls parse defensively: unparsable JSON arguments raise LLMError —
-    the agent loop converts that into a tool-error result, never a crash."""
-    usage = body.get("usage") or {}
-    message = body["choices"][0]["message"]
+    the agent loop converts that into a tool-error result, never a crash.
+
+    A-05 (audit): a malformed provider body (empty choices, missing message,
+    moderation envelope, non-dict body) raises ``LLMError`` — never
+    ``KeyError`` / ``IndexError`` / ``TypeError`` — so the agent-loop
+    degradation handler can convert the failure into a graceful retry or
+    fallback rather than a 500."""
+    usage = body.get("usage") or {} if isinstance(body, dict) else {}
+    try:
+        choices = body["choices"]
+        message = choices[0]["message"]
+    except (KeyError, IndexError, TypeError) as exc:
+        preview = str(body)[:200]
+        raise LLMError(
+            f"malformed completion body (no choices[0].message): {preview}"
+        ) from exc
+    if not isinstance(message, dict):
+        raise LLMError(
+            f"malformed completion body (message is not an object): {str(body)[:200]}"
+        )
     cached = 0
     details = usage.get("prompt_tokens_details") or {}
     if isinstance(details, dict):

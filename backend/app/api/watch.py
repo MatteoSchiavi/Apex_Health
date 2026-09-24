@@ -49,6 +49,7 @@ from app.queries import (
     resolve_range,
 )
 from app.queries.gym_detail import plan_for_date, session_view
+from app.services.safety_interlock import safety_block
 
 router = APIRouter(prefix="/watch", tags=["watch"])
 
@@ -61,7 +62,11 @@ async def get_watch_principal(
     session: AsyncSession = Depends(get_session),
 ) -> tuple[User, DeviceToken]:
     """Bearer-token principal for watch requests (§22 security posture:
-    peppered hash lookup, revocation respected, last_used stamped)."""
+    peppered hash lookup, revocation respected, last_used stamped).
+
+    F-19 audit: throttles ``last_used`` writes to one per hour per token
+    (write amplification was hitting the DB on every 30-min watch poll), and
+    rejects tokens past their ``absolute_expires_at`` regardless of activity."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
     raw = authorization.split(" ", 1)[1].strip()
@@ -70,19 +75,27 @@ async def get_watch_principal(
     token = await session.scalar(
         select(DeviceToken).where(DeviceToken.token_hash == hashed)
     )
+    now = datetime.now(UTC)
+    # F-19: revocation OR absolute expiry → reject.
     if token is None or token.revoked_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked token")
+    if token.absolute_expires_at is not None and token.absolute_expires_at <= now:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
 
     user = await session.get(User, token.user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked token")
 
-    await session.execute(
-        update(DeviceToken)
-        .where(DeviceToken.id == token.id)
-        .values(last_used_at=datetime.now(UTC))
-    )
-    await session.commit()
+    # F-19: throttle last_used writes — only stamp when the previous stamp is
+    # older than an hour. A 30-min watch poll cadence no longer writes a row
+    # every tick; the index on (user_id, revoked_at) keeps the lookup cheap.
+    if token.last_used_at is None or (now - token.last_used_at).total_seconds() >= 3600:
+        await session.execute(
+            update(DeviceToken)
+            .where(DeviceToken.id == token.id)
+            .values(last_used_at=now)
+        )
+        await session.commit()
     return user, token
 
 
@@ -116,10 +129,14 @@ async def mint_token(
 ) -> TokenCreated:
     body = payload or TokenCreateRequest()
     raw = new_session_token()  # same 256-bit entropy, same peppered hashing
+    # F-19 audit: 365-day absolute expiry baked in at mint time. The watch
+    # auth path rejects tokens past this column regardless of activity.
+    now = datetime.now(UTC)
     token = DeviceToken(
         user_id=principal[0].id,
         name=body.name,
         token_hash=hash_session_token(raw, get_settings().session_secret),
+        absolute_expires_at=now + timedelta(days=365),
     )
     session.add(token)
     await session.commit()
@@ -245,6 +262,11 @@ class WatchDay(BaseModel):
     # Concrete gym day plan (owner feature batch): exercises with sets/reps
     # + rest so the watch window doubles as the in-gym tracker.
     gym_plan: dict | None = None
+    # W-02 audit: machine-readable safety interlock — verdict ∈ {go, modify,
+    # rest} + intensity_ceiling + reasons. The watch renders a banner when
+    # the verdict is modify/rest so the athlete sees the veto BEFORE the
+    # workout starts.
+    safety: dict | None = None
 
 
 class WatchWeek(BaseModel):
@@ -268,6 +290,15 @@ async def watch_day(
             gym_plan = await session_view(session, user.id, plan.id)
         except Exception:  # pragma: no cover - view built from same rows
             gym_plan = None
+    # W-02 audit: pull the latest DailyFeature and compute the safety verdict
+    # so the watch can render a modify/rest banner BEFORE the workout starts.
+    latest_feature = await session.scalar(
+        select(DailyFeature)
+        .where(DailyFeature.user_id == user.id)
+        .order_by(DailyFeature.date.desc())
+        .limit(1)
+    )
+    safety = safety_block(latest_feature)
     return WatchDay(
         date=local_today.isoformat(),
         weekday=local_today.weekday(),
@@ -279,6 +310,7 @@ async def watch_day(
         alerts=await open_alert_summaries(session, user.id),
         journal_streak=await journal_streak(session, user.id, local_today),
         gym_plan=gym_plan,
+        safety=safety,
     )
 
 

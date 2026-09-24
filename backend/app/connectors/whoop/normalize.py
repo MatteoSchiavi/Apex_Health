@@ -16,6 +16,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.whoop.fetch import SOURCE
+from app.connectors.validation import (
+    valid_body_fat_pct,
+    valid_hrv_ms,
+    valid_respiration_bpm,
+    valid_resting_hr_bpm,
+    valid_sleep_score,
+    valid_spo2_pct,
+    valid_weight_kg,
+)
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
@@ -132,9 +141,10 @@ async def _upsert_sleep(
         rem_s=rem_s,
         awake_s=awake_s,
         # sleep_performance_percentage is 0-100 — same scale as Garmin's
-        # sleep score band, so it maps onto sleep_score directly.
-        sleep_score=_num(score.get("sleep_performance_percentage")),
-        respiration_avg=_num(score.get("respiratory_rate")),
+        # sleep score band, so it maps onto sleep_score directly. P-02 audit:
+        # validators drop implausible values (negative, >100).
+        sleep_score=valid_sleep_score(score.get("sleep_performance_percentage")),
+        respiration_avg=valid_respiration_bpm(score.get("respiratory_rate")),
         spo2_avg=None,  # Whoop does not report SpO2 per sleep
         restlessness=None,  # Whoop does not report restlessness
     )
@@ -166,21 +176,31 @@ async def _upsert_recovery(
     if payload.get("score_state") not in (None, "SCORED"):
         return  # PENDING_SCORE etc. — nothing to normalize yet
     score = payload.get("score") or {}
-    hrv = _num(score.get("hrv_rmssd_milli"))
-    rhr = _num(score.get("resting_heart_rate"))
-    spo2 = _num(score.get("spo2_percentage"))
+    # P-02 audit: drop implausible values before they enter typed tables.
+    hrv = valid_hrv_ms(score.get("hrv_rmssd_milli"))
+    rhr = valid_resting_hr_bpm(score.get("resting_heart_rate"))
+    spo2 = valid_spo2_pct(score.get("spo2_percentage"))
     recovery_score = _num(score.get("recovery_score"))
     skin_temp = _num(score.get("skin_temp_celsius"))
     if hrv is None and rhr is None and spo2 is None and recovery_score is None:
         return
     user_id = getattr(raw, "user_id")
 
-    # Overnight-average HRV: anchor at the recovery's related cycle start in
-    # user-local morning — Whoop's recovery row represents the state at the
-    # end of the sleep that closed the previous cycle. reading_type mirrors
-    # Garmin's "overnight_avg".
+    # P-12 audit: anchor at the recovery's related cycle start in user-local
+    # morning — Whoop's recovery row represents the state at the end of the
+    # sleep that closed the previous cycle. reading_type mirrors Garmin's
+    # "overnight_avg". NEVER fall back to datetime.now(): a missing cycle
+    # start means the biometric's true date is unknowable — drop instead of
+    # fabricating today's date (which would pollute daily views on backfill).
     cycle_start = _safe_dt(payload.get("cycle_start"))
-    ts = cycle_start or (getattr(raw, "fetched_at", None) or datetime.now(tz=tz))
+    fetched = getattr(raw, "fetched_at", None)
+    ts = cycle_start or fetched
+    if ts is None:
+        logger.warning(
+            "whoop recovery raw row %s: no cycle_start and no fetched_at — dropping",
+            getattr(raw, "id", "?"),
+        )
+        return
     if hrv is not None:
         existing = await session.scalar(
             select(HrvReading).where(
@@ -212,10 +232,12 @@ async def _upsert_recovery(
     if bio is None:
         bio = DailyBiometric(user_id=user_id, date=day)
         session.add(bio)
+    # P-14/F-14 audit: per-field fill — Whoop fills only NULL canonical
+    # columns (never overwrites main-device data).
     if rhr is not None and bio.resting_hr is None:
-        bio.resting_hr = round(rhr)
+        bio.resting_hr = rhr  # already validated+rounded by valid_resting_hr_bpm
     if spo2 is not None and bio.spo2_avg is None:
-        bio.spo2_avg = spo2
+        bio.spo2_avg = spo2  # already validated by valid_spo2_pct
     metrics = dict(bio.source_metrics or {})
     whoop = dict(metrics.get("whoop") or {})
     if recovery_score is not None:
@@ -246,9 +268,16 @@ async def _upsert_cycle(
     if day_strain is None and avg_hr is None:
         return
     user_id = getattr(raw, "user_id")
-    start = _safe_dt(payload.get("start")) or (
-        getattr(raw, "fetched_at", None) or datetime.now(tz=tz)
-    )
+    # P-12 audit: no datetime.now() fallback — a cycle without a start
+    # timestamp cannot be reliably assigned to a local day. Drop instead of
+    # attributing old biometrics to the current date (backfill-safety).
+    start = _safe_dt(payload.get("start")) or getattr(raw, "fetched_at", None)
+    if start is None:
+        logger.warning(
+            "whoop cycle raw row %s: no start and no fetched_at — dropping",
+            getattr(raw, "id", "?"),
+        )
+        return
     day = start.astimezone(tz).date()
     bio = await session.scalar(
         select(DailyBiometric).where(
@@ -433,11 +462,20 @@ async def _upsert_body(
     tz: ZoneInfo,
     stats: NormalizerStats,
 ) -> None:
-    weight = _num(payload.get("weight_kilogram"))
+    weight = valid_weight_kg(payload.get("weight_kilogram"))
     if weight is None:
         return
     user_id = getattr(raw, "user_id")
-    fetched = getattr(raw, "fetched_at", None) or datetime.now(tz=tz)
+    # P-12 audit: NEVER fall back to datetime.now() — only the raw row's
+    # fetched_at is a trustworthy measurement timestamp. Drop the record
+    # when neither is present (backfill-safety).
+    fetched = getattr(raw, "fetched_at", None)
+    if fetched is None:
+        logger.warning(
+            "whoop body_measurement raw row %s: no fetched_at — dropping",
+            getattr(raw, "id", "?"),
+        )
+        return
     day = fetched.astimezone(tz).date()
     bio = await session.scalar(
         select(DailyBiometric).where(
@@ -448,7 +486,7 @@ async def _upsert_body(
         bio = DailyBiometric(user_id=user_id, date=day)
         session.add(bio)
     if bio.weight_kg is None:
-        bio.weight_kg = weight
+        bio.weight_kg = weight  # already validated by valid_weight_kg
     stats.biometrics_upserted += 1
 
 
