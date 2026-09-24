@@ -112,3 +112,54 @@ def test_never_returns_empty_session():
     feedback = [{"date": TODAY, "activity_kind": "ski", "rpe": 10, "soreness": ["knees"], "injury_flag": True}]
     kept, notes = adjust(_leg_day(), [event], feedback[0:1], TODAY)
     assert kept  # always something to do
+
+
+# ---- P-04 audit: safety interlock wired into adjust() --------------------
+
+
+def test_high_illness_risk_drops_high_and_moderate_impact():
+    """P-04: illness_risk ≥ 70 → ceiling='rest' → all high+moderate dropped."""
+    safety = {"illness_risk": 88, "hrv_dev_pct": -31, "rhr_dev_bpm": 9}
+    kept, notes = adjust(_leg_day(), [], [], TODAY, safety=safety)
+    # All high/moderate impact rows dropped; only low-impact survives.
+    assert all(r["impact_level"] == "low" for r in kept)
+    assert any("illness" in n.lower() or "rest" in n.lower() for n in notes)
+
+
+def test_high_injury_risk_caps_at_low():
+    """P-04: injury_risk ≥ 75 → ceiling='low' → high+moderate dropped."""
+    safety = {"injury_risk": 80}
+    kept, notes = adjust(_leg_day(), [], [], TODAY, safety=safety)
+    assert all(r["impact_level"] == "low" for r in kept)
+    assert any("injury" in n.lower() or "load spike" in n.lower() for n in notes)
+
+
+def test_acwr_spike_caps_at_low():
+    """P-04: ACWR > 1.5 → ceiling='low' → high+moderate dropped."""
+    safety = {"acwr": 1.8}
+    kept, notes = adjust(_leg_day(), [], [], TODAY, safety=safety)
+    assert all(r["impact_level"] == "low" for r in kept)
+    assert any("ACWR" in n for n in notes)
+
+
+def test_no_safety_dict_means_no_veto():
+    """P-04: adjust(safety=None) preserves the legacy behavior (no veto)."""
+    kept, notes = adjust(_leg_day(), [], [], TODAY, safety=None)
+    assert len(kept) == 4  # nothing dropped
+    assert "Box Jump" in {r["name"] for r in kept}
+
+
+def test_safety_veto_runs_before_event_taper():
+    """P-04: the safety veto is applied FIRST; event taper layers on top.
+
+    A rest-illness verdict + a leg-taper event should produce notes for both
+    and a kept set that respects BOTH (high impact dropped by veto, legs
+    further reduced by taper).
+    """
+    safety = {"illness_risk": 88}
+    event = _event("ski", 2)  # taper
+    kept, notes = adjust(_leg_day(), [event], [], TODAY, safety=safety)
+    assert any("illness" in n.lower() for n in notes)
+    assert any("taper" in n.lower() for n in notes)
+    # No high or moderate impact survived (illness veto drops them all).
+    assert all(r["impact_level"] == "low" for r in kept)

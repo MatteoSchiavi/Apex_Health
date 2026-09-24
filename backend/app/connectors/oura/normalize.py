@@ -21,6 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.garmin.normalize import NormalizerStats
 from app.connectors.oura.fetch import SOURCE, store_raw
+from app.connectors.validation import (
+    valid_hrv_ms,
+    valid_respiration_bpm,
+    valid_sleep_score,
+    valid_spo2_pct,
+    valid_weight_kg,
+)
 from app.models.integration import RawIngest
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
@@ -149,9 +156,11 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
                     _int(payload.get("awake_time"))
                     or _int(contributors.get("awake_time"))
                 ),
-                sleep_score=_float(contributors.get("sleep_score") or payload.get("score")),
-                respiration_avg=_float(payload.get("average_breath")),
-                spo2_avg=_float((payload.get("spo2_percentage") or {}).get("average")),
+                sleep_score=valid_sleep_score(
+                    contributors.get("sleep_score") or payload.get("score")
+                ),
+                respiration_avg=valid_respiration_bpm(payload.get("average_breath")),
+                spo2_avg=valid_spo2_pct((payload.get("spo2_percentage") or {}).get("average")),
                 restlessness=None,  # ring restlessness ≠ Garmin restlessness
                 source_metrics=sm,
             )
@@ -168,14 +177,16 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
         if light is not None:
             existing.light_s = light
         if payload.get("average_breath") is not None:
-            existing.respiration_avg = _float(payload.get("average_breath"))
+            existing.respiration_avg = valid_respiration_bpm(payload.get("average_breath"))
         merged = dict(existing.source_metrics or {})
         merged["oura"] = {**merged.get("oura", {}), **sm["oura"]}
         existing.source_metrics = merged
         stats.sleep_upserted += 1
 
     # Overnight HRV: one canonical reading at sleep midpoint (rMSSD-class).
-    avg_hrv = _float(payload.get("average_hrv"))
+    # P-02 audit: drop implausible values (firmware glitch, sensor fault).
+    # P-11 audit: midpoint anchor is documented; keep it (canonical choice).
+    avg_hrv = valid_hrv_ms(payload.get("average_hrv"))
     if avg_hrv and start and end:
         mid = start + (end - start) / 2
         from sqlalchemy import and_
@@ -219,10 +230,19 @@ async def _upsert_heartrate(session, raw, payload, stats) -> None:
 async def _upsert_personal(session, raw, payload, stats) -> None:
     user_id = getattr(raw, "user_id")
     height_m = _float(payload.get("height"))
-    weight_kg = _float(payload.get("weight"))
+    weight_kg = valid_weight_kg(payload.get("weight"))
     if not (height_m or weight_kg):
         return
-    day = datetime.now(timezone.utc).astimezone(ZoneInfo("UTC")).date()
+    # P-12 audit: no datetime.now() — use the raw row's fetched_at (the
+    # trustworthy measurement timestamp). Drop when absent (backfill-safety).
+    fetched = getattr(raw, "fetched_at", None)
+    if fetched is None:
+        logger.warning(
+            "oura personal_info raw row %s: no fetched_at — dropping",
+            getattr(raw, "id", "?"),
+        )
+        return
+    day = fetched.astimezone(ZoneInfo("UTC")).date()
     existing = (
         await session.scalars(
             select(DailyBiometric).where(
@@ -233,8 +253,8 @@ async def _upsert_personal(session, raw, payload, stats) -> None:
     if existing is None:
         existing = DailyBiometric(user_id=user_id, date=day)
         session.add(existing)
-    if weight_kg:
-        existing.weight_kg = round(weight_kg, 2)
+    if weight_kg and existing.weight_kg is None:
+        existing.weight_kg = weight_kg  # already validated+rounded
     merged = dict(existing.source_metrics or {})
     merged["oura"] = {**merged.get("oura", {}), "height_m": height_m}
     existing.source_metrics = merged

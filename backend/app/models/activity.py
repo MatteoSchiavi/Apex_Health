@@ -29,12 +29,22 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    discipline_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # F-07 audit: ForeignKey + index added for ORM↔DDL parity and to back the
+    # user-scoped activity lookups (device-merge, reconciliation, dashboard).
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    # F-07/F-32 audit: ForeignKey added. Nullable is preserved (the
+    # normalizer writes NULL for unknown disciplines) — the audit's CHECK
+    # suggestion is intentionally NOT added because legitimate legacy rows
+    # and the "unknown" fallback path both rely on NULL being allowed.
+    discipline_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("disciplines.id"), nullable=True, index=True
+    )
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     start_tz_offset_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     # §17 day-boundary rule: calendar date of the LOCAL start_time (users.timezone).
-    local_date: Mapped[date] = mapped_column(Date, nullable=False)
+    local_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     duration_s: Mapped[int] = mapped_column(Integer, nullable=False)
     distance_m: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     elevation_gain_m: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)

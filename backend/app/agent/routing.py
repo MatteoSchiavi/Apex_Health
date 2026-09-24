@@ -81,7 +81,13 @@ async def resolve_tier(
 ) -> RoutingDecision:
     """§9.2 routing rule for one chat turn. The classification call (when it
     happens) logs its own token_usage row as tier='free' (§9.1: the router
-    itself is free-tier)."""
+    itself is free-tier).
+
+    R-01 (audit): the deterministic medical pre-filter runs FIRST — a marker
+    hit short-circuits the (weaker) free-tier classifier so medical questions
+    are always routed to the medical tier (or its powerful-tier fallback) and
+    pick up the disclaimer. False negatives from the classifier can no longer
+    drop medical questions onto the cheap tier."""
     credential = await session.get(AuthCredential, user_id)
     cap = credential.ai_access_tier if credential is not None else "cheap_only"
     if cap not in ("cheap_only", "full"):
@@ -90,9 +96,18 @@ async def resolve_tier(
         cap = "cheap_only"
 
     if cap == "cheap_only":
+        # Even on a capped account a medical question deserves the disclaimer
+        # path — emit it (the cheap model will produce the reply, but the
+        # caller still prepends MEDICAL_DISCLAIMER via the classification).
+        if is_medical_intent(text):
+            return RoutingDecision(tier="cheap", classification="medical", cap=cap)
         return RoutingDecision(tier="cheap", classification=None, cap=cap)
 
-    classification = await _classify(session, user_id, text, llm)
+    # R-01: deterministic medical markers win over the free-tier classifier.
+    if is_medical_intent(text):
+        classification = "medical"
+    else:
+        classification = await _classify(session, user_id, text, llm)
     if classification == "medical":
         # Medical tier requires BOTH an owner-enabled MedGemma endpoint and a
         # full-tier account; anything less degrades to powerful (the reply

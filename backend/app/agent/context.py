@@ -84,8 +84,14 @@ async def context_docs_compact(
 async def upcoming_events_compact(
     session: AsyncSession, user_id: int, today: date, tz: ZoneInfo
 ) -> list[dict]:
-    """Next 14 days of calendar events — compact enough for every turn."""
-    horizon_start = datetime.combine(today, datetime.min.time())
+    """Next 14 days of calendar events — compact enough for every turn.
+
+    C-02 audit: ALSO include past events within ±3 days so post-effort
+    questions ("why was my HRV low on Sunday?") have the race/trip context.
+    The past window is shorter than the future window because past events
+    age out of recovery relevance quickly.
+    """
+    horizon_start = datetime.combine(today - timedelta(days=3), datetime.min.time())
     horizon_end = datetime.combine(
         today + timedelta(days=_EVENT_HORIZON_DAYS), datetime.min.time()
     )

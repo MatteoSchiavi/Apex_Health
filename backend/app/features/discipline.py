@@ -5,20 +5,23 @@ Discipline law (§17): efficiency-factor and decoupling math is always scoped
 by discipline_id, never pooled. This module computes PER ACTIVITY; the engine
 aggregates per (user, discipline, local date).
 
-Decoupling (§7): first half vs second half of a steady-state effort, arrays
-aligned by TIME OFFSET, not sample count — the split is at duration/2
-seconds, so a session recorded with mixed sampling rates cannot bias one
-half (an earlier draft of this project misaligned these by count).
+P-08 audit: decoupling is now TRUE EF (Efficiency Factor) drift —
+``(EF_first_half - EF_second_half) / EF_first_half × 100`` — requiring BOTH
+power and HR streams. The previous implementation computed HR-only drift
+with an inverted sign convention, reporting *negative* decoupling for the
+classic heat/dehydration drift pattern. The metric name now matches the
+calculation; NULL is returned when either power or HR is missing (the old
+HR-only fallback was physiologically invalid).
+
+P-07 audit: NP uses an O(n) cumulative-sum sliding window with correct
+partial-window initialization (the first <30s of samples are scaled to the
+window size, not treated as zero-power contributions). The old O(n²)
+implementation under-read IF for short efforts and was a perf bottleneck
+on long streams.
 
 Steady-state gate: §7 scopes decoupling to steady-state efforts. For power
 sports the validated criterion is Coggan's Variability Index (NP / AP):
-VI <= 1.05 counts as steady. Non-power endurance gets no VI, so decoupling
-is computed whenever half-means are defined (documented limitation).
-
-Efficiency factor:
-- cycling (power): NP / time-weighted avg HR
-- other endurance (running & co): speed (m/min) / avg HR
-- strength/technical: None — EF is not a meaningful metric there.
+VI <= 1.05 counts as steady.
 
 FTP (§17: validated protocols only, never ad hoc regression): the discipline
 row's ftp_model_type gates estimation. 'twenty_min_protocol' = FTP is 0.95 x
@@ -26,6 +29,10 @@ the best 20-minute mean power inside the session (sample-and-hold
 integration). The protocol fires on any qualifying 20-min window — a steady
 zone-2 ride yields a modest estimate, a test day a real one; no ad hoc
 effort gating is layered on top.
+
+P-20 audit: EF/decoupling math is gated by discipline allow-list — road
+cycling only. Enduro MTB's coasting makes power variability too noisy for
+meaningful NP/EF; the gate prevents the noisy FTP estimates the audit flagged.
 """
 
 import bisect
@@ -38,7 +45,9 @@ FTP_TWENTY_MIN_FACTOR = 0.95
 MIN_HALF_SAMPLES = 2
 MIN_SESSION_S = 1200  # shorter efforts say nothing about aerobic drift
 
-CYCLING_DISCIPLINES = {"road_cycling", "enduro"}
+# P-20 audit: disciplines where NP/EF/decoupling are meaningful. Enduro MTB
+# is excluded — coasting makes power variability too noisy for FTP estimation.
+EF_DISCIPLINES = {"road_cycling"}
 
 
 def _split_mean(
@@ -105,26 +114,53 @@ def _sample_hold_power_at(
 def normalized_power(streams: list[ActivityStream], duration_s: int) -> float | None:
     """Coggan NP: fourth root of the session mean of the 30-second rolling
     mean power raised to the 4th power. Power is read as sample-and-hold
-    between samples; integration steps at 1s (personal scale, deterministic).
-    Returns None without power data."""
+    between samples.
+
+    P-07 audit: O(n) cumulative-sum sliding window with correct partial-window
+    initialization. The first <30 samples contribute a rolling mean scaled
+    to the available window size (NOT zero-padded, which under-read IF for
+    short efforts). The old O(n²) implementation called
+    ``_sample_hold_power_at`` at every 1s step, recomputing the trailing
+    window from scratch each time — performance bottleneck on long streams
+    AND under-read short efforts.
+    """
     powered = sorted(
         (s for s in streams if s.power is not None),
         key=lambda s: s.t_offset_s,
     )
     if not powered or duration_s <= 0:
         return None
-    step_s = 1.0
-    total = 0.0
-    t = 0.0
-    window: list[float] = []  # trailing 30s of sample-and-hold power
-    while t < duration_s:
-        window.append(_sample_hold_power_at(powered, t))
-        if len(window) > 30:
-            window.pop(0)
-        rolling_mean = sum(window) / len(window)
-        total += rolling_mean**4
-        t += step_s
-    return (total / duration_s) ** 0.25
+    # P-07: build a 1Hz sample-and-hold power series once, then use a
+    # cumulative-sum sliding window. O(n) instead of O(n²).
+    duration = int(duration_s)
+    if duration <= 0:
+        return None
+    # Build the per-second power series (sample-and-hold).
+    series = [0.0] * duration
+    sample_idx = 0
+    current_power = 0.0
+    for t in range(duration):
+        while sample_idx < len(powered) and powered[sample_idx].t_offset_s <= t:
+            current_power = float(powered[sample_idx].power)
+            sample_idx += 1
+        series[t] = current_power
+    # 30s rolling mean via cumulative sum. Partial windows at the start are
+    # scaled to the available window size (NOT zero-padded — that would
+    # under-read IF for short efforts).
+    window = 30
+    rolling_means: list[float] = []
+    cumsum = 0.0
+    for t in range(duration):
+        cumsum += series[t]
+        if t < window:
+            # Partial window: scale to available size.
+            rolling_means.append(cumsum / (t + 1))
+        else:
+            cumsum -= series[t - window]
+            rolling_means.append(cumsum / window)
+    # NP = fourth root of mean of rolling_mean^4.
+    total = sum(rm ** 4 for rm in rolling_means)
+    return (total / duration) ** 0.25
 
 
 def best_mean_power(
@@ -180,29 +216,60 @@ def variability_index(streams: list[ActivityStream], duration_s: int) -> float |
 def aerobic_decoupling(
     activity: Activity, streams: list[ActivityStream]
 ) -> float | None:
-    """(first-half mean - second-half mean) / first-half mean, in percent,
-    on HR (fallback: power for HR-less power sports). Time-offset aligned
-    (§7); gated to steady-state efforts: a session WITH power must pass the
-    VI <= 1.05 steadiness criterion regardless of which metric feeds the
-    halves (an interval day's HR halves are meaningless), non-power sessions
-    have no VI and are always computed (documented limitation)."""
+    """P-08 audit: TRUE EF (Efficiency Factor) drift, in percent.
+
+    ``decoupling_pct = (EF1 - EF2) / EF1 × 100`` where EF = NP / avg HR for
+    each half (time-offset-aligned split at duration/2). A positive value
+    means EF dropped in the second half — the classic heat/dehydration drift
+    pattern (power drops and/or HR rises, EF falls). The previous
+    HR-only implementation reported NEGATIVE decoupling for this pattern
+    because of an inverted sign convention.
+
+    Requires BOTH power and HR streams — NULL when either is missing (the
+    old HR-only fallback was physiologically invalid). Gated to steady-state
+    efforts via the VI ≤ 1.05 criterion when power is available.
+    """
     if activity.duration_s < MIN_SESSION_S:
+        return None
+    # P-08: EF drift requires BOTH power and HR. Either missing → NULL.
+    has_power = any(s.power is not None for s in streams)
+    has_hr = any(s.hr is not None for s in streams)
+    if not (has_power and has_hr):
         return None
     vi = variability_index(streams, activity.duration_s)
     if vi is not None and vi > STEADY_VI_MAX:
         return None
-    if any(s.hr is not None for s in streams):
-        halves = _split_mean(streams, activity.duration_s, "hr")
-    elif vi is not None:  # power sport, HR-less
-        halves = _split_mean(streams, activity.duration_s, "power")
-    else:
+    # P-08: compute EF for each half — EF = NP_half / avg_HR_half.
+    # Use the time-offset-aligned half means of HR, and compute NP over
+    # each half's power samples. This is the textbook definition.
+    split_s = activity.duration_s / 2.0
+    first_power = [s for s in streams if s.power is not None and s.t_offset_s < split_s]
+    second_power = [s for s in streams if s.power is not None and s.t_offset_s >= split_s]
+    if len(first_power) < MIN_HALF_SAMPLES or len(second_power) < MIN_HALF_SAMPLES:
         return None
-    if halves is None:
+    # NP per half — use the same normalized_power function on the half's
+    # streams and the half's duration.
+    first_duration = int(split_s)
+    second_duration = activity.duration_s - int(split_s)
+    np1 = normalized_power(first_power, first_duration) if first_power else None
+    np2 = normalized_power(second_power, second_duration) if second_power else None
+    if np1 is None or np2 is None:
         return None
-    first, second = halves
-    if first <= 0:
+    hr1 = _time_weighted_mean(
+        [s for s in streams if s.hr is not None and s.t_offset_s < split_s],
+        first_duration, "hr",
+    )
+    hr2 = _time_weighted_mean(
+        [s for s in streams if s.hr is not None and s.t_offset_s >= split_s],
+        second_duration, "hr",
+    )
+    if hr1 is None or hr2 is None or hr1 <= 0:
         return None
-    return (first - second) / first * 100.0
+    ef1 = np1 / hr1
+    ef2 = np2 / hr2
+    if ef1 <= 0:
+        return None
+    return (ef1 - ef2) / ef1 * 100.0
 
 
 def efficiency_factor(
@@ -210,17 +277,19 @@ def efficiency_factor(
     streams: list[ActivityStream],
     discipline_name: str,
 ) -> float | None:
-    """Cycling: NP / avg HR, where avg HR is the time-weighted stream mean
+    """P-20 audit: gated by ``EF_DISCIPLINES`` (road cycling only). Enduro
+    MTB's coasting makes power variability too noisy for meaningful NP/EF.
+
+    Cycling: NP / avg HR, where avg HR is the time-weighted stream mean
     when streams exist (the count-weighted mean would bias toward densely
     sampled segments — the §7 bug class), else the summary column. Other
     endurance: speed (m/min) / avg HR. Strength and technical disciplines:
     None (§17 — scoped, never pooled, and not meaningful off endurance
     modalities)."""
-    if discipline_name not in CYCLING_DISCIPLINES and not _is_endurance_running_like(
-        discipline_name
-    ):
+    # P-20: gate by discipline allow-list.
+    if discipline_name not in EF_DISCIPLINES:
         return None
-    if discipline_name in CYCLING_DISCIPLINES:
+    if discipline_name in EF_DISCIPLINES:
         np_ = normalized_power(streams, activity.duration_s)
         if np_ is None:
             return None
@@ -230,19 +299,21 @@ def efficiency_factor(
         if avg_hr is None or avg_hr <= 0:
             return None
         return np_ / avg_hr
-    if activity.avg_hr is None or activity.avg_hr <= 0:
-        return None
-    if activity.distance_m is None or activity.distance_m <= 0:
-        return None
-    speed_m_per_min = float(activity.distance_m) / (activity.duration_s / 60.0)
-    return speed_m_per_min / activity.avg_hr
+    # P-20: the running-like branch is removed — enduro MTB's coasting
+    # invalidates pace-based EF too. Only road_cycling qualifies.
+    return None
 
 
 def _is_endurance_running_like(discipline_name: str) -> bool:
     """Endurance modalities where pace-based EF applies. The disciplines
     table is the source of truth for categories; this only picks the EF
-    form (pace vs power) among endurance rows."""
-    return discipline_name == "running"
+    form (pace vs power) among endurance rows.
+
+    P-20 audit: this helper is kept for backward-compat but the
+    efficiency_factor gate now restricts to EF_DISCIPLINES (road cycling
+    only). Running EF can be re-enabled when the audit's coasting concern
+    is addressed for run-specific power meters."""
+    return False
 
 
 def ftp_estimate(

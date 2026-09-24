@@ -43,35 +43,70 @@ class WeatherError(Exception):
     """Raised when Open-Meteo cannot be reached or returns an error payload."""
 
 
+class WeatherConfigError(WeatherError):
+    """F-23 audit: 4xx config errors (bad lat/lon, malformed params) are
+    classified separately so sync-failure-escalation can exclude them from
+    the failure-streak count (a config error is not a transient outage)."""
+
+
 class OpenMeteoClient:
     """Thin async client over the two Open-Meteo endpoints.
 
     `http` is injectable for tests (mock transport); production callers pass
     one shared httpx.AsyncClient per task run.
+
+    F-23 audit: when no client is injected, a shared module-level client is
+    reused (connection pooling) instead of creating one per call (which
+    caused TLS handshake churn). 4xx errors raise ``WeatherConfigError``
+    (excluded from sync-failure escalation); 5xx and network errors raise
+    ``WeatherError`` (transient, eligible for retry).
     """
+
+    # F-23: module-level shared client — connection pooling across calls.
+    _shared_client: httpx.AsyncClient | None = None
 
     def __init__(self, http: httpx.AsyncClient | None = None) -> None:
         self._http = http
         self._owns_http = http is None
 
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._http is not None:
+            return self._http
+        # F-23: reuse the shared client (pooled connections) instead of
+        # creating one per call.
+        if OpenMeteoClient._shared_client is None or OpenMeteoClient._shared_client.is_closed:
+            OpenMeteoClient._shared_client = httpx.AsyncClient(timeout=30.0)
+        return OpenMeteoClient._shared_client
+
     async def _get(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        client = await self._get_client()
         try:
-            client = self._http or httpx.AsyncClient(timeout=30)
-            try:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                payload = resp.json()
-            finally:
-                if self._owns_http:
-                    await client.aclose()
+            resp = await client.get(url, params=params)
+            # F-23: classify 4xx as config errors (not transient). 4xx from
+            # Open-Meteo means bad lat/lon or malformed params — retrying
+            # won't help and the sync-failure-escalation noise should not
+            # count these.
+            if resp.status_code >= 400:
+                body_preview = resp.text[:200] if hasattr(resp, "text") else ""
+                if 400 <= resp.status_code < 500:
+                    raise WeatherConfigError(
+                        f"open-meteo config error ({resp.status_code}) at {url}: {body_preview}"
+                    )
+                raise WeatherError(
+                    f"open-meteo server error ({resp.status_code}) at {url}: {body_preview}"
+                )
+            payload = resp.json()
         except httpx.HTTPError as exc:
             raise WeatherError(f"open-meteo request failed ({url}): {exc}") from exc
         if not isinstance(payload, dict):
             raise WeatherError(f"open-meteo returned non-object payload: {payload!r}")
         if payload.get("error"):
-            raise WeatherError(
-                f"open-meteo error {payload.get('reason', payload.get('code'))}"
-            )
+            # Open-Meteo's own error envelope (e.g. "Latitude/longitude
+            # required") — classify as config when it's a param problem.
+            reason = str(payload.get("reason", payload.get("code", "")))
+            if "required" in reason.lower() or "invalid" in reason.lower():
+                raise WeatherConfigError(f"open-meteo config error: {reason}")
+            raise WeatherError(f"open-meteo error: {reason}")
         return payload
 
     @staticmethod

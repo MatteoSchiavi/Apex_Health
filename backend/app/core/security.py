@@ -10,7 +10,11 @@ import hashlib
 import secrets
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError
+from argon2.exceptions import (
+    InvalidHashError,
+    VerificationError,
+    VerifyMismatchError,
+)
 
 _hasher = PasswordHasher()
 
@@ -20,11 +24,27 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password_hash: str, password: str) -> bool:
+    """F-06 audit: catch every argon2 exception surface — VerificationError,
+    VerifyMismatchError, InvalidHashError, AND the generic TypeError argon2
+    raises for non-string inputs. A malformed stored hash used to surface as
+    a 500; now it returns False (auth failure) like every other bad credential.
+    """
     try:
-        _hasher.verify(password_hash, password)
-    except VerificationError:
+        return _hasher.verify(password_hash, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError, TypeError):
         return False
-    return True
+
+
+def needs_rehash(password_hash: str) -> bool:
+    """F-06 audit: returns True when the stored hash's argon2 params are
+    weaker than the current ``PasswordHasher`` defaults — the caller should
+    re-hash on the next successful login so parameter upgrades are gradual.
+    """
+    try:
+        return _hasher.check_needs_rehash(password_hash)
+    except (InvalidHashError, TypeError, ValueError):
+        # Malformed hash — cannot rehash, will fail verify_password anyway.
+        return False
 
 
 def new_session_token() -> str:

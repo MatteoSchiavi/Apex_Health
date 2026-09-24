@@ -107,8 +107,10 @@ async def record_lab_panel(
     session.add(panel)
     await session.flush()
 
-    # lab_metrics mirror: one row per provided marker (standard + extra) so
-    # trends read a single uniform table with units and reference ranges.
+    # lab_metrics mirror: one row per marker the panel ACTUALLY measured
+    # (P-10 audit: a marker that has a reference range but no measured value
+    # is stored as NULL — never fabricated as ref_low or 0). Trends skip
+    # NULLs; alerts only fire on real measurements.
     for marker, value in (
         ("hemoglobin", column_values["hemoglobin_g_dl"]),
         ("hematocrit", column_values["hematocrit_pct"]),
@@ -117,6 +119,10 @@ async def record_lab_panel(
         ("wbc", column_values["wbc"]),
         ("plt", column_values["plt"]),
     ):
+        # Skip markers that have neither a value nor a reference range —
+        # there is nothing to record. A marker that carries a reference range
+        # but no measurement is STILL recorded (value=NULL) so the panel
+        # honestly documents "this was ordered but not reported".
         if value is None and marker not in ranges:
             continue
         ref_low, ref_high = ranges.get(marker, (None, None))
@@ -124,7 +130,7 @@ async def record_lab_panel(
             LabMetric(
                 lab_panel_id=panel.id,
                 metric_name=marker,
-                value=value if value is not None else _decimal(ref_low) or Decimal(0),
+                value=value,  # NULL when not measured — never fabricated
                 unit=STANDARD_MARKERS[marker],
                 ref_low=_decimal(ref_low),
                 ref_high=_decimal(ref_high),

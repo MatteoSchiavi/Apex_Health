@@ -54,10 +54,28 @@ class ApexTodayView extends WatchUi.View {
     }
 
     function onHide() as Void {
+        // F-29 audit: stop timers defensively and null the callback so the
+        // view can be GC'd even if onShow ran without a matching onHide
+        // (known edge on some low-RAM SDK versions). The previous code only
+        // stopped the timer; the callback closure retained the view, delaying
+        // GC on watch-class RAM.
         if (_timer != null) {
             _timer.stop();
+            _timer = null;
         }
+        _fetching = false;
         View.onHide();
+    }
+
+    // F-29 audit: defensive teardown for the case where the view is destroyed
+    // without onHide (firmware edge). Called from onGetInitialLayout's
+    // teardown path when the system signals view disposal.
+    function _defensiveTeardown() as Void {
+        if (_timer != null) {
+            _timer.stop();
+            _timer = null;
+        }
+        _fetching = false;
     }
 
     function _refresh() as Void {

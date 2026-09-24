@@ -27,7 +27,30 @@ name: apex-health
 services:
   db:
     image: timescale/timescaledb-ha:pg16
-    command: postgres -c shared_preload_libraries=timescaledb
+    # F-22/D-09 audit: explicit Postgres sizing flags for an 8 GB homeserver.
+    #   - shared_buffers=512MB: ~20% of the 2560m mem_limit (PG recommendation).
+    #   - effective_cache_size=1536MB: tells the planner the OS cache exists.
+    #   - work_mem=8MB: keeps per-sort/hash operations bounded under concurrency.
+    #   - maintenance_work_mem=128MB: vacuum/index builds complete fast enough.
+    #   - max_connections=40: 2 uvicorn (10 each) + Celery (4) + bot (1) + slack.
+    #   - wal_compression=on: cuts WAL churn from bulk deletes (D-01 retention).
+    #   - checkpoint_completion_target=0.9: spread checkpoints, reduce I/O spikes.
+    #   - autovacuum_vacuum_cost_delay=2ms: don't starve foreground ops.
+    #   - timescaledb.max_background_workers=2: cap background workers (D-09).
+    # shm_size=256m (D-09/F-22): the 64m default crashes Timescale parallel
+    # index builds ("multiple floating point exceptions" on shm exhaustion).
+    command: >
+      postgres -c shared_preload_libraries=timescaledb
+               -c shared_buffers=512MB
+               -c effective_cache_size=1536MB
+               -c work_mem=8MB
+               -c maintenance_work_mem=128MB
+               -c max_connections=40
+               -c wal_compression=on
+               -c checkpoint_completion_target=0.9
+               -c autovacuum_vacuum_cost_delay=2ms
+               -c timescaledb.max_background_workers=2
+    shm_size: 256m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hcc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hcc}
@@ -41,8 +64,10 @@ services:
       retries: 20
     restart: unless-stopped
     # 8 GB homeserver sizing — see file header.
+    # F-22/D-09 audit: reservation lowered from 1024m to 768m to reclaim RAM
+    # for Celery workers; the actual usage stays well under the 2560m limit.
     mem_limit: 2560m
-    mem_reservation: 1024m
+    mem_reservation: 768m
     logging: &default_logging
       driver: json-file
       options:
@@ -51,6 +76,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    # D-09 audit: hard cap on Redis memory + LRU eviction. Every key the app
+    # sets carries a TTL (rate-limit windows, OAuth state, agent locks) so
+    # volatile-lru is safe — it never evicts a key the app still needs.
+    # Without this cap Redis grows unbounded until OOM on the 8 GB box.
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -78,8 +108,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # F-31 audit: bind to 127.0.0.1 so the API (and /docs) is NOT exposed to
+    # the LAN by default. Caddy / Tailscale Funnel terminate TLS and proxy
+    # to localhost — they are the only intended public surface.
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     restart: unless-stopped
     # Nightly backup artifacts live here on the host, outside the container
     # lifecycle; the same mount lets `exec api python tools/restore_drill.py`

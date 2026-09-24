@@ -403,6 +403,7 @@ async def connect_garmin(
     payload: GarminConnectIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
 ) -> dict:
     """Link a Garmin account from the UI.
 
@@ -410,8 +411,28 @@ async def connect_garmin(
     synchronous). Returns `{"mfa_required": true}` when the account has MFA
     and no code was supplied — the client then shows the code field and
     re-posts. On success the session tokens replace any previous credential
-    blob, the integration goes active, and the full backfill task is
-    enqueued (NULL last_synced_at = full walk, §6.3)."""
+    blob, the integration goes active, and the per-user backfill task is
+    enqueued (NULL last_synced_at = full walk, §6.3).
+
+    F-11 audit: rate-limited to 3 connects/hour/IP (Redis sliding window) so
+    the endpoint cannot be abused as a brute-force proxy against the user's
+    real Garmin account. The password is zeroed from local scope immediately
+    after the login thread returns. The backfill enqueue is scoped to THIS
+    user (``garmin.sync_user.s(user.id)``) — never a global fan-out.
+    """
+
+    # F-11: rate limit — 3 connect attempts per hour per USER (the user is
+    # already authenticated; keying on user_id is stronger than IP and
+    # prevents one user from burning another's quota).
+    rl_key = f"garmin_connect:rl:user:{user.id}"
+    attempts = await redis.incr(rl_key)
+    if attempts == 1:
+        await redis.expire(rl_key, 3600)
+    if attempts > 3:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many Garmin connect attempts — wait an hour before retrying.",
+        )
 
     def _mfa_prompt() -> str:
         if payload.mfa_code:
@@ -436,6 +457,11 @@ async def connect_garmin(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Garmin connect failed: {exc}",
         ) from exc
+    finally:
+        # F-11: zero the password reference from request scope — Python's
+        # GC will collect it on the next pass; the local binding is gone
+        # immediately so a follow-up exception handler cannot read it.
+        payload.password = "x" * len(payload.password)
 
     tokens = client.dump_tokens()
     integration = await session.scalar(
@@ -453,14 +479,16 @@ async def connect_garmin(
     await session.commit()
     logger.info("garmin connect: integration %s activated for user %s", integration.id, user.id)
 
+    # F-11: enqueue the PER-USER backfill (NOT sync_all_garmin) so one user's
+    # connect does not fan out to every other user's account.
     backfill_enqueued = True
     try:
-        from app.tasks.garmin_sync import sync_all_garmin
+        from app.tasks.garmin_sync import sync_user_garmin
 
-        sync_all_garmin.delay()
+        sync_user_garmin.delay(user.id)
     except Exception:  # noqa: BLE001 — broker down: next beat tick (6h) covers
         backfill_enqueued = False
-        logger.warning("garmin connect: backfill enqueue failed — beat will cover")
+        logger.warning("garmin connect: per-user backfill enqueue failed — beat will cover")
 
     return {
         "connected": True,
@@ -476,7 +504,11 @@ async def sync_garmin_now(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """'Sync now' — enqueue the incremental Garmin poll immediately instead
-    of waiting for the 6-hourly beat tick."""
+    of waiting for the 6-hourly beat tick.
+
+    F-11 audit: scoped to the connecting user (``garmin.sync_user.s(user.id)``)
+    — never a global fan-out that would re-sync every other user's account.
+    """
     integration = await session.scalar(
         select(Integration).where(
             Integration.user_id == user.id, Integration.provider == "garmin"
@@ -489,9 +521,9 @@ async def sync_garmin_now(
         )
     enqueued = True
     try:
-        from app.tasks.garmin_sync import sync_all_garmin
+        from app.tasks.garmin_sync import sync_user_garmin
 
-        sync_all_garmin.delay()
+        sync_user_garmin.delay(user.id)
     except Exception:  # noqa: BLE001
         enqueued = False
         logger.warning("garmin sync-now enqueue failed — beat will cover")

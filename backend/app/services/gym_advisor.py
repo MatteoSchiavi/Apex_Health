@@ -32,6 +32,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.coach import SessionFeedback, UserContextDoc, UserEvent
 from app.models.gym_detail import GymDayPlan, GymDayExercise, GymExercise
 from app.queries.gym import resolve_day
+from app.services.safety_interlock import (
+    VetoDecision,
+    exertion_veto,
+    impact_allowed_by_ceiling,
+)
 
 logger = logging.getLogger("services.gym_advisor")
 
@@ -157,6 +162,8 @@ def adjust(
     events: list[dict],
     feedback: list[dict],
     today: date,
+    *,
+    safety: dict | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Pure, testable adjustment core.
 
@@ -164,11 +171,48 @@ def adjust(
                  impact_level, sets, reps_min, reps_max, rest_seconds, notes}]
     events:    [{kind, priority, starts_at (date), taper_days, title}]
     feedback:  [{date, activity_kind, rpe, soreness (list), injury_flag, notes}]
+
+    P-04 audit (safety interlock): when ``safety`` carries a deterministic
+    risk verdict from ``services.safety_interlock.exertion_veto`` (verdict in
+    {go, modify, rest} + intensity_ceiling), the veto is applied FIRST and
+    overrides every other rule. The athlete's journal feedback then layers on
+    top — both can drop high-impact work, neither can resurrect it.
     """
     notes: list[str] = []
     rows = [dict(e) for e in exercises]
     if not rows:
         return rows, notes
+
+    # ---- P-04 safety interlock (deterministic veto, runs FIRST) -----------
+    veto_ceiling: str | None = None
+    if safety is not None:
+        veto = exertion_veto(
+            illness_risk=safety.get("illness_risk"),
+            injury_risk=safety.get("injury_risk"),
+            acwr=safety.get("acwr"),
+            hrv_dev_pct=safety.get("hrv_dev_pct"),
+            rhr_dev_bpm=safety.get("rhr_dev_bpm"),
+        )
+        if veto.vetoed:
+            veto_ceiling = veto.intensity_ceiling
+            notes.extend(veto.reasons)
+            if veto_ceiling == "rest":
+                # Rest verdict: cap every row at 2 sets and drop all
+                # high/moderate impact — the athlete needs recovery, not load.
+                for row in rows:
+                    if row.get("impact_level") in {"high", "moderate"}:
+                        row["_drop"] = True
+                    else:
+                        row["sets"] = min(row.get("sets", 3), 2)
+                        row["impact_level"] = "low"
+            elif veto_ceiling == "low":
+                for row in rows:
+                    if row.get("impact_level") in {"high", "moderate"}:
+                        row["_drop"] = True
+            elif veto_ceiling == "moderate":
+                for row in rows:
+                    if row.get("impact_level") == "high":
+                        row["_drop"] = True
 
     # ---- soreness / injury rules (most specific first) --------------------
     avoid_patterns: set[str] = set()
@@ -222,6 +266,10 @@ def adjust(
 
     # ---- apply ------------------------------------------------------------
     for row in rows:
+        # P-04: a row already dropped by the safety veto stays dropped.
+        if row.get("_drop"):
+            continue
+
         group = row["muscle_group"]
         pattern = row.get("movement_pattern")
 
@@ -252,9 +300,19 @@ def adjust(
             row["_drop"] = True
             continue
 
+        # P-04: even when no specific rule touched the row, the veto ceiling
+        # may still drop it (e.g. moderate ceiling drops all high impact even
+        # if the row's pattern is not in avoid_patterns).
+        if veto_ceiling is not None and not impact_allowed_by_ceiling(
+            row.get("impact_level"), veto_ceiling
+        ):
+            row["_drop"] = True
+
     if rest_day_advised:
         # everything light: cap sets at 2, drop all high impact
         for row in rows:
+            if row.get("_drop"):
+                continue
             if row.get("impact_level") == "high":
                 row["_drop"] = True
                 continue
@@ -285,7 +343,12 @@ async def generate_day_plan(
     Resolution order mirrors the watch: a concrete GymDayPlan wins if one
     exists; otherwise the recurring template slot for the weekday defines
     the session title, and the exercise rows are composed from the catalog
-    split, then adjusted by the advisor."""
+    split, then adjusted by the advisor.
+
+    P-04 audit: pulls the latest ``DailyFeature`` row and passes its risk
+    scores to ``adjust(safety=...)`` so the deterministic veto layer gates
+    every prescription BEFORE the events/feedback rules run.
+    """
     existing = await session.scalar(
         select(GymDayPlan).where(GymDayPlan.user_id == user.id, GymDayPlan.date == day)
     )
@@ -343,7 +406,26 @@ async def generate_day_plan(
         }
         for fb in await recent_feedback(session, user.id, today)
     ]
-    adjusted, notes = adjust(exercises, events, feedback, today)
+
+    # P-04: pull the latest DailyFeature and pass its risk scores to the
+    # safety interlock. Falls back gracefully (no feature row → no veto).
+    from app.models.features import DailyFeature
+    latest_feature = await session.scalar(
+        select(DailyFeature)
+        .where(DailyFeature.user_id == user.id)
+        .order_by(DailyFeature.date.desc())
+        .limit(1)
+    )
+    safety: dict | None = None
+    if latest_feature is not None:
+        safety = {
+            "illness_risk": latest_feature.illness_risk_score,
+            "injury_risk": latest_feature.injury_risk_score,
+            "acwr": latest_feature.acwr,
+            "hrv_dev_pct": latest_feature.hrv_deviation_from_baseline,
+        }
+
+    adjusted, notes = adjust(exercises, events, feedback, today, safety=safety)
     season = await season_plan_note(session, user.id)
     if season:
         notes.append(f"season plan on file: {season}")

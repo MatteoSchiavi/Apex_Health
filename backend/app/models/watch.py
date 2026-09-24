@@ -29,3 +29,9 @@ class DeviceToken(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # F-19 audit: absolute expiry — device tokens previously had no expiry
+    # (revocation was manual only). 365-day default set at mint time; the
+    # watch auth path rejects tokens past this column regardless of activity.
+    absolute_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -126,6 +126,27 @@ async def day_spend_by_user(
     return {user_id: Decimal(total or 0) for user_id, total in rows.fetchall()}
 
 
+async def user_day_spend(
+    session: AsyncSession, user_id: int, moment_utc: datetime
+) -> Decimal:
+    """F-18 audit: one user's estimated spend for the UTC day of moment_utc.
+
+    Used by the pre-turn cost gate (api/chats.post_message) to hard-stop a
+    user who has already crossed 2× the daily_token_budget_usd threshold —
+    the budget task at 23:45 UTC is informational-only and a scripted user
+    could drive unlimited spend between checks.
+    """
+    start, end = _utc_day_bounds(moment_utc)
+    total = await session.scalar(
+        select(func.coalesce(func.sum(TokenUsage.cost_estimate_usd), 0)).where(
+            TokenUsage.user_id == user_id,
+            TokenUsage.created_at >= start,
+            TokenUsage.created_at < end,
+        )
+    )
+    return Decimal(total or 0)
+
+
 def _utc_day_bounds(moment_utc: datetime) -> tuple[datetime, datetime]:
     start = datetime(moment_utc.year, moment_utc.month, moment_utc.day, tzinfo=UTC)
     return start, start + timedelta(days=1)
