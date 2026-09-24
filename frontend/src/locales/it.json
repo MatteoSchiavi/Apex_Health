@@ -46,7 +46,7 @@
     "system_readiness": "Prontezza del sistema",
     "sleep_score": "Punteggio sonno",
     "vs7d": "{{value}} vs 7g",
-    "peak_zone": "Zona picco",
+    "peak_zone": "Zona di picco",
     "floor": "Minimo",
     "cap": "Massimo",
     "deep": "Profondo",
@@ -88,7 +88,26 @@
     "load": "Carico",
     "strain_label": "Strain",
     "readiness_label": "Prontezza",
-    "recovery_label": "Recupero"
+    "recovery_label": "Recupero",
+    "subtitle": "Telemetria fisiologica e analisi",
+    "telemetry_state": "Stato telemetria",
+    "live": "Acquisizione attiva",
+    "paused": "In pausa",
+    "no_devices": "nessun dispositivo collegato",
+    "validated": "Biosegnale validato",
+    "showing_history": "Giorno storico",
+    "epoch": "EPOCA",
+    "zone": "Zona",
+    "avg7": "media 7g",
+    "vs_mean": "vs media",
+    "vs_baseline": "vs baseline",
+    "rolling": "progressiva",
+    "band": "Fascia",
+    "sleep_epochs": "epoche sonno",
+    "para_tone": "Tono Parasimpatico",
+    "history_notice": "Oggi non ci sono ancora dati — mostro il giorno più recente misurato ({{date}}).",
+    "connect_cta": "Collega un dispositivo",
+    "empty_body": "Nessun dato misurato per questo giorno. Collega Garmin per avviare la pipeline — il backfill ripercorre tutta la cronologia."
   },
   "activities": {
     "title": "Attività",
@@ -129,7 +148,18 @@
     "wkg": "W/kg",
     "export": "Esporta",
     "moving": "In movimento",
-    "elapsed": "Totale"
+    "elapsed": "Totale",
+    "subtitle": "Ogni sessione registrata, telemetria completa",
+    "ago": "fa",
+    "sessions": "Sessioni",
+    "in_range": "nel periodo",
+    "time_total": "Tempo totale",
+    "distance_total": "Distanza totale",
+    "load_total": "Carico totale",
+    "altitude_color": "colorata per altitudine",
+    "timeline_title": "Flusso Temporale Sincronizzato",
+    "channels": "canali",
+    "identified": "identificati"
   },
   "sleep": {
     "title": "Sonno & Recupero",
@@ -154,7 +184,45 @@
     "history": "Notti recenti",
     "hrs": "{{m}}h",
     "vs_target": "vs obiettivo ottimale",
-    "restless": "Irrequietezza"
+    "restless": "Irrequietezza",
+    "subtitle": "Sonno multisensore e recupero",
+    "architecture": "Architettura",
+    "night_detail": "Dettaglio notte",
+    "asleep": "Addormentato",
+    "avg_score7": "Punteggio medio · 7g",
+    "avg_duration7": "Durata media · 7g",
+    "avg_deep7": "Sonno profondo medio · 7g",
+    "restorative": "quota ristorativa",
+    "nights_tracked": "Notti registrate",
+    "window42": "ultime 6 settimane",
+    "recovery_index": "Indice di Recupero",
+    "stage_epochs": "Epoche misurate",
+    "proportional": "Vista proporzionale",
+    "hypnogram_title": "Ipnogramma Continuo delle Fasi",
+    "hypnogram_measured": "Segmentazione epoch-level letta dal payload memorizzato del dispositivo.",
+    "hypnogram_fallback": "Nessuna cronologia di epoche per questa notte — i blocchi sono proporzionali ai totali misurati.",
+    "night_subtitle": "Finestra a letto {{start}} → {{end}}",
+    "bed_window": "finestra",
+    "target_met": "buffer ottimale raggiunto",
+    "awake_time": "Sveglio",
+    "disturbances": "micro-risvegli",
+    "movement_index": "indice di movimento",
+    "autonomic": "Biomarcatori Autonomici",
+    "overnight_sensors": "sensori notturni ottici e PPG",
+    "steady": "stabile",
+    "saturation_note": "saturazione media",
+    "sleep_regularity_short": "Regolarità",
+    "stable": "Stabile",
+    "limited": "Dati limitati",
+    "window7": "finestra 7 giorni",
+    "avg7": "media",
+    "hrv_envelope": "Inviluppo rMSSD",
+    "overnight_hrv": "HRV Notturna",
+    "readings": "letture",
+    "circadian": "Sincronizzazione Circadiana",
+    "rhythm_alignment": "Allineamento del Ritmo del Sonno",
+    "no_night_hint": "Le notti compaiono appena un dispositivo riporta il sonno.",
+    "restlessness": "Irrequietezza"
   },
   "stage": {
     "awake": "Veglia",
@@ -204,7 +272,13 @@
     "365d": "1 anno",
     "no_data": "Ancora nessun dato per questa metrica.",
     "delta": "vs precedente",
-    "resting_hr": "Frequenza cardiaca a riposo"
+    "resting_hr": "Frequenza cardiaca a riposo",
+    "page_subtitle": "Telemetria a metrica singola con cronologia misurata",
+    "group_cardiac": "Cardiaco e Autonomico",
+    "group_body": "Corpo e Capacità",
+    "assess_optimal": "Ottimale",
+    "assess_watch": "Da seguire",
+    "assess_no_data": "Nessun dato"
   },
   "training": {
     "title": "Piano & Carico",
@@ -252,7 +326,8 @@
     "done": "Fatto",
     "exercise": "Esercizio",
     "sets": "Serie × Rip.",
-    "load_kg": "Carico"
+    "load_kg": "Carico",
+    "subtitle": "Calendario eventi, gestione del carico e prescrizione palestra"
   },
   "coach": {
     "title": "Coach IA",
@@ -270,7 +345,9 @@
     "delete_confirm": "Eliminare questa conversazione?",
     "no_chats": "Ancora nessuna conversazione.",
     "thinking": "Il coach sta pensando…",
-    "saved_locally": "Le conversazioni vengono salvate: riprendile quando vuoi dall'elenco."
+    "saved_locally": "Le conversazioni vengono salvate: riprendile quando vuoi dall'elenco.",
+    "subtitle": "Chiedi di ogni metrica — le conversazioni restano sul server e in locale",
+    "conversation": "Conversazione"
   },
   "social": {
     "title": "Sfide & Classifiche",
@@ -294,7 +371,8 @@
     "value": "Valore",
     "you": "Tu",
     "records": "Record storici",
-    "no_data": "Ancora niente qui — collega un dispositivo e inizia ad allenarti."
+    "no_data": "Ancora niente qui — collega un dispositivo e inizia ad allenarti.",
+    "subtitle": "Sfide e classifiche con i tuoi amici"
   },
   "settings": {
     "title": "Impostazioni",
@@ -339,7 +417,19 @@
     "invite_expired": "Scaduto",
     "revoke": "Revoca",
     "copy": "Copia codice",
-    "expires": "Scade"
+    "expires": "Scade",
+    "page_subtitle": "Profilo, aspetto, dispositivi e account",
+    "garmin_not_connected": "Non collegato — connettiti qui sotto, i token sono salvati cifrati.",
+    "provider_setup": "In attesa di configurazione del fornitore",
+    "garmin_connect_hint": "Accedi una sola volta con il tuo account Garmin — Apex scambia le credenziali con token di sessione, li salva cifrati e non conserva mai la password. La prima sincronizzazione ripercorre tutta la cronologia.",
+    "garmin_email": "Email Garmin",
+    "garmin_password": "Password Garmin",
+    "garmin_mfa": "Codice monouso (MFA)",
+    "connecting": "Connessione…",
+    "verify_code": "Verifica codice",
+    "mfa_sent": "Inserisci il codice che Garmin ti ha inviato.",
+    "sync_now": "Sincronizza ora",
+    "tokens_note": "I token di accesso sono gestiti per te: salvati cifrati sul server del proprietario e rinnovati automaticamente — non c'è nulla da copiare o gestire a mano."
   },
   "common": {
     "loading": "Caricamento…",
@@ -370,6 +460,63 @@
     "good": "Buono",
     "fair": "Discreto",
     "low": "Basso",
-    "high": "Alto"
+    "high": "Alto",
+    "prev_day": "Giorno precedente",
+    "next_day": "Giorno successivo"
+  },
+  "search": {
+    "placeholder": "Telemetria rapida…",
+    "no_results": "Nessun risultato"
+  },
+  "sync": {
+    "no_devices": "Nessun dispositivo collegato"
+  },
+  "disc": {
+    "unknown": "Attività",
+    "running": "Corsa",
+    "road_cycling": "Ciclismo su strada",
+    "gravel_cycling": "Gravel",
+    "mountain_biking": "Mountain bike",
+    "strength": "Forza",
+    "gym_general": "Palestra",
+    "yoga": "Yoga",
+    "pilates": "Pilates",
+    "swimming": "Nuoto",
+    "rowing": "Canottaggio",
+    "tennis": "Tennis",
+    "cardio": "Cardio",
+    "walking": "Camminata",
+    "hiking": "Trekking"
+  },
+  "synth": {
+    "title": "Diagnosi di Sintesi",
+    "body_prefix": "Lo stato autonomo suggerisce:",
+    "level_optimal": "il tono simpatico centrale è attenuato e il recupero parasimpatico è pronto.",
+    "level_good": "le riserve di recupero sono adeguate per lavoro da moderato a intenso.",
+    "level_low": "l'attrito autonomo è elevato — privilegia riposo e idratazione.",
+    "level_unknown": "servono più dati misurati per una diagnosi.",
+    "acwr_high": "Il carico acuto supera la base cronica — limita l'intensità.",
+    "acwr_low": "Rischio detraining: la base cronica scende — programma uno stimolo.",
+    "acwr_ok": "Il carico è dentro la finestra ottimale 0,8–1,3.",
+    "no_load": "Nessun carico misurato.",
+    "hrv_up": "L'HRV notturna è sopra la baseline — risposta parasimpatica forte.",
+    "hrv_down": "L'HRV notturna è sotto la baseline — monitora il recupero.",
+    "load_ceiling": "Tetto di carico sensibile di oggi",
+    "badge": "SINTESI DETERMINISTICA"
+  },
+  "weather": {
+    "temp": "Temperatura",
+    "wind": "Vento max",
+    "precip": "Precipitazioni",
+    "clear": "Sereno",
+    "mostly_clear": "Prevalentemente sereno",
+    "partly_cloudy": "Parzialmente nuvoloso",
+    "overcast": "Coperto",
+    "fog": "Nebbia",
+    "drizzle": "Pioviggine",
+    "rain": "Pioggia",
+    "snow": "Neve",
+    "showers": "Rovesci",
+    "storm": "Temporale"
   }
 }

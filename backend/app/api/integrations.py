@@ -14,9 +14,11 @@ The connection itself is the owner's MANUAL step (§0/§16.7):
 GET /settings/integrations lists the account's connector rows.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +54,11 @@ from app.connectors.whoop.flow import (
     create_pending_authorization as whoop_create_pending,
     flow_settings_ready as whoop_flow_ready,
 )
+from app.connectors.garmin.client import (
+    GarminAuthError,
+    LiveGarminClient,
+)
+from app.core.encryption import encrypt_json
 from app.core.db import get_session
 from app.core.redis import get_redis
 from app.models.integration import Integration
@@ -366,3 +373,126 @@ async def coros_oauth_callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
+
+
+# ------------------------------------------------- Garmin (credentials flow)
+#
+# Garmin's consumer API has no user-facing OAuth for self-registered apps —
+# the connector logs in with the account credentials once (garminconnect
+# 0.3.x native tokens) and stores ONLY the resulting session tokens,
+# app-layer-encrypted (§17). The password itself is never persisted, never
+# logged, and lives only for the duration of this request.
+
+
+class GarminConnectIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+    # When the account has MFA enabled the first call returns
+    # {"mfa_required": true}; the client re-submits the same credentials plus
+    # the one-time code from the user's authenticator/email.
+    mfa_code: str | None = Field(default=None, max_length=12)
+
+
+class _MfaRequired(Exception):
+    """Internal: raised inside the (synchronous) login thread when the
+    account needs a one-time code and none was supplied."""
+
+
+@router.post("/settings/integrations/garmin/connect")
+async def connect_garmin(
+    payload: GarminConnectIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Link a Garmin account from the UI.
+
+    Runs the garminconnect login exchange in a worker thread (the lib is
+    synchronous). Returns `{"mfa_required": true}` when the account has MFA
+    and no code was supplied — the client then shows the code field and
+    re-posts. On success the session tokens replace any previous credential
+    blob, the integration goes active, and the full backfill task is
+    enqueued (NULL last_synced_at = full walk, §6.3)."""
+
+    def _mfa_prompt() -> str:
+        if payload.mfa_code:
+            return payload.mfa_code.strip()
+        raise _MfaRequired()
+
+    try:
+        client = await asyncio.to_thread(
+            LiveGarminClient.from_password,
+            payload.email.strip(),
+            payload.password,
+            _mfa_prompt,
+        )
+    except _MfaRequired:
+        return {
+            "connected": False,
+            "mfa_required": True,
+            "note": "Account requires a one-time code — resubmit with mfa_code.",
+        }
+    except GarminAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Garmin connect failed: {exc}",
+        ) from exc
+
+    tokens = client.dump_tokens()
+    integration = await session.scalar(
+        select(Integration).where(
+            Integration.user_id == user.id, Integration.provider == "garmin"
+        )
+    )
+    if integration is None:
+        integration = Integration(user_id=user.id, provider="garmin", status="active")
+        session.add(integration)
+    integration.credentials_encrypted = encrypt_json(tokens)
+    integration.status = "active"
+    integration.consecutive_failures = 0
+    integration.last_synced_at = None  # next sync = full history walk
+    await session.commit()
+    logger.info("garmin connect: integration %s activated for user %s", integration.id, user.id)
+
+    backfill_enqueued = True
+    try:
+        from app.tasks.garmin_sync import sync_all_garmin
+
+        sync_all_garmin.delay()
+    except Exception:  # noqa: BLE001 — broker down: next beat tick (6h) covers
+        backfill_enqueued = False
+        logger.warning("garmin connect: backfill enqueue failed — beat will cover")
+
+    return {
+        "connected": True,
+        "mfa_required": False,
+        "provider": "garmin",
+        "backfill_enqueued": backfill_enqueued,
+    }
+
+
+@router.post("/settings/integrations/garmin/sync")
+async def sync_garmin_now(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """'Sync now' — enqueue the incremental Garmin poll immediately instead
+    of waiting for the 6-hourly beat tick."""
+    integration = await session.scalar(
+        select(Integration).where(
+            Integration.user_id == user.id, Integration.provider == "garmin"
+        )
+    )
+    if integration is None or integration.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Garmin is not connected — connect it first.",
+        )
+    enqueued = True
+    try:
+        from app.tasks.garmin_sync import sync_all_garmin
+
+        sync_all_garmin.delay()
+    except Exception:  # noqa: BLE001
+        enqueued = False
+        logger.warning("garmin sync-now enqueue failed — beat will cover")
+    return {"enqueued": enqueued}

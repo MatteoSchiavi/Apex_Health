@@ -24,6 +24,7 @@ import {
   ErrorNote,
   Input,
   Loading,
+  PageHeader,
   Select,
 } from "../../components/kit";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
@@ -541,12 +542,7 @@ export default function TrainingPage() {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <div className="eyebrow">{t("app.name")} {t("app.suffix")}</div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">
-          {t("training.title")}
-        </h1>
-      </div>
+      <PageHeader title={t("training.title")} subtitle={t("training.subtitle")} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <EventCalendar />
         <LoadChart />

@@ -94,6 +94,7 @@ export interface Me {
 export interface ActivityCard {
   id: number;
   start_time: string;
+  discipline: string | null;
   duration_s: number;
   distance_m: number | null;
   avg_hr: number | null;
@@ -105,6 +106,7 @@ export interface ActivityCard {
 
 export interface Overview {
   date: string;
+  anchor_is_today: boolean;
   readiness: ScoreBlock;
   recovery: ScoreBlock;
   strain: ScoreBlock;
@@ -112,6 +114,7 @@ export interface Overview {
   sleep_hours: number | null;
   hrv_ms: number | null;
   hrv_baseline_ms: number | null;
+  hrv_norm_30d: number | null | undefined;
   resting_hr: number | null;
   resting_hr_delta_7d: number | null;
   spo2_avg: number | null;
@@ -209,6 +212,12 @@ export interface SleepDay {
   session: SleepSessionOut | null;
   biometrics: Record<string, number | null>;
   hrv_readings: { timestamp: string; hrv_ms: number; reading_type: string; rolling_baseline_ms: number | null }[];
+}
+
+export interface SleepStages {
+  date: string;
+  segments: { t_start: string; t_end: string; stage: string }[] | null;
+  source: string | null;
 }
 
 export interface MetricTrend {

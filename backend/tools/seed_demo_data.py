@@ -196,8 +196,10 @@ def make_activity(rng: random.Random, user_id: int, disc: Discipline,
             dur, pace = rng.randint(2200, 3600), rng.uniform(0.165, 0.180)
             hr, power = rng.randint(132, 148), None
         dist = dur / 60 * pace * 1000
-        cal = int(dur * rng.uniform(9.5, 11.5))
-        load = D(dur / 60 * rng.uniform(65, 105))
+        cal = int(dur / 60 * rng.uniform(9.5, 11.5))
+        # dur is SECONDS: minutes x intensity factor (TRIMP-like), NOT /60*TSS
+        # (the old ×65..105 inflated loads 60x — a 50min run "cost" 4,250 TSS)
+        load = D(dur / 60 * rng.uniform(0.65, 1.05))
     elif disc.name == "road_cycling":
         if flavour == "long":
             dur = rng.randint(7200, 12000)
@@ -208,16 +210,16 @@ def make_activity(rng: random.Random, user_id: int, disc: Discipline,
         dist = dur / 60 * rng.uniform(0.35, 0.46) * 1000
         hr = rng.randint(124, 146)
         power = D(rng.uniform(145, 215))
-        cal = int(dur * rng.uniform(8.0, 10.5))
-        load = D(dur / 60 * rng.uniform(55, 95))
+        cal = int(dur / 60 * rng.uniform(8.0, 10.5))
+        load = D(dur / 60 * rng.uniform(0.55, 0.95))
     elif disc.name in ("strength", "gym_general"):
         dur, hr, power = rng.randint(2700, 4500), rng.randint(102, 128), None
-        dist, cal = None, int(dur * rng.uniform(4.5, 6.5))
-        load = D(dur / 60 * rng.uniform(30, 55))
+        dist, cal = None, int(dur / 60 * rng.uniform(4.5, 6.5))
+        load = D(dur / 60 * rng.uniform(0.30, 0.55))
     else:  # tennis / others
         dur, hr, power = rng.randint(3600, 6000), rng.randint(128, 152), None
-        dist, cal = None, int(dur * rng.uniform(7.0, 9.0))
-        load = D(dur / 60 * rng.uniform(45, 80))
+        dist, cal = None, int(dur / 60 * rng.uniform(7.0, 9.0))
+        load = D(dur / 60 * rng.uniform(0.45, 0.80))
     max_hr = min(hr + rng.randint(18, 34), 196)
     snap = None
     if rng.random() < 0.85:
@@ -300,8 +302,9 @@ async def seed_activities(session, user_id: int, days: int, rng: random.Random):
                 if act.avg_power else None,
                 cadence=D(rng.uniform(80, 94)) if disc.name == "road_cycling" else D(rng.uniform(160, 178)),
                 speed=D(rng.uniform(2.5, 6.5)) if disc.name == "running" else D(rng.uniform(7, 12)),
-                altitude=D(rng.uniform(20, 180)), lat=D(rng.uniform(41.85, 41.95)),
-                lon=D(rng.uniform(12.45, 12.55))))
+                altitude=D(60 + 25 * math.sin(i / 9) + rng.uniform(-3, 3)),
+                lat=D(41.9028 + 0.045 * math.cos(2 * math.pi * i / min(n, 90))),
+                lon=D(12.4964 + 0.060 * math.sin(2 * math.pi * i / min(n, 90)))))
     return acts, loads, discs
 
 async def seed_wellness(session, user_id: int, days: int, rng: random.Random,
@@ -752,13 +755,80 @@ async def seed_system(session, user_id: int, rng: random.Random,
                                   fetched_at=now - timedelta(hours=off * 6 + 1),
                                   payload=payload))
     # raw ingest — last 14 days from garmin + a technogym batch
+    # sleep payloads carry the REAL epoch-level stage timeline (sleepLevels)
+    # so the hypnogram renders from "measured" data, consistent with the
+    # SleepSession aggregates seeded above.
+    from app.connectors.garmin.stages import extract_sleep_stage_segments
+
+    def _garmin_sleep_payload(s: SleepSession, r: random.Random) -> dict:
+        codes = {"deep": 1, "light": 2, "rem": 3, "awake": 0}
+        budget = {
+            "deep": int(s.deep_s or 0),
+            "rem": int(s.rem_s or 0),
+            "light": int(s.light_s or 0),
+            "awake": int(s.awake_s or 0),
+        }
+        # Build stage blocks in a physiological order: deep-weighted early,
+        # REM-weighted late, light filler, occasional brief awakenings.
+        cursor = s.start_time
+        total = int((s.end_time - s.start_time).total_seconds())
+        pattern = (
+            [("deep", 0.55), ("light", 0.45), ("deep", 0.45), ("rem", 0.55),
+             ("light", 0.4), ("deep", 0.35), ("rem", 0.8), ("light", 0.5)]
+            if r.random() < 0.85
+            else [("light", 0.5), ("deep", 0.4), ("rem", 0.6), ("light", 0.5)]
+        )
+        weight_sum = sum(w for _, w in pattern)
+        levels = []
+        for idx, (stage, w) in enumerate(pattern):
+            share = w / weight_sum
+            secs = max(0, int(total * share))
+            end_c = cursor + timedelta(seconds=secs)
+            if idx == len(pattern) - 1:
+                end_c = s.end_time
+            if end_c > cursor and budget.get(stage, 0) >= 0:
+                levels.append({"activityLevel": {"value": codes[stage]},
+                               "startGMT": cursor.strftime("%Y-%m-%dT%H:%M:%S.0"),
+                               "endGMT": end_c.strftime("%Y-%m-%dT%H:%M:%S.0")})
+                cursor = end_c
+        if cursor < s.end_time:
+            levels.append({"activityLevel": {"value": codes["light"]},
+                           "startGMT": cursor.strftime("%Y-%m-%dT%H:%M:%S.0"),
+                           "endGMT": s.end_time.strftime("%Y-%m-%dT%H:%M:%S.0")})
+        return {
+            "dailySleepDTO": {
+                "calendarDate": s.local_date.isoformat(),
+                "sleepTimeSeconds": s.total_sleep_s,
+                "sleepStartTimestampGMT": int(s.start_time.timestamp() * 1000),
+                "sleepEndTimestampGMT": int(s.end_time.timestamp() * 1000),
+                "deepSleepSeconds": s.deep_s,
+                "lightSleepSeconds": s.light_s,
+                "remSleepSeconds": s.rem_s,
+                "awakeSleepSeconds": s.awake_s,
+                "sleepScore": {"value": float(s.sleep_score or 0)},
+                "avgRespirationValue": float(s.respiration_avg or 0),
+                "avgSpO2Value": float(s.spo2_avg or 0),
+                "restlessness": float(s.restlessness or 0),
+                "sleepLevels": levels,
+            },
+        }
+
     for back in range(14):
         day = date.today() - timedelta(days=back)
+        night_row = (await session.scalars(
+            select(SleepSession).where(
+                SleepSession.user_id == user_id, SleepSession.local_date == day).limit(1)
+        )).first()
         for ptype in ("daily_stats", "sleep", "hrv"):
+            if ptype == "sleep" and night_row is not None:
+                payload = _garmin_sleep_payload(night_row, rng)
+                assert extract_sleep_stage_segments(payload) is not None
+            else:
+                payload = {"demo": ptype, "date": str(day)}
             session.add(RawIngest(
                 user_id=user_id, source="garmin", payload_type=ptype,
                 fetched_at=datetime(day.year, day.month, day.day, 6, 10, tzinfo=UTC),
-                raw_json={"demo": ptype, "date": str(day)}, processed=True))
+                raw_json=payload, processed=True))
     session.add(RawIngest(user_id=user_id, source="whoop",
                           payload_type="workouts", fetched_at=now - timedelta(hours=9),
                           raw_json={"count": 2}, processed=True))

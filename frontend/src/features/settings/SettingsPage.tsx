@@ -11,7 +11,7 @@
  * locale files. Language changes apply the instant the segment is clicked.
  */
 
-import { type FormEvent, useEffect, useState } from "react";
+import { Fragment, type FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
@@ -26,6 +26,7 @@ import {
   ErrorNote,
   Input,
   Loading,
+  PageHeader,
   Segmented,
   Select,
   fmtNum,
@@ -178,13 +179,107 @@ function AppearanceSection() {
 
 /* ------------------------------------------------------------------ devices */
 
-const PROVIDERS: { key: string; name: string; connectable: boolean; note?: string }[] = [
+const PROVIDERS: { key: string; name: string; connectable: boolean }[] = [
   { key: "garmin", name: "Garmin Connect", connectable: false },
   { key: "whoop", name: "Whoop", connectable: true },
   { key: "strava", name: "Strava", connectable: true },
   { key: "oura", name: "Oura", connectable: true },
   { key: "coros", name: "COROS", connectable: true },
 ];
+
+/**
+ * Garmin credentials flow — the UI answer to "how do I link my Garmin
+ * account?": POST /settings/integrations/garmin/connect with the account
+ * email/password (MFA step handled inline). Only the session tokens are
+ * stored server-side, app-layer-encrypted; the password never leaves this
+ * request. After a successful connect the full-history backfill task is
+ * enqueued and the row flips to CONNECTED.
+ */
+function GarminConnectForm({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaStep, setMfaStep] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const connect = useMutation({
+    mutationFn: () =>
+      api.post<{ connected: boolean; mfa_required: boolean }>(
+        "/settings/integrations/garmin/connect",
+        mfaStep
+          ? { email, password, mfa_code: mfaCode }
+          : { email, password },
+      ),
+    onSuccess: (res) => {
+      if (res.mfa_required) {
+        setMfaStep(true);
+        setError(null);
+        return;
+      }
+      setPassword("");
+      setMfaCode("");
+      setMfaStep(false);
+      onDone();
+    },
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  return (
+    <form
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        connect.mutate();
+      }}
+      className="mt-2 rounded-card border border-hairline bg-surface2 p-3"
+    >
+      <p className="mb-3 text-[12px] leading-relaxed text-muted">
+        {t("settings.garmin_connect_hint")}
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Input
+          label={t("settings.garmin_email")}
+          value={email}
+          onChange={setEmail}
+          type="email"
+          autoComplete="off"
+          required
+        />
+        <Input
+          label={t("settings.garmin_password")}
+          value={password}
+          onChange={setPassword}
+          type="password"
+          autoComplete="off"
+          required
+        />
+        {mfaStep && (
+          <Input
+            label={t("settings.garmin_mfa")}
+            value={mfaCode}
+            onChange={setMfaCode}
+            placeholder="123456"
+            required
+          />
+        )}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Button type="submit" disabled={connect.isPending}>
+          {connect.isPending
+            ? t("settings.connecting")
+            : mfaStep
+              ? t("settings.verify_code")
+              : t("settings.connect")}
+        </Button>
+        {mfaStep && (
+          <span className="text-[11px] text-warningText">{t("settings.mfa_sent")}</span>
+        )}
+      </div>
+      {error && <div className="mt-2"><ErrorNote message={error} /></div>}
+    </form>
+  );
+}
 
 function DevicesSection() {
   const { t } = useTranslation();
@@ -194,6 +289,7 @@ function DevicesSection() {
     queryFn: () => api.get<DeviceOut[]>("/settings/devices"),
   });
   const [flowError, setFlowError] = useState<string | null>(null);
+  const [garminOpen, setGarminOpen] = useState(false);
 
   const setMain = useMutation({
     mutationFn: (integration_id: number | null) =>
@@ -211,7 +307,13 @@ function DevicesSection() {
     onError: (err) => setFlowError(err instanceof Error ? err.message : String(err)),
   });
 
+  const syncNow = useMutation({
+    mutationFn: () => api.post("/settings/integrations/garmin/sync"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
+  });
+
   const byProvider = new Map((devices.data ?? []).map((d) => [d.provider, d]));
+  const garminConnected = byProvider.get("garmin")?.status === "active";
 
   return (
     <Card>
@@ -233,14 +335,12 @@ function DevicesSection() {
         <Loading />
       ) : (
         <div className="flex flex-col">
-          {PROVIDERS.map(({ key, name, connectable }) => {
+          {PROVIDERS.map(({ key, name }) => {
             const d = byProvider.get(key);
             const connected = d?.status === "active";
             return (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-3 border-b border-hairline py-2.5 last:border-0"
-              >
+              <Fragment key={key}>
+              <div className="flex items-center justify-between gap-3 border-b border-hairline py-3 last:border-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium text-ink">{name}</span>
@@ -258,26 +358,41 @@ function DevicesSection() {
                             ? new Date(d.last_synced_at).toLocaleString()
                             : t("settings.never")
                         }`
-                      : connectable
-                        ? t("settings.coming_soon")
-                        : "tools/garmin_sync.py connect"}
+                      : key === "garmin"
+                        ? t("settings.garmin_not_connected")
+                        : t("settings.provider_setup")}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {connected && !d?.is_main && (
                     <Button
                       variant="ghost"
-                      className="!h-7 !px-2.5 text-[12px]"
                       disabled={setMain.isPending}
                       onClick={() => d && setMain.mutate(d.integration_id)}
                     >
                       {t("settings.set_main")}
                     </Button>
                   )}
-                  {connectable && !connected && (
+                  {key === "garmin" && connected && (
                     <Button
                       variant="ghost"
-                      className="!h-7 !px-2.5 text-[12px]"
+                      disabled={syncNow.isPending}
+                      onClick={() => syncNow.mutate()}
+                    >
+                      {t("settings.sync_now")}
+                    </Button>
+                  )}
+                  {key === "garmin" && !connected && (
+                    <Button
+                      variant={garminOpen ? "ghost" : "primary"}
+                      onClick={() => setGarminOpen((v) => !v)}
+                    >
+                      {garminOpen ? t("common.close") : t("settings.connect")}
+                    </Button>
+                  )}
+                  {key !== "garmin" && !connected && (
+                    <Button
+                      variant="ghost"
                       disabled={connect.isPending}
                       onClick={() => connect.mutate(key)}
                       icon={<ExternalLink size={12} />}
@@ -287,6 +402,15 @@ function DevicesSection() {
                   )}
                 </div>
               </div>
+              {key === "garmin" && garminOpen && !garminConnected ? (
+                <GarminConnectForm
+                  onDone={() => {
+                    setGarminOpen(false);
+                    qc.invalidateQueries({ queryKey: ["devices"] });
+                  }}
+                />
+              ) : null}
+              </Fragment>
             );
           })}
         </div>
@@ -296,6 +420,9 @@ function DevicesSection() {
           <ErrorNote message={flowError} />
         </div>
       )}
+      <p className="mt-4 border-t border-hairline pt-3 text-[11px] leading-relaxed text-faint">
+        {t("settings.tokens_note")}
+      </p>
     </Card>
   );
 }
@@ -526,14 +653,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <div className="eyebrow">
-          {t("app.name")} {t("app.suffix")}
-        </div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">
-          {t("settings.title")}
-        </h1>
-      </div>
+      <PageHeader title={t("settings.title")} subtitle={t("settings.page_subtitle")} />
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
         <ProfileSection me={me} />
         <AppearanceSection />

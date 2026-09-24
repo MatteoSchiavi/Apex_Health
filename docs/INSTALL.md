@@ -222,6 +222,15 @@ PYTHONPATH=/app python tools/seed_demo_data.py --days 240`.
 
 ## 7. Connecting real data sources (owner steps, §0/§16.7)
 
+**Preferred: connect from the web UI.** Settings → Devices & Services →
+Garmin Connect → **Connect** — enter your Garmin email + password (and the
+one-time code if the account has MFA). Apex exchanges the credentials for
+session tokens, stores them app-layer-encrypted, never keeps the password,
+and immediately enqueues the full-history backfill. A **Sync now** button
+appears on the same row for incremental pulls. There are no access tokens
+to copy or manage by hand — they are refreshed automatically. The CLI path
+below still works when a headless connect is preferable.
+
 Automated tests only use recorded fixtures — connecting real accounts is
 deliberately manual: putting `GARMIN_EMAIL`/`GARMIN_PASSWORD` in `.env`
 alone does **nothing** (the sync tasks only poll accounts whose tokens are

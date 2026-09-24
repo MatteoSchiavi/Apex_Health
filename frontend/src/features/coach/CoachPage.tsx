@@ -18,7 +18,7 @@ import {
   type ChatSessionDetail,
   type ChatSessionOut,
 } from "../../app/api";
-import { Badge, Button, Card, ErrorNote, Loading } from "../../components/kit";
+import { Badge, Button, Card, ErrorNote, Loading, PageHeader } from "../../components/kit";
 
 const LS_ACTIVE = "apex.chat.activeId";
 const LS_DRAFT = "apex.chat.draft";
@@ -96,7 +96,9 @@ export default function CoachPage() {
   const messages: ChatMessageOut[] = active.data?.messages ?? [];
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[260px_1fr]">
+    <div className="flex flex-col gap-4">
+      <PageHeader title={t("coach.title")} subtitle={t("coach.subtitle")} />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[260px_1fr]">
       {/* session list */}
       <Card className="h-fit">
         <div className="mb-3 flex items-center justify-between">
@@ -160,7 +162,7 @@ export default function CoachPage() {
       {/* conversation */}
       <Card className="flex min-h-[70vh] flex-col !p-0">
         <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
-          <div className="eyebrow">{t("coach.title")}</div>
+          <div className="eyebrow">{t("coach.conversation")}</div>
           {messages.at(-1)?.model_tier && (
             <Badge tone="primary">{messages.at(-1)!.model_tier}</Badge>
           )}
@@ -232,6 +234,7 @@ export default function CoachPage() {
           </div>
         </div>
       </Card>
+      </div>
     </div>
   );
 }

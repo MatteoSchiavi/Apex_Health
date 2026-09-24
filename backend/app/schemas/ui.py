@@ -53,6 +53,10 @@ class ScoreBlock(BaseModel):
 
 class OverviewOut(BaseModel):
     date: str
+    # False when the anchor day itself has nothing recorded and the endpoint
+    # fell back to the most recent day that does (fresh-connect reality:
+    # history exists, "today" doesn't until the device reports it).
+    anchor_is_today: bool = True
     readiness: ScoreBlock
     recovery: ScoreBlock
     strain: ScoreBlock
@@ -60,6 +64,7 @@ class OverviewOut(BaseModel):
     sleep_hours: float | None
     hrv_ms: float | None
     hrv_baseline_ms: float | None
+    hrv_norm_30d: float | None = None
     resting_hr: int | None
     resting_hr_delta_7d: float | None = None
     spo2_avg: float | None
@@ -148,6 +153,18 @@ class SleepDayOut(BaseModel):
     session: SleepSessionOut | None
     biometrics: dict[str, Any]
     hrv_readings: list[dict[str, Any]]
+
+
+class SleepStagesOut(BaseModel):
+    """Epoch-level stage timeline for one night (hypnogram feed).
+
+    `segments` is None when the raw payload carries no usable stage
+    timeline — the UI then renders the proportional stage bar instead of
+    the hypnogram instead of inventing data."""
+
+    date: str
+    segments: list[dict[str, str]] | None = None
+    source: str | None = None
 
 
 class SleepListOut(BaseModel):
