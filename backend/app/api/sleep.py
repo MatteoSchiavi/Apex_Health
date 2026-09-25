@@ -31,6 +31,23 @@ def _fl(value) -> float | None:
 
 
 def _session_out(s: SleepSession) -> SleepSessionOut:
+    # Derive awake_s and restlessness when the connector did not populate
+    # them — Garmin often omits awake_s and almost never emits restlessness
+    # directly. The derived values keep the UI's "awake duration" and
+    # "restlessness" tiles honest instead of showing "—".
+    awake_s = s.awake_s
+    in_bed_s: int | None = None
+    if s.start_time is not None and s.end_time is not None:
+        in_bed_s = int((s.end_time - s.start_time).total_seconds())
+    total_sleep_s = s.total_sleep_s
+
+    if (awake_s is None or awake_s == 0) and in_bed_s and total_sleep_s:
+        awake_s = max(0, in_bed_s - total_sleep_s)
+
+    restlessness = _fl(s.restlessness)
+    if restlessness is None and awake_s is not None and in_bed_s:
+        restlessness = round((awake_s / in_bed_s) * 100, 2)
+
     return SleepSessionOut(
         local_date=s.local_date,
         start_time=s.start_time,
@@ -39,11 +56,11 @@ def _session_out(s: SleepSession) -> SleepSessionOut:
         deep_s=s.deep_s,
         light_s=s.light_s,
         rem_s=s.rem_s,
-        awake_s=s.awake_s,
+        awake_s=awake_s,
         sleep_score=_fl(s.sleep_score),
         respiration_avg=_fl(s.respiration_avg),
         spo2_avg=_fl(s.spo2_avg),
-        restlessness=_fl(s.restlessness),
+        restlessness=restlessness,
     )
 
 

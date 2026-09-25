@@ -405,6 +405,7 @@
     "account": "Account",
     "role": "Ruolo",
     "ai_tier": "Livello di accesso IA",
+    "email": "Email",
     "owner": "Titolare",
     "friend": "Amico",
     "data_local": "I tuoi dati vivono sul server del titolare, cifrati. Le chat e le bozze restano nel tuo browser.",

@@ -473,6 +473,11 @@ function BiomarkerStrip({ o }: { o: Overview }) {
           goodWhen="down"
           range={[38, 62]}
           marker={o.resting_hr ?? undefined}
+          zones={[
+            { from: 38, to: 50, color: "rgba(34,197,94,0.35)" },
+            { from: 50, to: 58, color: "rgba(234,179,8,0.25)" },
+            { from: 58, to: 62, color: "rgba(239,68,68,0.25)" },
+          ]}
         />
         <Biomarker
           label={t("overview.spo2")}
@@ -482,6 +487,11 @@ function BiomarkerStrip({ o }: { o: Overview }) {
           goodWhen="up"
           range={[92, 100]}
           marker={o.spo2_avg ?? undefined}
+          zones={[
+            { from: 92, to: 95, color: "rgba(239,68,68,0.25)" },
+            { from: 95, to: 98, color: "rgba(234,179,8,0.25)" },
+            { from: 98, to: 100, color: "rgba(34,197,94,0.35)" },
+          ]}
         />
         <Biomarker
           label={t("overview.respiration")}
@@ -489,6 +499,11 @@ function BiomarkerStrip({ o }: { o: Overview }) {
           unit="br/min"
           range={[11, 17]}
           marker={o.respiration_avg ?? undefined}
+          zones={[
+            { from: 11, to: 13, color: "rgba(34,197,94,0.35)" },
+            { from: 13, to: 16, color: "rgba(234,179,8,0.25)" },
+            { from: 16, to: 17, color: "rgba(239,68,68,0.25)" },
+          ]}
         />
         <Biomarker
           label={t("biometrics.weight")}
@@ -496,6 +511,23 @@ function BiomarkerStrip({ o }: { o: Overview }) {
           unit="kg"
           range={[60, 90]}
           marker={o.weight_kg ?? undefined}
+          zones={[
+            { from: 60, to: 75, color: "rgba(34,197,94,0.35)" },
+            { from: 75, to: 85, color: "rgba(234,179,8,0.25)" },
+            { from: 85, to: 90, color: "rgba(239,68,68,0.25)" },
+          ]}
+        />
+        <Biomarker
+          label={t("biometrics.vo2max")}
+          value={fmtNum(o.vo2max, 1)}
+          unit="ml/kg/min"
+          range={[30, 65]}
+          marker={o.vo2max ?? undefined}
+          zones={[
+            { from: 30, to: 40, color: "rgba(239,68,68,0.25)" },
+            { from: 40, to: 50, color: "rgba(234,179,8,0.25)" },
+            { from: 50, to: 65, color: "rgba(34,197,94,0.35)" },
+          ]}
         />
       </div>
     </Card>
@@ -510,6 +542,7 @@ function Biomarker({
   goodWhen = "up",
   range,
   marker,
+  zones,
 }: {
   label: string;
   value: string;
@@ -518,6 +551,7 @@ function Biomarker({
   goodWhen?: "up" | "down";
   range: [number, number];
   marker?: number;
+  zones?: { from: number; to: number; color: string }[];
 }) {
   return (
     <div className="rounded-card border border-hairline bg-surface2 p-3">
@@ -527,7 +561,7 @@ function Biomarker({
       </div>
       <BigStat value={value} unit={unit} size="md" className="mt-1" />
       <div className="mt-2.5">
-        <RangeBar min={range[0]} max={range[1]} marker={marker} />
+        <RangeBar min={range[0]} max={range[1]} marker={marker} zones={zones} />
         <div className="num mt-1 flex justify-between text-[9px] text-faint">
           <span>{range[0]}</span>
           <span>{range[1]}</span>

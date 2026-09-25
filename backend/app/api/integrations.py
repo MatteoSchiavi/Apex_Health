@@ -504,10 +504,17 @@ async def sync_garmin_now(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """'Sync now' — enqueue the incremental Garmin poll immediately instead
-    of waiting for the 6-hourly beat tick.
+    of waiting for the 6-hourly beat tick, then wait up to 30s for the
+    result so the UI can show fresh data instead of stale cache.
 
-    F-11 audit: scoped to the connecting user (``garmin.sync_user.s(user.id)``)
-    — never a global fan-out that would re-sync every other user's account.
+    F-11 audit: scoped to the connecting user (``sync_user_garmin.apply_async(
+    args=[user.id])``) — never a global fan-out that would re-sync every
+    other user's account.
+
+    If Celery is down (broker unreachable, worker crashed), the endpoint
+    falls back to running the per-user sync inline (capped at 30s) so the
+    owner's "Sync now" button still works in single-process dev setups
+    where the worker isn't running.
     """
     integration = await session.scalar(
         select(Integration).where(
@@ -519,12 +526,51 @@ async def sync_garmin_now(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Garmin is not connected — connect it first.",
         )
-    enqueued = True
+
+    import asyncio
+
+    enqueued = False
+    completed = False
+    sync_result: dict | None = None
+    error: str | None = None
+
+    # Path A — try Celery first and block up to 30s for the result so the
+    # UI's "Sync now" reflects the new data, not the pre-sync cache.
     try:
         from app.tasks.garmin_sync import sync_user_garmin
 
-        sync_user_garmin.delay(user.id)
-    except Exception:  # noqa: BLE001
-        enqueued = False
-        logger.warning("garmin sync-now enqueue failed — beat will cover")
-    return {"enqueued": enqueued}
+        result = sync_user_garmin.apply_async(args=[user.id])
+        enqueued = True
+        try:
+            sync_result = result.get(timeout=30)
+            completed = True
+        except Exception as exc:  # noqa: BLE001 — timeout / result lost
+            logger.warning(
+                "garmin sync-now: result not ready within 30s (%s) — falling back to inline",
+                exc,
+            )
+    except Exception as exc:  # noqa: BLE001 — broker down: inline fallback
+        logger.warning("garmin sync-now: celery unavailable (%s) — running inline", exc)
+
+    # Path B — Celery never delivered a result; run the per-user sync
+    # inline (capped at 30s) so single-process dev without a worker still
+    # gets fresh data on "Sync now".
+    if not completed:
+        try:
+            from app.tasks.garmin_sync import _sync_user_garmin
+
+            sync_result = await asyncio.wait_for(
+                _sync_user_garmin(user.id), timeout=30.0
+            )
+            completed = True
+        except asyncio.TimeoutError:
+            error = "Sync timed out — try again in a moment."
+            logger.warning("garmin sync-now: inline sync exceeded 30s for user %s", user.id)
+        except Exception as exc:  # noqa: BLE001
+            error = f"Sync failed: {exc}"
+            logger.exception("garmin sync-now: inline sync crashed for user %s", user.id)
+
+    payload: dict = {"enqueued": enqueued, "completed": completed, "result": sync_result}
+    if error is not None:
+        payload["error"] = error
+    return payload

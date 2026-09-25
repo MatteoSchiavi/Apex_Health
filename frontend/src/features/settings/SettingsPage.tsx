@@ -29,7 +29,6 @@ import {
   PageHeader,
   Segmented,
   Select,
-  fmtNum,
 } from "../../components/kit";
 
 /* ------------------------------------------------------------------ profile */
@@ -308,8 +307,35 @@ function DevicesSection() {
   });
 
   const syncNow = useMutation({
-    mutationFn: () => api.post("/settings/integrations/garmin/sync"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
+    mutationFn: () =>
+      api.post<{
+        enqueued?: boolean;
+        completed?: boolean;
+        result?: { status?: string };
+        note?: string;
+        error?: string;
+      }>("/settings/integrations/garmin/sync"),
+    onSuccess: (res) => {
+      // Invalidate ALL data queries so the fresh sync is reflected across
+      // every surface that reads from the backend cache.
+      qc.invalidateQueries({ queryKey: ["devices"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
+      qc.invalidateQueries({ queryKey: ["sleep"] });
+      qc.invalidateQueries({ queryKey: ["activities"] });
+      qc.invalidateQueries({ queryKey: ["metrics"] });
+      qc.invalidateQueries({ queryKey: ["metrics-catalog"] });
+
+      // User-facing feedback for the four possible sync outcomes.
+      if (res.completed && res.result?.status === "ok") {
+        setFlowError(null);
+      } else if (res.completed && res.result?.status === "failed") {
+        setFlowError(
+          "Sync failed — Garmin credentials may have expired. Try reconnecting.",
+        );
+      } else if (res.error) {
+        setFlowError(res.error);
+      }
+    },
   });
 
   const byProvider = new Map((devices.data ?? []).map((d) => [d.provider, d]));
@@ -623,18 +649,8 @@ function AccountSection() {
           <div className="text-[13px] font-medium text-ink">{me.ai_access_tier}</div>
         </div>
         <div>
-          <div className="eyebrow mb-1">{t("settings.timezone")}</div>
-          <div className="num text-[13px] font-medium text-ink">{me.timezone}</div>
-        </div>
-        <div>
-          <div className="eyebrow mb-1">{t("settings.height")}</div>
-          <div className="num text-[13px] font-medium text-ink">
-            {me.height_cm ? `${fmtNum(me.height_cm)} cm` : "—"}
-          </div>
-        </div>
-        <div>
-          <div className="eyebrow mb-1">{t("settings.dob")}</div>
-          <div className="num text-[13px] font-medium text-ink">{me.dob ?? "—"}</div>
+          <div className="eyebrow mb-1">{t("settings.email")}</div>
+          <div className="text-[13px] font-medium text-ink truncate">{me.email}</div>
         </div>
       </div>
     </Card>
