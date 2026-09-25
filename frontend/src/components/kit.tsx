@@ -272,6 +272,7 @@ export function RangeBar({
   marker,
   markers,
   tone = "positive",
+  zones,
 }: {
   min: number;
   max: number;
@@ -280,13 +281,28 @@ export function RangeBar({
   marker?: number;
   markers?: { label: ReactNode; at: number; className?: string }[];
   tone?: "positive" | "primary" | "muted";
+  /** Background color zones (e.g. green/amber/red health bands). Each
+   * segment is rendered as an absolutely-positioned div behind the fill
+   * and the marker dot. */
+  zones?: { from: number; to: number; color: string }[];
 }) {
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - min) / (max - min)) * 100));
   const fill = { positive: "bg-positive/60", primary: "bg-primary/60", muted: "bg-hairline2" }[tone];
   const dots: { at: number; className?: string }[] =
     markers ?? (marker !== undefined ? [{ at: marker }] : []);
   return (
-    <div className="relative h-1.5 w-full rounded-full bg-hairline">
+    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-hairline">
+      {zones?.map((z, i) => (
+        <div
+          key={`zone-${i}`}
+          className="absolute top-0 h-full"
+          style={{
+            left: `${pct(z.from)}%`,
+            width: `${pct(z.to) - pct(z.from)}%`,
+            background: z.color,
+          }}
+        />
+      ))}
       {value !== undefined && (
         <div
           className={`absolute h-full rounded-full ${fill}`}
@@ -337,9 +353,14 @@ export function ArcGauge({
   };
   const t = start + (end - start) * (v / 100);
   return (
-    <div className="relative" style={{ width: size, height: size * 0.86 }}>
-      <svg width={size} height={size * 0.86} viewBox={`0 0 ${size} ${size * 0.86}`}>
-        <g transform={`translate(0 ${-size * 0.07})`}>
+    <div className="relative" style={{ width: size, height: size * 0.92 }}>
+      <svg
+        width={size}
+        height={size * 0.92}
+        viewBox={`0 0 ${size} ${size * 0.92}`}
+        style={{ overflow: "visible" }}
+      >
+        <g transform={`translate(0 ${-size * 0.04})`}>
           <path d={arc(start, end)} fill="none" stroke="var(--c-hairline)" strokeWidth={stroke} strokeLinecap="round" />
           <path
             d={arc(start, t)}

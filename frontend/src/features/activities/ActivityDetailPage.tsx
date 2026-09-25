@@ -10,6 +10,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
+import {
+  MapContainer,
+  TileLayer,
+  Polyline,
+  CircleMarker,
+  useMap,
+} from "react-leaflet";
+import type { LatLngBoundsExpression } from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { api, type ActivityDetail as Detail, type StreamOut } from "../../app/api";
 import {
   Badge,
@@ -28,6 +37,12 @@ import { EChart, useChartTheme } from "../../components/charts/EChart";
 function paceKmh(distanceM: number | null, durationS: number): number | null {
   if (!distanceM || durationS <= 0) return null;
   return distanceM / 1000 / (durationS / 3600);
+}
+
+/** Disciplines where elevation is meaningless (no terrain, no ascent). */
+const WATER_SPORTS = new Set(["sailing", "kitesurf", "windsurf", "surf", "wakeboard"]);
+function isWaterSport(discipline: string | null | undefined): boolean {
+  return !!discipline && WATER_SPORTS.has(discipline);
 }
 
 /** HR zone distribution computed from the stream (5 zones off HRmax). */
@@ -57,63 +72,89 @@ function zonesFromStream(t: number[], hr: (number | null)[]): { name: string; mi
 
 /* ---------------------------------------------------------------- GPS */
 
+/** Auto-fit the map to the route bounds on mount / when the route changes. */
+function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
+  const map = useMap();
+  // useEffect-equivalent: fitBounds is idempotent; running on every render
+  // is fine because the route rarely changes once mounted.
+  map.fitBounds(bounds, { padding: [20, 20] });
+  return null;
+}
+
 function GpsTrace({ stream }: { stream: StreamOut }) {
   const c = useChartTheme();
   const { t } = useTranslation();
   const lat = stream.columns.lat as (number | null)[] | undefined;
   const lon = stream.columns.lon as (number | null)[] | undefined;
   if (!lat || !lon) return <Empty>{t("activities.no_map")}</Empty>;
-  const pts: { x: number; y: number; alt: number }[] = [];
+
+  // Build [lat, lon] pairs for Leaflet; ignore nulls from dropped fixes.
+  const pts: [number, number][] = [];
+  const alts: number[] = [];
   for (let i = 0; i < lat.length; i++) {
     if (lat[i] !== null && lon[i] !== null) {
-      pts.push({ x: lon[i]!, y: lat[i]!, alt: (stream.columns.altitude?.[i] ?? 0) as number });
+      pts.push([lat[i] as number, lon[i] as number]);
+      alts.push(((stream.columns.altitude?.[i] ?? 0) as number) ?? 0);
     }
   }
   if (pts.length < 2) return <Empty>{t("activities.no_map")}</Empty>;
 
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = Math.max(maxX - minX, 1e-6);
-  const spanY = Math.max(maxY - minY, 1e-6);
-  const W = 1000;
-  const H = 380;
-  const alts = pts.map((p) => p.alt);
   const aMin = Math.min(...alts);
   const aMax = Math.max(...alts);
-  const color = (a: number) => {
-    const f = aMax > aMin ? (a - aMin) / (aMax - aMin) : 0.5;
-    if (f < 0.33) return c.positive;
-    if (f < 0.66) return c.primary;
-    return c.alert;
-  };
-  const segments: { color: string; d: string }[] = [];
-  const px = (p: { x: number; y: number }) => ({
-    x: ((p.x - minX) / spanX) * (W - 40) + 20,
-    y: H - (((p.y - minY) / spanY) * (H - 40) + 20),
-  });
-  for (let i = 1; i < pts.length; i++) {
-    const a = px(pts[i - 1]);
-    const b = px(pts[i]);
-    segments.push({ color: color(pts[i].alt), d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} L ${b.x.toFixed(1)} ${b.y.toFixed(1)}` });
-  }
-  const startPx = px(pts[0]);
-  const endPx = px(pts[pts.length - 1]);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-card border border-hairline bg-bg">
-      {segments.map((s, i) => (
-        <path key={i} d={s.d} stroke={s.color} strokeWidth={2.4} fill="none" strokeLinecap="round" opacity={0.92} />
-      ))}
-      <circle cx={startPx.x} cy={startPx.y} r={6} fill={c.primary} stroke={c.surface} strokeWidth={2} />
-      <circle cx={endPx.x} cy={endPx.y} r={6} fill={c.positive} stroke={c.surface} strokeWidth={2} />
-      <text x={16} y={H - 8} fill={c.muted} fontSize={12} fontFamily="JetBrains Mono">
+    <div>
+      <div
+        style={{ height: 380 }}
+        className="w-full overflow-hidden rounded-card border border-hairline"
+      >
+        <MapContainer
+          center={pts[0]}
+          zoom={13}
+          style={{ height: "100%", width: "100%" }}
+          scrollWheelZoom={false}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <Polyline
+            positions={pts}
+            pathOptions={{
+              color: c.primary,
+              weight: 3,
+              opacity: 0.9,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+          <CircleMarker
+            center={pts[0]}
+            radius={6}
+            pathOptions={{
+              color: c.surface,
+              weight: 2,
+              fillColor: c.primary,
+              fillOpacity: 1,
+            }}
+          />
+          <CircleMarker
+            center={pts[pts.length - 1]}
+            radius={6}
+            pathOptions={{
+              color: c.surface,
+              weight: 2,
+              fillColor: c.positive,
+              fillOpacity: 1,
+            }}
+          />
+          <FitBounds bounds={pts as LatLngBoundsExpression} />
+        </MapContainer>
+      </div>
+      <div className="num mt-2 text-[11px] text-muted">
         GPS · {pts.length} pts · ▲ {fmtNum(aMax - aMin, 0)} m
-      </text>
-    </svg>
+      </div>
+    </div>
   );
 }
 
@@ -180,7 +221,9 @@ export default function ActivityDetailPage() {
     { key: "hr", label: t("activities.hr"), color: c.alert },
     { key: "power", label: t("activities.power"), color: c.primary },
     { key: "cadence", label: t("activities.cadence"), color: c.positive },
-    { key: "altitude", label: t("activities.elevation"), color: c.muted },
+    ...(isWaterSport(detail.data?.discipline)
+      ? []
+      : [{ key: "altitude", label: t("activities.elevation"), color: c.muted }]),
     { key: "speed", label: t("activities.speed"), color: c.warning },
   ].filter((d) => (streams.data?.columns[d.key] ?? []).some((v) => v !== null));
 
@@ -279,7 +322,9 @@ export default function ActivityDetailPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatPod label={t("activities.distance")} value={fmtNum(a.distance_m ? a.distance_m / 1000 : null, 1)} unit="km" />
         <StatPod label={t("activities.duration")} value={fmtDuration(a.duration_s)} />
-        <StatPod label={t("activities.elevation")} value={`+${fmtNum(a.elevation_gain_m, 0)}`} unit="m" />
+        {!isWaterSport(a.discipline) && (
+          <StatPod label={t("activities.elevation")} value={`+${fmtNum(a.elevation_gain_m, 0)}`} unit="m" />
+        )}
         <StatPod
           label={t("activities.np")}
           value={fmtNum(a.np_power ?? a.avg_power, 0)}

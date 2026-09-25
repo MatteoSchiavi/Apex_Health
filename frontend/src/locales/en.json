@@ -405,6 +405,7 @@
     "account": "Account",
     "role": "Role",
     "ai_tier": "AI access tier",
+    "email": "Email",
     "owner": "Owner",
     "friend": "Friend",
     "data_local": "Your data lives on the owner's server, encrypted. Chats and drafts stay in your browser.",

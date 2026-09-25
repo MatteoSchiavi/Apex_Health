@@ -5,6 +5,7 @@ only its peppered SHA-256 hash is stored. Expiry slides: once more than half
 the TTL has passed, a valid request extends the session to a full TTL from now.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
@@ -21,6 +22,8 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import AuthCredential, User, UserSession
+
+logger = logging.getLogger("auth.service")
 
 
 class AuthError(Exception):
@@ -39,6 +42,18 @@ async def ensure_owner(session: AsyncSession) -> None:
         select(AuthCredential).where(AuthCredential.role == "owner")
     )
     if existing is not None:
+        # Bug 11: an earlier deploy could have downgraded the owner's
+        # ai_access_tier (admin role misassigned). On every startup, when an
+        # owner already exists, restore the tier to 'full' so the owner keeps
+        # their AI access regardless of any drift in the DB.
+        if existing.ai_access_tier != "full":
+            logger.warning(
+                "owner account %s had ai_access_tier=%s — restoring to 'full'",
+                existing.user_id,
+                existing.ai_access_tier,
+            )
+            existing.ai_access_tier = "full"
+            await session.commit()
         return
 
     user = User(name=settings.owner_email.split("@", 1)[0])
