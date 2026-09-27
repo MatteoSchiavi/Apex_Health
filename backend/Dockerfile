@@ -10,7 +10,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- Stage 2: the api/worker image ------------------------------------------
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
