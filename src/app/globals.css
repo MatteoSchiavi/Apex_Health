@@ -219,14 +219,14 @@
 
 /* hero page title */
 .page-title {
-  font-size: 32px;
-  font-weight: 500;
-  line-height: 40px;
-  letter-spacing: -0.025em;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+  letter-spacing: -0.02em;
   color: var(--c-text);
 }
 @media (max-width: 767px) {
-  .page-title { font-size: 24px; line-height: 32px; letter-spacing: -0.02em; }
+  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
 }
 
 /* scrollbar styling — subtle, fits the Apex monochrome system */

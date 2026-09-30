@@ -17,7 +17,7 @@
  */
 
 import { useState } from "react";
-import { Volume2, Loader2, Square } from "lucide-react";
+import { Volume2, Loader2, Square, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
@@ -69,6 +69,7 @@ export function SettingsPage() {
     (me.ai_access_tier as "off" | "basic" | "pro") ?? "pro"
   );
   const [previewState, setPreviewState] = useState<"idle" | "loading" | "playing">("idle");
+  const [syncing, setSyncing] = useState(false);
 
   const applyTheme = (next: "dark" | "light") => {
     setTheme(next === "dark" ? "dark" : "light");
@@ -346,7 +347,35 @@ export function SettingsPage() {
         {/* 4. Devices & Integrations (full row) */}
         <Card pad={false} className="lg:col-span-2">
           <div className="p-4">
-            <SectionHeader eyebrow={t("settings.devices_title")} title={t("settings.devices_title")} />
+            <SectionHeader
+              eyebrow={t("settings.devices_title")}
+              title={t("settings.devices_title")}
+              right={
+                <ApexButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    setSyncing(true);
+                    try {
+                      const resp = await fetch("/api/garmin/sync", { method: "POST" });
+                      const data = await resp.json();
+                      if (data.ok) {
+                        toast({ title: `Synced ${data.report.activities} activities, ${data.report.sleepSessions} sleep sessions` });
+                      } else {
+                        toast({ title: `Sync failed: ${data.error}`, variant: "destructive" });
+                      }
+                    } catch (e) {
+                      toast({ title: `Sync failed: ${e instanceof Error ? e.message : "unknown"}`, variant: "destructive" });
+                    }
+                    setSyncing(false);
+                  }}
+                  icon={syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  disabled={syncing}
+                >
+                  <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync now"}</span>
+                </ApexButton>
+              }
+            />
           </div>
           <Hairline />
           <div className="overflow-x-auto">

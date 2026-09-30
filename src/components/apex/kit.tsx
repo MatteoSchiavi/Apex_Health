@@ -127,9 +127,9 @@ export function BigStat({
   tone?: "ink" | "primary" | "positive" | "alert" | "warning" | "muted";
 }) {
   const sizes = {
-    md: "text-[28px] leading-[34px] font-light tracking-[-0.02em]",
-    lg: "text-[40px] leading-[46px] font-light tracking-[-0.02em]",
-    xl: "text-[56px] leading-[62px] font-light tracking-[-0.03em]",
+    md: "text-[28px] leading-[34px] font-bold tracking-[-0.02em]",
+    lg: "text-[40px] leading-[46px] font-bold tracking-[-0.02em]",
+    xl: "text-[56px] leading-[62px] font-bold tracking-[-0.03em]",
   } as const;
   const toneCls = {
     ink: "text-ink",

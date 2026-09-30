@@ -21,6 +21,8 @@ import {
   HeartPulse,
   Moon,
   Search,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Sun,
   Trophy,
@@ -166,24 +168,46 @@ function SyncFooter() {
   );
 }
 
-/** Sidebar (desktop). */
-function Sidebar({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => void }) {
+/** Sidebar (desktop) — retractable/collapsible. */
+function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: ViewKey; onNav: (v: ViewKey) => void; collapsed: boolean; onToggleCollapse: () => void }) {
   const t = useT();
   return (
-    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:w-[244px] flex-col border-r border-hairline bg-bg">
-      <div className="flex h-14 items-center justify-between px-4">
+    <aside
+      className={`hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 flex-col border-r border-hairline bg-bg transition-[width] duration-200 ${
+        collapsed ? "lg:w-[60px]" : "lg:w-[244px]"
+      }`}
+    >
+      <div className="flex h-14 items-center justify-between px-3">
         <button
           type="button"
           onClick={() => onNav("overview")}
           className="transition-opacity hover:opacity-80"
         >
-          <Logo />
+          {collapsed ? (
+            <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden>
+              <path d="M16 6 L26 26 L21 26 L16 15 L11 26 L6 26 Z" className="fill-primary" />
+            </svg>
+          ) : (
+            <Logo />
+          )}
         </button>
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+            aria-label="Collapse sidebar"
+          >
+            <PanelLeftClose size={14} />
+          </button>
+        )}
       </div>
 
-      <div className="px-4 py-2">
-        <div className="eyebrow !text-[10px]">{t("app.section")}</div>
-      </div>
+      {!collapsed && (
+        <div className="px-4 py-2">
+          <div className="eyebrow !text-[10px]">{t("app.section")}</div>
+        </div>
+      )}
 
       <nav className="flex-1 scroll-area overflow-y-auto px-2">
         <ul className="space-y-0.5">
@@ -199,15 +223,16 @@ function Sidebar({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => 
                     active
                       ? "bg-surface2 text-ink"
                       : "text-muted hover:bg-surface hover:text-ink2"
-                  }`}
+                  } ${collapsed ? "justify-center" : ""}`}
+                  title={collapsed ? t(item.labelKey) : undefined}
                 >
                   <Icon
-                    size={15}
+                    size={18}
                     className={active ? "text-primaryText" : "text-muted group-hover:text-ink2"}
                     strokeWidth={2}
                   />
-                  <span className="truncate">{t(item.labelKey)}</span>
-                  {active && <ChevronRight size={12} className="ml-auto text-muted" />}
+                  {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
+                  {!collapsed && active && <ChevronRight size={12} className="ml-auto text-muted" />}
                 </button>
               </li>
             );
@@ -215,12 +240,19 @@ function Sidebar({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => 
         </ul>
       </nav>
 
-      <div className="space-y-2 px-3 pb-4 pt-2">
-        <SyncFooter />
-        <div className="flex items-center justify-between gap-2">
-          <ThemeSegmented />
-          <LocaleToggle />
-        </div>
+      <div className="space-y-2 px-2 pb-3 pt-2">
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="flex h-8 w-full items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+            aria-label="Expand sidebar"
+          >
+            <PanelLeftOpen size={14} />
+          </button>
+        ) : (
+          <SyncFooter />
+        )}
       </div>
     </aside>
   );
@@ -252,8 +284,6 @@ function Topbar({ current, onSearch, onScan }: { current: ViewKey; onSearch: () 
           <Search size={12} />
         </button>
         <NotificationsBell />
-        <LocaleToggle />
-        <ThemeSegmentedCompact />
       </div>
     </header>
   );
@@ -397,8 +427,8 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-ink">
-      <Sidebar current={current} onNav={onNav} />
-      <div className="lg:pl-[244px]">
+      <Sidebar current={current} onNav={onNav} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed((v) => !v)} />
+      <div className={sidebarCollapsed ? "lg:pl-[60px]" : "lg:pl-[244px]"}>
         {/* Desktop topbar */}
         <header className="sticky top-0 z-20 hidden h-14 items-center justify-between gap-3 border-b border-hairline bg-canvas/95 px-6 backdrop-blur lg:flex">
           <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted">
@@ -408,8 +438,6 @@ export function AppShell({
             <SearchTrigger onClick={() => setCmdOpen(true)} />
             <NotificationsBell />
             <ShortcutsHelpButton onClick={() => setHelpOpen(true)} />
-            <LocaleToggle />
-            <ThemeSegmented />
             <AccountChip />
           </div>
         </header>

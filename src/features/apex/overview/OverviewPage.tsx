@@ -152,81 +152,8 @@ export function OverviewPage() {
       />
       <RecoveryScanModal open={scanOpen} onOpenChange={setScanOpen} />
 
-      {/* --------------------------- 1. Status strip (full width, real-time) */}
-      <Card pad={false} className="mt-4 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-2 text-[11px]">
-          <div className="flex items-center gap-2">
-            <span
-              className="relative flex h-1.5 w-1.5"
-              key={sync.pulseKey}
-              aria-hidden
-            >
-              {/* The outer ping animates only when there's a fresh sync event */}
-              {sync.state === "connected" && (
-                <span
-                  className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60"
-                  style={{ animationDuration: sync.latest ? "1.5s" : "2.4s" }}
-                />
-              )}
-              <span
-                className={`relative inline-flex h-1.5 w-1.5 rounded-full transition-colors ${
-                  sync.state === "connected"
-                    ? "bg-positive"
-                    : sync.state === "disconnected"
-                    ? "bg-warning"
-                    : "bg-faint"
-                }`}
-              />
-            </span>
-            <span className="eyebrow !text-[10px]">
-              {sync.state === "connected"
-                ? t("overview.live")
-                : sync.state === "disconnected"
-                ? t("overview.paused")
-                : "Connecting…"}
-            </span>
-            <span className="text-faint" aria-hidden>·</span>
-            <span className="num text-muted">
-              {sync.latest
-                ? `${sync.latest.provider} · ${sync.latest.samples_synced} sample${sync.latest.samples_synced === 1 ? "" : "s"}`
-                : devicesLabel}
-            </span>
-            {/* Real-time connection indicator */}
-            <span className="ml-1 flex items-center gap-1 text-faint" aria-hidden>
-              {sync.state === "connected" ? (
-                <Wifi size={10} className="text-positiveText" />
-              ) : (
-                <WifiOff size={10} className="text-warningText" />
-              )}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge tone={overview.anchor_is_today ? "positive" : "warning"} dot>
-              {overview.anchor_is_today ? t("overview.validated") : t("overview.showing_history")}
-            </Badge>
-            <span className="text-faint" aria-hidden>·</span>
-            <span className="num tracking-[0.06em] text-faint">
-              {fmtDate(overview.date, ui.locale)} · {t("overview.epoch")}
-            </span>
-          </div>
-        </div>
-        {/* Last sync line — only when we have a live event */}
-        {sync.latest && (
-          <div className="flex items-center gap-2 border-t border-hairline px-3 py-1.5 text-[10px] text-muted">
-            <span className="eyebrow !text-[9px]">LAST SYNC</span>
-            <span className="num">
-              {sync.latest.provider.toLowerCase()} · {new Date(sync.latest.last_synced_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
-            </span>
-            <span className="text-faint" aria-hidden>·</span>
-            <span className="num">
-              freshness {(sync.latest.freshness_ms / 1000).toFixed(1)}s · status {sync.latest.status}
-            </span>
-            <span className="ml-auto num text-[9px] text-faint">
-              {sync.latest.simulated ? "simulated · fallback" : "live · port 3005"}
-            </span>
-          </div>
-        )}
-      </Card>
+      {/* --------------------------- Minimal sync indicator (bottom of page, not top) */}
+
 
       {/* --------------------------- Main grid */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
@@ -713,6 +640,22 @@ export function OverviewPage() {
             />
           </div>
         </Card>
+      </div>
+
+      {/* Sync indicator — at the BOTTOM, not the top. Simple and honest. */}
+      <div className="mt-4 flex items-center justify-between rounded-[var(--radius-card)] border border-hairline bg-surface px-4 py-2.5 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-1.5 w-1.5">
+            {sync.state === "connected" && (
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
+            )}
+            <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${sync.state === "connected" ? "bg-positive" : "bg-faint"}`} />
+          </span>
+          <span className="num text-muted">
+            {sync.state === "connected" ? "Garmin" : "Connecting…"} · {sync.latest ? new Date(sync.latest.last_synced_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "—"}
+          </span>
+        </div>
+        <span className="num text-faint">{fmtDate(overview.date, ui.locale)}</span>
       </div>
     </div>
   );
