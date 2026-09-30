@@ -176,6 +176,47 @@ export function SettingsPage() {
             <p className="num text-[11px] text-faint">
               {t("settings.theme_note")}
             </p>
+
+            {/* TTS voice + auto-play settings */}
+            <div className="mt-2 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
+              <div className="eyebrow !text-[10px]">Coach voice (TTS)</div>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <select
+                  value={ui.ttsVoice}
+                  onChange={(e) => ui.setTtsVoice(e.target.value)}
+                  className="num rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-2 text-[12px] text-ink focus:border-primary focus:outline-none"
+                  aria-label="TTS voice"
+                >
+                  <option value="tongtong">tongtong — warm, friendly</option>
+                  <option value="chuichui">chuichui — lively</option>
+                  <option value="xiaochen">xiaochen — composed, professional</option>
+                  <option value="jam">jam — British gentleman</option>
+                  <option value="kazi">kazi — clear, standard</option>
+                  <option value="douji">douji — natural, fluent</option>
+                  <option value="luodo">luodo — expressive</option>
+                </select>
+                <label className="flex cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-2">
+                  <span className="text-[12px] text-ink2">Auto-play responses</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={ui.ttsAutoPlay}
+                    onClick={() => ui.setTtsAutoPlay(!ui.ttsAutoPlay)}
+                    className={`relative h-4 w-7 rounded-full transition-colors ${ui.ttsAutoPlay ? "bg-primary" : "bg-surface3"}`}
+                    aria-label="Toggle auto-play"
+                  >
+                    <span
+                      className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+                        ui.ttsAutoPlay ? "translate-x-3.5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </label>
+              </div>
+              <p className="num mt-2 text-[10px] text-faint">
+                Voice used when reading Coach messages aloud. Auto-play reads each new assistant response automatically.
+              </p>
+            </div>
           </div>
         </Card>
 

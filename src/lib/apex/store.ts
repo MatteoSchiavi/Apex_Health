@@ -28,6 +28,12 @@ interface ApexUiState {
   units: Units;
   setUnits: (u: Units) => void;
 
+  // TTS settings
+  ttsVoice: string;
+  setTtsVoice: (v: string) => void;
+  ttsAutoPlay: boolean;
+  setTtsAutoPlay: (v: boolean) => void;
+
   // navigation
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -62,6 +68,11 @@ export const useApexUi = create<ApexUiState>()(
       units: "metric",
       setUnits: (u) => set({ units: u }),
 
+      ttsVoice: "tongtong",
+      setTtsVoice: (v) => set({ ttsVoice: v }),
+      ttsAutoPlay: false,
+      setTtsAutoPlay: (v) => set({ ttsAutoPlay: v }),
+
       view: "welcome",
       setView: (v) => set({ view: v }),
 
@@ -84,6 +95,8 @@ export const useApexUi = create<ApexUiState>()(
         theme: s.theme,
         locale: s.locale,
         units: s.units,
+        ttsVoice: s.ttsVoice,
+        ttsAutoPlay: s.ttsAutoPlay,
       }),
     }
   )

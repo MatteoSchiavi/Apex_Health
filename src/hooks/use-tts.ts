@@ -21,12 +21,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type TTSState = "idle" | "loading" | "playing" | "error";
 
-export function useTTS() {
+export function useTTS(opts?: { voice?: string; autoPlayText?: (text: string) => boolean }) {
   const [state, setState] = useState<TTSState>("idle");
   const [activeText, setActiveText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cacheRef = useRef<Map<string, string>>(new Map()); // text → objectURL
+  const voiceRef = useRef(opts?.voice ?? "tongtong");
+  const autoPlayRef = useRef(opts?.autoPlayText);
+
+  // Keep refs in sync with latest props without re-running the speak effect
+  useEffect(() => {
+    voiceRef.current = opts?.voice ?? "tongtong";
+  }, [opts?.voice]);
+  useEffect(() => {
+    autoPlayRef.current = opts?.autoPlayText;
+  }, [opts?.autoPlayText]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -61,7 +71,7 @@ export function useTTS() {
         const resp = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, voice: "tongtong", speed: 1.0 }),
+          body: JSON.stringify({ text, voice: voiceRef.current, speed: 1.0 }),
         });
         if (!resp.ok) {
           const errJson = await resp.json().catch(() => ({}));
@@ -101,12 +111,21 @@ export function useTTS() {
     setActiveText(null);
   }, []);
 
+  /** If autoPlayText returns true, speak the text. Used by Coach to auto-play
+   *  incoming assistant messages when the user has enabled it in Settings. */
+  const maybeAutoPlay = useCallback((text: string) => {
+    if (autoPlayRef.current?.(text)) {
+      speak(text);
+    }
+  }, [speak]);
+
   return {
     state,
     error,
     activeText,
     speak,
     stop,
+    maybeAutoPlay,
     isPlaying: state === "playing",
     isLoading: state === "loading",
   };

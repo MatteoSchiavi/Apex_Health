@@ -331,7 +331,10 @@ export function CoachPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const voice = useVoiceInput();
-  const tts = useTTS();
+  const tts = useTTS({
+    voice: ui.ttsVoice,
+    autoPlayText: ui.ttsAutoPlay ? () => true : undefined,
+  });
   const [useAiBackend, setUseAiBackend] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -468,6 +471,10 @@ export function CoachPage() {
         }));
         setLoading(false);
         loadingTimer.current = null;
+        // Auto-play TTS if user enabled it in Settings.
+        if (dataMsg.content) {
+          tts.maybeAutoPlay(dataMsg.content);
+        }
       }
     };
 
@@ -566,6 +573,10 @@ export function CoachPage() {
                 preview: acc.slice(0, 80),
               }));
               setLoading(false);
+              // Auto-play TTS if user enabled it in Settings.
+              if (acc) {
+                tts.maybeAutoPlay(acc);
+              }
               return;
             } else if (parsed.type === "error") {
               throw new Error(parsed.error || "LLM error");

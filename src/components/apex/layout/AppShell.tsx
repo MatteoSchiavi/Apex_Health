@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { motion } from "framer-motion";
 import { useApexUi } from "@/lib/apex/store";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { devices, me } from "@/lib/apex/data";
@@ -405,9 +406,16 @@ export function AppShell({
         {/* Mobile topbar */}
         <Topbar current={current} onSearch={() => setCmdOpen(true)} onScan={() => setScanOpen(true)} />
 
-        {/* Page content */}
+        {/* Page content — fades in on view change */}
         <main className="flex-1 px-4 pb-24 pt-4 lg:px-6 lg:pb-12 lg:pt-6">
-          {children}
+          <motion.div
+            key={current}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {children}
+          </motion.div>
         </main>
       </div>
       <BottomNav current={current} onNav={onNav} />

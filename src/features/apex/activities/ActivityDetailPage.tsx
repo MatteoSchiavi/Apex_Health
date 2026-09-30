@@ -66,9 +66,27 @@ export function ActivityDetailPage() {
   const { locale } = useI18n();
   const ui = useApexUi();
   const id = ui.selectedActivityId ?? activities[0].id;
+  // Lap-hover state: when the user hovers a lap row, StreamCharts highlights
+  // the corresponding time range with a tinted band.
+  const [hoveredLap, setHoveredLap] = useState<{ startIdx: number; endIdx: number } | null>(null);
 
   const detail: ActivityDetail = useMemo(() => getActivityDetail(id), [id]);
   const streams: ActivityStream = useMemo(() => getActivityStreams(id), [id]);
+
+  // Convert a lap (start_time + duration_s) to stream-index range
+  const lapToIndexRange = (lap: { start_time: string | null; duration_s: number | null }) => {
+    if (!lap.start_time || !lap.duration_s) return null;
+    const lapStartMs = new Date(lap.start_time).getTime();
+    const activityStartMs = new Date(detail.start_time).getTime();
+    const lapEndMs = lapStartMs + lap.duration_s * 1000;
+    const activityEndMs = activityStartMs + detail.duration_s * 1000;
+    const totalMs = activityEndMs - activityStartMs;
+    if (totalMs <= 0) return null;
+    const samples = streams.t.length;
+    const startIdx = Math.max(0, Math.round(((lapStartMs - activityStartMs) / totalMs) * (samples - 1)));
+    const endIdx = Math.min(samples - 1, Math.round(((lapEndMs - activityStartMs) / totalMs) * (samples - 1)));
+    return { startIdx, endIdx };
+  };
 
   return (
     <div className="mx-auto max-w-[1240px]">
@@ -247,6 +265,7 @@ export function ActivityDetailPage() {
           startTime={detail.start_time}
           duration_s={detail.duration_s}
           t={t}
+          lapRange={hoveredLap}
         />
       </Card>
 
@@ -283,11 +302,17 @@ export function ActivityDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {detail.laps.map((lap) => (
-                <tr
-                  key={lap.lap_index}
-                  className="border-b border-hairline/60 transition-colors last:border-b-0 hover:bg-surface2"
-                >
+              {detail.laps.map((lap) => {
+                const range = lapToIndexRange(lap);
+                return (
+                  <tr
+                    key={lap.lap_index}
+                    className="border-b border-hairline/60 transition-colors last:border-b-0 hover:bg-surface2"
+                    onMouseEnter={() => {
+                      if (range) setHoveredLap(range);
+                    }}
+                    onMouseLeave={() => setHoveredLap(null)}
+                  >
                   <LapTd className="num font-semibold text-primaryText">{lap.lap_index}</LapTd>
                   <LapTd className="num text-ink2">
                     {lap.start_time === null ? "—" : fmtClock(lap.start_time, locale)}
@@ -311,7 +336,8 @@ export function ActivityDetailPage() {
                     {lap.calories === null ? <span className="text-faint">—</span> : lap.calories}
                   </LapTd>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -504,11 +530,14 @@ function StreamCharts({
   startTime,
   duration_s,
   t,
+  lapRange,
 }: {
   streams: ActivityStream;
   startTime: string;
   duration_s: number;
   t: (p: string) => string;
+  /** Optional lap range to highlight as a tinted band (from laps table hover) */
+  lapRange?: { startIdx: number; endIdx: number } | null;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -559,6 +588,17 @@ function StreamCharts({
 
   return (
     <div className="relative space-y-1 p-4" ref={containerRef}>
+      {/* Lap range band — tinted overlay highlighting the hovered lap's time range */}
+      {lapRange && (
+        <div
+          className="pointer-events-none absolute top-2 bottom-10 z-10 bg-primarySoft border-x border-primary/30"
+          style={{
+            left: `calc(80px + (100% - 80px - 112px - 32px) * ${lapRange.startIdx / Math.max(1, streamCount - 1)} + 16px)`,
+            width: `calc((100% - 80px - 112px - 32px) * ${(lapRange.endIdx - lapRange.startIdx) / Math.max(1, streamCount - 1)})`,
+          }}
+          aria-hidden
+        />
+      )}
       {/* Vertical sync line — spans the full height of all 5 charts at the
           hovered x-position. Positioned absolutely over the chart area
           (between the 80px label column on the left and the 112px value

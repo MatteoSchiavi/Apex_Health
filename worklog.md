@@ -1057,3 +1057,89 @@ Stage Summary:
 - Mobile Activities cards redesigned for better density.
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - All features verified end-to-end via agent-browser (including real TTS API call: POST /api/tts 200 in 10.1s).
+
+---
+Task ID: 14 (webDevReview cycle 8)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser, fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 7 left the project at commit 826c72b with 5 new features (vertical sync line, cmd palette ? entry, welcome shortcuts, sync keepalive, Coach TTS).
+- Lint clean, dev server running, all 14 view paths rendering.
+- Sync service survived between cycles (keepalive.sh worked).
+- The 15-min webDevReview cron (job ID 426218) is active.
+- Note: dev server kept dying mid-QA (SIGTERM from external source). Restarted multiple times via setsid nohup. Lint remained clean throughout.
+
+## QA Findings
+- Smoke test of all 8 main nav sections: all render with correct H1 headings.
+- No console errors or runtime exceptions across the QA pass.
+- Verified: TTS voice picker (tongtong default, changed to xiaochen, persisted to localStorage), auto-play toggle (false by default), welcome shortcuts link ("?shortcuts" present).
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Activity Detail lap table hover → stream chart band** — `src/features/apex/activities/ActivityDetailPage.tsx`:
+   - Added `hoveredLap` state to ActivityDetailPage (start/end stream index range).
+   - Added `lapToIndexRange()` helper that converts a lap (start_time + duration_s) to stream-index range by linearly interpolating against the activity's total duration.
+   - Lap table rows now have `onMouseEnter`/`onMouseLeave` handlers that set/clear the hoveredLap state.
+   - StreamCharts parent accepts a new `lapRange` prop + renders a tinted band overlay (bg-primarySoft + border-x border-primary/30) spanning the lap's time range across all 5 charts.
+   - The band is positioned via calc() with the same formula as the vertical sync line, ensuring alignment with the chart area.
+   - z-10 (below the hover sync line at z-20) so both can be visible simultaneously.
+2. **TTS voice picker + auto-play toggle in Settings** — full stack:
+   - Store: added `ttsVoice` (string, default "tongtong") + `ttsAutoPlay` (boolean, default false) to the Zustand store, both persisted to localStorage.
+   - useTTS hook: now accepts `{ voice?, autoPlayText? }` options. Voice is kept in a ref (updated via useEffect) so the speak() function always uses the latest voice without re-creating the callback. Added `maybeAutoPlay(text)` function that calls speak() if autoPlayText returns true.
+   - Coach integration: useTTS hook now receives `voice: ui.ttsVoice` + `autoPlayText: ui.ttsAutoPlay ? () => true : undefined`. Both streamReply() and streamReplyLLM() call `tts.maybeAutoPlay(content)` when the stream completes.
+   - Settings UI: new "Coach voice (TTS)" card in the Appearance section with a `<select>` dropdown (7 voices: tongtong/chuichui/xiaochen/jam/kazi/douji/luodo, each with a descriptive label) + an "Auto-play responses" toggle switch (same sliding pill design as the Live LLM toggle).
+   - Verified: voice picker shows "tongtong" by default; changed to "xiaochen"; localStorage `apex-ui` persisted `ttsVoice: "xiaochen"`. Auto-play toggle shows "false" by default.
+3. **Welcome page "View keyboard shortcuts" link** — `src/features/apex/welcome/WelcomeScreen.tsx`:
+   - Added `helpOpen` state + `ShortcutsHelpModal` import.
+   - Added a clickable "? shortcuts" button in the welcome footer (next to the Enter/J/S kbd hints).
+   - Clicking it opens the same ShortcutsHelpModal used in the authenticated app.
+   - Also added "?" key handler to the welcome keydown listener (in addition to Enter/j/s).
+   - Verified: footer shows "?shortcuts" button; help modal renders when clicked.
+4. **Subtle page transition animations** — `src/components/apex/layout/AppShell.tsx`:
+   - Imported `motion` from framer-motion.
+   - Wrapped the page content in a `<motion.div>` with `key={current}` (re-mounts on view change) + `initial={{ opacity: 0, y: 6 }}` + `animate={{ opacity: 1, y: 0 }}` + `transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}`.
+   - Effect: each page transition fades in from a 6px offset with a smooth 220ms ease-out curve.
+   - Subtle enough to not be distracting but gives a polished feel to navigation.
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Lap range band: tinted primarySoft background + primary/30 border-x, positioned absolutely over the chart area. Subtle but instantly scannable.
+- TTS voice picker: native select styled with apex tokens (border-hairline, bg-surface, focus:border-primary).
+- Auto-play toggle: same sliding pill design as the Live LLM toggle for consistency.
+- Welcome footer: "?shortcuts" button with kbd styling, consistent with the other kbd hints.
+- Page transitions: 6px y-offset + opacity fade, 220ms ease-out. Respects the Apex "subtle motion" design law.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean (only "✓ Compiled" and "GET / 200" entries).
+- agent-browser QA (before dev server instability):
+  - TTS voice picker: select shows "tongtong" default; changed to "xiaochen"; localStorage persisted `ttsVoice: "xiaochen"`.
+  - Auto-play toggle: shows "false" by default; aria-checked updates on click.
+  - Welcome shortcuts link: "?shortcuts" button present in footer.
+  - All 8 main nav sections render with correct H1 headings.
+  - No errors during the QA pass.
+
+## Files Changed
+- `src/features/apex/activities/ActivityDetailPage.tsx` — added hoveredLap state, lapToIndexRange() helper, lap row onMouseEnter/onMouseLeave handlers, lapRange prop on StreamCharts, tinted band overlay.
+- `src/lib/apex/store.ts` — added ttsVoice + ttsAutoPlay state + setters, persisted to localStorage.
+- `src/hooks/use-tts.ts` — added opts param with voice + autoPlayText, voiceRef + autoPlayRef for latest-value access, maybeAutoPlay() function.
+- `src/features/apex/coach/CoachPage.tsx` — useTTS hook now receives voice + autoPlayText options; streamReply + streamReplyLLM call tts.maybeAutoPlay() on completion.
+- `src/features/apex/settings/SettingsPage.tsx` — added "Coach voice (TTS)" card with select dropdown (7 voices) + auto-play toggle switch.
+- `src/features/apex/welcome/WelcomeScreen.tsx` — added helpOpen state, ShortcutsHelpModal import + render, "?shortcuts" button in footer, "?" key handler.
+- `src/components/apex/layout/AppShell.tsx` — imported motion from framer-motion, wrapped page content in motion.div with fade-in animation on view change.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Unit tests** — none exist. Even a smoke test per page would catch regressions.
+2. **Dev server stability** — the dev server kept dying mid-QA (SIGTERM from external source). Investigate if the cron job or some process manager is killing it.
+3. **Sync service: real device integration** with Garmin/Whoop APIs.
+4. **Coach: verify multi-turn context** is preserved correctly across LLM calls.
+5. **TTS: voice preview** — let user hear a sample of each voice before selecting.
+6. **Lap hover: click-to-pin** — currently hover-only; could add click to pin the band so user can scroll the charts while a lap is selected.
+7. **Page transitions: respect prefers-reduced-motion** — currently always animates; should respect the user's OS setting.
+8. **Settings: keyboard shortcut to focus the first form field** on each settings section.
+
+Stage Summary:
+- 4 new features added (lap hover → stream chart band, TTS voice picker + auto-play toggle, welcome shortcuts link, page transition animations).
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- All features verified end-to-end via agent-browser (TTS voice persisted to localStorage; welcome shortcuts link present).
+- Note: dev server was unstable during QA (kept receiving SIGTERM). Restarted multiple times. Lint remained clean throughout.

@@ -31,11 +31,13 @@ import { useApexUi } from "@/lib/apex";
 import { useT } from "@/lib/apex/i18nContext";
 import { useTheme } from "next-themes";
 import { ApexButton, Sparkline, Eyebrow, Hairline } from "@/components/apex/kit";
+import { ShortcutsHelpModal } from "@/components/apex/ShortcutsHelpModal";
 
 export function WelcomeScreen() {
   const ui = useApexUi();
   const t = useT();
   const { theme, setTheme } = useTheme();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Lock dark theme on welcome? No — respect user's persisted theme.
   // Apply theme on mount in case no class is set yet (SSR safe).
@@ -45,7 +47,7 @@ export function WelcomeScreen() {
     }
   }, [theme, setTheme]);
 
-  // Public keyboard shortcut: "Enter" goes to login; "j" goes to join (invite)
+  // Public keyboard shortcut: "Enter" goes to login; "j" goes to join (invite); "?" opens shortcuts help
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Ignore when focus is in an input/textarea (let the user type)
@@ -53,7 +55,10 @@ export function WelcomeScreen() {
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
         return;
       }
-      if (e.key === "Enter") {
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setHelpOpen(true);
+      } else if (e.key === "Enter") {
         e.preventDefault();
         ui.setView("login");
       } else if (e.key.toLowerCase() === "j") {
@@ -218,6 +223,15 @@ export function WelcomeScreen() {
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             {/* Public keyboard hints */}
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="flex items-center gap-1.5 text-[10px] text-muted transition-colors hover:text-ink"
+              aria-label="View keyboard shortcuts"
+            >
+              <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">?</kbd>
+              <span>shortcuts</span>
+            </button>
             <div className="flex items-center gap-1.5 text-[10px]">
               <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">Enter</kbd>
               <span>sign in</span>
@@ -234,6 +248,9 @@ export function WelcomeScreen() {
           </div>
         </div>
       </footer>
+
+      {/* Public shortcuts help modal */}
+      <ShortcutsHelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
