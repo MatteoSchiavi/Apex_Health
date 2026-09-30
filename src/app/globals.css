@@ -1,0 +1,261 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * APEX HEALTH — design tokens (Apex Precision).
+ * One semantic token set, two palettes (dark default + light).
+ * Components consume ONLY semantic aliases — never raw hex.
+ */
+
+@theme inline {
+  /* shadcn/ui semantic aliases (kept for compatibility) */
+  --color-background: var(--c-bg-accent);
+  --color-foreground: var(--c-text);
+  --color-card: var(--c-surface);
+  --color-card-foreground: var(--c-text);
+  --color-popover: var(--c-surface-2);
+  --color-popover-foreground: var(--c-text);
+  --color-primary: var(--c-primary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--c-surface-2);
+  --color-secondary-foreground: var(--c-text);
+  --color-muted: var(--c-surface-3);
+  --color-muted-foreground: var(--c-text-muted);
+  --color-accent: var(--c-surface-3);
+  --color-accent-foreground: var(--c-text);
+  --color-destructive: var(--c-alert);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--c-hairline);
+  --color-input: var(--c-hairline-strong);
+  --color-ring: var(--c-primary);
+
+  /* chart slot aliases */
+  --color-chart-1: var(--c-primary);
+  --color-chart-2: var(--c-positive);
+  --color-chart-3: var(--c-warning);
+  --color-chart-4: var(--c-alert);
+  --color-chart-5: var(--c-text-faint);
+
+  /* sidebar */
+  --color-sidebar: var(--c-bg);
+  --color-sidebar-foreground: var(--c-text);
+  --color-sidebar-primary: var(--c-primary);
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: var(--c-surface-2);
+  --color-sidebar-accent-foreground: var(--c-text);
+  --color-sidebar-border: var(--c-hairline);
+  --color-sidebar-ring: var(--c-primary);
+
+  /* Apex semantic palette (the real vocabulary) */
+  --color-bg: var(--c-bg);
+  --color-canvas: var(--c-bg-accent);
+  --color-surface: var(--c-surface);
+  --color-surface2: var(--c-surface-2);
+  --color-surface3: var(--c-surface-3);
+  --color-hairline: var(--c-hairline);
+  --color-hairline2: var(--c-hairline-strong);
+
+  --color-ink: var(--c-text);
+  --color-ink2: var(--c-text-2);
+  --color-muted: var(--c-text-muted);
+  --color-faint: var(--c-text-faint);
+
+  --color-primary: var(--c-primary);
+  --color-primarySoft: var(--c-primary-soft);
+  --color-primaryText: var(--c-primary-text);
+  --color-positive: var(--c-positive);
+  --color-positiveSoft: var(--c-positive-soft);
+  --color-positiveText: var(--c-positive-text);
+  --color-alert: var(--c-alert);
+  --color-alertSoft: var(--c-alert-soft);
+  --color-alertText: var(--c-alert-text);
+  --color-warning: var(--c-warning);
+  --color-warningSoft: var(--c-warning-soft);
+  --color-warningText: var(--c-warning-text);
+
+  --color-stageAwake: var(--c-stage-awake);
+  --color-stageRem: var(--c-stage-rem);
+  --color-stageCore: var(--c-stage-core);
+  --color-stageDeep: var(--c-stage-deep);
+
+  /* fonts */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* radii (design law: 4px controls, 8px cards) */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+  --radius-card: 0.5rem;
+  --radius-control: 0.25rem;
+}
+
+/* --------------------------------------------------- DARK (default) */
+:root {
+  --radius: 0.5rem;
+
+  --c-bg: #0a0c10;
+  --c-bg-accent: #11141b;
+  --c-surface: #11141b;
+  --c-surface-2: #181c26;
+  --c-surface-3: #1f2430;
+  --c-hairline: rgba(255, 255, 255, 0.08);
+  --c-hairline-strong: rgba(255, 255, 255, 0.14);
+
+  --c-text: #e2e2e8;
+  --c-text-2: #c2c6d6;
+  --c-text-muted: #8c909f;
+  --c-text-faint: #5c6070;
+
+  --c-primary: #3b82f6;
+  --c-primary-soft: rgba(59, 130, 246, 0.12);
+  --c-primary-text: #93c5fd;
+
+  --c-positive: #10b981;
+  --c-positive-soft: rgba(16, 185, 129, 0.12);
+  --c-positive-text: #4edea3;
+
+  --c-alert: #ef4444;
+  --c-alert-soft: rgba(239, 68, 68, 0.12);
+  --c-alert-text: #ff8a85;
+
+  --c-warning: #f59e0b;
+  --c-warning-soft: rgba(245, 158, 11, 0.12);
+  --c-warning-text: #fbbf24;
+
+  --c-stage-awake: #ef4444;
+  --c-stage-rem: #60a5fa;
+  --c-stage-core: #3b5bdb;
+  --c-stage-deep: #3730a3;
+
+  --c-shadow-flyout: 0 4px 16px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------- LIGHT */
+.light {
+  --c-bg: #eef2f7;
+  --c-bg-accent: #f8fafc;
+  --c-surface: #ffffff;
+  --c-surface-2: #ffffff;
+  --c-surface-3: #eef2f7;
+  --c-hairline: rgba(15, 23, 42, 0.08);
+  --c-hairline-strong: rgba(15, 23, 42, 0.16);
+
+  --c-text: #0d0f12;
+  --c-text-2: #334155;
+  --c-text-muted: #64748b;
+  --c-text-faint: #94a3b8;
+
+  --c-primary: #2563eb;
+  --c-primary-soft: rgba(37, 99, 235, 0.10);
+  --c-primary-text: #1d4ed8;
+
+  --c-positive: #059669;
+  --c-positive-soft: rgba(5, 150, 105, 0.10);
+  --c-positive-text: #047857;
+
+  --c-alert: #dc2626;
+  --c-alert-soft: rgba(220, 38, 38, 0.10);
+  --c-alert-text: #b91c1c;
+
+  --c-warning: #d97706;
+  --c-warning-soft: rgba(217, 119, 6, 0.10);
+  --c-warning-text: #b45309;
+
+  --c-stage-awake: #dc2626;
+  --c-stage-rem: #3b82f6;
+  --c-stage-core: #3b5bdb;
+  --c-stage-deep: #4338ca;
+
+  --c-shadow-flyout: 0 4px 12px rgba(15, 23, 42, 0.06);
+  color-scheme: light;
+}
+
+/* --------------------------------------------------- base */
+@layer base {
+  * {
+    border-color: var(--c-hairline);
+    outline-color: color-mix(in oklch, var(--c-primary) 50%, transparent);
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--c-bg-accent);
+    color: var(--c-text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* tabular figures — anti-jitter law */
+.num, .tnum, td, th {
+  font-feature-settings: "tnum" 1, "cv03" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* label-caps eyebrow */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+/* hero page title */
+.page-title {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+}
+@media (max-width: 767px) {
+  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
+}
+
+/* scrollbar styling — subtle, fits the Apex monochrome system */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-hairline-strong) transparent;
+}
+.scroll-area::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-area::-webkit-scrollbar-track { background: transparent; }
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--c-hairline-strong);
+  border-radius: 4px;
+}
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-faint);
+}
+
+/* focus ring — clean, single-pixel, semantic */
+:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--c-primary) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* utility: surface card */
+.surface-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-hairline);
+  border-radius: var(--radius-card);
+}
+
+/* selection */
+::selection {
+  background: var(--c-primary-soft);
+  color: var(--c-primary-text);
+}
