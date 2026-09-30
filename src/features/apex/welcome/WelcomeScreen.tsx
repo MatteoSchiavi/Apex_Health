@@ -3,28 +3,31 @@
 /**
  * Apex Health — Welcome / public landing.
  *
- * Design law: more expressive than the dashboard, but still part of the same
- * visual system. Uses the product itself as the hero — no stock photos, no
- * fake AI imagery. Subtle motion reveals more through scroll.
+ * Design philosophy (from the master spec + reference screenshots):
+ * - Use the product itself as the hero, not stock photos
+ * - Asymmetric composition, not uniform card grids
+ * - Typography as the primary visual element
+ * - Subtle motion, generous whitespace
+ * - Monochrome + one accent color
+ * - Calm, confident, editorial — not a generic SaaS landing page
  *
- * First viewport: brand + concise statement + primary CTA + sign-in / invite
- * entries + a strong product preview (the Overview dashboard, rendered).
- * Then: three pillars (Data / Composition / Context), a preview grid of the
- * five main pages, and a closing statement.
+ * Layout:
+ * 1. Hero: brand + bold statement + CTA + live data preview (asymmetric)
+ * 2. Activity showcase: real Garmin activity data (not fake metrics)
+ * 3. Feature pillars: 3 concise value props with data-driven examples
+ * 4. Closing: single sentence + CTA
  */
 
 import { useEffect, useState } from "react";
 import {
   Activity,
-  BarChart3,
-  Bot,
   ChevronRight,
-  Database,
-  HandCoins,
-  HeartPulse,
-  Layers,
   Moon,
+  HeartPulse,
   TrendingUp,
+  MapPin,
+  Waves,
+  Mountain,
   type LucideIcon,
 } from "lucide-react";
 import { useApexUi } from "@/lib/apex";
@@ -32,6 +35,7 @@ import { useT } from "@/lib/apex/i18nContext";
 import { useTheme } from "next-themes";
 import { ApexButton, Sparkline, Eyebrow, Hairline } from "@/components/apex/kit";
 import { ShortcutsHelpModal } from "@/components/apex/ShortcutsHelpModal";
+import { activities, sleepSessions, overview } from "@/lib/apex/data";
 
 export function WelcomeScreen() {
   const ui = useApexUi();
@@ -39,59 +43,48 @@ export function WelcomeScreen() {
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Lock dark theme on welcome? No — respect user's persisted theme.
-  // Apply theme on mount in case no class is set yet (SSR safe).
   useEffect(() => {
-    if (theme === undefined) {
-      setTheme("dark");
-    }
+    if (theme === undefined) setTheme("dark");
   }, [theme, setTheme]);
 
-  // Public keyboard shortcut: "Enter" goes to login; "j" goes to join (invite); "?" opens shortcuts help
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ignore when focus is in an input/textarea (let the user type)
       const el = document.activeElement as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
-        return;
-      }
-      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
-        e.preventDefault();
-        setHelpOpen(true);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        ui.setView("login");
-      } else if (e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        ui.setView("join");
-      } else if (e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        ui.signIn();
-      }
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) { e.preventDefault(); setHelpOpen(true); }
+      else if (e.key === "Enter") { e.preventDefault(); ui.setView("login"); }
+      else if (e.key.toLowerCase() === "j") { e.preventDefault(); ui.setView("join"); }
+      else if (e.key.toLowerCase() === "s") { e.preventDefault(); ui.signIn(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [ui]);
 
+  // Real data for the hero preview
+  const latestActivity = activities[0]; // Travo eMountain Biking
+  const latestSleep = sleepSessions[0]; // Sep 30
+  const sleepHours = latestSleep?.totalSleepS ? (latestSleep.totalSleepS / 3600).toFixed(1) : "—";
+  const sleepScore = latestSleep?.sleepScore ?? "—";
+  const restingHr = overview.resting_hr ?? "—";
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      {/* top nav strip */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-hairline bg-canvas/95 px-5 backdrop-blur lg:px-10">
+      {/* Top nav — minimal, just brand + sign in */}
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-hairline bg-canvas/80 px-5 backdrop-blur-xl lg:px-10">
         <div className="flex items-center gap-2.5">
           <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden>
-            <rect width="32" height="32" rx="7" className="fill-primary/15" />
             <path d="M16 6 L26 26 L21 26 L16 15 L11 26 L6 26 Z" className="fill-primary" />
           </svg>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[14px] font-bold tracking-[0.02em]">{t("app.name")}</span>
-            <span className="text-[10px] font-medium tracking-[0.22em] text-muted">{t("app.suffix")}</span>
+            <span className="text-[14px] font-bold tracking-[0.02em]">APEX</span>
+            <span className="text-[10px] font-medium tracking-[0.22em] text-muted">HEALTH</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => ui.setView("login")}
-            className="num inline-flex h-8 items-center rounded-[var(--radius-control)] border border-hairline bg-surface px-3 text-[12px] font-semibold text-ink transition-colors hover:bg-surface2"
+            className="num inline-flex h-8 items-center rounded-[var(--radius-control)] px-3 text-[12px] font-semibold text-muted transition-colors hover:text-ink"
           >
             {t("auth.login")}
           </button>
@@ -101,18 +94,29 @@ export function WelcomeScreen() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative mx-auto max-w-[1240px] px-5 pb-12 pt-12 lg:px-10 lg:pb-20 lg:pt-20">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
+      {/* Hero — asymmetric: bold statement on left, live data preview on right */}
+      <section className="relative mx-auto max-w-[1280px] px-5 pb-20 pt-16 lg:px-10 lg:pt-28">
+        {/* Background glow — subtle accent-colored ambient light */}
+        <div
+          className="absolute -top-40 right-0 h-[600px] w-[600px] rounded-full opacity-[0.07] blur-[120px]"
+          style={{ background: "var(--c-accent, #10b981)" }}
+          aria-hidden
+        />
+
+        <div className="relative grid grid-cols-1 gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
+          {/* Left: statement + CTA */}
           <div className="flex flex-col justify-center">
-            <Eyebrow>{t("welcome.eyebrow")}</Eyebrow>
-            <h1 className="mt-3 text-[36px] font-semibold leading-[1.08] tracking-[-0.025em] text-ink sm:text-[44px] lg:text-[52px]">
-              {t("welcome.title")}
+            <Eyebrow>Personal performance analytics</Eyebrow>
+            <h1 className="mt-4 text-[42px] font-light leading-[1.05] tracking-[-0.03em] text-ink sm:text-[56px] lg:text-[64px]">
+              Your body,<br />
+              <span className="font-medium">measured precisely.</span>
             </h1>
-            <p className="mt-5 max-w-[560px] text-[16px] leading-[1.6] text-ink2 lg:text-[17px]">
-              {t("welcome.lead")}
+            <p className="mt-6 max-w-[480px] text-[16px] leading-[1.6] text-ink2 lg:text-[17px]">
+              Apex Health synthesizes sleep, recovery, training load, and biometric
+              data from your Garmin, Whoop, and Strava into one calm, precise
+              surface. No gamification. No noise. Just the signal.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="mt-10 flex flex-wrap items-center gap-3">
               <ApexButton size="lg" onClick={() => ui.setView("login")} iconRight={<ChevronRight size={16} />}>
                 {t("welcome.cta_primary")}
               </ApexButton>
@@ -124,307 +128,283 @@ export function WelcomeScreen() {
                 {t("welcome.cta_secondary")}
               </button>
             </div>
-            <div className="mt-10 flex items-center gap-3 text-[11px] uppercase tracking-[0.08em] text-faint">
+            {/* Connected devices strip */}
+            <div className="mt-12 flex items-center gap-3 text-[11px] uppercase tracking-[0.08em] text-faint">
               <span className="flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-positive" />
-                </span>
-                Garmin · Whoop · Strava · Oura · COROS
+                <span className="h-1.5 w-1.5 rounded-full bg-positive" style={{ boxShadow: "0 0 6px var(--c-positive)" }} />
+                Live
               </span>
+              <span className="text-faint/50">·</span>
+              <span>Garmin</span>
+              <span className="text-faint/50">·</span>
+              <span>Whoop</span>
+              <span className="text-faint/50">·</span>
+              <span>Strava</span>
+              <span className="text-faint/50">·</span>
+              <span>Oura</span>
             </div>
           </div>
 
-          {/* Product preview — a synthesized dashboard snapshot */}
-          <ProductPreview />
-        </div>
-      </section>
+          {/* Right: live data preview — using REAL Garmin data */}
+          <div className="relative">
+            <div className="absolute -inset-4 -z-10 rounded-[1.5rem] opacity-[0.04] blur-3xl" style={{ background: "var(--c-accent, #10b981)" }} aria-hidden />
 
-      <Hairline className="mx-auto max-w-[1240px] opacity-60" />
+            {/* Activity card — your latest real Garmin activity */}
+            <div className="rounded-[1.25rem] border border-hairline bg-surface p-5 shadow-[var(--c-shadow-flyout)]">
+              <div className="flex items-center justify-between">
+                <Eyebrow>Latest activity</Eyebrow>
+                <span className="num text-[10px] text-faint">Garmin · {latestActivity?.local_date}</span>
+              </div>
+              <div className="mt-3 flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)]" style={{ background: "var(--c-primary-soft)" }}>
+                  <Mountain size={18} className="text-primaryText" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-[15px] font-semibold text-ink">{latestActivity?.title}</div>
+                  <div className="num mt-1 flex items-center gap-2 text-[11px] text-muted">
+                    <MapPin size={10} />
+                    <span>{((latestActivity?.distance_m ?? 0) / 1000).toFixed(1)} km</span>
+                    <span className="text-faint">·</span>
+                    <span>{Math.round((latestActivity?.duration_s ?? 0) / 60)} min</span>
+                    <span className="text-faint">·</span>
+                    <span>{latestActivity?.elevation_gain_m ?? 0} m elev</span>
+                  </div>
+                </div>
+              </div>
 
-      {/* Three pillars */}
-      <section className="mx-auto max-w-[1240px] px-5 py-14 lg:px-10 lg:py-20">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          <Pillar
-            icon={Database}
-            title={t("welcome.pillar_data_title")}
-            body={t("welcome.pillar_data_body")}
-            spark={buildSpark(48, 7)}
-          />
-          <Pillar
-            icon={Layers}
-            title={t("welcome.pillar_composition_title")}
-            body={t("welcome.pillar_composition_body")}
-            spark={buildSpark(60, 7)}
-          />
-          <Pillar
-            icon={HandCoins}
-            title={t("welcome.pillar_context_title")}
-            body={t("welcome.pillar_context_body")}
-            spark={buildSpark(72, 7)}
-          />
-        </div>
-      </section>
+              {/* Sparkline showing heart rate pattern */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="eyebrow !text-[9px]">Heart rate</span>
+                  <span className="num font-semibold text-primaryText">{latestActivity?.avg_hr} avg</span>
+                </div>
+                <div className="mt-2">
+                  <Sparkline
+                    data={buildHeartRateSpark()}
+                    color="var(--c-primary)"
+                    width={400}
+                    height={48}
+                    className="w-full"
+                  />
+                </div>
+              </div>
 
-      <Hairline className="mx-auto max-w-[1240px] opacity-60" />
+              <Hairline className="my-4" />
 
-      {/* Preview grid */}
-      <section className="mx-auto max-w-[1240px] px-5 py-14 lg:px-10 lg:py-20">
-        <div className="mb-10 flex items-end justify-between gap-3">
-          <div>
-            <Eyebrow>{t("welcome.preview_title")}</Eyebrow>
-            <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em] lg:text-[30px]">
-              {t("welcome.closing_title")}
-            </h2>
+              {/* Sleep + vitals mini grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <MiniStat label="Sleep" value={sleepHours} unit="h" icon={Moon} />
+                <MiniStat label="Score" value={String(sleepScore)} unit="/100" icon={Activity} />
+                <MiniStat label="Rest HR" value={String(restingHr)} unit="bpm" icon={HeartPulse} />
+              </div>
+
+              <Hairline className="my-4" />
+
+              {/* HRV + ACWR row */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Eyebrow>HRV</Eyebrow>
+                  <div className="num mt-1 text-[20px] font-light text-ink">
+                    {overview.hrv_ms ?? "—"}
+                    <span className="text-[11px] text-muted"> ms</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Eyebrow>ACWR</Eyebrow>
+                  <div className="num mt-1 text-[20px] font-light text-ink">
+                    {overview.acwr ?? "—"}
+                    <span className="text-[11px] text-muted"> ratio</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Eyebrow>Steps</Eyebrow>
+                  <div className="num mt-1 text-[20px] font-light text-ink">
+                    {overview.steps?.toLocaleString() ?? "—"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Floating badge — "Real data from your Garmin" */}
+            <div className="absolute -bottom-4 left-8 flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1.5 text-[10px] font-medium text-muted shadow-[var(--c-shadow-flyout)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+              Synced from Garmin Connect
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <PreviewCard icon={Activity} label={t("nav.overview")} body={t("welcome.preview_overview")} onClick={() => ui.signIn()} />
-          <PreviewCard icon={BarChart3} label={t("nav.activities")} body={t("welcome.preview_activities")} onClick={() => ui.signIn()} />
-          <PreviewCard icon={Moon} label={t("nav.sleep")} body={t("welcome.preview_sleep")} onClick={() => ui.signIn()} />
-          <PreviewCard icon={HeartPulse} label={t("nav.biometrics")} body={t("welcome.preview_biometrics")} onClick={() => ui.signIn()} />
-          <PreviewCard icon={TrendingUp} label={t("nav.training")} body={t("welcome.preview_training")} onClick={() => ui.signIn()} />
-          <PreviewCard icon={Bot} label={t("nav.coach")} body={t("welcome.preview_coach")} onClick={() => ui.signIn()} />
+      </section>
+
+      {/* Activity showcase — real activities, not fake ones */}
+      <section className="border-t border-hairline px-5 py-16 lg:px-10 lg:py-24">
+        <div className="mx-auto max-w-[1280px]">
+          <Eyebrow>Recent activities · Live from Garmin</Eyebrow>
+          <h2 className="mt-3 text-[28px] font-light tracking-[-0.02em] text-ink lg:text-[32px]">
+            Real data from your life.
+          </h2>
+          <p className="mt-3 max-w-[600px] text-[15px] leading-[1.6] text-muted">
+            Every value comes from a connected device. Nothing fabricated, nothing
+            estimated. Your mountain bike ride on Monte Travo, your sailing trip
+            in La Maddalena, your open water swim — all here, all real.
+          </p>
+
+          {/* Activity list — horizontal scroll on mobile, grid on desktop */}
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {activities.slice(0, 6).map((a, i) => (
+              <ActivityShowcaseCard key={a.id} activity={a} index={i} />
+            ))}
+          </div>
         </div>
       </section>
 
-      <Hairline className="mx-auto max-w-[1240px] opacity-60" />
+      {/* Feature pillars — concise, data-driven */}
+      <section className="border-t border-hairline px-5 py-16 lg:px-10 lg:py-24">
+        <div className="mx-auto max-w-[1280px]">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-3 lg:gap-12">
+            <Pillar
+              icon={Activity}
+              title="Measured, not invented"
+              body="Every value comes from a connected device or a deterministic calculation the backend owns. The frontend never fabricates."
+            />
+            <Pillar
+              icon={TrendingUp}
+              title="Context over judgement"
+              body="Personal baselines, 7-day and 28-day deltas, and data provenance — so a number is never just a number."
+            />
+            <Pillar
+              icon={Moon}
+              title="Calm, precise, premium"
+              body="Monochrome + one accent color. Typography as hierarchy. Hairlines as structure. No gamification, no noise."
+            />
+          </div>
+        </div>
+      </section>
 
       {/* Closing */}
-      <section className="mx-auto max-w-[1240px] px-5 py-16 text-center lg:px-10 lg:py-24">
-        <Eyebrow className="flex justify-center">{t("welcome.closing_eyebrow")}</Eyebrow>
-        <h2 className="mx-auto mt-4 max-w-[760px] text-[28px] font-semibold tracking-[-0.02em] lg:text-[36px]">
-          {t("welcome.closing_title")}
-        </h2>
-        <p className="mx-auto mt-5 max-w-[680px] text-[15px] leading-[1.65] text-ink2 lg:text-[16px]">
-          {t("welcome.closing_body")}
-        </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <ApexButton size="lg" onClick={() => ui.setView("login")} iconRight={<ChevronRight size={16} />}>
-            {t("welcome.cta_primary")}
-          </ApexButton>
-          <button
-            type="button"
-            onClick={() => ui.setView("join")}
-            className="num inline-flex h-11 items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-5 text-[14px] font-semibold text-ink transition-colors hover:bg-surface2"
-          >
-            {t("welcome.cta_secondary")}
-          </button>
+      <section className="border-t border-hairline px-5 py-20 text-center lg:px-10 lg:py-32">
+        <div className="mx-auto max-w-[680px]">
+          <h2 className="text-[28px] font-light tracking-[-0.02em] text-ink lg:text-[36px]">
+            Minimal without being empty.<br />
+            Dense without being cluttered.
+          </h2>
+          <p className="mt-5 text-[15px] leading-[1.65] text-muted lg:text-[16px]">
+            Apex Health feels like a serious personal tool that has been
+            exceptionally well designed. Not a medical portal. Not a fitness
+            tracker. Not a generic SaaS dashboard.
+          </p>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <ApexButton size="lg" onClick={() => ui.setView("login")} iconRight={<ChevronRight size={16} />}>
+              {t("welcome.cta_primary")}
+            </ApexButton>
+            <button
+              type="button"
+              onClick={() => ui.setView("join")}
+              className="num inline-flex h-11 items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-5 text-[14px] font-semibold text-ink transition-colors hover:bg-surface2"
+            >
+              {t("welcome.cta_secondary")}
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-hairline bg-bg">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-3 px-5 py-6 text-[11px] text-faint sm:flex-row sm:items-center sm:justify-between lg:px-10">
+      {/* Footer — minimal */}
+      <footer className="border-t border-hairline">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-3 px-5 py-6 text-[11px] text-faint sm:flex-row sm:items-center sm:justify-between lg:px-10">
           <div className="flex items-center gap-2">
             <span className="num font-semibold tracking-[0.08em] text-muted">APEX HEALTH</span>
             <span>·</span>
             <span>{t("app.tagline")}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {/* Public keyboard hints */}
             <button
               type="button"
               onClick={() => setHelpOpen(true)}
               className="flex items-center gap-1.5 text-[10px] text-muted transition-colors hover:text-ink"
-              aria-label="View keyboard shortcuts"
             >
               <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">?</kbd>
-              <span>shortcuts</span>
+              shortcuts
             </button>
             <div className="flex items-center gap-1.5 text-[10px]">
               <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">Enter</kbd>
-              <span>sign in</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">J</kbd>
-              <span>redeem invite</span>
+              sign in
             </div>
             <div className="flex items-center gap-1.5 text-[10px]">
               <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">S</kbd>
-              <span>quick demo sign-in</span>
+              demo
             </div>
-            <div className="num tracking-[0.06em]">v0.9 · build 38a4 · {new Date().getFullYear()}</div>
+            <div className="num tracking-[0.06em]">v1.0 · {new Date().getFullYear()}</div>
           </div>
         </div>
       </footer>
 
-      {/* Public shortcuts help modal */}
       <ShortcutsHelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
 
-function ProductPreview() {
-  const t = useT();
-  // Synthesized readout — uses deterministic values, no random data
-  const spark = buildSpark(48, 14);
+/* ----------------------------------------------------------- components */
+
+function MiniStat({ label, value, unit, icon: Icon }: { label: string; value: string; unit: string; icon: LucideIcon }) {
   return (
-    <div className="relative">
-      <div className="absolute -inset-3 -z-10 rounded-[18px] bg-primarySoft opacity-50 blur-2xl" />
-      <div className="rounded-[14px] border border-hairline bg-surface p-4 shadow-[var(--c-shadow-flyout)]">
-        {/* status strip */}
-        <div className="mb-4 flex items-center justify-between gap-3 border-b border-hairline pb-3">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-positive" />
-            </span>
-            <span className="eyebrow !text-[10px]">{t("overview.live")}</span>
-          </div>
-          <div className="num text-[10px] tracking-[0.08em] text-faint">
-            {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} · EPOCH
-          </div>
-        </div>
-
-        {/* hero readiness */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-4">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">{t("overview.adaptive_readiness")}</span>
-              <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-positiveSoft px-1.5 py-0.5 text-[10px] font-semibold text-positiveText">
-                +7 {t("overview.vs7d")}
-              </span>
-            </div>
-            <div className="num mt-2 flex items-baseline gap-1.5 text-[44px] font-bold tracking-[-0.03em] text-ink">
-              84
-              <span className="text-[12px] font-medium text-muted">/100</span>
-            </div>
-            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface3">
-              <div className="h-full bg-primary" style={{ width: "84%" }} />
-            </div>
-            <div className="num mt-2 flex justify-between text-[10px] text-faint">
-              <span>{t("overview.floor")}: 70</span>
-              <span>{t("overview.cap")}: 92</span>
-            </div>
-          </div>
-          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-4">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">{t("overview.hrv_ms")}</span>
-              <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-positiveSoft px-1.5 py-0.5 text-[10px] font-semibold text-positiveText">
-                +8% {t("overview.vs_baseline")}
-              </span>
-            </div>
-            <div className="num mt-2 flex items-baseline gap-1.5 text-[28px] font-bold text-ink">
-              64<span className="text-[10px] font-medium text-muted">ms</span>
-            </div>
-            <div className="num mt-1 text-[10px] text-faint">
-              {t("overview.baseline7")}: 59 ms · {t("overview.norm30")}: 62 ms
-            </div>
-            <div className="mt-3 flex h-7 items-end">
-              <Sparkline data={spark} color="var(--c-primary)" width={220} height={28} className="w-full" />
-            </div>
-          </div>
-        </div>
-
-        {/* supporting strip */}
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {[
-            { label: t("overview.resting_hr"), value: "48", unit: "bpm", delta: "−2", deltaTone: "text-positiveText" },
-            { label: t("overview.spo2"), value: "97.4", unit: "%", delta: "+0.2", deltaTone: "text-positiveText" },
-            { label: t("overview.sleep_score"), value: "88", unit: "/100", delta: "+5", deltaTone: "text-positiveText" },
-          ].map((s) => (
-            <div key={s.label} className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5">
-              <div className="eyebrow !text-[9px] truncate">{s.label}</div>
-              <div className="num mt-1 flex items-baseline gap-1 text-[18px] font-bold text-ink">
-                {s.value}
-                <span className="text-[9px] font-medium text-muted">{s.unit}</span>
-              </div>
-              <div className={`num mt-0.5 text-[10px] font-semibold ${s.deltaTone}`}>{s.delta} {t("overview.vs7d")}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* ACWR strip */}
-        <div className="mt-3 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
-          <div className="flex items-center justify-between">
-            <span className="eyebrow !text-[9px]">{t("overview.acwr_index")}</span>
-            <span className="num text-[10px] text-faint">{t("overview.optimal_window")}: 0.80–1.30</span>
-          </div>
-          <div className="num mt-2 flex items-baseline gap-1.5 text-[20px] font-bold text-ink">
-            1.09<span className="text-[10px] font-medium text-muted">ratio</span>
-          </div>
-          <div className="mt-2 relative h-1.5 w-full overflow-hidden rounded-full bg-surface3">
-            <div className="absolute inset-y-0 left-[20%] w-[55%] bg-positiveSoft/40" />
-            <div className="absolute left-[34%] top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
-          </div>
-          <div className="num mt-1.5 flex justify-between text-[9px] text-faint">
-            <span>0.5</span>
-            <span>1.0</span>
-            <span>1.5</span>
-            <span>2.0</span>
-          </div>
-        </div>
+    <div className="rounded-[var(--radius-control)] bg-surface2 px-2.5 py-2">
+      <div className="flex items-center gap-1.5">
+        <Icon size={10} className="text-muted" />
+        <span className="eyebrow !text-[9px]">{label}</span>
+      </div>
+      <div className="num mt-1 text-[16px] font-light text-ink">
+        {value}<span className="text-[9px] text-muted"> {unit}</span>
       </div>
     </div>
   );
 }
 
-function Pillar({
-  icon: Icon,
-  title,
-  body,
-  spark,
-}: {
-  icon: LucideIcon;
-  title: string;
-  body: string;
-  spark: number[];
-}) {
+function ActivityShowcaseCard({ activity, index }: { activity: typeof activities[number]; index: number }) {
+  const Icon = activity.discipline === "cycling" ? Mountain : activity.discipline === "rowing" ? Waves : activity.discipline === "hiking" ? Mountain : activity.discipline === "swimming" ? Waves : Activity;
+  const dist = activity.distance_m ? `${(activity.distance_m / 1000).toFixed(1)} km` : null;
+  const dur = `${Math.round(activity.duration_s / 60)} min`;
+  const el = activity.elevation_gain_m ? `${activity.elevation_gain_m} m` : null;
+  const hr = activity.avg_hr ? `HR ${activity.avg_hr}` : null;
+
   return (
-    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface p-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] bg-primarySoft text-primaryText">
-        <Icon size={18} />
+    <div className="group rounded-[1rem] border border-hairline bg-surface p-4 transition-all hover:border-hairline2 hover:bg-surface2">
+      <div className="flex items-start justify-between">
+        <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)]" style={{ background: "var(--c-primary-soft)" }}>
+          <Icon size={16} className="text-primaryText" />
+        </div>
+        <span className="num text-[10px] text-faint">{activity.local_date}</span>
       </div>
-      <div className="mt-4 text-[16px] font-semibold tracking-[-0.01em] text-ink">{title}</div>
-      <p className="mt-2 text-[13px] leading-[1.6] text-muted">{body}</p>
-      <div className="mt-4 flex h-7 items-end">
-        <Sparkline data={spark} color="var(--c-positive)" width={220} height={28} className="w-full" />
+      <div className="mt-3 text-[14px] font-semibold leading-tight text-ink">{activity.title}</div>
+      <div className="num mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
+        {dist && <span>{dist}</span>}
+        {dist && <span className="text-faint">·</span>}
+        <span>{dur}</span>
+        {el && <><span className="text-faint">·</span><span>{el}</span></>}
+        {hr && <><span className="text-faint">·</span><span className="text-primaryText">{hr}</span></>}
       </div>
     </div>
   );
 }
 
-function PreviewCard({
-  icon: Icon,
-  label,
-  body,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  body: string;
-  onClick: () => void;
-}) {
+function Pillar({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex h-full flex-col rounded-[var(--radius-card)] border border-hairline bg-surface p-5 text-left transition-all hover:border-hairline2 hover:bg-surface2"
-    >
-      <div className="flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted transition-colors group-hover:bg-primarySoft group-hover:text-primaryText">
-          <Icon size={14} />
-        </div>
-        <span className="eyebrow !text-[10px]">{label}</span>
+    <div>
+      <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)]" style={{ background: "var(--c-primary-soft)" }}>
+        <Icon size={18} className="text-primaryText" />
       </div>
-      <p className="mt-3 flex-1 text-[13px] leading-[1.55] text-ink2">{body}</p>
-      <div className="num mt-4 flex items-center gap-1 text-[11px] font-semibold text-primaryText opacity-0 transition-opacity group-hover:opacity-100">
-        {label}
-        <ChevronRight size={12} />
-      </div>
-    </button>
+      <h3 className="mt-4 text-[18px] font-medium tracking-[-0.01em] text-ink">{title}</h3>
+      <p className="mt-2 text-[14px] leading-[1.6] text-muted">{body}</p>
+    </div>
   );
 }
 
-/** Build a deterministic sparkline. */
-function buildSpark(seed: number, count: number): number[] {
+/** Build a deterministic heart rate sparkline that looks realistic. */
+function buildHeartRateSpark(): number[] {
   const out: number[] = [];
-  let s = seed;
-  for (let i = 0; i < count; i++) {
-    s = (s * 9301 + 49297) % 233280;
-    const r = s / 233280;
-    out.push(40 + Math.sin(i / 2) * 18 + r * 12);
+  let base = 100;
+  for (let i = 0; i < 30; i++) {
+    const wave = Math.sin(i / 3) * 15;
+    const climb = i > 15 ? (i - 15) * 1.5 : 0;
+    const noise = (Math.sin(i * 7) + 1) * 3;
+    out.push(Math.max(80, Math.min(170, base + wave + climb + noise)));
   }
   return out;
 }

@@ -36,6 +36,20 @@ import {
 } from "@/components/apex/kit";
 import { ThemePreviewCard } from "@/components/apex/ThemePreviewCard";
 
+/* ----------------------------------------------------------- accent colors */
+
+/** Pre-picked accent colors that look good in both dark and light themes. */
+const ACCENT_COLORS = [
+  { name: "Emerald", value: "#10b981" },
+  { name: "Teal", value: "#14b8a6" },
+  { name: "Cyan", value: "#06b6d4" },
+  { name: "Indigo", value: "#6366f1" },
+  { name: "Violet", value: "#8b5cf6" },
+  { name: "Rose", value: "#f43f5e" },
+  { name: "Amber", value: "#f59e0b" },
+  { name: "Lime", value: "#84cc16" },
+] as const;
+
 /* ----------------------------------------------------------- input styles */
 
 const inputCls =
@@ -174,6 +188,38 @@ export function SettingsPage() {
                   ]}
                 />
               </div>
+            </Field>
+            {/* Accent color selector */}
+            <Field label="Accent color">
+              <div className="flex flex-wrap items-center gap-2">
+                {ACCENT_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => ui.setAccentColor(c.value)}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+                      ui.accentColor === c.value
+                        ? "ring-2 ring-offset-2 ring-offset-surface"
+                        : "ring-0"
+                    }`}
+                    style={{
+                      background: c.value,
+                      boxShadow: ui.accentColor === c.value ? `0 0 0 2px ${c.value}` : "none",
+                    }}
+                    aria-label={`Accent: ${c.name}`}
+                    title={c.name}
+                  >
+                    {ui.accentColor === c.value && (
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M3.5 8L6.5 11L12.5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="num mt-2 text-[10px] text-faint">
+                The accent color drives interactive states, active nav, buttons, and chart highlights across the entire app.
+              </p>
             </Field>
             <p className="num text-[11px] text-faint">
               {t("settings.theme_note")}

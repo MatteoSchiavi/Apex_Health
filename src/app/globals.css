@@ -98,65 +98,69 @@
 :root {
   --radius: 1rem;
 
-  --c-bg: #0a0c10;
-  --c-bg-accent: #0f1218;
-  --c-surface: #131722;
-  --c-surface-2: #1a1f2e;
-  --c-surface-3: #232938;
-  --c-hairline: rgba(255, 255, 255, 0.06);
-  --c-hairline-strong: rgba(255, 255, 255, 0.12);
+  /* Pure black — no blue tint. The #1 vibecode giveaway was the blue-tinted bg. */
+  --c-bg: #000000;
+  --c-bg-accent: #08080a;
+  --c-surface: #0e0e10;
+  --c-surface-2: #161618;
+  --c-surface-3: #1e1e22;
+  --c-hairline: rgba(255, 255, 255, 0.08);
+  --c-hairline-strong: rgba(255, 255, 255, 0.14);
 
-  --c-text: #e8eaf0;
-  --c-text-2: #b8bcc8;
-  --c-text-muted: #6b7280;
-  --c-text-faint: #4a4f5c;
+  --c-text: #f0f0f2;
+  --c-text-2: #c0c0c4;
+  --c-text-muted: #80808a;
+  --c-text-faint: #50505a;
 
-  --c-primary: #3b82f6;
-  --c-primary-soft: rgba(59, 130, 246, 0.12);
-  --c-primary-text: #93c5fd;
+  /* Accent color — driven by the accent color selector in Settings.
+     Default is a warm emerald that works well against pure black.
+     Override by setting --c-accent on <html> via the Zustand store. */
+  --c-primary: var(--c-accent, #10b981);
+  --c-primary-soft: color-mix(in srgb, var(--c-accent, #10b981) 12%, transparent);
+  --c-primary-text: color-mix(in srgb, var(--c-accent, #10b981) 80%, white);
 
   --c-positive: #10b981;
-  --c-positive-soft: rgba(16, 185, 129, 0.12);
-  --c-positive-text: #4edea3;
+  --c-positive-soft: rgba(16, 185, 129, 0.10);
+  --c-positive-text: #34d399;
 
   --c-alert: #ef4444;
-  --c-alert-soft: rgba(239, 68, 68, 0.12);
-  --c-alert-text: #ff8a85;
+  --c-alert-soft: rgba(239, 68, 68, 0.10);
+  --c-alert-text: #f87171;
 
   --c-warning: #f59e0b;
-  --c-warning-soft: rgba(245, 158, 11, 0.12);
+  --c-warning-soft: rgba(245, 158, 11, 0.10);
   --c-warning-text: #fbbf24;
 
   --c-stage-awake: #ef4444;
-  --c-stage-rem: #60a5fa;
-  --c-stage-core: #3b5bdb;
-  --c-stage-deep: #3730a3;
+  --c-stage-rem: #a78bfa;
+  --c-stage-core: #7c6ff0;
+  --c-stage-deep: #5b4ed4;
 
-  --c-shadow-flyout: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --c-shadow-flyout: 0 8px 32px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 
 /* --------------------------------------------------- LIGHT */
 .light {
-  --c-bg: #f0f1f3;
+  --c-bg: #f5f5f5;
   --c-bg-accent: #fafafa;
   --c-surface: #ffffff;
-  --c-surface-2: #f8f9fb;
-  --c-surface-3: #eef0f3;
-  --c-hairline: rgba(15, 23, 42, 0.08);
-  --c-hairline-strong: rgba(15, 23, 42, 0.16);
+  --c-surface-2: #f8f8f8;
+  --c-surface-3: #eaeaec;
+  --c-hairline: rgba(0, 0, 0, 0.08);
+  --c-hairline-strong: rgba(0, 0, 0, 0.14);
 
-  --c-text: #0d0f12;
-  --c-text-2: #334155;
-  --c-text-muted: #4a5568;
-  --c-text-faint: #7a8499;
+  --c-text: #0a0a0a;
+  --c-text-2: #3a3a3c;
+  --c-text-muted: #6a6a70;
+  --c-text-faint: #9a9aa0;
 
-  --c-primary: #2563eb;
-  --c-primary-soft: rgba(37, 99, 235, 0.10);
-  --c-primary-text: #1d4ed8;
+  --c-primary: var(--c-accent, #059669);
+  --c-primary-soft: color-mix(in srgb, var(--c-accent, #059669) 10%, transparent);
+  --c-primary-text: color-mix(in srgb, var(--c-accent, #059669) 80%, black);
 
   --c-positive: #059669;
-  --c-positive-soft: rgba(5, 150, 105, 0.10);
+  --c-positive-soft: rgba(5, 150, 105, 0.08);
   --c-positive-text: #047857;
 
   --c-alert: #dc2626;

@@ -34,6 +34,10 @@ interface ApexUiState {
   ttsAutoPlay: boolean;
   setTtsAutoPlay: (v: boolean) => void;
 
+  // Accent color (drives --c-accent CSS variable)
+  accentColor: string;
+  setAccentColor: (v: string) => void;
+
   // navigation
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -73,6 +77,9 @@ export const useApexUi = create<ApexUiState>()(
       ttsAutoPlay: false,
       setTtsAutoPlay: (v) => set({ ttsAutoPlay: v }),
 
+      accentColor: "#10b981",
+      setAccentColor: (v) => set({ accentColor: v }),
+
       view: "welcome",
       setView: (v) => set({ view: v }),
 
@@ -97,6 +104,7 @@ export const useApexUi = create<ApexUiState>()(
         units: s.units,
         ttsVoice: s.ttsVoice,
         ttsAutoPlay: s.ttsAutoPlay,
+        accentColor: s.accentColor,
       }),
     }
   )

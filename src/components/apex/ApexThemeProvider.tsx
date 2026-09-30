@@ -2,11 +2,11 @@
 
 import { ThemeProvider } from "next-themes";
 import { useEffect } from "react";
+import { useApexUi } from "@/lib/apex/store";
 
 /**
  * ApexThemeProvider — applies the Apex semantic palette via the .light class
- * on <html>. next-themes drives the dark/light toggle; we map dark→:root,
- * light→.light (see globals.css).
+ * on <html>. Also applies the user-selected accent color via --c-accent.
  */
 export function ApexThemeProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +18,7 @@ export function ApexThemeProvider({ children }: { children: React.ReactNode }) {
       value={{ dark: "dark", light: "light" }}
     >
       <ThemeSync />
+      <AccentColorSync />
       {children}
     </ThemeProvider>
   );
@@ -35,5 +36,14 @@ function ThemeSync() {
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     return () => obs.disconnect();
   }, []);
+  return null;
+}
+
+/** Applies the user-selected accent color via --c-accent CSS variable. */
+function AccentColorSync() {
+  const accentColor = useApexUi((s) => s.accentColor);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--c-accent", accentColor || "#10b981");
+  }, [accentColor]);
   return null;
 }
