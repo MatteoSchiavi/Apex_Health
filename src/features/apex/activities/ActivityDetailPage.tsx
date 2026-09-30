@@ -69,6 +69,8 @@ export function ActivityDetailPage() {
   // Lap-hover state: when the user hovers a lap row, StreamCharts highlights
   // the corresponding time range with a tinted band.
   const [hoveredLap, setHoveredLap] = useState<{ startIdx: number; endIdx: number } | null>(null);
+  // Pinned lap: when the user clicks a lap row, the band stays even after mouse-leave.
+  const [pinnedLap, setPinnedLap] = useState<{ startIdx: number; endIdx: number } | null>(null);
 
   const detail: ActivityDetail = useMemo(() => getActivityDetail(id), [id]);
   const streams: ActivityStream = useMemo(() => getActivityStreams(id), [id]);
@@ -265,7 +267,7 @@ export function ActivityDetailPage() {
           startTime={detail.start_time}
           duration_s={detail.duration_s}
           t={t}
-          lapRange={hoveredLap}
+          lapRange={hoveredLap ?? pinnedLap}
         />
       </Card>
 
@@ -304,14 +306,23 @@ export function ActivityDetailPage() {
             <tbody>
               {detail.laps.map((lap) => {
                 const range = lapToIndexRange(lap);
+                const isPinned = pinnedLap && range && pinnedLap.startIdx === range.startIdx && pinnedLap.endIdx === range.endIdx;
                 return (
                   <tr
                     key={lap.lap_index}
-                    className="border-b border-hairline/60 transition-colors last:border-b-0 hover:bg-surface2"
+                    className={`border-b border-hairline/60 transition-colors last:border-b-0 hover:bg-surface2 ${isPinned ? "bg-primarySoft/40" : ""}`}
                     onMouseEnter={() => {
                       if (range) setHoveredLap(range);
                     }}
                     onMouseLeave={() => setHoveredLap(null)}
+                    onClick={() => {
+                      // Toggle pin: if already pinned, unpin; otherwise pin this lap.
+                      if (isPinned) {
+                        setPinnedLap(null);
+                      } else if (range) {
+                        setPinnedLap(range);
+                      }
+                    }}
                   >
                   <LapTd className="num font-semibold text-primaryText">{lap.lap_index}</LapTd>
                   <LapTd className="num text-ink2">

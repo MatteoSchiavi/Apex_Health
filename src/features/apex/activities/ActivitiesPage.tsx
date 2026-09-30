@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { GitCompare, Search, X, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { GitCompare, Search, X, ArrowDown, ArrowUp, ArrowUpDown, Download } from "lucide-react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { activities } from "@/lib/apex/data";
@@ -32,6 +32,7 @@ import {
   ApexButton,
 } from "@/components/apex/kit";
 import { ActivityCompareModal } from "@/components/apex/ActivityCompareModal";
+import { exportCsv } from "@/lib/apex/csv";
 import {
   fmtClock,
   fmtDate,
@@ -138,6 +139,32 @@ export function ActivitiesPage() {
         subtitle={t("welcome.preview_activities")}
         actions={
           <div className="flex items-center gap-2">
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                exportCsv(
+                  `apex-activities-${range}`,
+                  ["Date", "Time", "Discipline", "Title", "Distance (km)", "Duration", "Elevation (m)", "Avg HR", "Avg Power (W)", "Load", "Sources"],
+                  filtered.map((a) => [
+                    a.local_date,
+                    fmtClock(a.start_time, locale),
+                    a.discipline,
+                    a.title,
+                    a.distance_m === null ? "" : fmtDistance(a.distance_m, "metric", 2),
+                    fmtDuration(a.duration_s),
+                    a.elevation_gain_m ?? "",
+                    a.avg_hr ?? "",
+                    a.avg_power ?? "",
+                    a.training_load ?? "",
+                    a.sources.join(" + "),
+                  ])
+                );
+              }}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">CSV</span>
+            </ApexButton>
             <ApexButton
               variant="secondary"
               size="sm"

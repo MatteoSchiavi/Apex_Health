@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useApexUi } from "@/lib/apex/store";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { devices, me } from "@/lib/apex/data";
@@ -381,6 +381,9 @@ export function AppShell({
   // Shortcuts help modal state
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Respect the user's OS-level prefers-reduced-motion setting
+  const reducedMotion = useReducedMotion();
+
   // Global keyboard shortcuts: "?" opens help, "g+letter" navigates
   useGlobalShortcuts({ setView: onNav, setHelpOpen });
 
@@ -406,13 +409,13 @@ export function AppShell({
         {/* Mobile topbar */}
         <Topbar current={current} onSearch={() => setCmdOpen(true)} onScan={() => setScanOpen(true)} />
 
-        {/* Page content — fades in on view change */}
+        {/* Page content — fades in on view change (respects prefers-reduced-motion) */}
         <main className="flex-1 px-4 pb-24 pt-4 lg:px-6 lg:pb-12 lg:pt-6">
           <motion.div
             key={current}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={reducedMotion ? { opacity: 1, y: 0 } : { opacity: 1, y: 0 }}
+            transition={reducedMotion ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
             {children}
           </motion.div>

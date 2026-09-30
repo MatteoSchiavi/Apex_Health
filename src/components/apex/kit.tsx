@@ -451,6 +451,41 @@ export function Loading({ label = "Loading…", className = "" }: { label?: stri
   );
 }
 
+/** Skeleton placeholder for loading state. Subtle pulse, preserves page geometry. */
+export function Skeleton({
+  className = "",
+  width = "100%",
+  height = 16,
+  rounded = "var(--radius-control)",
+}: {
+  className?: string;
+  width?: string | number;
+  height?: string | number;
+  rounded?: string;
+}) {
+  return (
+    <div
+      className={`animate-pulse bg-surface3 ${className}`}
+      style={{ width, height, borderRadius: rounded }}
+      aria-hidden
+    />
+  );
+}
+
+/** Skeleton block that mimics a card with a header + 3 rows. */
+export function SkeletonCard({ className = "" }: { className?: string }) {
+  return (
+    <div className={`rounded-[var(--radius-card)] border border-hairline bg-surface p-4 ${className}`}>
+      <Skeleton width={120} height={12} />
+      <div className="mt-3 space-y-2">
+        <Skeleton width="100%" height={20} />
+        <Skeleton width="80%" height={20} />
+        <Skeleton width="60%" height={20} />
+      </div>
+    </div>
+  );
+}
+
 export function ErrorNote({
   message,
   onRetry,

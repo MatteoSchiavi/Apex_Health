@@ -17,6 +17,7 @@
  */
 
 import { useState } from "react";
+import { Volume2, Loader2, Square } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
@@ -53,6 +54,7 @@ export function SettingsPage() {
   const [aiTier, setAiTier] = useState<"off" | "basic" | "pro">(
     (me.ai_access_tier as "off" | "basic" | "pro") ?? "pro"
   );
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "playing">("idle");
 
   const applyTheme = (next: "dark" | "light") => {
     setTheme(next === "dark" ? "dark" : "light");
@@ -212,6 +214,57 @@ export function SettingsPage() {
                     />
                   </button>
                 </label>
+              </div>
+              {/* Voice preview: play a sample with the selected voice */}
+              <div className="mt-2 flex items-center gap-2">
+                <ApexButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    setPreviewState("loading");
+                    try {
+                      const resp = await fetch("/api/tts", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          text: "Apex Health. Recovery score eighty-four. HRV sixty-four milliseconds.",
+                          voice: ui.ttsVoice,
+                          speed: 1.0,
+                        }),
+                      });
+                      if (!resp.ok) throw new Error("TTS failed");
+                      const blob = await resp.blob();
+                      const url = URL.createObjectURL(blob);
+                      const audio = new Audio(url);
+                      audio.onplay = () => setPreviewState("playing");
+                      audio.onended = () => setPreviewState("idle");
+                      audio.onerror = () => setPreviewState("idle");
+                      await audio.play();
+                    } catch {
+                      setPreviewState("idle");
+                    }
+                  }}
+                  icon={
+                    previewState === "loading" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : previewState === "playing" ? (
+                      <Square size={11} fill="currentColor" />
+                    ) : (
+                      <Volume2 size={13} />
+                    )
+                  }
+                >
+                  <span className="hidden sm:inline">
+                    {previewState === "loading"
+                      ? "Loading…"
+                      : previewState === "playing"
+                      ? "Playing…"
+                      : "Preview voice"}
+                  </span>
+                </ApexButton>
+                <span className="num text-[10px] text-faint">
+                  Plays a short sample with the selected voice.
+                </span>
               </div>
               <p className="num mt-2 text-[10px] text-faint">
                 Voice used when reading Coach messages aloud. Auto-play reads each new assistant response automatically.

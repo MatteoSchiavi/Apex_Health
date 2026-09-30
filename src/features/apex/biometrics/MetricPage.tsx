@@ -32,6 +32,7 @@ import {
 } from "@/components/apex/kit";
 import { fmtNum, fmtDate, fmtDelta } from "@/lib/apex/format";
 import type { MetricTrend } from "@/lib/apex/types";
+import { exportCsv } from "@/lib/apex/csv";
 
 /* ----------------------------------------------------- metric meta helpers */
 
@@ -360,6 +361,20 @@ export function MetricPage() {
               icon={<Download size={13} />}
             >
               <span className="hidden sm:inline">{t("activities.export")}</span>
+            </ApexButton>
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                exportCsv(
+                  `apex-metric-${meta.key}-${range}d`,
+                  ["Date", `${meta.label} (${meta.unit})`],
+                  trend.points.map((p) => [p.date, p.value ?? ""])
+                );
+              }}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">CSV</span>
             </ApexButton>
             <Segmented<RangeKey>
               value={range}
