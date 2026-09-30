@@ -18,7 +18,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { GitCompare } from "lucide-react";
+import { GitCompare, Download } from "lucide-react";
 import { useT, useI18n } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { sleepSessions } from "@/lib/apex/data";
@@ -32,6 +32,7 @@ import {
   ApexButton,
 } from "@/components/apex/kit";
 import { SleepCompareModal } from "@/components/apex/SleepCompareModal";
+import { exportCsv } from "@/lib/apex/csv";
 import { fmtDateLong, fmtHours, fmtClock, fmtNum } from "@/lib/apex/format";
 
 type SleepSession = (typeof sleepSessions)[number];
@@ -86,6 +87,34 @@ export function SleepPage() {
         subtitle={t("sleep.trend_28d")}
         actions={
           <div className="flex items-center gap-2">
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                exportCsv(
+                  "apex-sleep-sessions",
+                  ["Date", "Bedtime", "Wake", "Total Sleep", "Sleep Score", "Deep (h)", "REM (h)", "Light (h)", "Awake (h)", "Respiration (brpm)", "SpO2 (%)", "Restlessness (%)", "Sources"],
+                  sleepSessions.map((s) => [
+                    s.local_date,
+                    s.start_time ? new Date(s.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
+                    s.end_time ? new Date(s.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "",
+                    s.total_sleep_s ? fmtHours(s.total_sleep_s) : "",
+                    s.sleep_score ?? "",
+                    s.deep_s ? fmtHours(s.deep_s) : "",
+                    s.rem_s ? fmtHours(s.rem_s) : "",
+                    s.light_s ? fmtHours(s.light_s) : "",
+                    s.awake_s ? fmtHours(s.awake_s) : "",
+                    s.respiration_avg ?? "",
+                    s.spo2_avg ?? "",
+                    s.restlessness ?? "",
+                    (s.sources ?? []).join(" + "),
+                  ])
+                );
+              }}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">CSV</span>
+            </ApexButton>
             <ApexButton
               variant="secondary"
               size="sm"

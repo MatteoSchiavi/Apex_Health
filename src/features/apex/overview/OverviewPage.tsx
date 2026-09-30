@@ -201,8 +201,8 @@ export function OverviewPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge tone={sync.state === "connected" ? "positive" : "neutral"} dot>
-              {sync.state === "connected" ? t("overview.validated") : "Reconnecting"}
+            <Badge tone={overview.anchor_is_today ? "positive" : "warning"} dot>
+              {overview.anchor_is_today ? t("overview.validated") : t("overview.showing_history")}
             </Badge>
             <span className="text-faint" aria-hidden>·</span>
             <span className="num tracking-[0.06em] text-faint">

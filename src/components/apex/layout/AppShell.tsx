@@ -384,8 +384,16 @@ export function AppShell({
   // Respect the user's OS-level prefers-reduced-motion setting
   const reducedMotion = useReducedMotion();
 
-  // Global keyboard shortcuts: "?" opens help, "g+letter" navigates
-  useGlobalShortcuts({ setView: onNav, setHelpOpen });
+  // Global keyboard shortcuts: "?" opens help, "g+letter" navigates, "f" focuses first field
+  useGlobalShortcuts({
+    setView: onNav,
+    setHelpOpen,
+    onFocusFirstField: () => {
+      // Find the first input/select/textarea on the page and focus it
+      const first = document.querySelector("main input:not([type=hidden]):not([disabled]), main select:not([disabled]), main textarea:not([disabled])") as HTMLElement | null;
+      first?.focus();
+    },
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-ink">

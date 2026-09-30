@@ -34,9 +34,12 @@ const CHORD_MAP: Record<string, ViewKey> = {
 export function useGlobalShortcuts({
   setView,
   setHelpOpen,
+  onFocusFirstField,
 }: {
   setView: (v: ViewKey) => void;
   setHelpOpen: (v: boolean) => void;
+  /** Optional: focus the first editable field on the current page (Settings). */
+  onFocusFirstField?: () => void;
 }) {
   const chordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chordArmedRef = useRef(false);
@@ -54,6 +57,13 @@ export function useGlobalShortcuts({
       if (e.key === "?" && !isEditable()) {
         e.preventDefault();
         setHelpOpen(true);
+        return;
+      }
+
+      // "f" — focus the first editable field on the current page (Settings)
+      if (e.key.toLowerCase() === "f" && !isEditable() && onFocusFirstField) {
+        e.preventDefault();
+        onFocusFirstField();
         return;
       }
 
@@ -102,5 +112,5 @@ export function useGlobalShortcuts({
       window.removeEventListener("keydown", onKey);
       if (chordTimerRef.current) clearTimeout(chordTimerRef.current);
     };
-  }, [setView, setHelpOpen]);
+  }, [setView, setHelpOpen, onFocusFirstField]);
 }

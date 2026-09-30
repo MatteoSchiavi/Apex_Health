@@ -50,6 +50,7 @@ const GROUPS: ShortcutGroup[] = [
     icon: Activity,
     shortcuts: [
       { keys: "/", desc: "Focus search on Activities list" },
+      { keys: "f", desc: "Focus first form field on current page" },
       { keys: "Enter", desc: "Execute highlighted command in palette" },
       { keys: "↑ ↓", desc: "Navigate command palette items" },
     ],
