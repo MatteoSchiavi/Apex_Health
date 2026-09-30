@@ -1489,3 +1489,52 @@ Task: Fix all issues from user's detailed feedback. Study each page. Remove scen
 - src/features/apex/overview/OverviewPage.tsx — removed status strip, added bottom sync indicator
 - src/components/apex/layout/AppShell.tsx — retractable sidebar, removed dup toggles, added PanelLeftClose/Open imports
 - src/features/apex/settings/SettingsPage.tsx — added Sync now button, RefreshCw import, syncing state
+
+---
+Task ID: 20 (continuing user feedback fixes)
+Agent: main (user-directed)
+Task: Continue fixing all remaining pages per user feedback.
+
+## Changes This Cycle
+
+### Overview Page — Major Reorganization
+- Removed the "Synthesis Diagnosis" card entirely (was full of fake alert text — scenic, not useful)
+- Removed the "Open Alerts" list (same — fake alerts adding no value)
+- Removed the separate "Parasympathetic Tone" 4-col card (integrated HRV into the Activities card)
+- Removed the fake "skin_temp" stat (was showing fabricated 0.1°C with no data source)
+- Removed fake training_load display in activity cards
+- Reorganized grid: 5/4/3 → 7/5
+  Row 1: Readiness (5) | Sleep (4) | Biomarkers (3) — compact top row
+  Row 2: ACWR/Load (7) | Activities+HRV (5) — bottom row
+- ACWR block: filled the dead space with a side-by-side fitness sparkline + daily load bar chart
+  (7-day bar chart with Mon-Sun labels, replacing the thin sparkline with empty space below)
+- HRV sparkline + baseline/norm integrated into the Activities card (no more separate card)
+
+### Sleep Night Page — Hypnogram Removed
+- Removed the entire Hypnogram SVG component (user said "looks like shit, the worst I've had so far")
+- Removed the Overnight HRV Trajectory chart
+- Replaced with a simple horizontal stacked bar showing sleep stage distribution
+  (Deep / REM / Light / Awake as colored segments with % labels + legend)
+- Compact, clean, instantly readable — 32px bar replaces 240px SVG
+- Kept: hero row (Score | Total | Efficiency), stage StatPods, biometrics row, source pills
+
+### Biometrics Hub — Complete Redesign
+- Grid: 3 cols → 4 cols (more metrics visible, less scrolling)
+- Spacing: space-y-10 → space-y-6 (was too sparse, felt empty)
+- MetricCard: replaced Card+CardHeader+BigStat with a compact button
+  (label + source pill on top row, value + delta + sparkline on bottom row)
+  More information-dense, less padding, cleaner visual hierarchy
+- Search input: simplified focus styles
+- Lab panel: moved closer (mt-12 → mt-8)
+
+### Summary of All Fixes from User Feedback Round 2
+1. ✅ Font reverted to bold (was slim/light)
+2. ✅ Welcome page: rewritten with demo data, no real user data
+3. ✅ Fake status strip removed from Overview (no more "Imposed Chorus / Biosignals Validated")
+4. ✅ ACWR dead space filled with fitness sparkline + daily load bars
+5. ✅ Sidebar: retractable/collapsible (icons-only mode)
+6. ✅ Duplicate language/theme toggles removed (only in Settings now)
+7. ✅ Sleep hypnogram removed, replaced with stage distribution bar
+8. ✅ Biometrics hub redesigned (4-col grid, compact cards, tighter spacing)
+9. ✅ Settings: "Sync now" button added in device integrations
+10. ⏳ Activities: stream charts still need combining (planned for next cycle)
