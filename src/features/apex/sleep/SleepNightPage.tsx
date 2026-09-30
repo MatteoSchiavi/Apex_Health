@@ -190,17 +190,6 @@ export function SleepNightPage() {
         </Card>
       </div>
 
-      {/* Hypnogram */}
-      <Card className="mt-4">
-        <CardHeader eyebrow={t("sleep.night")} title={t("sleep.stages_chart")} />
-        <Hypnogram
-          segments={sleepDay.stages?.segments ?? []}
-          start={session.start_time}
-          end={session.end_time}
-          locale={ui.locale}
-        />
-      </Card>
-
       {/* Stage totals — 4 StatPods with stage colour dot + hours */}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {stages.map((st) => (
@@ -219,19 +208,36 @@ export function SleepNightPage() {
         ))}
       </div>
 
-      {/* Overnight HRV Trajectory */}
+      {/* Stage distribution bar — simple horizontal stacked bar (replaces hypnogram) */}
       <Card className="mt-4">
-        <CardHeader eyebrow={t("sleep.hrv")} title={t("sleep.overnight_hrv")} />
-        <HrvTrajectory readings={sleepDay.hrv_readings} locale={ui.locale} />
+        <CardHeader eyebrow="Sleep stages" title="Distribution" />
+        <div className="mt-3 flex h-8 w-full overflow-hidden rounded-[var(--radius-control)]">
+          {stages.map((st) => {
+            const pct = totalSleep > 0 ? (st.seconds / totalSleep) * 100 : 0;
+            return (
+              <div
+                key={st.key}
+                className="flex items-center justify-center text-[9px] font-semibold text-white/80 transition-all"
+                style={{ width: `${pct}%`, background: st.color }}
+                title={`${st.label}: ${fmtHours(st.seconds)}`}
+              >
+                {pct > 10 && <span>{Math.round(pct)}%</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div className="num mt-2 flex items-center justify-between text-[10px] text-muted">
+          {stages.map((st) => (
+            <span key={st.key} className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
+              {st.label}
+            </span>
+          ))}
+        </div>
       </Card>
 
       {/* Biometrics row */}
-      <SectionHeader
-        eyebrow={t("sleep.night")}
-        title={t("sleep.resting_hr")}
-        className="mt-6"
-      />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatPod
           label={t("sleep.resting_hr")}
           value={fmtNum(bio.resting_hr, 0)}
