@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Apex Health — Prisma schema (SQLite, mirrors the Python backend's models)
 
 generator client {
   provider = "prisma-client-js"
@@ -14,19 +10,113 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
   email     String   @unique
-  name      String?
+  name      String
+  password  String
+  dob       String?
+  sex       String?
+  heightCm  Float?
+  timezone  String   @default("Europe/Rome")
+  locale    String   @default("en")
+  theme     String   @default("dark")
+  units     String   @default("metric")
+  role      String   @default("owner")
+  aiTier    String   @default("pro")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  activities     Activity[]
+  sleepSessions  SleepSession[]
+  dailyBiometrics DailyBiometric[]
+  hrvReadings    HrvReading[]
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Activity {
+  id            String   @id
+  userId        Int
+  startTime     String
+  localDate     String
+  discipline    String
+  title         String
+  durationS     Int
+  distanceM     Float?
+  elevationGainM Float?
+  avgHr         Int?
+  maxHr         Int?
+  avgPower      Int?
+  npPower       Int?
+  avgSpeedMps   Float?
+  calories      Int?
+  trainingLoad  Float?
+  dataCompleteness String @default("complete")
+  sources       String   @default("Garmin")
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, localDate])
+}
+
+model SleepSession {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  localDate     String
+  startTime     String
+  endTime       String
+  totalSleepS   Int?
+  deepS         Int?
+  lightS        Int?
+  remS          Int?
+  awakeS        Int?
+  sleepScore    Float?
+  respirationAvg Float?
+  spo2Avg       Float?
+  restlessness  Float?
+  sources       String   @default("Garmin")
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, localDate])
+}
+
+model DailyBiometric {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  date          String
+  restingHr     Int?
+  hrvMs         Float?
+  spo2Avg       Float?
+  respirationAvg Float?
+  stressAvg     Int?
+  steps         Int?
+  calories      Int?
+  weightKg      Float?
+  vo2max        Float?
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+}
+
+model HrvReading {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  timestamp     String
+  hrvMs         Float
+  readingType   String   @default("overnight")
+  rollingBaselineMs Float?
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp])
+}
+
+model Integration {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  provider      String
+  status        String   @default("active")
+  lastSyncedAt  String?
+  isMain        Boolean  @default(false)
+  connectedAt   DateTime @default(now())
 }
