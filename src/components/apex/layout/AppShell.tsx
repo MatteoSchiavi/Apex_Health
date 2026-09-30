@@ -411,6 +411,9 @@ export function AppShell({
   // Shortcuts help modal state
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Sidebar collapsed state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   // Respect the user's OS-level prefers-reduced-motion setting
   const reducedMotion = useReducedMotion();
 
