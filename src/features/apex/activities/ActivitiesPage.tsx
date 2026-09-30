@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { GitCompare, Search, X } from "lucide-react";
+import { GitCompare, Search, X, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { activities } from "@/lib/apex/data";
@@ -44,12 +44,27 @@ import type { ActivityCard, Locale } from "@/lib/apex/types";
 
 type RangeKey = "30d" | "90d" | "12m";
 type FilterKey = "all" | "cycling" | "running" | "strength" | "swimming" | "other";
+type SortKey = "date" | "distance" | "duration" | "elevation" | "avg_hr" | "avg_power" | "load";
+type SortDir = "asc" | "desc";
 
 const RANGE_DAYS: Record<RangeKey, number> = {
   "30d": 30,
   "90d": 90,
   "12m": 365,
 };
+
+/** Returns the numeric value for a given sort key, or null if missing. */
+function sortValue(a: ActivityCard, key: SortKey): number | null {
+  switch (key) {
+    case "date": return new Date(a.start_time).getTime();
+    case "distance": return a.distance_m;
+    case "duration": return a.duration_s;
+    case "elevation": return a.elevation_gain_m;
+    case "avg_hr": return a.avg_hr;
+    case "avg_power": return a.avg_power;
+    case "load": return a.training_load;
+  }
+}
 
 /** Returns true if an activity matches the discipline filter. "Other" pools rowing+hiking+walking. */
 function matchesFilter(discipline: ActivityCard["discipline"], filter: FilterKey): boolean {
@@ -66,6 +81,8 @@ export function ActivitiesPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [compareOpen, setCompareOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut: "/" focuses search input (when not already in an input)
@@ -84,16 +101,35 @@ export function ActivitiesPage() {
     const now = Date.now();
     const cutoffMs = RANGE_DAYS[range] * 24 * 3600 * 1000;
     const q = search.trim().toLowerCase();
-    return activities
-      .filter((a) => {
-        const ageMs = now - new Date(a.start_time).getTime();
-        if (ageMs > cutoffMs) return false;
-        if (!matchesFilter(a.discipline, filter)) return false;
-        if (q && !(a.title.toLowerCase().includes(q) || a.discipline.toLowerCase().includes(q))) return false;
-        return true;
-      })
-      .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-  }, [range, filter, search]);
+    const out = activities.filter((a) => {
+      const ageMs = now - new Date(a.start_time).getTime();
+      if (ageMs > cutoffMs) return false;
+      if (!matchesFilter(a.discipline, filter)) return false;
+      if (q && !(a.title.toLowerCase().includes(q) || a.discipline.toLowerCase().includes(q))) return false;
+      return true;
+    });
+    // Sort by active key + direction. Nulls always last regardless of direction.
+    out.sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      const cmp = va - vb;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return out;
+  }, [range, filter, search, sortKey, sortDir]);
+
+  /** Toggle sort: same column flips direction, new column defaults to desc (asc for date). */
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "date" ? "desc" : "desc");
+    }
+  };
 
   return (
     <div className="mx-auto max-w-[1240px]">
@@ -178,15 +214,15 @@ export function ActivitiesPage() {
               <table className="w-full min-w-[960px] border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-hairline bg-surface2 text-left">
-                    <Th className="w-[140px]">{t("activities.col_date")}</Th>
+                    <ThSortable k="date" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[140px]">{t("activities.col_date")}</ThSortable>
                     <Th className="w-[140px]">{t("activities.col_discipline")}</Th>
                     <Th>{t("activities.col_title")}</Th>
-                    <Th className="w-[80px] text-right">{t("activities.distance")}</Th>
-                    <Th className="w-[88px] text-right">{t("activities.duration")}</Th>
-                    <Th className="w-[72px] text-right">{t("activities.col_elev")}</Th>
-                    <Th className="w-[78px] text-right">{t("activities.avg_hr")}</Th>
-                    <Th className="w-[88px] text-right">{t("activities.avg_power")}</Th>
-                    <Th className="w-[72px] text-right">{t("activities.col_load")}</Th>
+                    <ThSortable k="distance" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[80px] whitespace-nowrap text-right">{t("activities.distance")}</ThSortable>
+                    <ThSortable k="duration" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[88px] whitespace-nowrap text-right">{t("activities.duration")}</ThSortable>
+                    <ThSortable k="elevation" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[72px] whitespace-nowrap text-right">{t("activities.col_elev")}</ThSortable>
+                    <ThSortable k="avg_hr" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[78px] whitespace-nowrap text-right">{t("activities.avg_hr")}</ThSortable>
+                    <ThSortable k="avg_power" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[88px] whitespace-nowrap text-right">{t("activities.avg_power")}</ThSortable>
+                    <ThSortable k="load" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} className="w-[72px] whitespace-nowrap text-right">{t("activities.col_load")}</ThSortable>
                     <Th className="w-[120px] text-right">{t("activities.sources")}</Th>
                   </tr>
                 </thead>
@@ -258,6 +294,39 @@ function Th({ children, className = "" }: { children: ReactNode; className?: str
       className={`eyebrow !text-[10px] !font-semibold px-3 py-2.5 ${className}`}
     >
       {children}
+    </th>
+  );
+}
+
+/** Sortable column header. Click to toggle direction. Active column shows arrow indicator. */
+function ThSortable({
+  k,
+  sortKey,
+  sortDir,
+  onToggle,
+  children,
+  className = "",
+}: {
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onToggle: (k: SortKey) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  const active = sortKey === k;
+  const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={`eyebrow !text-[10px] !font-semibold px-3 py-2.5 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(k)}
+        className={`num inline-flex items-center gap-1 transition-colors hover:text-ink ${active ? "text-ink" : "text-muted"}`}
+        aria-label={`Sort by ${typeof children === "string" ? children : k} ${active ? (sortDir === "asc" ? "descending" : "ascending") : "descending"}`}
+      >
+        <span>{children}</span>
+        <Icon size={10} className={active ? "opacity-100" : "opacity-50"} />
+      </button>
     </th>
   );
 }

@@ -16,7 +16,8 @@
  * The footer carries the medical disclaimer.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Clock } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { metricCatalog, labMarkers, getMetricTrend } from "@/lib/apex/data";
@@ -149,6 +150,32 @@ export function BiometricsPage() {
   const t = useT();
   const ui = useApexUi();
   const [query, setQuery] = useState("");
+  const [recent, setRecent] = useState<string[]>([]); // recently-viewed metric keys
+
+  // Load recent metrics from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("apex-recent-metrics");
+      if (raw) setRecent(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Wrap ui.selectMetric to also persist the key
+  const selectMetric = (key: string) => {
+    setRecent((cur) => {
+      const next = [key, ...cur.filter((x) => x !== key)].slice(0, 6);
+      try {
+        window.localStorage.setItem("apex-recent-metrics", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+    ui.selectMetric(key);
+    ui.setView("metric");
+  };
 
   /** Group catalog by `group`, filtered by the live search query. */
   const grouped = useMemo(() => {
@@ -188,6 +215,26 @@ export function BiometricsPage() {
 
       {/* Metric catalog — grouped grid */}
       <div className="mt-8 space-y-10">
+        {/* Recent metrics section (only when no search query) */}
+        {!query && recent.length > 0 && (
+          <section>
+            <SectionHeader eyebrow={
+              <span className="flex items-center gap-1.5">
+                <Clock size={11} className="text-primaryText" />
+                {t("biometrics.search").includes("Filter") ? "Recently viewed" : "Recently viewed"}
+              </span>
+            } />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {recent
+                .map((key) => metricCatalog.find((m) => m.key === key))
+                .filter((m): m is MetricCatalogItem => !!m)
+                .map((m) => (
+                  <MetricCard key={`recent-${m.key}`} m={m} t={t} onSelect={selectMetric} />
+                ))}
+            </div>
+          </section>
+        )}
+
         {GROUP_ORDER.map((g) => {
           const items = grouped.get(g);
           if (!items || items.length === 0) return null;
@@ -196,7 +243,7 @@ export function BiometricsPage() {
               <SectionHeader eyebrow={t(`biometrics.group_${g}`)} />
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((m) => (
-                  <MetricCard key={m.key} m={m} t={t} ui={ui} />
+                  <MetricCard key={m.key} m={m} t={t} onSelect={selectMetric} />
                 ))}
               </div>
             </section>
@@ -272,11 +319,11 @@ export function BiometricsPage() {
 function MetricCard({
   m,
   t,
-  ui,
+  onSelect,
 }: {
   m: MetricCatalogItem;
   t: (p: string) => string;
-  ui: ReturnType<typeof useApexUi>;
+  onSelect: (key: string) => void;
 }) {
   // Latest window — 30-day trend per the design brief; we read `last` and the
   // 7-day delta from the trend stats. The sparkline shows the trailing 14d.
@@ -289,10 +336,7 @@ function MetricCard({
 
   return (
     <Card
-      onClick={() => {
-        ui.selectMetric(m.key);
-        ui.setView("metric");
-      }}
+      onClick={() => onSelect(m.key)}
       className="group cursor-pointer transition-colors hover:border-hairline2 hover:bg-surface2/40"
     >
       <CardHeader

@@ -17,8 +17,9 @@
  * Coherence law: only composes shared kit; no custom card variants.
  */
 
-import { useMemo } from "react";
-import { useT } from "@/lib/apex/i18nContext";
+import { useMemo, useState } from "react";
+import { GitCompare } from "lucide-react";
+import { useT, useI18n } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { sleepSessions } from "@/lib/apex/data";
 import {
@@ -28,7 +29,9 @@ import {
   DeltaChip,
   Eyebrow,
   SourcePill,
+  ApexButton,
 } from "@/components/apex/kit";
+import { SleepCompareModal } from "@/components/apex/SleepCompareModal";
 import { fmtDateLong, fmtHours, fmtClock, fmtNum } from "@/lib/apex/format";
 
 type SleepSession = (typeof sleepSessions)[number];
@@ -52,7 +55,9 @@ function scoreTone(score: number | null): "positive" | "primary" | "warning" | "
 
 export function SleepPage() {
   const t = useT();
+  const { locale } = useI18n();
   const ui = useApexUi();
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // 28-day trend summary + delta of most recent night vs 28-day average.
   const trend = useMemo(() => {
@@ -79,8 +84,21 @@ export function SleepPage() {
       <PageHeader
         title={t("sleep.title")}
         subtitle={t("sleep.trend_28d")}
-        actions={<TrendCard trend={trend} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <ApexButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setCompareOpen(true)}
+              icon={<GitCompare size={13} />}
+            >
+              <span className="hidden sm:inline">Compare</span>
+            </ApexButton>
+            <TrendCard trend={trend} />
+          </div>
+        }
       />
+      <SleepCompareModal open={compareOpen} onOpenChange={setCompareOpen} locale={locale} />
 
       <div className="mt-6 space-y-2">
         {sleepSessions.map((s) => (

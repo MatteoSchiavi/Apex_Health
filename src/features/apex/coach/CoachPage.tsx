@@ -17,12 +17,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Plus, Trash2 } from "lucide-react";
+import { Send, Plus, Trash2, Mic, Square, Loader2 } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { chatSessions, getChatSession } from "@/lib/apex/data";
 import { timeAgo } from "@/lib/apex/format";
 import type { ChatMessage, ChatSession } from "@/lib/apex/types";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import {
   Card,
   PageHeader,
@@ -278,6 +279,7 @@ export function CoachPage() {
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const voice = useVoiceInput();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -295,6 +297,20 @@ export function CoachPage() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages.length, loading, currentId]);
+
+  /* ----- voice transcript listener: append transcript to input + focus */
+  useEffect(() => {
+    const onTranscript = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail ?? "";
+      setInput((cur) => {
+        const next = cur.trim();
+        return next ? `${next} ${text}` : text;
+      });
+      setTimeout(() => taRef.current?.focus(), 50);
+    };
+    window.addEventListener("apex-voice-transcript", onTranscript);
+    return () => window.removeEventListener("apex-voice-transcript", onTranscript);
+  }, []);
 
   /* ----- auto-grow textarea up to 4 rows */
   useEffect(() => {
@@ -618,25 +634,79 @@ export function CoachPage() {
             {/* Input row */}
             <div className="p-3">
               <div className="flex items-end gap-2">
+                {/* Voice input button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (voice.isRecording) {
+                      voice.stopRecording();
+                    } else if (voice.isTranscribing) {
+                      /* noop — wait */
+                    } else {
+                      voice.startRecording();
+                    }
+                  }}
+                  disabled={loading}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border transition-colors ${
+                    voice.isRecording
+                      ? "border-alert/40 bg-alertSoft text-alertText animate-pulse"
+                      : voice.isTranscribing
+                      ? "border-primary/40 bg-primarySoft text-primaryText"
+                      : "border-hairline bg-surface2 text-muted hover:bg-surface3 hover:text-ink"
+                  }`}
+                  aria-label={voice.isRecording ? "Stop recording" : voice.isTranscribing ? "Transcribing…" : "Voice input"}
+                  title={voice.isRecording ? "Stop recording" : voice.isTranscribing ? "Transcribing…" : "Voice input"}
+                >
+                  {voice.isRecording ? (
+                    <Square size={13} fill="currentColor" />
+                  ) : voice.isTranscribing ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Mic size={14} />
+                  )}
+                </button>
                 <textarea
                   ref={taRef}
                   value={input}
                   rows={1}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={t("coach.placeholder")}
-                  className="num w-full resize-none rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-2 text-[13px] leading-[20px] text-ink transition-colors placeholder:text-faint focus:border-primary/60 focus:outline-none"
+                  placeholder={
+                    voice.isRecording
+                      ? "Listening…"
+                      : voice.isTranscribing
+                      ? "Transcribing…"
+                      : t("coach.placeholder")
+                  }
+                  className={`num w-full resize-none rounded-[var(--radius-control)] border bg-surface px-3 py-2 text-[13px] leading-[20px] text-ink transition-colors placeholder:text-faint focus:outline-none ${
+                    voice.isRecording
+                      ? "border-alert/60"
+                      : "border-hairline focus:border-primary/60"
+                  }`}
                 />
                 <ApexButton
                   variant="primary"
                   size="md"
                   icon={<Send size={14} strokeWidth={2.25} />}
                   onClick={handleSend}
-                  disabled={!canSend}
+                  disabled={!canSend || voice.isRecording || voice.isTranscribing}
                 >
                   {t("coach.send")}
                 </ApexButton>
               </div>
+              {/* Voice state hint */}
+              {voice.state === "error" && voice.error && (
+                <div className="mt-2 text-[11px] text-alertText">{voice.error}</div>
+              )}
+              {voice.isRecording && (
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-alert opacity-60" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-alert" />
+                  </span>
+                  Recording — click stop when done
+                </div>
+              )}
             </div>
           </Card>
 
