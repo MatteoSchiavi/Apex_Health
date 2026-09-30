@@ -45,6 +45,29 @@ export function WelcomeScreen() {
     }
   }, [theme, setTheme]);
 
+  // Public keyboard shortcut: "Enter" goes to login; "j" goes to join (invite)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Ignore when focus is in an input/textarea (let the user type)
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        ui.setView("login");
+      } else if (e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        ui.setView("join");
+      } else if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        ui.signIn();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ui]);
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       {/* top nav strip */}
@@ -193,7 +216,22 @@ export function WelcomeScreen() {
             <span>·</span>
             <span>{t("app.tagline")}</span>
           </div>
-          <div className="num tracking-[0.06em]">v0.9 · build 38a4 · {new Date().getFullYear()}</div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {/* Public keyboard hints */}
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">Enter</kbd>
+              <span>sign in</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">J</kbd>
+              <span>redeem invite</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <kbd className="num rounded-[3px] border border-hairline bg-surface2 px-1.5 py-0.5 text-[9px] text-muted">S</kbd>
+              <span>quick demo sign-in</span>
+            </div>
+            <div className="num tracking-[0.06em]">v0.9 · build 38a4 · {new Date().getFullYear()}</div>
+          </div>
         </div>
       </footer>
     </div>

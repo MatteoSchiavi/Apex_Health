@@ -434,26 +434,47 @@ function ActivityCardMobile({ a, locale, onClick }: { a: ActivityCard; locale: L
       onClick={onClick}
       className="cursor-pointer transition-colors hover:border-hairline2 hover:bg-surface2"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted">
-            <SportIcon discipline={a.discipline} size={13} />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-ink">{a.title}</div>
-            <div className="num mt-0.5 text-[10px] text-faint">
-              {fmtDate(a.start_time, locale)} · {fmtClock(a.start_time, locale)} · {friendlyDiscipline(a.discipline, locale)}
-            </div>
+      {/* Header: sport icon + title + chevron */}
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted">
+          <SportIcon discipline={a.discipline} size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div
+            className="text-[13px] font-semibold leading-tight text-ink"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {a.title}
+          </div>
+          <div className="num mt-0.5 flex items-center gap-1.5 text-[10px] text-faint">
+            <span>{fmtDate(a.start_time, locale)}</span>
+            <span aria-hidden>·</span>
+            <span>{fmtClock(a.start_time, locale)}</span>
+            <span aria-hidden>·</span>
+            <span>{friendlyDiscipline(a.discipline, locale)}</span>
           </div>
         </div>
-        {a.training_load !== null && <Badge tone="primary">{a.training_load}</Badge>}
+        {a.training_load !== null && (
+          <Badge tone="primary" className="shrink-0">
+            {a.training_load}
+          </Badge>
+        )}
       </div>
-      <div className="num mt-3 grid grid-cols-4 gap-2 text-[11px]">
+
+      {/* Metrics: 2x2 grid for narrow screens (was 4x1) */}
+      <div className="num mt-3 grid grid-cols-2 gap-2 text-[11px]">
         <Metric label={t("activities.distance")} value={a.distance_m === null ? "—" : fmtDistance(a.distance_m, "metric", 1)} />
         <Metric label={t("activities.duration")} value={fmtDuration(a.duration_s)} />
-        <Metric label={t("activities.avg_hr")} value={a.avg_hr === null ? "—" : String(a.avg_hr)} />
-        <Metric label={t("activities.avg_power")} value={a.avg_power === null ? "—" : `${a.avg_power}W`} />
+        <Metric label={t("activities.avg_hr")} value={a.avg_hr === null || !Number.isFinite(a.avg_hr) ? "—" : String(a.avg_hr)} />
+        <Metric label={t("activities.avg_power")} value={a.avg_power === null || !Number.isFinite(a.avg_power) ? "—" : `${a.avg_power}W`} />
       </div>
+
+      {/* Sources footer */}
       <div className="mt-3 flex flex-wrap items-center gap-1">
         {a.sources.map((s) => (
           <SourcePill key={s}>{s}</SourcePill>

@@ -413,7 +413,14 @@ export function AppShell({
       <BottomNav current={current} onNav={onNav} />
 
       {/* Global overlays */}
-      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
+      <CommandPalette
+        open={cmdOpen}
+        onOpenChange={setCmdOpen}
+        onOpenHelp={() => {
+          setCmdOpen(false);
+          setHelpOpen(true);
+        }}
+      />
       <RecoveryScanModal open={scanOpen} onOpenChange={setScanOpen} />
       <ShortcutsHelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </div>

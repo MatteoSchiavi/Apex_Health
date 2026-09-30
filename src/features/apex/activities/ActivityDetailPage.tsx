@@ -559,6 +559,19 @@ function StreamCharts({
 
   return (
     <div className="relative space-y-1 p-4" ref={containerRef}>
+      {/* Vertical sync line — spans the full height of all 5 charts at the
+          hovered x-position. Positioned absolutely over the chart area
+          (between the 80px label column on the left and the 112px value
+          column on the right). */}
+      {hoverIdx !== null && (
+        <div
+          className="pointer-events-none absolute top-2 bottom-10 z-20 w-px bg-primaryText/40"
+          style={{
+            left: `calc(80px + (100% - 80px - 112px - 32px) * ${hoverPct / 100} + 16px)`,
+          }}
+          aria-hidden
+        />
+      )}
       <StreamChart
         label={t("activities.hr")}
         unit="bpm"

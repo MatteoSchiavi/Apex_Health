@@ -26,6 +26,7 @@ import {
   HeartPulse,
   CornerDownLeft,
   Download,
+  HelpCircle,
   Languages,
   LogOut,
   Moon,
@@ -57,9 +58,12 @@ interface CommandItem {
 export function CommandPalette({
   open,
   onOpenChange,
+  onOpenHelp,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Optional: open the keyboard shortcuts help modal */
+  onOpenHelp?: () => void;
 }) {
   const ui = useApexUi();
   const t = useT();
@@ -152,6 +156,16 @@ export function CommandPalette({
         hint: "PDF",
         run: () => window.print(),
       },
+      ...(onOpenHelp
+        ? [{
+            id: "act-shortcuts-help",
+            label: "Keyboard shortcuts",
+            group: "actions" as const,
+            icon: HelpCircle,
+            hint: "?",
+            run: () => onOpenHelp(),
+          }]
+        : []),
     ];
 
     const metrics: CommandItem[] = metricCatalog.slice(0, 8).map((m) => ({
@@ -193,7 +207,7 @@ export function CommandPalette({
     }));
 
     return [...nav, ...actions, ...metrics, ...acts, ...slp];
-  }, [ui, t, locale, theme, setLocale, setTheme]);
+  }, [ui, t, locale, theme, setLocale, setTheme, onOpenHelp]);
 
   // Filter
   const filtered = useMemo(() => {

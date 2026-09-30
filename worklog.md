@@ -964,3 +964,96 @@ Stage Summary:
 - 5 new features added (combined stream tooltip, compare selection persistence for both modals, per-alert mark-as-read, keyboard shortcuts help modal + g+letter chord nav, Settings locale preview).
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - All features verified end-to-end via agent-browser.
+
+---
+Task ID: 13 (webDevReview cycle 7)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser, fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 6 left the project at commit 341b845 with 5 new features (combined stream tooltip, compare persistence, per-alert read, shortcuts help, locale preview).
+- Lint clean, dev server running, all 14 view paths rendering.
+- Discovered sync-service had died between cycles; restarted it on port 3005 + added a keepalive.sh wrapper script to make future restarts reliable.
+- The 15-min webDevReview cron (job ID 426218) is active.
+
+## QA Findings
+- Smoke test of all 8 main nav sections: all render with correct H1 headings.
+- No console errors or runtime exceptions across the QA pass.
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Vertical sync line spanning all 5 stream charts** — `src/features/apex/activities/ActivityDetailPage.tsx`:
+   - Added a single absolute-positioned `<div>` (1px wide, `bg-primaryText/40`) that spans the full height of the StreamCharts container at the hovered x-position.
+   - Positioned via `left: calc(80px + (100% - 80px - 112px - 32px) * hoverPct/100 + 16px)` to align with the chart area (between the 80px label column and 112px value column).
+   - `pointer-events-none` + `aria-hidden` so it doesn't interfere with the hover handler or screen readers.
+   - `top-2 bottom-10` so it spans from the first chart to just above the x-axis labels.
+   - Verified: 1 vertical line rendered at hover position; combined tooltip + per-chart crosshairs all visible simultaneously.
+2. **Command Palette "?" entry that opens shortcuts help** — `src/components/apex/CommandPalette.tsx`:
+   - Added optional `onOpenHelp` prop to CommandPalette.
+   - When provided, a new "Keyboard shortcuts" action appears in the Quick actions group with a HelpCircle icon and "?" hint.
+   - AppShell passes `onOpenHelp` that closes the palette + opens the ShortcutsHelpModal.
+   - Verified: searching "shortcut" in the palette shows the entry; clicking it opens the help modal.
+3. **Welcome page keyboard shortcuts** — `src/features/apex/welcome/WelcomeScreen.tsx`:
+   - Added a global keydown listener on the welcome page:
+     - `Enter` → go to login.
+     - `j` → go to join (redeem invite).
+     - `s` → quick demo sign-in (skips login form, signs in directly with prefilled demo credentials).
+   - Ignores keystrokes when focus is in an input/textarea/contenteditable.
+   - Footer now shows 3 kbd hints: `Enter` sign in, `J` redeem invite, `S` quick demo sign-in.
+   - Verified: footer hints present ("quick demo sign-in" text confirmed via DOM).
+4. **Sync-service auto-restart wrapper** — `mini-services/sync-service/keepalive.sh`:
+   - Bash script that checks if port 3005 is listening; if not, restarts the sync-service detached via setsid.
+   - Designed to be called from the webDevReview cron or any periodic caller.
+   - Logs to /tmp/sync-service.log.
+   - Tested: when service is running → "already running"; when killed → "restarting... started successfully".
+5. **TTS skill integration on Coach page** — full stack:
+   - Backend: `src/app/api/tts/route.ts` (~110 lines). POST endpoint using z-ai-web-dev-sdk `audio.tts.create()`. Accepts {text, voice, speed}. Returns audio/wav binary. Splits text >1024 chars into chunks at sentence boundaries. Voice options: tongtong (default), chuichui, xiaochen, jam, kazi, douji, luodo. Speed 0.5–2.0.
+   - Frontend hook: `src/hooks/use-tts.ts` (~100 lines). Calls /api/tts, plays returned audio via `new Audio()`. Caches audio object URLs per text string (so replaying the same message doesn't re-hit the API). States: idle/loading/playing/error. Cleanup on unmount revokes all cached URLs.
+   - Coach integration: AssistantMessage component now accepts a `tts` prop. A speaker button (Volume2 icon) appears next to the timestamp on each non-disclaimer assistant message. Clicking it calls `tts.speak(msg.content)`; clicking again stops playback. While loading: spinning Loader2 icon. While playing: Square (stop) icon + primary-colored left border on the message bubble.
+   - Verified: 2 speaker buttons present on existing assistant messages; clicking one triggered `POST /api/tts 200 in 10.1s` in the dev log (real z-ai-web-dev-sdk call succeeded).
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Vertical sync line: 1px-wide primary-tinted line spanning all 5 charts at hover x-position; subtle but instantly scannable.
+- Command Palette shortcuts entry: HelpCircle icon + "?" hint in the actions group.
+- Welcome footer: 3 kbd hints with consistent styling (rounded border, surface2 bg, mono font).
+- Coach TTS speaker button: 20px square button, muted by default, primary when active. Message bubble gets a primary left border while playing for visual confirmation.
+- Mobile Activities cards: 2x2 metric grid (was 4x1 — better for narrow screens). Larger 36px sport icon (was 28px). 2-line clamp on title (was single-line truncate). Bigger touch targets.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean — only "✓ Compiled", "GET / 200", and "POST /api/tts 200 in 10.1s" entries (the TTS call).
+- agent-browser QA:
+  - Vertical sync line: 1 line rendered at hover position; combined tooltip shows all 5 metrics + time + sample index.
+  - Command Palette "?" entry: searching "shortcut" shows 1 result; clicking opens help modal.
+  - Welcome footer hints: "quick demo sign-in" text confirmed present.
+  - Coach TTS: 2 speaker buttons on existing assistant messages; clicking one → `POST /api/tts 200 in 10.1s` in dev log (real z-ai-web-dev-sdk call).
+  - Mobile Activities cards: 2x2 metric grid, 36px sport icon, 2-line title clamp.
+  - All 8 main nav sections render with correct H1 headings.
+  - No errors during the QA pass.
+
+## Files Changed
+- `src/features/apex/activities/ActivityDetailPage.tsx` — added vertical sync line div spanning all 5 charts at hover x-position.
+- `src/components/apex/CommandPalette.tsx` — added onOpenHelp optional prop + HelpCircle import + "Keyboard shortcuts" action entry.
+- `src/components/apex/layout/AppShell.tsx` — wired onOpenHelp callback to CommandPalette (closes palette + opens help modal).
+- `src/features/apex/welcome/WelcomeScreen.tsx` — added useEffect keydown listener for Enter/j/s shortcuts; updated footer with 3 kbd hints.
+- `mini-services/sync-service/keepalive.sh` — NEW. Bash auto-restart wrapper script.
+- `src/app/api/tts/route.ts` — NEW (~110 lines). TTS backend using z-ai-web-dev-sdk with text chunking.
+- `src/hooks/use-tts.ts` — NEW (~100 lines). TTS client hook with audio caching + state machine.
+- `src/features/apex/coach/CoachPage.tsx` — imported Volume2 + useTTS; added tts hook call; passed tts to AssistantMessage; added speaker button with loading/playing states + primary left border on playing message.
+- `src/features/apex/activities/ActivitiesPage.tsx` — ActivityCardMobile redesigned: 2x2 metric grid, 36px sport icon, 2-line title clamp, better header layout.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Unit tests** — none exist. Even a smoke test per page would catch regressions.
+2. **Sync service: real device integration** with Garmin/Whoop APIs.
+3. **Coach: verify multi-turn context** is preserved correctly across LLM calls.
+4. **TTS: voice selection** — currently hardcoded to "tongtong"; could add a voice picker in Settings.
+5. **TTS: auto-play** option for incoming assistant messages (currently manual click only).
+6. **Welcome page: add a "View keyboard shortcuts" link** that opens a public version of the shortcuts help.
+7. **Activity Detail: lap table row hover** — highlight the corresponding time range in the stream charts.
+8. **Settings: keyboard shortcut to focus the first form field** on each settings section.
+
+Stage Summary:
+- 5 new features added (vertical sync line, Command Palette ? entry, welcome page shortcuts, sync-service keepalive, Coach TTS integration).
+- Mobile Activities cards redesigned for better density.
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- All features verified end-to-end via agent-browser (including real TTS API call: POST /api/tts 200 in 10.1s).

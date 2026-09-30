@@ -17,13 +17,14 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Plus, Trash2, Mic, Square, Loader2, Sparkles } from "lucide-react";
+import { Send, Plus, Trash2, Mic, Square, Loader2, Sparkles, Volume2 } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { chatSessions, getChatSession } from "@/lib/apex/data";
 import { timeAgo } from "@/lib/apex/format";
 import type { ChatMessage, ChatSession } from "@/lib/apex/types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
+import { useTTS } from "@/hooks/use-tts";
 import {
   Card,
   PageHeader,
@@ -185,14 +186,19 @@ function AssistantMessage({
   msg,
   t,
   locale,
+  tts,
 }: {
   msg: ChatMessage;
   t: (p: string) => string;
   locale: "en" | "it";
+  tts: ReturnType<typeof useTTS>;
 }) {
   const isDisclaimer = msg.kind === "disclaimer";
   // Streaming indicator: empty content means the message is currently being streamed.
   const isStreaming = !msg.content;
+  const canSpeak = !isStreaming && !!msg.content && !isDisclaimer;
+  const isThisPlaying = tts.isPlaying && tts.activeText === msg.content;
+  const isThisLoading = tts.isLoading && tts.activeText === msg.content;
   return (
     <div className="flex items-start gap-2.5">
       <div className="mt-0.5 shrink-0">
@@ -213,12 +219,38 @@ function AssistantMessage({
           {!isStreaming && (
             <span className="mono text-[10px] text-faint">{timeAgo(msg.created_at, locale)}</span>
           )}
+          {/* Speaker button — read this message aloud via TTS */}
+          {canSpeak && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isThisPlaying) {
+                  tts.stop();
+                } else {
+                  tts.speak(msg.content);
+                }
+              }}
+              className={`flex h-5 w-5 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink ${
+                isThisPlaying || isThisLoading ? "text-primaryText" : ""
+              }`}
+              aria-label={isThisPlaying ? "Stop audio" : "Read aloud"}
+              title={isThisPlaying ? "Stop audio" : isThisLoading ? "Loading audio…" : "Read aloud"}
+            >
+              {isThisLoading ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : isThisPlaying ? (
+                <Square size={9} fill="currentColor" />
+              ) : (
+                <Volume2 size={11} />
+              )}
+            </button>
+          )}
         </div>
         <div className="rounded-[var(--radius-card)] border border-hairline bg-surface px-3 py-2">
           <div
             className={`whitespace-pre-wrap text-[13px] leading-[20px] ${
               isDisclaimer ? "italic text-alertText/40" : "text-ink2"
-            }`}
+            } ${isThisPlaying ? "border-l-2 border-primary pl-2 -ml-2" : ""}`}
           >
             {msg.content}
             {isStreaming && (
@@ -299,6 +331,7 @@ export function CoachPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const voice = useVoiceInput();
+  const tts = useTTS();
   const [useAiBackend, setUseAiBackend] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -822,7 +855,7 @@ export function CoachPage() {
                     m.role === "user" ? (
                       <UserMessage key={m.id} msg={m} locale={locale} />
                     ) : (
-                      <AssistantMessage key={m.id} msg={m} t={t} locale={locale} />
+                      <AssistantMessage key={m.id} msg={m} t={t} locale={locale} tts={tts} />
                     )
                   )}
                   {loading && (
