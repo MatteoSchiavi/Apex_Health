@@ -1,0 +1,4 @@
+<properties>
+    <property id="server_url" type="string">https://your-host.your-tailnet.ts.net</property>
+    <property id="api_token" type="string"></property>
+</properties>

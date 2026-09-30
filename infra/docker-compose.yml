@@ -1,0 +1,176 @@
+# Health Control Center — local/staging/homeserver deployment (MASTER_SPEC §2, §16, §21)
+#
+# Services: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api (uvicorn),
+# worker (Celery worker + embedded beat — beat_schedule lives in
+# app/tasks/celery_app.py, §19: Garmin/Whoop/Strava/Technogym syncs every 6h,
+# nightly feature engine 03:00 user-local, gear accumulation, AI budget
+# check, nightly encrypted backup, reports), bot (Telegram long polling, §10.1).
+# The web UI is the next work item (real full UI, spec Appendix A) — the
+# temporary Grafana dashboards were removed by owner decision.
+#
+# Sizing: memory limits are tuned for the owner's 8 GB homeserver (multi-user
+# friends deployment) with ~3.5 GB headroom for the OS/page cache. Remove
+# them on bigger hosts if you like; do NOT raise db's above 3 GB here without
+# checking the host's other duties.
+#
+# Logging: JSON to stdout captured with rotation (§21).
+# Resilience: every service restarts unless stopped, so a homeserver reboot
+# brings the whole stack back with the Docker daemon.
+#
+# Credentials note: db/redis publish NO ports — they are only reachable on
+# the compose network, so the built-in defaults (hcc/hcc/hcc) are the sane
+# single-user homeserver posture. If you ever change POSTGRES_* remember the
+# interpolation in this file reads infra/.env (or --env-file), NOT the
+# repo-root .env — the clean way is to override BOTH or neither.
+name: apex-health
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg16
+    # F-22/D-09 audit: explicit Postgres sizing flags for an 8 GB homeserver.
+    #   - shared_buffers=512MB: ~20% of the 2560m mem_limit (PG recommendation).
+    #   - effective_cache_size=1536MB: tells the planner the OS cache exists.
+    #   - work_mem=8MB: keeps per-sort/hash operations bounded under concurrency.
+    #   - maintenance_work_mem=128MB: vacuum/index builds complete fast enough.
+    #   - max_connections=40: 2 uvicorn (10 each) + Celery (4) + bot (1) + slack.
+    #   - wal_compression=on: cuts WAL churn from bulk deletes (D-01 retention).
+    #   - checkpoint_completion_target=0.9: spread checkpoints, reduce I/O spikes.
+    #   - autovacuum_vacuum_cost_delay=2ms: don't starve foreground ops.
+    #   - timescaledb.max_background_workers=2: cap background workers (D-09).
+    # shm_size=256m (D-09/F-22): the 64m default crashes Timescale parallel
+    # index builds ("multiple floating point exceptions" on shm exhaustion).
+    command: >
+      postgres -c shared_preload_libraries=timescaledb
+               -c shared_buffers=512MB
+               -c effective_cache_size=1536MB
+               -c work_mem=8MB
+               -c maintenance_work_mem=128MB
+               -c max_connections=40
+               -c wal_compression=on
+               -c checkpoint_completion_target=0.9
+               -c autovacuum_vacuum_cost_delay=2ms
+               -c timescaledb.max_background_workers=2
+    shm_size: 256m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hcc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hcc}
+      POSTGRES_DB: ${POSTGRES_DB:-hcc}
+    volumes:
+      - db_data:/home/postgres/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hcc} -d ${POSTGRES_DB:-hcc}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    # 8 GB homeserver sizing — see file header.
+    # F-22/D-09 audit: reservation lowered from 1024m to 768m to reclaim RAM
+    # for Celery workers; the actual usage stays well under the 2560m limit.
+    mem_limit: 2560m
+    mem_reservation: 768m
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    # D-09 audit: hard cap on Redis memory + LRU eviction. Every key the app
+    # sets carries a TTL (rate-limit windows, OAuth state, agent locks) so
+    # volatile-lru is safe — it never evicts a key the app still needs.
+    # Without this cap Redis grows unbounded until OOM on the 8 GB box.
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 256m
+    mem_reservation: 64m
+    logging: *default_logging
+
+  api:
+    # Root context + backend/Dockerfile: the multi-stage build compiles the
+    # SPA into the image (stage 1 node build -> /app/spa), so `docker compose
+    # build` is the only UI deploy step and no Node runtime ships to prod.
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    env_file: ../.env
+    environment:
+      # Container-network URLs override host-side .env values.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # F-31 audit: bind to 127.0.0.1 so the API (and /docs) is NOT exposed to
+    # the LAN by default. Caddy / Tailscale Funnel terminate TLS and proxy
+    # to localhost — they are the only intended public surface.
+    ports:
+      - "${API_PORT:-8000}:8000"
+    restart: unless-stopped
+    # Nightly backup artifacts live here on the host, outside the container
+    # lifecycle; the same mount lets `exec api python tools/restore_drill.py`
+    # see exactly what the worker wrote.
+    volumes:
+      - ../backups:/app/backups
+    mem_limit: 1024m
+    mem_reservation: 256m
+    logging: *default_logging
+
+  worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    # --beat: the embedded beat runs the §19 schedule (Garmin/Whoop/Oura syncs
+    # every 6h, nightly feature engine 03:00 user-local, gear accumulation,
+    # AI budget check 23:45 UTC, nightly encrypted backup 02:00 UTC, reports).
+    # Without it the schedule is DEFINED but never ticked.
+    command: celery -A app.tasks.celery_app worker --beat --loglevel=INFO
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ../backups:/app/backups
+    mem_limit: 1536m
+    mem_reservation: 512m
+    logging: *default_logging
+
+  # §10.1: long polling — outbound-only, no public port, no webhook secret.
+  # Behind a profile so a stack without TELEGRAM_BOT_TOKEN boots fully
+  # healthy instead of crash-looping the bot container:
+  #   docker compose -f infra/docker-compose.yml --profile telegram up -d
+  bot:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: python -m app.connectors.telegram.polling
+    profiles: ["telegram"]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    logging: *default_logging
+
+volumes:
+  db_data:

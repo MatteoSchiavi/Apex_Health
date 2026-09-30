@@ -1,0 +1,49 @@
+[project]
+name = "health-control-center"
+version = "0.1.0"
+description = "Personal Health & Performance Control Center — backend (MASTER_SPEC)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "argon2-cffi>=23.1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "email-validator>=2.1",
+    "python-json-logger>=3.1",
+    # §2/§10: Bot API long polling + (later) LLM/STT adapters speak HTTP
+    "httpx>=0.27",
+    # §17: app-layer encryption for credentials/lab data
+    "cryptography>=42.0",
+    # §3: unofficial Garmin client — lazily imported, never exercised by tests (§0, §16.7)
+    "garminconnect>=0.1.36",
+    "pgvector>=0.5.0",
+    # CSV import endpoint (POST /imports/csv multipart uploads)
+    "python-multipart>=0.0.9",
+    # FIT enrichment (§3b): parse Garmin FIT files for laps/streams the
+    # Connect JSON API hides (DATA_COVERAGE.md)
+    "fitdecode>=0.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.26",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+# One event loop per session: the app's module-level engine keeps its pooled
+# connections valid across tests instead of dying with each test's loop.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

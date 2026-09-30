@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": 1741508100000,
+    "heartRate": 138,
+    "power": 205.0,
+    "speed": 6.4,
+    "altitude": 240.0,
+    "positionLat": 45.9,
+    "positionLong": 8.9
+  },
+  {
+    "timestamp": 1741508400000,
+    "heartRate": 141,
+    "power": 218.0,
+    "speed": 6.9,
+    "altitude": 252.5,
+    "positionLat": 45.900999999999996,
+    "positionLong": 8.9015
+  },
+  {
+    "timestamp": 1741508700000,
+    "heartRate": 147,
+    "power": 231.0,
+    "speed": 7.2,
+    "altitude": 265.0,
+    "positionLat": 45.902,
+    "positionLong": 8.903
+  },
+  {
+    "timestamp": 1741509000000,
+    "heartRate": 144,
+    "power": 224.0,
+    "speed": 7.0,
+    "altitude": 277.5,
+    "positionLat": 45.903,
+    "positionLong": 8.9045
+  }
+]

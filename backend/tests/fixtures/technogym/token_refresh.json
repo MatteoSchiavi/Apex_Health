@@ -1,0 +1,6 @@
+{
+  "access_token": "tg_access_token_rotated",
+  "refresh_token": "tg_refresh_token_rotated",
+  "token_type": "Bearer",
+  "expires_in": 7200
+}

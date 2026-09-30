@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Apex Health</title>
+    <script>
+      // First-paint theme/locale reconcile before React mounts: the account
+      // prefs (users.theme/users.locale, migration 0007) are mirrored in
+      // localStorage; the stored value wins, else the browser hint.
+      (function () {
+        try {
+          var theme = localStorage.getItem("apex.theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          }
+          document.documentElement.classList.remove("dark", "light");
+          document.documentElement.classList.add(theme);
+          var locale = localStorage.getItem("apex.locale");
+          if (locale === "it" || locale === "en") document.documentElement.lang = locale;
+        } catch (e) { /* private mode: defaults hold */ }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
