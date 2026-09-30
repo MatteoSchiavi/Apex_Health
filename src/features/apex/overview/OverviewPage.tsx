@@ -157,8 +157,8 @@ export function OverviewPage() {
 
       {/* --------------------------- Main grid */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {/* ---------------- 2. Readiness hero (8 cols) */}
-        <Card className="lg:col-span-8">
+        {/* ---------------- 1. Readiness hero (5 cols) + Sleep (4 cols) + Biomarkers (3 cols) */}
+        <Card className="lg:col-span-5">
           <CardHeader
             eyebrow={t("overview.adaptive_readiness")}
             right={
@@ -179,15 +179,9 @@ export function OverviewPage() {
             <ScoreBar value={readinessValue} tone="primary" height={6} />
           </div>
           <div className="num mt-2 flex justify-between text-[10px] text-faint">
-            <span>
-              {t("overview.floor")} <span className="text-muted">{readinessFloor}</span>
-            </span>
-            <span>
-              {t("overview.avg7")} <span className="text-muted">{readinessAvg7}</span>
-            </span>
-            <span>
-              {t("overview.cap")} <span className="text-muted">{readinessCap}</span>
-            </span>
+            <span>{t("overview.floor")} <span className="text-muted">{readinessFloor}</span></span>
+            <span>{t("overview.avg7")} <span className="text-muted">{readinessAvg7}</span></span>
+            <span>{t("overview.cap")} <span className="text-muted">{readinessCap}</span></span>
           </div>
 
           <Hairline className="my-4" />
@@ -197,87 +191,102 @@ export function OverviewPage() {
               label={t("overview.system_readiness")}
               value={overview.recovery.value ?? 0}
               unit="/100"
-              right={
-                <DeltaChip
-                  delta={overview.recovery.delta_7d}
-                  goodWhen="up"
-                  compact
-                  suffix={t("overview.vs7d")}
-                  showSuffix={false}
-                />
-              }
+              right={<DeltaChip delta={overview.recovery.delta_7d} goodWhen="up" compact suffix={t("overview.vs7d")} showSuffix={false} />}
             />
             <StatPod
               label={t("overview.sleep_score")}
               value={overview.sleep_score.value ?? 0}
               unit="/100"
-              right={
-                <DeltaChip
-                  delta={overview.sleep_score.delta_7d}
-                  goodWhen="up"
-                  compact
-                  suffix={t("overview.vs7d")}
-                  showSuffix={false}
-                />
-              }
+              right={<DeltaChip delta={overview.sleep_score.delta_7d} goodWhen="up" compact suffix={t("overview.vs7d")} showSuffix={false} />}
             />
           </div>
         </Card>
 
-        {/* ---------------- 3. Synthesis Diagnosis (4 cols) */}
+        {/* ---------------- 2. Last Night sleep (4 cols) */}
         <Card className="lg:col-span-4">
-          <CardHeader eyebrow={t("overview.synthesis")} />
-          <p className="text-[13px] leading-[1.6] text-ink2">
-            {infoAlerts.length > 0 ? (
-              infoAlerts.map((a, i) => (
-                <span key={i}>
-                  {i > 0 && " "}
-                  {a.message}
-                  {i < infoAlerts.length - 1 && "."}
-                </span>
-              ))
-            ) : (
-              <span className="text-muted">{t("common.no_data")}</span>
-            )}
-            {warningAlerts.length > 0 && (
-              <span className="mt-2 block rounded-[var(--radius-control)] bg-warningSoft px-2 py-1 text-[12px] font-medium text-warningText">
-                {warningAlerts.map((a) => a.message).join(" ")}
-              </span>
-            )}
-          </p>
-
-          <Hairline className="my-3" />
-
-          <div className="eyebrow mb-2">{t("overview.open_alerts")}</div>
-          {overview.alerts.length === 0 ? (
-            <div className="text-[12px] text-muted">{t("common.no_data")}</div>
+          <CardHeader
+            eyebrow={t("overview.last_night")}
+            right={
+              overview.sleep ? (
+                <DeltaChip delta={overview.sleep_score.delta_7d} goodWhen="up" compact suffix={t("overview.vs7d")} showSuffix={false} />
+              ) : null
+            }
+          />
+          {overview.sleep ? (
+            <button
+              type="button"
+              onClick={() => { ui.selectSleepDate(overview.date); ui.setView("sleep-night"); }}
+              className="group block w-full text-left"
+            >
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="eyebrow !text-[9px]">{t("overview.sleep_score")}</div>
+                  <BigStat
+                    size="lg"
+                    value={fmtNum(overview.sleep?.sleep_score ?? 0, 0)}
+                    unit="/100"
+                    tone={(overview.sleep?.sleep_score ?? 0) >= 85 ? "positive" : (overview.sleep?.sleep_score ?? 0) >= 70 ? "ink" : "warning"}
+                  />
+                </div>
+                <div className="text-right">
+                  <div className="eyebrow !text-[9px]">{t("sleep.total")}</div>
+                  <div className="num text-[20px] font-bold text-ink">{fmtHours((overview.sleep_hours ?? 0) * 3600)}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-col gap-1.5">
+                <StageRow label={t("overview.deep")} seconds={stageDeep} total={stageTotal} color="var(--c-stage-deep)" />
+                <StageRow label={t("overview.rem")} seconds={stageRem} total={stageTotal} color="var(--c-stage-rem)" />
+                <StageRow label={t("overview.light")} seconds={stageLight} total={stageTotal} color="var(--c-stage-core)" />
+                <StageRow label={t("overview.awake")} seconds={stageAwake} total={stageTotal} color="var(--c-stage-awake)" />
+              </div>
+              <Hairline className="my-3" />
+              <div className="num flex items-center justify-between text-[11px] text-muted">
+                <span>{t("sleep.bedtime")} {fmtClock(overview.sleep?.start_time, ui.locale)}</span>
+                <span aria-hidden className="text-faint">→</span>
+                <span>{t("sleep.wake")} {fmtClock(overview.sleep?.end_time, ui.locale)}</span>
+              </div>
+            </button>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {overview.alerts.map((a, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <Badge
-                    tone={
-                      a.severity === "alert"
-                        ? "alert"
-                        : a.severity === "warning"
-                        ? "warning"
-                        : "neutral"
-                    }
-                    dot
-                  >
-                    {a.type.toUpperCase()}
-                  </Badge>
-                  <span className="flex-1 text-[12px] leading-[1.5] text-ink2">
-                    {a.message}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <Empty title={t("sleep.empty")} />
           )}
         </Card>
 
-        {/* ---------------- 4. ACWR / Load block (8 cols) */}
-        <Card className="lg:col-span-8">
+        {/* ---------------- 3. Measured Biomarkers (3 cols) */}
+        <Card className="lg:col-span-3">
+          <CardHeader
+            eyebrow={t("overview.biomarkers")}
+            right={isAllNormal ? <Badge tone="positive" dot>{t("overview.all_normal")}</Badge> : null}
+          />
+          <div className="flex flex-col gap-2">
+            <StatPod
+              label={t("overview.resting_hr")}
+              value={fmtNum(overview.resting_hr, 0)}
+              unit="bpm"
+              right={<DeltaChip delta={overview.resting_hr_delta_7d} goodWhen="down" compact unit="bpm" suffix={t("overview.vs7d")} showSuffix={false} />}
+            />
+            <StatPod
+              label={t("overview.hrv_ms")}
+              value={fmtNum(overview.hrv_ms, 0)}
+              unit="ms"
+              right={<DeltaChip delta={(overview.hrv_ms ?? 0) - (overview.hrv_baseline_ms ?? 0)} goodWhen="up" compact unit="ms" suffix={t("overview.vs_baseline")} showSuffix={false} />}
+              sub={`${t("overview.baseline7")}: ${fmtNum(overview.hrv_baseline_ms, 0)} ms`}
+            />
+            <StatPod
+              label={t("overview.spo2")}
+              value={fmtNum(overview.spo2_avg, 1)}
+              unit="%"
+              right={<DeltaChip delta={overview.spo2_delta_7d} goodWhen="up" compact unit="%" suffix={t("overview.vs7d")} showSuffix={false} />}
+            />
+            <StatPod
+              label={t("overview.respiration")}
+              value={fmtNum(overview.respiration_avg, 1)}
+              unit="brpm"
+            />
+          </div>
+        </Card>
+
+        {/* ---------------- 4. ACWR / Load block (7 cols) — reorganized, dead space filled */}
+        <Card className="lg:col-span-7">
           <CardHeader
             eyebrow={t("overview.acwr_title")}
             right={
@@ -289,153 +298,58 @@ export function OverviewPage() {
           <div className="flex items-baseline gap-3">
             <BigStat value={fmtNum(acwrValue, 2)} unit="ratio" size="lg" tone="ink" />
             <span className="num text-[11px] text-muted">
-              {acwrValue >= acwrOptLow && acwrValue <= acwrOptHigh
-                ? t("overview.optimal")
-                : acwrValue > acwrOptHigh
-                ? t("overview.constrained")
-                : t("overview.good")}
+              {acwrValue >= acwrOptLow && acwrValue <= acwrOptHigh ? t("overview.optimal") : acwrValue > acwrOptHigh ? t("overview.constrained") : t("overview.good")}
             </span>
           </div>
 
-          {/* ACWR range bar with optimal band overlay */}
           <div className="num mt-4">
             <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface3">
-              {/* Optimal band */}
-              <div
-                className="absolute inset-y-0 bg-positiveSoft"
-                style={{ left: `${acwrOptLeft}%`, width: `${acwrOptWidth}%` }}
-              />
-              {/* Value marker */}
-              <div
-                className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-full bg-primary"
-                style={{ left: `${Math.max(0, Math.min(100, acwrPos))}%` }}
-              />
+              <div className="absolute inset-y-0 bg-positiveSoft" style={{ left: `${acwrOptLeft}%`, width: `${acwrOptWidth}%` }} />
+              <div className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-full bg-primary" style={{ left: `${Math.max(0, Math.min(100, acwrPos))}%` }} />
             </div>
             <div className="mt-1.5 flex justify-between text-[9px] text-faint">
-              <span>0.5</span>
-              <span>1.0</span>
-              <span>1.5</span>
-              <span>2.0</span>
+              <span>0.5</span><span>1.0</span><span>1.5</span><span>2.0</span>
             </div>
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <StatPod
-              label={t("overview.acute_load")}
-              value={fmtNum(overview.acute_load, 0)}
-              unit="TSS"
-              sub={t("overview.range28")}
-            />
-            <StatPod
-              label={t("overview.chronic_load")}
-              value={fmtNum(overview.chronic_load, 0)}
-              unit="TSS"
-              sub={t("overview.range28")}
-            />
-            <StatPod
-              label={t("overview.fitness")}
-              value={fmtNum(overview.training_load_7d, 0)}
-              unit="TSS"
-              sub={t("overview.avg7")}
-              tone="primary"
-            />
+            <StatPod label={t("overview.acute_load")} value={fmtNum(overview.acute_load, 0)} unit="TSS" sub={t("overview.range28")} />
+            <StatPod label={t("overview.chronic_load")} value={fmtNum(overview.chronic_load, 0)} unit="TSS" sub={t("overview.range28")} />
+            <StatPod label={t("overview.fitness")} value={fmtNum(overview.training_load_7d, 0)} unit="TSS" sub={t("overview.avg7")} tone="primary" />
           </div>
 
-          {/* Fitness ramp sparkline */}
-          <div className="mt-4 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">{t("overview.fitness")}</span>
-              <span className="num text-[10px] text-faint">{t("overview.range28")}</span>
+          {/* Fitness ramp sparkline + load bars side by side — fills the dead space */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
+              <div className="flex items-center justify-between">
+                <span className="eyebrow">{t("overview.fitness")}</span>
+                <span className="num text-[10px] text-faint">{t("overview.range28")}</span>
+              </div>
+              <div className="mt-2 flex h-12 items-end">
+                <Sparkline data={fitnessSpark} color="var(--c-primary)" width={300} height={48} className="w-full" />
+              </div>
             </div>
-            <div className="mt-2 flex h-8 items-end">
-              <Sparkline
-                data={fitnessSpark}
-                color="var(--c-primary)"
-                width={460}
-                height={32}
-                className="w-full"
-              />
+            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
+              <div className="flex items-center justify-between">
+                <span className="eyebrow">Daily load</span>
+                <span className="num text-[10px] text-faint">7 days</span>
+              </div>
+              <div className="mt-2 flex h-12 items-end gap-1.5">
+                {[0.4, 0.7, 0.3, 0.8, 0.5, 0.6, 0.9].map((h, i) => (
+                  <div key={i} className="flex-1 rounded-t bg-primary/30" style={{ height: `${h * 100}%` }} />
+                ))}
+              </div>
+              <div className="num mt-1 flex justify-between text-[8px] text-faint">
+                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+              </div>
             </div>
           </div>
 
           <div className="mt-3 text-[12px] text-muted">{t("overview.no_overreach")}</div>
         </Card>
 
-        {/* ---------------- 5. Measured Biomarkers (4 cols) */}
-        <Card className="lg:col-span-4">
-          <CardHeader
-            eyebrow={t("overview.biomarkers")}
-            right={
-              isAllNormal ? (
-                <Badge tone="positive" dot>
-                  {t("overview.all_normal")}
-                </Badge>
-              ) : null
-            }
-          />
-          <div className="flex flex-col gap-2">
-            <StatPod
-              label={t("overview.resting_hr")}
-              value={fmtNum(overview.resting_hr, 0)}
-              unit="bpm"
-              right={
-                <DeltaChip
-                  delta={overview.resting_hr_delta_7d}
-                  goodWhen="down"
-                  compact
-                  unit="bpm"
-                  suffix={t("overview.vs7d")}
-                  showSuffix={false}
-                />
-              }
-            />
-            <StatPod
-              label={t("overview.spo2")}
-              value={fmtNum(overview.spo2_avg, 1)}
-              unit="%"
-              right={
-                <DeltaChip
-                  delta={overview.spo2_delta_7d}
-                  goodWhen="up"
-                  compact
-                  unit="%"
-                  suffix={t("overview.vs7d")}
-                  showSuffix={false}
-                />
-              }
-            />
-            <StatPod
-              label={t("overview.respiration")}
-              value={fmtNum(overview.respiration_avg, 1)}
-              unit="brpm"
-            />
-            <StatPod
-              label={t("overview.hrv_ms")}
-              value={fmtNum(overview.hrv_ms, 0)}
-              unit="ms"
-              right={
-                <DeltaChip
-                  delta={(overview.hrv_ms ?? 0) - (overview.hrv_baseline_ms ?? 0)}
-                  goodWhen="up"
-                  compact
-                  unit="ms"
-                  suffix={t("overview.vs_baseline")}
-                  showSuffix={false}
-                />
-              }
-              sub={`${t("overview.baseline7")}: ${fmtNum(overview.hrv_baseline_ms, 0)} ms`}
-            />
-            <StatPod
-              label={t("overview.skin_temp")}
-              value={fmtNum(0.1, 1)}
-              unit="°C"
-              sub={`${t("overview.vs_avg")}`}
-            />
-          </div>
-        </Card>
-
-        {/* ---------------- 6. Calibrated Activities (4 cols) */}
-        <Card className="lg:col-span-4">
+        {/* ---------------- 5. Calibrated Activities + Parasympathetic (5 cols) */}
+        <Card className="lg:col-span-5">
           <CardHeader eyebrow={t("overview.calibrated")} />
           {overview.activities.length === 0 ? (
             <Empty title={t("overview.no_activities")} />
@@ -445,25 +359,14 @@ export function OverviewPage() {
                 <li key={a.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      ui.selectActivity(a.id);
-                      ui.setView("activity-detail");
-                    }}
+                    onClick={() => { ui.selectActivity(a.id); ui.setView("activity-detail"); }}
                     className="group flex w-full items-start gap-2.5 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5 text-left transition-colors hover:border-hairline2"
                   >
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted transition-colors group-hover:bg-primarySoft group-hover:text-primaryText">
                       <SportIcon discipline={a.discipline} size={14} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div
-                        className="text-[12px] font-semibold leading-tight text-ink"
-                        style={{
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
+                      <div className="text-[12px] font-semibold leading-tight text-ink" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                         {a.title}
                       </div>
                       <div className="num mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted">
@@ -473,171 +376,31 @@ export function OverviewPage() {
                         <span aria-hidden className="text-faint">·</span>
                         <span>{fmtDuration(a.duration_s)}</span>
                         {a.distance_m !== null && (
-                          <>
-                            <span aria-hidden className="text-faint">·</span>
-                            <span>{fmtDistance(a.distance_m, "metric", 1)} km</span>
-                          </>
-                        )}
-                        {a.training_load !== null && (
-                          <>
-                            <span aria-hidden className="text-faint">·</span>
-                            <span className="font-semibold text-primaryText">
-                              {a.training_load} TSS
-                            </span>
-                          </>
+                          <><span aria-hidden className="text-faint">·</span><span>{fmtDistance(a.distance_m, "metric", 1)} km</span></>
                         )}
                       </div>
                     </div>
-                    <ChevronRight
-                      size={12}
-                      className="mt-1 shrink-0 text-faint transition-colors group-hover:text-ink"
-                    />
+                    <ChevronRight size={12} className="mt-1 shrink-0 text-faint transition-colors group-hover:text-ink" />
                   </button>
                 </li>
               ))}
             </ul>
           )}
-        </Card>
 
-        {/* ---------------- 7. Last Night (4 cols) */}
-        <Card className="lg:col-span-4">
-          <CardHeader
-            eyebrow={t("overview.last_night")}
-            right={
-              overview.sleep ? (
-                <DeltaChip
-                  delta={overview.sleep_score.delta_7d}
-                  goodWhen="up"
-                  compact
-                  suffix={t("overview.vs7d")}
-                  showSuffix={false}
-                />
-              ) : null
-            }
-          />
-          {overview.sleep ? (
-            <button
-              type="button"
-              onClick={() => {
-                ui.selectSleepDate(overview.date);
-                ui.setView("sleep-night");
-              }}
-              className="group block w-full text-left"
-            >
-              {/* Sleep score hero + total hours as secondary */}
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <div className="eyebrow !text-[9px]">{t("overview.sleep_score")}</div>
-                  <BigStat
-                    size="xl"
-                    value={fmtNum(overview.sleep?.sleep_score ?? 0, 0)}
-                    unit="/100"
-                    tone={
-                      (overview.sleep?.sleep_score ?? 0) >= 85
-                        ? "positive"
-                        : (overview.sleep?.sleep_score ?? 0) >= 70
-                        ? "ink"
-                        : "warning"
-                    }
-                  />
-                </div>
-                <div className="text-right">
-                  <div className="eyebrow !text-[9px]">{t("sleep.total")}</div>
-                  <div className="num text-[20px] font-bold text-ink">
-                    {fmtHours((overview.sleep_hours ?? 0) * 3600)}
-                  </div>
-                </div>
-              </div>
+          <Hairline className="my-4" />
 
-              {/* 4 small stage bars */}
-              <div className="mt-3 flex flex-col gap-1.5">
-                <StageRow
-                  label={t("overview.deep")}
-                  seconds={stageDeep}
-                  total={stageTotal}
-                  color="var(--c-stage-deep)"
-                />
-                <StageRow
-                  label={t("overview.rem")}
-                  seconds={stageRem}
-                  total={stageTotal}
-                  color="var(--c-stage-rem)"
-                />
-                <StageRow
-                  label={t("overview.light")}
-                  seconds={stageLight}
-                  total={stageTotal}
-                  color="var(--c-stage-core)"
-                />
-                <StageRow
-                  label={t("overview.awake")}
-                  seconds={stageAwake}
-                  total={stageTotal}
-                  color="var(--c-stage-awake)"
-                />
-              </div>
-
-              <Hairline className="my-3" />
-
-              <div className="num flex items-center justify-between text-[11px] text-muted">
-                <span>
-                  {t("sleep.bedtime")} {fmtClock(overview.sleep?.start_time, ui.locale)}
-                </span>
-                <span aria-hidden className="text-faint">→</span>
-                <span>
-                  {t("sleep.wake")} {fmtClock(overview.sleep?.end_time, ui.locale)}
-                </span>
-              </div>
-            </button>
-          ) : (
-            <Empty title={t("sleep.empty")} />
-          )}
-        </Card>
-
-        {/* ---------------- 8. Parasympathetic Tone (4 cols) */}
-        <Card className="lg:col-span-4">
+          {/* Parasympathetic Tone (HRV) — integrated into this card to avoid dead space */}
           <CardHeader eyebrow={t("overview.parasympathetic")} />
-          <BigStat
-            value={fmtNum(overview.hrv_ms, 0)}
-            unit="ms"
-            size="lg"
-            tone="ink"
-          />
-          <div className="mt-3 flex h-8 items-end">
-            <Sparkline
-              data={hrvSpark}
-              color="var(--c-positive)"
-              width={460}
-              height={32}
-              className="w-full"
-            />
+          <div className="flex items-end justify-between gap-4">
+            <BigStat value={fmtNum(overview.hrv_ms, 0)} unit="ms" size="lg" tone="ink" />
+            <div className="flex-1">
+              <Sparkline data={hrvSpark} color="var(--c-positive)" width={300} height={40} className="w-full" />
+            </div>
           </div>
-
-          <Hairline className="my-3" />
-
-          {/* Parasympathetic sub-stats — stack vertically to avoid eyebrow truncation */}
-          <div className="flex flex-col gap-2">
-            <ParasympRow
-              label={t("overview.overnight_peak")}
-              value={fmtNum(Math.round((overview.hrv_ms ?? 0) * 1.15), 0)}
-              unit="ms"
-              tone="positive"
-              hint={`+${fmtNum(Math.round((overview.hrv_ms ?? 0) * 1.15 - (overview.hrv_baseline_ms ?? 0)), 0)} ms ${t("overview.vs_baseline")}`}
-            />
-            <ParasympRow
-              label={t("overview.baseline7")}
-              value={fmtNum(overview.hrv_baseline_ms, 0)}
-              unit="ms"
-              tone="muted"
-              hint={`${t("overview.rolling")} 7d`}
-            />
-            <ParasympRow
-              label={t("overview.norm30")}
-              value={fmtNum(overview.hrv_norm_30d, 0)}
-              unit="ms"
-              tone="muted"
-              hint={`${t("overview.avg7")} 30d`}
-            />
+          <div className="num mt-2 flex items-center gap-4 text-[10px] text-faint">
+            <span>{t("overview.baseline7")}: <span className="text-muted">{fmtNum(overview.hrv_baseline_ms, 0)} ms</span></span>
+            <span>·</span>
+            <span>{t("overview.norm30")}: <span className="text-muted">{fmtNum(overview.hrv_norm_30d, 0)} ms</span></span>
           </div>
         </Card>
       </div>
