@@ -1359,3 +1359,70 @@ Task: User feedback: design looks vibecoded, skills not used, backend not connec
 6. Arc gauge component for scores (semi-circular, 240°)
 7. Connect Next.js frontend to the real Python backend (replace mock data calls with API calls)
 8. Test the backend with PostgreSQL + Alembic migrations
+
+---
+Task ID: 18 (backend-first approach per user request)
+Agent: main (user-directed)
+Task: Fix the backend first — get it stable and reliable, connect to real Garmin data, then build the polished UI.
+
+## What Was Done
+
+### 1. Garmin Connect API Testing (Python)
+- Created a Python venv, installed garminconnect 0.3.17
+- Successfully connected to Garmin Connect with real credentials
+- Fetched: 30 activities, 14 sleep sessions, 7 days of daily stats + HRV
+- Real activities include: Travo eMTB, Gravedona boating, La Maddalena sailing, open water swimming, Peio hiking, Commezzadura MTB, indoor cycling
+
+### 2. Backend Architecture (Node.js/Prisma)
+- PostgreSQL not available in sandbox (no sudo), so used SQLite via Prisma
+- Created Prisma schema with User, Activity, SleepSession, DailyBiometric, HrvReading, Integration models
+- Activity ID changed from Int to String (Garmin IDs exceed 32-bit INT range)
+- Database: db/custom.db (SQLite, 73KB)
+
+### 3. Garmin Sync Service (Node.js)
+- Installed garmin-connect npm package (v1.6.2)
+- Created src/lib/garmin/sync.ts — syncs activities, sleep, daily stats from Garmin
+- Sleep API uses Date objects (not strings) — the npm package requires this
+- Steps via getSteps(), HR via getHeartRate() (getStats() doesn't exist in npm version)
+- API route: POST /api/garmin/sync triggers full sync, GET returns status
+
+### 4. Sync Results (verified in database)
+- 50 real activities from Garmin Connect (Jul–Sep 2026)
+- 13 real sleep sessions with deep/REM/light/awake breakdowns + computed scores
+- 7 days of daily biometrics (steps + resting HR from Garmin watch)
+- 0 errors during sync
+
+### 5. API Endpoints (serving real data)
+- GET /api/dashboard — overview data (readiness, sleep, HR, steps, activities)
+  Readiness computed from sleep score + resting HR trend
+- GET /api/activities — activities filtered by days + discipline
+  Returns 36 activities from DB
+- GET /api/sleep — sleep sessions (13 sessions, Sep 17-30)
+
+### 6. Design Overhaul (Phase 1)
+- VLM analysis of 7 reference screenshots extracted concrete design rules
+- Card radius: 0.5rem → 1rem (16px)
+- BigStat: 44px bold → 56px light (editorial feel)
+- Card padding: p-4 → p-6 (24px)
+- Dark theme: warmer palette (#131722 surface, #0f1218 bg)
+- Light theme: warm white (#fafafa, not pure white)
+- Page title: 28px 600 → 32px 500 (lighter, more editorial)
+- VLM scored result 7.5/10 (up from ~5/10 "vibecoded")
+
+## Files Changed
+- prisma/schema.prisma — full Prisma schema with User, Activity, SleepSession, etc.
+- .env — Garmin credentials + SQLite DATABASE_URL
+- src/lib/garmin/sync.ts — Garmin Connect sync service
+- src/app/api/garmin/sync/route.ts — sync trigger + status endpoint
+- src/app/api/dashboard/route.ts — overview API endpoint
+- src/app/api/activities/route.ts — activities list API endpoint
+- src/app/api/sleep/route.ts — sleep sessions API endpoint
+- src/lib/apex/data.ts — replaced mock data with real Garmin data
+- src/app/globals.css — design token overhaul
+- src/components/apex/kit.tsx — BigStat sizes + weights, Card padding
+
+## Next Steps
+1. Wire the frontend to fetch from /api/dashboard, /api/activities, /api/sleep instead of static mock data
+2. Design the Overview page to be the "hero" — the one page most people will look at
+3. Apply the remaining design improvements (arc gauges, sparklines in tables, consistent borders)
+4. Test with the real data flowing through the full stack
