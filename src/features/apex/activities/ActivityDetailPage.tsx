@@ -25,7 +25,7 @@
  * the same design system.
  */
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import {
@@ -248,6 +248,7 @@ export function ActivityDetailPage() {
             unit="bpm"
             data={streams.columns.hr}
             color="var(--c-alert)"
+            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
           />
           <StreamChart
             label={t("activities.power")}
@@ -255,6 +256,7 @@ export function ActivityDetailPage() {
             data={streams.columns.power}
             color="var(--c-primary)"
             emptyLabel={t("activities.no_power")}
+            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
           />
           <StreamChart
             label={t("activities.speed_stream")}
@@ -262,18 +264,21 @@ export function ActivityDetailPage() {
             data={streams.columns.speed}
             color="var(--c-positive)"
             emptyLabel={t("activities.no_power")}
+            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
           />
           <StreamChart
             label={t("activities.altitude")}
             unit="m"
             data={streams.columns.alt}
             color="var(--c-text-2)"
+            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
           />
           <StreamChart
             label={t("activities.cadence")}
             unit="rpm"
             data={streams.columns.cadence}
             color="var(--c-warning)"
+            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
           />
           {/* Shared time axis */}
           <div className="flex items-center gap-3 pt-2">
@@ -539,13 +544,19 @@ function StreamChart({
   data,
   color,
   emptyLabel,
+  timeLabels,
 }: {
   label: string;
   unit: string;
   data: (number | null)[];
   color: string;
   emptyLabel?: string;
+  /** Optional [start, end] time strings for x-axis tooltip */
+  timeLabels?: [string, string];
 }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const points = data.filter((v): v is number => v !== null && Number.isFinite(v));
   const hasData = points.length >= 2;
 
@@ -585,8 +596,45 @@ function StreamChart({
       .join(" ");
   }
 
+  // Hover state: compute value + position for tooltip
+  const hoverValue = hoverIdx !== null ? data[hoverIdx] : null;
+  const hoverX = hoverIdx !== null ? hoverIdx * stepX : 0;
+  const hoverY = hoverIdx !== null && hoverValue !== null && hasData
+    ? H - 4 - ((hoverValue - min) / (max - min || 1)) * (H - 8)
+    : 0;
+
+  // Mouse → nearest data index
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!hasData) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const relX = (e.clientX - rect.left) / rect.width;
+    const idx = Math.max(0, Math.min(data.length - 1, Math.round(relX * (data.length - 1))));
+    setHoverIdx(idx);
+  };
+
+  // Interpolated time at hover index (linear between start and end)
+  const hoverTime = hoverIdx !== null && timeLabels
+    ? (() => {
+        try {
+          const startMs = new Date(timeLabels[0]).getTime();
+          const endMs = new Date(timeLabels[1]).getTime();
+          if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+          const t = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, data.length - 1);
+          return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
   return (
-    <div className="flex items-center gap-3 border-b border-hairline/60 pb-1 last:border-b-0">
+    <div
+      ref={containerRef}
+      className="relative flex items-center gap-3 border-b border-hairline/60 pb-1 last:border-b-0"
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHoverIdx(null)}
+    >
       <div className="w-20 shrink-0">
         <div className="eyebrow !text-[10px] truncate">{label}</div>
       </div>
@@ -614,6 +662,30 @@ function StreamChart({
               vectorEffect="non-scaling-stroke"
             />
             <circle cx={lastX} cy={lastY} r={2.4} fill={color} vectorEffect="non-scaling-stroke" />
+            {/* Hover crosshair */}
+            {hoverIdx !== null && hoverValue !== null && Number.isFinite(hoverValue) && (
+              <>
+                <line
+                  x1={hoverX}
+                  y1={0}
+                  x2={hoverX}
+                  y2={H}
+                  stroke="var(--c-text-muted)"
+                  strokeWidth={0.5}
+                  strokeDasharray="2 2"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  cx={hoverX}
+                  cy={hoverY}
+                  r={3}
+                  fill={color}
+                  stroke="var(--c-surface)"
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </>
+            )}
           </svg>
         ) : (
           <div className="flex h-9 items-center text-[11px] italic text-faint">
@@ -623,13 +695,25 @@ function StreamChart({
       </div>
       <div className="num w-28 shrink-0 text-right text-[11px]">
         {hasData ? (
-          <>
-            <span className="font-semibold tabular-nums text-ink">{avg}</span>
-            <span className="text-faint"> {unit}</span>
-            <div className="tabular-nums text-[9px] text-faint">
-              {min}–{max}
-            </div>
-          </>
+          hoverIdx !== null && hoverValue !== null && Number.isFinite(hoverValue) ? (
+            <>
+              <span className="font-bold tabular-nums text-ink" style={{ color }}>
+                {Math.round(hoverValue)}
+              </span>
+              <span className="text-faint"> {unit}</span>
+              {hoverTime && (
+                <div className="tabular-nums text-[9px] text-faint">{hoverTime}</div>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="font-semibold tabular-nums text-ink">{avg}</span>
+              <span className="text-faint"> {unit}</span>
+              <div className="tabular-nums text-[9px] text-faint">
+                {min}–{max}
+              </div>
+            </>
+          )
         ) : (
           <span className="text-faint">—</span>
         )}

@@ -29,7 +29,27 @@ export function NotificationsBell() {
   const ui = useApexUi();
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [readAlerts, setReadAlerts] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
+
+  // Load read-alert ids from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("apex-read-alerts");
+      if (raw) setReadAlerts(new Set(JSON.parse(raw)));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist read-alert ids whenever they change
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("apex-read-alerts", JSON.stringify(Array.from(readAlerts)));
+    } catch {
+      /* ignore */
+    }
+  }, [readAlerts]);
 
   // Close on outside click + Escape
   useEffect(() => {
@@ -51,27 +71,43 @@ export function NotificationsBell() {
   }, [open]);
 
   const alerts = overview.alerts as AlertItem[];
-  const unreadCount = alerts.length;
-  const hasAlerts = alerts.some((a) => a.severity === "alert");
-  const hasWarnings = alerts.some((a) => a.severity === "warning");
+  // Unread = alerts whose type+message hash is not in readAlerts
+  const alertKey = (a: AlertItem) => `${a.type}:${a.message.slice(0, 40)}`;
+  const unreadAlerts = alerts.filter((a) => !readAlerts.has(alertKey(a)));
+  const unreadCount = unreadAlerts.length;
 
-  // Bell tone reflects the highest severity
-  const bellTone = hasAlerts
+  // Mark all as read when the dropdown is opened
+  const markAllRead = () => {
+    setReadAlerts(new Set(alerts.map(alertKey)));
+  };
+
+  // For severity color, consider only unread alerts
+  const unreadHasAlerts = unreadAlerts.some((a) => a.severity === "alert");
+  const unreadHasWarnings = unreadAlerts.some((a) => a.severity === "warning");
+
+  // Bell tone reflects the highest severity among UNREAD alerts
+  const bellTone = unreadHasAlerts
     ? "text-alertText border-alert/40 bg-alertSoft"
-    : hasWarnings
+    : unreadHasWarnings
     ? "text-warningText border-warning/40 bg-warningSoft"
     : "text-muted border-hairline bg-surface hover:bg-surface2";
 
   // Bell dot color matches severity (only when unread)
-  const dotColor = hasAlerts ? "bg-alert" : hasWarnings ? "bg-warning" : "bg-primary";
+  const dotColor = unreadHasAlerts ? "bg-alert" : unreadHasWarnings ? "bg-warning" : "bg-primary";
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          // Mark all as read when opening (after a brief delay so the badge is visible)
+          if (!open && unreadCount > 0) {
+            setTimeout(() => markAllRead(), 1500);
+          }
+        }}
         className={`relative flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border transition-colors ${bellTone} hover:text-ink`}
-        aria-label={`Notifications (${unreadCount})`}
+        aria-label={`Notifications (${unreadCount} unread)`}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
@@ -96,9 +132,20 @@ export function NotificationsBell() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
             <div className="eyebrow">{t("overview.open_alerts")}</div>
-            <span className="num text-[10px] text-faint">
-              {unreadCount} {unreadCount === 1 ? "alert" : "alerts"}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="num text-[10px] text-faint">
+                {unreadCount > 0 ? `${unreadCount} unread` : "All read"}
+              </span>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  className="num text-[10px] font-semibold text-primaryText hover:text-primaryText/80"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
           {/* List */}
@@ -116,8 +163,9 @@ export function NotificationsBell() {
                       : a.severity === "warning"
                       ? "text-warningText bg-warningSoft"
                       : "text-positiveText bg-positiveSoft";
+                  const isRead = readAlerts.has(alertKey(a));
                   return (
-                    <li key={i}>
+                    <li key={i} className={isRead ? "opacity-60" : ""}>
                       <button
                         type="button"
                         onClick={() => {
@@ -134,6 +182,9 @@ export function NotificationsBell() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="eyebrow !text-[9px] uppercase">{a.type}</span>
+                            {!isRead && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="unread" />
+                            )}
                             <span className="num text-[9px] text-faint">
                               {timeAgo(new Date(Date.now() - i * 3600_000).toISOString(), ui.locale)}
                             </span>

@@ -191,6 +191,8 @@ function AssistantMessage({
   locale: "en" | "it";
 }) {
   const isDisclaimer = msg.kind === "disclaimer";
+  // Streaming indicator: empty content means the message is currently being streamed.
+  const isStreaming = !msg.content;
   return (
     <div className="flex items-start gap-2.5">
       <div className="mt-0.5 shrink-0">
@@ -199,7 +201,18 @@ function AssistantMessage({
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           <KindBadge kind={msg.kind} t={t} />
-          <span className="mono text-[10px] text-faint">{timeAgo(msg.created_at, locale)}</span>
+          {isStreaming && (
+            <span className="num flex items-center gap-1 text-[10px] text-primaryText">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+              </span>
+              typing…
+            </span>
+          )}
+          {!isStreaming && (
+            <span className="mono text-[10px] text-faint">{timeAgo(msg.created_at, locale)}</span>
+          )}
         </div>
         <div className="rounded-[var(--radius-card)] border border-hairline bg-surface px-3 py-2">
           <div
@@ -208,6 +221,12 @@ function AssistantMessage({
             }`}
           >
             {msg.content}
+            {isStreaming && (
+              <span
+                className="ml-0.5 inline-block h-[14px] w-[7px] translate-y-[2px] animate-pulse bg-primary"
+                aria-hidden
+              />
+            )}
           </div>
           {msg.referenced_data && <ReferencedDataGrid data={msg.referenced_data} />}
         </div>
@@ -359,6 +378,75 @@ export function CoachPage() {
     }));
   }
 
+  /** Replace a specific message (by id) — used for streaming. */
+  function replaceMessage(id: number, msgId: number, updater: (m: ChatMessage) => ChatMessage) {
+    setMessagesMap((prev) => ({
+      ...prev,
+      [id]: (prev[id] ?? []).map((m) => (m.id === msgId ? updater(m) : m)),
+    }));
+  }
+
+  /**
+   * Stream the assistant reply word-by-word into the chat thread.
+   * Each reply is 3 messages (data / recommendation / disclaimer). We stream
+   * the data message word-by-word; the recommendation + disclaimer appear all
+   * at once after the data stream completes (they're typically shorter and
+   * benefit less from streaming).
+   *
+   * Cancellable: returns a cleanup function that clears the timer.
+   */
+  function streamReply(id: number, userMsg: string): () => void {
+    const reply = generateReply(userMsg);
+    const nowIso = new Date().toISOString();
+    const dataMsg = reply[0];
+    const rest = reply.slice(1);
+
+    // Words to stream in the data message
+    const words = dataMsg.content.split(/(\s+)/); // keep whitespace tokens
+    let wordIdx = 0;
+
+    // Initial empty data message — will be progressively filled.
+    const streamingMsg: ChatMessage = {
+      ...dataMsg,
+      content: "",
+    };
+    appendMessages(id, [streamingMsg]);
+
+    const tick = () => {
+      wordIdx += 1;
+      const partial = words.slice(0, wordIdx).join("");
+      const streamingId = streamingMsg.id;
+      replaceMessage(id, streamingId, (m) => ({ ...m, content: partial }));
+
+      if (wordIdx < words.length) {
+        // Variable delay: faster for whitespace tokens, slower for word boundaries
+        const lastToken = words[wordIdx - 1] ?? "";
+        const delay = /^\s+$/.test(lastToken) ? 20 : 45 + Math.random() * 35;
+        loadingTimer.current = setTimeout(tick, delay);
+      } else {
+        // Stream complete — append the recommendation + disclaimer.
+        appendMessages(id, rest);
+        updateSession(id, (s) => ({
+          ...s,
+          message_count: s.message_count + reply.length,
+          last_activity_at: nowIso,
+          preview: dataMsg.content,
+        }));
+        setLoading(false);
+        loadingTimer.current = null;
+      }
+    };
+
+    // Brief "thinking" pause before streaming starts
+    loadingTimer.current = setTimeout(tick, 450);
+    return () => {
+      if (loadingTimer.current) {
+        clearTimeout(loadingTimer.current);
+        loadingTimer.current = null;
+      }
+    };
+  }
+
   function handleSend() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
@@ -391,21 +479,9 @@ export function CoachPage() {
       setCurrentId(id);
       ui.selectChat(id);
 
-      // Simulate assistant thinking, then push data + recommendation + disclaimer.
+      // Stream the assistant reply word-by-word (typewriter effect).
       setLoading(true);
-      loadingTimer.current = setTimeout(() => {
-        const reply = generateReply(trimmed);
-        const nowIso = new Date().toISOString();
-        appendMessages(id, reply);
-        updateSession(id, (s) => ({
-          ...s,
-          message_count: s.message_count + reply.length,
-          last_activity_at: nowIso,
-          preview: reply[0].content,
-        }));
-        setLoading(false);
-        loadingTimer.current = null;
-      }, 1200);
+      streamReply(id, trimmed);
     } else {
       /* ----- continuing existing conversation */
       const id = currentId;
@@ -417,21 +493,9 @@ export function CoachPage() {
         preview: trimmed,
       }));
 
+      // Stream the assistant reply word-by-word (typewriter effect).
       setLoading(true);
-      loadingTimer.current = setTimeout(() => {
-        const reply = generateReply(trimmed);
-        const nowIso = new Date().toISOString();
-        appendMessages(id, reply);
-        updateSession(id, (s) => ({
-          ...s,
-          message_count: s.message_count + reply.length,
-          last_activity_at: nowIso,
-          // Keep the most recent assistant data message as the preview.
-          preview: reply[0].content,
-        }));
-        setLoading(false);
-        loadingTimer.current = null;
-      }, 1200);
+      streamReply(id, trimmed);
     }
   }
 

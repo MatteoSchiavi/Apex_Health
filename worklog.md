@@ -686,3 +686,104 @@ Stage Summary:
 - 4 new features added (Activities column sort, Sleep Night Compare modal, Biometrics Recent pattern with localStorage, Coach voice input via ASR skill).
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - All features verified end-to-end via agent-browser.
+
+---
+Task ID: 10 (webDevReview cycle 4)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser + VLM (incl. mobile), fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 3 left the project at commit e0b3144 with 4 new features (Activities column sort, Sleep Night Compare modal, Biometrics Recent pattern with localStorage, Coach voice input via ASR skill).
+- Lint clean, dev server running, all 14 view paths rendering.
+- The 15-min webDevReview cron (job ID 426218) is active.
+
+## QA Findings (via agent-browser + VLM, including mobile viewport)
+- Mobile viewport (414x896) QA: bottom nav renders correctly with safe-area insets; Activities table is hidden on mobile (md:block) and stacked cards show instead.
+- All 8 main nav sections render with correct H1 headings.
+- No console errors or runtime exceptions across the QA pass.
+- VLM-flagged items on mobile were verified as mostly design intent (e.g. strength activities don't have distance/power by design).
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Activity Detail stream chart hover crosshair + tooltip** — `src/features/apex/activities/ActivityDetailPage.tsx` StreamChart component upgraded:
+   - Added `useState<number | null>(hoverIdx)` + `useRef<HTMLDivElement>(containerRef)`.
+   - Mouse-move handler converts cursor X to nearest data index.
+   - When hovering, renders a dashed vertical crosshair line + a colored dot at the data point.
+   - The right-side value display switches from avg+min–max to the exact hovered value + interpolated time (HH:MM) for that point.
+   - Added `timeLabels` prop (start/end ISO strings) — interpolated linearly across the chart's data length to produce the time label at hover.
+   - Imported `useRef, useState` from React (was previously only `useMemo`).
+   - Verified end-to-end: hovering HR container shows "151 bpm 10:38" instead of avg+range; crosshair line count goes from 0 → 1 on hover.
+2. **NotificationsBell mark-as-read (localStorage persistence)** — `src/components/apex/NotificationsBell.tsx`:
+   - Added `readAlerts: Set<string>` state, persisted to localStorage (key: `apex-read-alerts`).
+   - Each alert has a key derived from `type:message.slice(0,40)`.
+   - "Unread" count = alerts not in readAlerts. Bell tone + dot color now reflect only UNREAD severity.
+   - "Mark all read" button added in the dropdown header (only shown when unreadCount > 0).
+   - Auto-marks all as read 1.5s after opening the dropdown (lets the badge briefly flash first).
+   - Each unread alert shows a small primary-colored dot; read alerts render at opacity-60.
+   - aria-label updated to "Notifications (N unread)".
+   - Verified end-to-end: localStorage `apex-read-alerts` is initially null → after opening + clicking mark-all-read, persists the 3 alert keys.
+3. **Coach streaming LLM responses (typewriter effect)** — `src/features/apex/coach/CoachPage.tsx`:
+   - Added `streamReply(id, userMsg)` helper that:
+     - Calls `generateReply(userMsg)` to get the 3-message reply (data / recommendation / disclaimer).
+     - Streams the data message word-by-word using `setTimeout` with variable delay (20ms for whitespace tokens, 45-80ms for word boundaries — feels natural).
+     - Brief 450ms "thinking" pause before streaming starts.
+     - After data message completes, appends the recommendation + disclaimer all at once (they're typically shorter and benefit less from streaming).
+     - Returns a cleanup function that clears the timer.
+   - Added `replaceMessage(id, msgId, updater)` helper to update a specific message in place (used by the streamer).
+   - Replaced both `setTimeout` calls in `handleSend` (new conversation + continuing conversation branches) with `streamReply()`.
+   - Added streaming UI indicators on the AssistantMessage component:
+     - When `msg.content` is empty (sign of streaming), shows "typing…" with an animated ping dot next to the kind badge.
+     - Shows an animated-pulse primary-colored cursor bar inside the message bubble.
+     - Hides the timestamp during streaming (shows it once complete).
+   - Verified end-to-end via rapid DOM sampling:
+     - t=0.2s: 1 pulse cursor, typing indicator visible, 2 bubbles, last bubble length 0 (thinking pause)
+     - t=0.4–2.4s: last bubble length grows 3→17→35→52→65→80→100→113→128→145→161 (word-by-word growth)
+     - t=2.6s: bubbles jumps 2→4 (recommendation + disclaimer appended after stream completes)
+4. **Settings theme preview popover** — `src/components/apex/ThemePreviewCard.tsx` (~150 lines) + integration in SettingsPage:
+   - Two clickable preview cards (Dark + Light) shown above the Segmented control on Settings > Appearance.
+   - Each card renders a mini dashboard preview (Readiness BigStat + ScoreBar + HRV dot) in the FORCED target theme via a wrapping `<div className={previewTheme === "dark" ? "dark" : "light"}>` — the user sees the target theme even before applying.
+   - Active card has a primary ring + "ACTIVE" badge; inactive cards have hairline borders.
+   - Clicking a card applies that theme immediately via `applyTheme()`.
+   - The existing Segmented control is preserved below the previews for users who prefer the compact toggle.
+   - Verified: 3 theme buttons present (2 preview cards + 1 segmented); "Use Dark theme" marked active when dark is applied.
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Stream chart hover: dashed crosshair + colored dot at data point with surface-colored stroke for visibility against the chart line.
+- Stream chart right-side value: switches to bold + colored to match the chart line on hover (e.g. HR shows in alert-coral, Power in primary-blue).
+- Notifications dropdown header: count shows "N unread" or "All read"; "Mark all read" link uses primary tone.
+- Unread alert rows have a primary-colored dot indicator + full opacity; read rows dimmed to 60% opacity.
+- Coach streaming: "typing…" indicator uses an animated ping dot; cursor bar inside the bubble uses `animate-pulse` for a soft blink.
+- Settings theme preview cards: each card has a forced-theme inner wrapper so the preview is always accurate regardless of the page's current theme.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean (only "✓ Compiled" and "GET / 200" entries).
+- agent-browser QA:
+  - Activity Detail stream chart hover: crosshair line count goes 0 → 1 on hover; right-side value shows "151 bpm 10:38" instead of avg+range.
+  - NotificationsBell mark-as-read: localStorage persists 3 alert keys after "Mark all read" click.
+  - Coach streaming: verified via rapid DOM sampling — last bubble length grows word-by-word from 0 → 161 chars over ~2.4s; bubbles count jumps 2 → 4 when recommendation + disclaimer appended.
+  - Settings theme preview: 2 preview cards + 1 segmented control present; active card correctly identified.
+  - All 8 main nav sections render with correct H1 headings.
+  - No errors during the QA pass.
+
+## Files Changed
+- `src/features/apex/activities/ActivityDetailPage.tsx` — StreamChart upgraded with hover crosshair + tooltip; added useState/useRef imports; all 5 StreamChart calls now pass `timeLabels` prop.
+- `src/components/apex/NotificationsBell.tsx` — added readAlerts state + localStorage persistence; alertKey helper; markAllRead function; "Mark all read" button in header; unread dot indicator per row; read rows at opacity-60; bell tone reflects only unread severity; auto-mark-as-read 1.5s after opening.
+- `src/features/apex/coach/CoachPage.tsx` — added streamReply helper with word-by-word streaming + variable delays; replaceMessage helper; replaced both setTimeout calls in handleSend with streamReply; AssistantMessage component now shows typing cursor + "typing…" indicator when content is empty.
+- `src/components/apex/ThemePreviewCard.tsx` — NEW (~150 lines). Forced-theme mini dashboard preview card.
+- `src/features/apex/settings/SettingsPage.tsx` — added 2 ThemePreviewCard components above the Segmented control on Appearance section; imported ThemePreviewCard.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Real-time sync indicator** (websocket mini-service) on the status strip — currently uses simulated "Live acquisition" dot.
+2. **Persist Activity Compare selection** across modal opens within a session.
+3. **Unit tests** — none exist. Even a smoke test per page (renders without crashing) would catch regressions.
+4. **Activity Detail: synchronized stream charts** — currently each chart hovers independently; could share hover state across all 5 charts (hover one → crosshair on all).
+5. **Coach: real LLM backend integration** — currently uses canned `generateReply()`; could wire to a `/api/coach` backend route that calls z-ai-web-dev-sdk's chat.completions with streaming.
+6. **Mobile-specific polish** — bottom nav touch targets could be increased; Activities mobile cards could be re-laid-out for better density.
+7. **Settings: locale-aware date/time preview** when changing locale.
+8. **NotificationsBell: per-alert mark-as-read** (click an alert to mark just that one read, not all).
+
+Stage Summary:
+- 4 new features added (Activity Detail stream hover tooltip, NotificationsBell mark-as-read + localStorage, Coach streaming LLM responses, Settings theme preview popover).
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- All features verified end-to-end via agent-browser (including rapid DOM sampling for the streaming test).

@@ -33,6 +33,7 @@ import {
   SectionHeader,
   Segmented,
 } from "@/components/apex/kit";
+import { ThemePreviewCard } from "@/components/apex/ThemePreviewCard";
 
 /* ----------------------------------------------------------- input styles */
 
@@ -147,14 +148,28 @@ export function SettingsPage() {
               />
             </Field>
             <Field label={t("settings.theme")}>
-              <Segmented
-                value={(theme as "dark" | "light") ?? "dark"}
-                onChange={(v) => applyTheme(v as "dark" | "light")}
-                options={[
-                  { value: "dark", label: t("theme.dark") },
-                  { value: "light", label: t("theme.light") },
-                ]}
-              />
+              <div className="grid grid-cols-2 gap-2 sm:max-w-[400px]">
+                <ThemePreviewCard
+                  previewTheme="dark"
+                  isActive={(theme ?? "dark") === "dark"}
+                  onApply={() => applyTheme("dark")}
+                />
+                <ThemePreviewCard
+                  previewTheme="light"
+                  isActive={theme === "light"}
+                  onApply={() => applyTheme("light")}
+                />
+              </div>
+              <div className="mt-2">
+                <Segmented
+                  value={(theme as "dark" | "light") ?? "dark"}
+                  onChange={(v) => applyTheme(v as "dark" | "light")}
+                  options={[
+                    { value: "dark", label: t("theme.dark") },
+                    { value: "light", label: t("theme.light") },
+                  ]}
+                />
+              </div>
             </Field>
             <p className="num text-[11px] text-faint">
               {t("settings.theme_note")}
