@@ -66,6 +66,28 @@ export function ActivityCompareModal({
   const [selected, setSelected] = useState<number[]>([]); // activity ids
   const [search, setSearch] = useState("");
 
+  // Load persisted selection from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("apex-compare-activities");
+      if (raw) {
+        const ids = JSON.parse(raw);
+        if (Array.isArray(ids)) setSelected(ids.slice(0, 3));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist selection whenever it changes
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("apex-compare-activities", JSON.stringify(selected));
+    } catch {
+      /* ignore */
+    }
+  }, [selected]);
+
   // Close on Esc
   useEffect(() => {
     if (!open) return;
@@ -76,10 +98,9 @@ export function ActivityCompareModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
 
-  // Reset selection when reopening
+  // Clear search when reopening (selection is preserved)
   useEffect(() => {
     if (open) {
-      setSelected([]);
       setSearch("");
     }
   }, [open]);

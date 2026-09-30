@@ -76,6 +76,15 @@ export function NotificationsBell() {
   const unreadAlerts = alerts.filter((a) => !readAlerts.has(alertKey(a)));
   const unreadCount = unreadAlerts.length;
 
+  // Mark a single alert as read (used on row click)
+  const markRead = (a: AlertItem) => {
+    setReadAlerts((cur) => {
+      const next = new Set(cur);
+      next.add(alertKey(a));
+      return next;
+    });
+  };
+
   // Mark all as read when the dropdown is opened
   const markAllRead = () => {
     setReadAlerts(new Set(alerts.map(alertKey)));
@@ -169,6 +178,7 @@ export function NotificationsBell() {
                       <button
                         type="button"
                         onClick={() => {
+                          markRead(a);
                           ui.setView("overview");
                           setOpen(false);
                         }}

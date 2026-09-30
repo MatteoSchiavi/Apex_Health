@@ -58,6 +58,28 @@ export function SleepCompareModal({
   const [selected, setSelected] = useState<string[]>([]); // local_date values
   const [search, setSearch] = useState("");
 
+  // Load persisted selection from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("apex-compare-sleep");
+      if (raw) {
+        const dates = JSON.parse(raw);
+        if (Array.isArray(dates)) setSelected(dates.slice(0, 3));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist selection whenever it changes
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("apex-compare-sleep", JSON.stringify(selected));
+    } catch {
+      /* ignore */
+    }
+  }, [selected]);
+
   // Close on Esc
   useEffect(() => {
     if (!open) return;
@@ -68,10 +90,9 @@ export function SleepCompareModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
 
-  // Reset selection when reopening
+  // Clear search when reopening (selection is preserved)
   useEffect(() => {
     if (open) {
-      setSelected([]);
       setSearch("");
     }
   }, [open]);

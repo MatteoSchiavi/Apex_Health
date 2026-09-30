@@ -25,7 +25,7 @@
  * the same design system.
  */
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import {
@@ -511,11 +511,54 @@ function StreamCharts({
   t: (p: string) => string;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
   const endTime = new Date(new Date(startTime).getTime() + duration_s * 1000).toISOString();
   const timeLabels: [string, string] = [startTime, endTime];
 
+  // Track container width so we can position the tooltip correctly
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerW(el.getBoundingClientRect().width);
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Compute the combined tooltip data
+  const streamCount = streams.columns.hr.length;
+  const hoverPct = hoverIdx !== null ? (hoverIdx / Math.max(1, streamCount - 1)) * 100 : 0;
+  const hoverTimeStr = hoverIdx !== null
+    ? (() => {
+        try {
+          const startMs = new Date(startTime).getTime();
+          const endMs = new Date(endTime).getTime();
+          const tMs = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, streamCount - 1);
+          return new Date(tMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
+  // Combined tooltip rows: each metric with its value at hoverIdx
+  const tooltipRows = hoverIdx !== null
+    ? [
+        { label: t("activities.hr"), value: streams.columns.hr[hoverIdx], unit: "bpm", color: "var(--c-alert)" },
+        { label: t("activities.power"), value: streams.columns.power[hoverIdx], unit: "W", color: "var(--c-primary)" },
+        { label: t("activities.speed_stream"), value: streams.columns.speed[hoverIdx], unit: "km/h", color: "var(--c-positive)" },
+        { label: t("activities.altitude"), value: streams.columns.alt[hoverIdx], unit: "m", color: "var(--c-text-2)" },
+        { label: t("activities.cadence"), value: streams.columns.cadence[hoverIdx], unit: "rpm", color: "var(--c-warning)" },
+      ]
+    : [];
+
+  // Tooltip position: flip to left side if it would overflow the right edge
+  const tooltipOnLeft = hoverPct > 65;
+
   return (
-    <div className="space-y-1 p-4">
+    <div className="relative space-y-1 p-4" ref={containerRef}>
       <StreamChart
         label={t("activities.hr")}
         unit="bpm"
@@ -563,6 +606,49 @@ function StreamCharts({
         hoverIdx={hoverIdx}
         setHoverIdx={setHoverIdx}
       />
+
+      {/* Combined tooltip — shows all 5 metric values at the hovered time */}
+      {hoverIdx !== null && hoverTimeStr && (
+        <div
+          className="pointer-events-none absolute z-30 w-[200px] rounded-[var(--radius-card)] border border-hairline2 bg-surface shadow-[var(--c-shadow-flyout)]"
+          style={{
+            top: 8,
+            left: tooltipOnLeft ? undefined : `calc(80px + (100% - 80px - 112px - 200px - 16px) * ${hoverPct / 100} + 16px)`,
+            right: tooltipOnLeft ? `calc(112px + (100% - 80px - 112px - 200px - 16px) * ${(100 - hoverPct) / 100} + 16px)` : undefined,
+          }}
+          role="status"
+          aria-live="polite"
+          aria-label={`At ${hoverTimeStr}: ${tooltipRows.map((r) => `${r.label} ${r.value ?? "—"}`).join(", ")}`}
+        >
+          <div className="flex items-center justify-between border-b border-hairline px-2.5 py-1.5">
+            <span className="eyebrow !text-[9px]">{hoverTimeStr}</span>
+            <span className="num text-[9px] text-faint">sample {hoverIdx + 1} / {streamCount}</span>
+          </div>
+          <ul className="px-2.5 py-1.5">
+            {tooltipRows.map((row, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ background: row.color }}
+                    aria-hidden
+                  />
+                  <span className="text-muted truncate">{row.label}</span>
+                </span>
+                <span
+                  className="num font-semibold tabular-nums shrink-0"
+                  style={{ color: row.value === null || row.value === undefined || !Number.isFinite(row.value) ? "var(--c-text-faint)" : "var(--c-text)" }}
+                >
+                  {row.value === null || row.value === undefined || !Number.isFinite(row.value)
+                    ? "—"
+                    : `${Math.round(row.value)} ${row.unit}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Shared time axis */}
       <div className="flex items-center gap-3 pt-2">
         <div className="w-20 shrink-0" />
@@ -577,20 +663,11 @@ function StreamCharts({
             <span
               className="absolute top-3 text-[10px] font-semibold tabular-nums text-primaryText"
               style={{
-                left: `${(hoverIdx / Math.max(1, streams.columns.hr.length - 1)) * 100}%`,
+                left: `${hoverPct}%`,
                 transform: "translateX(-50%)",
               }}
             >
-              {(() => {
-                try {
-                  const startMs = new Date(startTime).getTime();
-                  const endMs = new Date(endTime).getTime();
-                  const tMs = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, streams.columns.hr.length - 1);
-                  return new Date(tMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
-                } catch {
-                  return null;
-                }
-              })()}
+              {hoverTimeStr?.slice(0, 5)}
             </span>
           )}
         </div>

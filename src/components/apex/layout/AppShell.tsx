@@ -37,6 +37,8 @@ import { SportIcon } from "../kit";
 import { CommandPalette, useCommandPaletteHotkey } from "../CommandPalette";
 import { NotificationsBell } from "../NotificationsBell";
 import { RecoveryScanModal } from "../RecoveryScanModal";
+import { ShortcutsHelpModal } from "../ShortcutsHelpModal";
+import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 interface NavItem {
   view: ViewKey;
@@ -375,6 +377,12 @@ export function AppShell({
   // Recovery scan modal state
   const [scanOpen, setScanOpen] = useState(false);
 
+  // Shortcuts help modal state
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Global keyboard shortcuts: "?" opens help, "g+letter" navigates
+  useGlobalShortcuts({ setView: onNav, setHelpOpen });
+
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-ink">
       <Sidebar current={current} onNav={onNav} />
@@ -387,6 +395,7 @@ export function AppShell({
           <div className="flex items-center gap-2">
             <SearchTrigger onClick={() => setCmdOpen(true)} />
             <NotificationsBell />
+            <ShortcutsHelpButton onClick={() => setHelpOpen(true)} />
             <LocaleToggle />
             <ThemeSegmented />
             <AccountChip />
@@ -406,6 +415,7 @@ export function AppShell({
       {/* Global overlays */}
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
       <RecoveryScanModal open={scanOpen} onOpenChange={setScanOpen} />
+      <ShortcutsHelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
@@ -425,6 +435,21 @@ function SearchTrigger({ onClick }: { onClick: () => void }) {
       <kbd className="num ml-1 hidden rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[9px] text-faint xl:inline">
         ⌘K
       </kbd>
+    </button>
+  );
+}
+
+/** Shortcuts help trigger — opens the keyboard shortcuts modal. */
+function ShortcutsHelpButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border border-hairline bg-surface text-[12px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+      aria-label="Keyboard shortcuts (?)"
+      title="Keyboard shortcuts (?)"
+    >
+      ?
     </button>
   );
 }

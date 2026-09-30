@@ -146,6 +146,8 @@ export function SettingsPage() {
                   { value: "it", label: "IT" },
                 ]}
               />
+              {/* Locale-aware date/time preview */}
+              <LocalePreview locale={ui.locale} />
             </Field>
             <Field label={t("settings.theme")}>
               <div className="grid grid-cols-2 gap-2 sm:max-w-[400px]">
@@ -395,5 +397,43 @@ function OwnerInvite() {
         </ApexButton>
       </div>
     </form>
+  );
+}
+
+/* ----------------------------------------------------------- locale preview */
+
+/**
+ * LocalePreview — shows how a date + time + number will format under the
+ * selected locale, so users can preview the change before applying.
+ */
+function LocalePreview({ locale }: { locale: "en" | "it" }) {
+  const sampleDate = new Date();
+  const localeTag = locale === "it" ? "it-IT" : "en-GB";
+  const dateStr = sampleDate.toLocaleDateString(localeTag, {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const timeStr = sampleDate.toLocaleTimeString(localeTag, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const numStr = (1234.5).toLocaleString(localeTag, { minimumFractionDigits: 1 });
+  return (
+    <div className="mt-2 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5">
+      <div className="num flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-muted">Preview ({localeTag})</span>
+        <span className="text-faint">{locale === "it" ? "Italiano" : "English"}</span>
+      </div>
+      <div className="num mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12px] text-ink2">
+        <span className="font-semibold text-ink">{dateStr}</span>
+        <span className="text-faint" aria-hidden>·</span>
+        <span className="tabular-nums">{timeStr}</span>
+        <span className="text-faint" aria-hidden>·</span>
+        <span className="tabular-nums">{numStr}</span>
+      </div>
+    </div>
   );
 }

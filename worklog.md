@@ -870,3 +870,97 @@ Stage Summary:
 - 1 platform limitation discovered (Caddy gateway can't route to mini-service ports in dev) — handled gracefully with fallback simulator + honest "simulated · fallback" label.
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - All features verified end-to-end via agent-browser.
+
+---
+Task ID: 12 (webDevReview cycle 6)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser, fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 5 left the project at commit 4250232 with 4 new features (synchronized stream charts, real-time sync service, Coach LLM backend, mobile nav).
+- Lint clean, dev server running, all 14 view paths rendering.
+- Discovered sync-service had died during the gap between cycles; restarted it on port 3005.
+- The 15-min webDevReview cron (job ID 426218) is active.
+
+## QA Findings
+- Smoke test of all 8 main nav sections: all render with correct H1 headings.
+- No console errors or runtime exceptions across the QA pass.
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Combined tooltip for Activity Detail streams** — `src/features/apex/activities/ActivityDetailPage.tsx`:
+   - StreamCharts parent now renders a single combined tooltip that shows ALL 5 metric values (HR / Power / Speed / Altitude / Cadence) at the hovered time index.
+   - Tooltip positioned via percentage left offset (calculated from hoverIdx / streamCount). Flips to the left side when hoverPct > 65 to avoid right-edge overflow.
+   - Header shows the absolute time (HH:MM:SS) + sample index (e.g. "sample 121 / 240").
+   - Each metric row has a colored dot matching the chart line color + the value at hoverIdx (or "—" if null/NaN).
+   - Tooltip is `pointer-events-none` so it doesn't interfere with the hover handler; uses `role="status"` + `aria-live="polite"` for screen reader announcements.
+   - Verified: hovering HR container at midpoint shows "10:38:47 sample 121/240 Heart Rate 151 bpm Power 236 W Speed 6 km/h Elevation 78 m Cadence 90 rpm".
+2. **Persist Activity Compare + Sleep Compare selections (localStorage)** — both modals now persist their selections across opens:
+   - `src/components/apex/ActivityCompareModal.tsx`: localStorage key `apex-compare-activities` (array of activity ids, max 3). On mount, loads any persisted selection. On selection change, persists. On modal reopen, only search is cleared (selection preserved).
+   - `src/components/apex/SleepCompareModal.tsx`: localStorage key `apex-compare-sleep` (array of local_date strings, max 3). Same pattern.
+   - Verified: opened Activity Compare, selected 2 activities (ids 2398, 2384), closed modal, reopened → comparison table still rendered with both activities. localStorage persisted: `[2398,2384]`.
+3. **Per-alert mark-as-read on click** — `src/components/apex/NotificationsBell.tsx`:
+   - Added `markRead(a)` helper that adds a single alert's key to the readAlerts set.
+   - Each alert row's onClick now calls `markRead(a)` before navigating to Overview.
+   - Previously only bulk "Mark all read" existed; now clicking an individual alert marks just that one as read.
+   - Read state still persists in localStorage (`apex-read-alerts`).
+4. **Keyboard shortcuts help modal + global "g+letter" chord navigation** — full stack:
+   - `src/components/apex/ShortcutsHelpModal.tsx` (~170 lines): modal with 4 shortcut groups (Global / Navigation / Pages / Text input). Each shortcut shows description + kbd hint. Footer counts total shortcuts. Closes on Esc.
+   - `src/hooks/use-global-shortcuts.ts` (~80 lines): registers global keydown listener for:
+     - `?` (Shift+/) → opens shortcuts help modal.
+     - `g` + letter (within 800ms) → vim-style chord navigation. g o → Overview, g a → Activities, g s → Sleep, g b → Biometrics, g t → Training, g c → Coach, g h → Challenges, g e → Settings.
+     - Esc cancels a pending chord.
+     - Ignores keystrokes when the active element is an input/textarea/contenteditable.
+   - AppShell integration: added `helpOpen` state, wired `useGlobalShortcuts({ setView: onNav, setHelpOpen })`, rendered `<ShortcutsHelpModal>` in the global overlays.
+   - Added `ShortcutsHelpButton` (a `?` glyph) to the desktop topbar between NotificationsBell and LocaleToggle.
+   - Verified: clicking the `?` button opens the modal; `g+o` chord navigates from Activities to Overview (verified H1 change "Activities" → "Physiological Telemetry").
+5. **Settings locale-aware date/time preview** — `src/features/apex/settings/SettingsPage.tsx`:
+   - New `LocalePreview` component (~30 lines) shows how the current date/time/number will format under the selected locale.
+   - Renders a small tinted card below the language Segmented control with: preview label (e.g. "Preview (en-GB)"), the locale's native name (English/Italiano), and three formatted samples — full date (weekday day month year), time (HH:MM 24h), and a decimal number (1234.5 → "1,234.5" en-GB vs "1.234,5" it-IT).
+   - Updates live as the user toggles between EN and IT.
+   - Verified: toggling to IT shows "Preview (it-IT)" and the formatted date/time/number change to Italian locale conventions.
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Combined tooltip: rounded card with hairline border, flyout shadow, header with time + sample index, color-dotted metric rows. `pointer-events-none` so it doesn't break hover.
+- Shortcuts help modal: 2-column grid layout on sm+, eyebrow group with primary-colored icons, mono kbd hints, separator hairline + footer count.
+- ShortcutsHelpButton: minimal `?` glyph in a small 32px square button, hairline border, subtle hover.
+- Locale preview: tinted card with locale tag, native name, three mono-formatted samples.
+- Per-alert read state: rows dim to 60% opacity when read; unread rows show a small primary-colored dot indicator.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean (only "✓ Compiled" and "GET / 200" entries).
+- agent-browser QA:
+  - Combined tooltip: hovering HR container at midpoint shows all 5 metric values + time + sample index.
+  - Activity Compare persistence: selection persists across modal close/reopen (localStorage `[2398,2384]`).
+  - NotificationsBell per-alert mark-as-read: clicking an alert adds its key to readAlerts set.
+  - Keyboard shortcuts help: opens via `?` button click (modal renders with all 4 groups + shortcuts). Closes via Esc.
+  - g+o chord: navigates from Activities to Overview (H1 changes "Activities" → "Physiological Telemetry").
+  - Settings locale preview: toggling EN/IT updates the preview label and formatted samples.
+  - All 8 main nav sections render with correct H1 headings.
+  - No errors during the QA pass.
+
+## Files Changed
+- `src/features/apex/activities/ActivityDetailPage.tsx` — StreamCharts parent now renders combined tooltip with all 5 metric values at hover; added useEffect + useRef + useState for container width tracking; added tooltip position flip logic.
+- `src/components/apex/ActivityCompareModal.tsx` — added localStorage persistence for selection (key: apex-compare-activities); split the open effect to only clear search, not selection.
+- `src/components/apex/SleepCompareModal.tsx` — same pattern (key: apex-compare-sleep).
+- `src/components/apex/NotificationsBell.tsx` — added markRead() helper for per-alert read state; row onClick now calls markRead(a) before navigating.
+- `src/components/apex/ShortcutsHelpModal.tsx` — NEW (~170 lines). Modal with 4 shortcut groups + kbd hints.
+- `src/hooks/use-global-shortcuts.ts` — NEW (~80 lines). Global keydown listener for ? + g+letter chord.
+- `src/components/apex/layout/AppShell.tsx` — added helpOpen state, useGlobalShortcuts hook, ShortcutsHelpModal in overlays, ShortcutsHelpButton in desktop topbar.
+- `src/features/apex/settings/SettingsPage.tsx` — added LocalePreview component below the language Segmented control.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Unit tests** — none exist. Even a smoke test per page would catch regressions.
+2. **Synchronized stream charts: vertical sync line** spanning all 5 charts at hover x-position (currently each chart draws its own line).
+3. **Sync service: real device integration** with Garmin/Whoop APIs.
+4. **Coach: verify multi-turn context** is preserved correctly across LLM calls.
+5. **Mobile polish: Activities mobile cards** re-layout for better density.
+6. **Welcome page: add keyboard shortcut hints** on the public side too.
+7. **Command Palette: add "?" entry** that opens the shortcuts help modal.
+8. **Settings: keyboard shortcut to focus the first form field** on each settings section.
+
+Stage Summary:
+- 5 new features added (combined stream tooltip, compare selection persistence for both modals, per-alert mark-as-read, keyboard shortcuts help modal + g+letter chord nav, Settings locale preview).
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- All features verified end-to-end via agent-browser.
