@@ -191,16 +191,18 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
             <Logo />
           )}
         </button>
-        {!collapsed && (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
-            aria-label="Collapse sidebar"
-          >
-            <PanelLeftClose size={14} />
-          </button>
-        )}
+        {/* Toggle button — ALWAYS in the same position (top-right of header), 
+            regardless of collapsed state. Fixes the inconsistency where collapse 
+            was at top and expand was at bottom. */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+        </button>
       </div>
 
       {!collapsed && (
@@ -240,19 +242,8 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
         </ul>
       </nav>
 
-      <div className="space-y-2 px-2 pb-3 pt-2">
-        {collapsed ? (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="flex h-8 w-full items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
-            aria-label="Expand sidebar"
-          >
-            <PanelLeftOpen size={14} />
-          </button>
-        ) : (
-          <SyncFooter />
-        )}
+      <div className="px-2 pb-3 pt-2">
+        {!collapsed && <SyncFooter />}
       </div>
     </aside>
   );

@@ -79,8 +79,8 @@ export function OverviewPage() {
 
   // Readiness hero readouts.
   const readinessValue = overview.readiness.value ?? 0;
-  const readinessFloor = Math.max(0, readinessValue - 14);
-  const readinessCap = Math.min(100, readinessValue + 8);
+  // Removed fake Floor/Cap computation — these were invented offsets with no
+  // backend basis. The readiness hero now shows just the value + 7d delta.
   const readinessAvg7 = Math.round(readinessValue - (overview.readiness.delta_7d ?? 0) / 2);
 
   // Sleep stages (last night) — used for the 4 small bars.
@@ -101,11 +101,12 @@ export function OverviewPage() {
   const acwrOptLeft = ((acwrOptLow - acwrViewLow) / (acwrViewHigh - acwrViewLow)) * 100;
   const acwrOptWidth = ((acwrOptHigh - acwrOptLow) / (acwrViewHigh - acwrViewLow)) * 100;
 
-  // Biomarker trend — synthesized from overview deltas.
-  const isAllNormal =
-    overview.alerts.every((a) => a.severity !== "alert") &&
-    (overview.spo2_avg ?? 0) >= 95 &&
-    (overview.resting_hr ?? 0) > 0;
+  // Biomarker range check — compute badge from actual values, not hardcoded.
+  const biomarkerOutOfRangeCount = [
+    overview.resting_hr !== null && (overview.resting_hr < 40 || overview.resting_hr > 100),
+    overview.spo2_avg !== null && overview.spo2_avg < 90,
+    overview.respiration_avg !== null && (overview.respiration_avg < 8 || overview.respiration_avg > 25),
+  ].filter(Boolean).length;
 
   // Synthesis paragraph from alerts — join messages with semicolons into prose,
   // marking warning severity with the warning tone inline.
@@ -179,9 +180,7 @@ export function OverviewPage() {
             <ScoreBar value={readinessValue} tone="primary" height={6} />
           </div>
           <div className="num mt-2 flex justify-between text-[10px] text-faint">
-            <span>{t("overview.floor")} <span className="text-muted">{readinessFloor}</span></span>
             <span>{t("overview.avg7")} <span className="text-muted">{readinessAvg7}</span></span>
-            <span>{t("overview.cap")} <span className="text-muted">{readinessCap}</span></span>
           </div>
 
           <Hairline className="my-4" />
@@ -255,7 +254,13 @@ export function OverviewPage() {
         <Card className="lg:col-span-3">
           <CardHeader
             eyebrow={t("overview.biomarkers")}
-            right={isAllNormal ? <Badge tone="positive" dot>{t("overview.all_normal")}</Badge> : null}
+            right={
+              biomarkerOutOfRangeCount === 0
+                ? <Badge tone="positive" dot>{t("overview.all_normal")}</Badge>
+                : <Badge tone={biomarkerOutOfRangeCount >= 2 ? "alert" : "warning"} dot>
+                    {biomarkerOutOfRangeCount} outside range
+                  </Badge>
+            }
           />
           <div className="flex flex-col gap-2">
             <StatPod
@@ -345,7 +350,15 @@ export function OverviewPage() {
             </div>
           </div>
 
-          <div className="mt-3 text-[12px] text-muted">{t("overview.no_overreach")}</div>
+          <div className="mt-3 text-[12px] text-muted">
+            {acwrValue > 1.5
+              ? "Above 1.5 — high injury-risk zone"
+              : acwrValue > 1.3
+              ? "Elevated — approaching overreach"
+              : acwrValue >= 0.8
+              ? "Within the 0.8–1.3 optimal band"
+              : "Undertrained — load below optimal band"}
+          </div>
         </Card>
 
         {/* ---------------- 5. Calibrated Activities + Parasympathetic (5 cols) */}

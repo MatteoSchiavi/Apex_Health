@@ -182,7 +182,7 @@ function mapDiscipline(typeKey: string): string {
     running: "running", trail_running: "running", track_running: "running",
     swimming: "swimming", open_water_swimming: "swimming", lap_swimming: "swimming",
     strength_training: "strength", hiking: "hiking", walking: "walking",
-    boating_v2: "rowing", sailing_v2: "rowing", rowing: "rowing",
+    sailing_v2: "sailing", boating_v2: "boating", rowing: "rowing",
     fitness_equipment: "strength",
   };
   return map[typeKey] || "cycling";

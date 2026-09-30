@@ -34,7 +34,8 @@ export type Discipline =
   | "running"
   | "swimming"
   | "strength"
-  | "rowing"
+  | "sailing"
+  | "boating"
   | "hiking"
   | "walking";
 
