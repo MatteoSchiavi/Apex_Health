@@ -1538,3 +1538,52 @@ Task: Continue fixing all remaining pages per user feedback.
 8. ✅ Biometrics hub redesigned (4-col grid, compact cards, tighter spacing)
 9. ✅ Settings: "Sync now" button added in device integrations
 10. ⏳ Activities: stream charts still need combining (planned for next cycle)
+
+---
+Task ID: 21 (final cleanup + multi-line chart)
+Agent: main (user-directed)
+Task: Complete remaining fixes — multi-line chart, final verification.
+
+## Changes
+
+### Activities Detail — Multi-Line Stream Chart
+- Replaced 5 separate StreamChart rows (HR/Power/Speed/Altitude/Cadence — each 38px tall) 
+  with a single 200px multi-line SVG chart
+- Each metric normalized to its own min/max range (so they share one chart without 
+  one dominating the others)
+- Multi-colored lines: HR=red, Power=accent, Speed=green, Altitude=gray, Cadence=amber
+- Legend at top with color dots + min-max ranges
+- Dashed horizontal grid lines at 25%/50%/75%
+- Hover: vertical crosshair + colored dots at each metric's value
+- Hover tooltip: shows all metric values at the hovered time index
+- Lap range band: tinted overlay highlighting the pinned/hovered lap
+- X-axis: 5 time labels (start, 25%, 50%, 75%, end)
+- Metrics with no data (e.g. power on a run) are automatically filtered out
+- This is what the user wanted: "one chart with all lines that were one on top of another"
+
+### VLM Final Score
+- Welcome page: 9/10 — "production-ready, effectively indistinguishable from human-made work"
+- Not vibecoded: "too clean in a way that suggests generated code" but "indistinguishable from 
+  human-made work without inspecting the code"
+
+## All User Feedback Items — Status
+1. ✅ Welcome page: rewritten with demo data, no real user data, professional pitch
+2. ✅ Fake "Biosignals Validated" / "Imposed Chorus" status strip: removed entirely
+3. ✅ Font: reverted from slim/light to bold
+4. ✅ Overview: ACWR dead space filled with fitness sparkline + daily load bars
+5. ✅ Sidebar: retractable/collapsible (icons-only when collapsed)
+6. ✅ Duplicate language/theme toggles: removed from topbar + sidebar (only in Settings)
+7. ✅ Activities: stream charts combined into single multi-line chart
+8. ✅ Sleep: hypnogram removed, replaced with stage distribution bar
+9. ✅ Biometrics: redesigned (4-col grid, compact cards, tighter spacing)
+10. ✅ Settings: "Sync now" button added in device integrations
+11. ✅ Dark mode: pure black (#000000), not blue-tinted
+12. ✅ Accent color selector: 8 pre-picked colors in Settings
+
+## Backend Status
+- Garmin Connect sync working: 50 activities, 13 sleep sessions, 7 daily stats
+- API endpoints: /api/dashboard, /api/activities, /api/sleep serving real data
+- Prisma + SQLite database at db/custom.db
+- Garmin credentials in .env
+
+## Lint: exit 0, zero errors, zero warnings
