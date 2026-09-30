@@ -130,94 +130,56 @@ export const devices: DeviceOut[] = [
 export const overview: Overview = {
   date: localDate(0),
   anchor_is_today: true,
-  readiness: { value: 84, delta_7d: 7 },
-  recovery: { value: 78, delta_7d: 4 },
-  strain: { value: 62, delta_7d: -3 },
-  sleep_score: { value: 88, delta_7d: 5 },
-  sleep_hours: 7.71,
-  hrv_ms: 64,
-  hrv_baseline_ms: 59,
-  hrv_norm_30d: 62,
-  resting_hr: 48,
-  resting_hr_delta_7d: -2,
-  spo2_avg: 97.4,
-  spo2_delta_7d: 0.2,
-  respiration_avg: 13.6,
-  steps: 8420,
+  readiness: { value: 64, delta_7d: 3 },
+  recovery: { value: 67, delta_7d: 4 },
+  strain: { value: 35, delta_7d: -12 },
+  sleep_score: { value: 64, delta_7d: 3 },
+  sleep_hours: 7.48,
+  hrv_ms: 42,
+  hrv_baseline_ms: 45,
+  hrv_norm_30d: 48,
+  resting_hr: 60,
+  resting_hr_delta_7d: 2,
+  spo2_avg: 96.8,
+  spo2_delta_7d: 0.1,
+  respiration_avg: 14.2,
+  steps: 35,
   weight_kg: 74.2,
-  vo2max: 58.4,
-  acute_load: 312,
-  chronic_load: 286,
-  acwr: 1.09,
-  training_load_7d: 312,
+  vo2max: null,
+  acute_load: 180,
+  chronic_load: 220,
+  acwr: 0.82,
+  training_load_7d: 180,
   activities: [
     {
-      id: 2410,
-      start_time: dateOffset(0, 6, 32),
-      local_date: localDate(0),
+      id: 24505012960,
+      start_time: "2026-09-26T10:59:22",
+      local_date: "2026-09-26",
       discipline: "cycling",
-      title: "Threshold Intervals · Monte Berico",
-      duration_s: 4820,
-      distance_m: 32480,
-      elevation_gain_m: 412,
-      avg_hr: 156,
-      max_hr: 174,
-      avg_power: 248,
-      np_power: 261,
-      avg_speed_mps: 6.74,
-      calories: 742,
-      training_load: 84,
-      data_completeness: "complete",
-      sources: ["Garmin", "Strava"],
-    },
-    {
-      id: 2409,
-      start_time: dateOffset(1, 18, 15),
-      local_date: localDate(1),
-      discipline: "strength",
-      title: "Lower Body Strength · Squat Focus",
-      duration_s: 3120,
-      distance_m: null,
-      elevation_gain_m: null,
-      avg_hr: 124,
-      max_hr: 148,
+      title: "Travo eMountain Biking",
+      duration_s: 13523,
+      distance_m: 66050,
+      elevation_gain_m: 2333,
+      avg_hr: 113,
+      max_hr: 162,
       avg_power: null,
       np_power: null,
-      avg_speed_mps: null,
-      calories: 412,
-      training_load: 58,
+      avg_speed_mps: 4.88,
+      calories: 986,
+      training_load: null,
       data_completeness: "complete",
-      sources: ["Garmin", "Manual"],
-    },
-    {
-      id: 2408,
-      start_time: dateOffset(2, 6, 18),
-      local_date: localDate(2),
-      discipline: "running",
-      title: "Endurance Run · Adige River Path",
-      duration_s: 3640,
-      distance_m: 10800,
-      elevation_gain_m: 64,
-      avg_hr: 142,
-      max_hr: 158,
-      avg_power: null,
-      np_power: null,
-      avg_speed_mps: 2.97,
-      calories: 604,
-      training_load: 64,
-      data_completeness: "complete",
-      sources: ["Garmin", "Strava"],
+      sources: ["Garmin"],
     },
   ],
   sleep: {
-    start_time: dateOffset(0, 22, 48),
-    end_time: dateOffset(0, 6, 35),
-    total_sleep_s: 27660,
-    sleep_score: 88,
-    stages: { deep_s: 5580, light_s: 15360, rem_s: 6720, awake_s: 540 },
-    respiration_avg: 13.4,
-    spo2_avg: 97.4,
-    restlessness: 12,
+    start_time: "2026-09-29T21:53:00Z",
+    end_time: "2026-09-30T06:03:00Z",
+    total_sleep_s: 26940,
+    sleep_score: 64,
+    stages: { deep_s: 2880, light_s: 17400, rem_s: 6660, awake_s: 2460 },
+    respiration_avg: null,
+    spo2_avg: null,
+    restlessness: null,
   },
   integration_status: [
     { provider: "Garmin", status: "active" },
@@ -245,74 +207,41 @@ export const overview: Overview = {
 
 /* --------------------------------------------------------------- activities list */
 
-const activitySeeds: Array<Partial<ActivityCard> & { discipline: ActivityCard["discipline"]; title: string }> = [
-  { discipline: "cycling", title: "Threshold Intervals · Monte Berico", avg_hr: 156, avg_power: 248, np_power: 261, distance_m: 32480, duration_s: 4820, elevation_gain_m: 412 },
-  { discipline: "strength", title: "Lower Body Strength · Squat Focus", avg_hr: 124, avg_power: null, np_power: null, distance_m: null, duration_s: 3120, elevation_gain_m: null },
-  { discipline: "running", title: "Endurance Run · Adige River Path", avg_hr: 142, avg_power: null, np_power: null, distance_m: 10800, duration_s: 3640, elevation_gain_m: 64 },
-  { discipline: "cycling", title: "Endurance Ride · Lake Garda Loop", avg_hr: 138, avg_power: 198, np_power: 205, distance_m: 68400, duration_s: 7320, elevation_gain_m: 720 },
-  { discipline: "running", title: "VO2max Intervals · 4×4", avg_hr: 168, avg_power: null, np_power: null, distance_m: 8200, duration_s: 2640, elevation_gain_m: 30 },
-  { discipline: "cycling", title: "Recovery Spin · Valpolicella", avg_hr: 128, avg_power: 142, np_power: 144, distance_m: 28600, duration_s: 4560, elevation_gain_m: 180 },
-  { discipline: "swimming", title: "Pool Swim · 4km Set", avg_hr: 134, avg_power: null, np_power: null, distance_m: 4000, duration_s: 5880, elevation_gain_m: null },
-  { discipline: "running", title: "Long Run · Lessinia Hills", avg_hr: 146, avg_power: null, np_power: null, distance_m: 21400, duration_s: 7240, elevation_gain_m: 480 },
-  { discipline: "strength", title: "Upper Body · Push Focus", avg_hr: 122, avg_power: null, np_power: null, distance_m: null, duration_s: 2940, elevation_gain_m: null },
-  { discipline: "cycling", title: "Climb Repeats · Monte Baldo", avg_hr: 162, avg_power: 268, np_power: 281, distance_m: 41200, duration_s: 6180, elevation_gain_m: 980 },
-  { discipline: "running", title: "Tempo Run · City Centre", avg_hr: 158, avg_power: null, np_power: null, distance_m: 9600, duration_s: 3120, elevation_gain_m: 22 },
-  { discipline: "cycling", title: "Race Simulation · Crit Round", avg_hr: 172, avg_power: 286, np_power: 312, distance_m: 38400, duration_s: 3900, elevation_gain_m: 120 },
-  { discipline: "hiking", title: "Hike · Monte Lessini", avg_hr: 108, avg_power: null, np_power: null, distance_m: 14600, duration_s: 9240, elevation_gain_m: 640 },
-  { discipline: "rowing", title: "Erg Row · 6×500m", avg_hr: 156, avg_power: 218, np_power: null, distance_m: 3000, duration_s: 2340, elevation_gain_m: null },
-  { discipline: "running", title: "Hill Repeats · San Pietro", avg_hr: 164, avg_power: null, np_power: null, distance_m: 6800, duration_s: 2820, elevation_gain_m: 220 },
-  { discipline: "cycling", title: "Sweet Spot · Piano di Fugazze", avg_hr: 148, avg_power: 254, np_power: 258, distance_m: 54200, duration_s: 6720, elevation_gain_m: 880 },
-  { discipline: "strength", title: "Posterior Chain · Deadlift", avg_hr: 126, avg_power: null, np_power: null, distance_m: null, duration_s: 3360, elevation_gain_m: null },
-  { discipline: "running", title: "Easy Recovery · 6km", avg_hr: 138, avg_power: null, np_power: null, distance_m: 6000, duration_s: 2280, elevation_gain_m: 12 },
+// Real activities fetched from Garmin Connect (account: [REDACTED])
+// 30 activities spanning Jul–Sep 2026, including mountain biking, sailing,
+// open water swimming, hiking, and boating on Lake Como / La Maddalena.
+export const activities: ActivityCard[] = [
+  { id: 24505012960, start_time: "2026-09-26T10:59:22", local_date: "2026-09-26", discipline: "cycling", title: "Travo eMountain Biking", duration_s: 13523, distance_m: 66050, elevation_gain_m: 2333, avg_hr: 113, max_hr: 162, avg_power: null, np_power: null, avg_speed_mps: 4.88, calories: 986, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24433776396, start_time: "2026-09-20T12:53:36", local_date: "2026-09-20", discipline: "rowing", title: "Gravedona ed Uniti Barca", duration_s: 13929, distance_m: 29118, elevation_gain_m: 50, avg_hr: 97, max_hr: 124, avg_power: null, np_power: null, avg_speed_mps: 2.09, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24422820122, start_time: "2026-09-19T13:01:46", local_date: "2026-09-19", discipline: "rowing", title: "Gravedona ed Uniti Barca", duration_s: 20222, distance_m: 39950, elevation_gain_m: 80, avg_hr: 93, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.98, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24347545480, start_time: "2026-09-13T12:52:21", local_date: "2026-09-13", discipline: "rowing", title: "Gravedona ed Uniti Barca", duration_s: 11159, distance_m: 24399, elevation_gain_m: 43, avg_hr: 103, max_hr: 133, avg_power: null, np_power: null, avg_speed_mps: 2.19, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24335442417, start_time: "2026-09-12T13:25:51", local_date: "2026-09-12", discipline: "rowing", title: "Gravedona ed Uniti Barca", duration_s: 11436, distance_m: 22222, elevation_gain_m: 151, avg_hr: 111, max_hr: 137, avg_power: null, np_power: null, avg_speed_mps: 1.94, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24215710935, start_time: "2026-09-02T16:52:47", local_date: "2026-09-02", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 14584, distance_m: 41483, elevation_gain_m: null, avg_hr: 74, max_hr: 151, avg_power: null, np_power: null, avg_speed_mps: 2.84, calories: 424, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24205585888, start_time: "2026-09-02T07:20:05", local_date: "2026-09-02", discipline: "swimming", title: "La Maddalena Nuoto in acque libere", duration_s: 892, distance_m: 376, elevation_gain_m: null, avg_hr: 146, max_hr: 181, avg_power: null, np_power: null, avg_speed_mps: 0.42, calories: 153, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24149802595, start_time: "2026-08-28T13:53:20", local_date: "2026-08-28", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 4872, distance_m: 11838, elevation_gain_m: null, avg_hr: 125, max_hr: 166, avg_power: null, np_power: null, avg_speed_mps: 2.43, calories: 495, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24146299897, start_time: "2026-08-28T10:38:44", local_date: "2026-08-28", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 4689, distance_m: 7907, elevation_gain_m: null, avg_hr: 92, max_hr: 141, avg_power: null, np_power: null, avg_speed_mps: 1.69, calories: 239, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24138520501, start_time: "2026-08-27T14:59:54", local_date: "2026-08-27", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 4528, distance_m: 10971, elevation_gain_m: null, avg_hr: 124, max_hr: 167, avg_power: null, np_power: null, avg_speed_mps: 2.42, calories: 422, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24134684319, start_time: "2026-08-27T10:43:06", local_date: "2026-08-27", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 6770, distance_m: 9397, elevation_gain_m: null, avg_hr: 91, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 1.39, calories: 332, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24125434774, start_time: "2026-08-26T14:31:57", local_date: "2026-08-26", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 9933, distance_m: 22084, elevation_gain_m: null, avg_hr: 95, max_hr: 146, avg_power: null, np_power: null, avg_speed_mps: 2.22, calories: 531, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24121568727, start_time: "2026-08-26T10:14:05", local_date: "2026-08-26", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 6854, distance_m: 12740, elevation_gain_m: null, avg_hr: 90, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.86, calories: 325, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24112479007, start_time: "2026-08-25T15:32:56", local_date: "2026-08-25", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 2835, distance_m: 7267, elevation_gain_m: null, avg_hr: 125, max_hr: 173, avg_power: null, np_power: null, avg_speed_mps: 2.56, calories: 298, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24109698388, start_time: "2026-08-25T10:44:26", local_date: "2026-08-25", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 3727, distance_m: 5783, elevation_gain_m: null, avg_hr: 119, max_hr: 159, avg_power: null, np_power: null, avg_speed_mps: 1.55, calories: 352, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24098561005, start_time: "2026-08-24T15:04:28", local_date: "2026-08-24", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 6595, distance_m: 17367, elevation_gain_m: null, avg_hr: 104, max_hr: 157, avg_power: null, np_power: null, avg_speed_mps: 2.63, calories: 430, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24095376062, start_time: "2026-08-24T10:11:25", local_date: "2026-08-24", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 8180, distance_m: 20493, elevation_gain_m: null, avg_hr: 101, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 2.51, calories: 502, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24088283831, start_time: "2026-08-23T15:15:18", local_date: "2026-08-23", discipline: "rowing", title: "Navigazione a vela", duration_s: 10190, distance_m: 24293, elevation_gain_m: null, avg_hr: 115, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: 2.38, calories: 787, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24083899248, start_time: "2026-08-23T10:43:03", local_date: "2026-08-23", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 8319, distance_m: 18782, elevation_gain_m: null, avg_hr: 94, max_hr: 136, avg_power: null, np_power: null, avg_speed_mps: 2.26, calories: 444, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24075764175, start_time: "2026-08-22T17:41:51", local_date: "2026-08-22", discipline: "rowing", title: "La Maddalena Navigazione a vela", duration_s: 845, distance_m: 1866, elevation_gain_m: null, avg_hr: 91, max_hr: 128, avg_power: null, np_power: null, avg_speed_mps: 2.21, calories: 46, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24037042138, start_time: "2026-08-19T10:47:59", local_date: "2026-08-19", discipline: "hiking", title: "Peio Escursionismo", duration_s: 13208, distance_m: 19017, elevation_gain_m: 1312, avg_hr: 147, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.44, calories: 1711, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24023504056, start_time: "2026-08-18T14:04:14", local_date: "2026-08-18", discipline: "cycling", title: "Commezzadura Mountain bike", duration_s: 7423, distance_m: 31129, elevation_gain_m: 2825, avg_hr: 112, max_hr: 172, avg_power: null, np_power: null, avg_speed_mps: 4.19, calories: 581, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 24010349394, start_time: "2026-08-17T08:56:28", local_date: "2026-08-17", discipline: "hiking", title: "Commezzadura Escursionismo", duration_s: 16008, distance_m: 20222, elevation_gain_m: 1329, avg_hr: 153, max_hr: 199, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2271, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23998395298, start_time: "2026-08-16T11:44:57", local_date: "2026-08-16", discipline: "hiking", title: "Pellizzano Escursionismo", duration_s: 5997, distance_m: 6408, elevation_gain_m: 345, avg_hr: 126, max_hr: 177, avg_power: null, np_power: null, avg_speed_mps: 1.07, calories: 629, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23995891204, start_time: "2026-08-16T10:59:14", local_date: "2026-08-16", discipline: "cycling", title: "Mezzana Escursionismo", duration_s: 1720, distance_m: 3363, elevation_gain_m: 274, avg_hr: 173, max_hr: 205, avg_power: null, np_power: null, avg_speed_mps: 1.96, calories: 350, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23975993736, start_time: "2026-08-14T08:59:32", local_date: "2026-08-14", discipline: "hiking", title: "Mezzana Escursionismo", duration_s: 15899, distance_m: 20063, elevation_gain_m: 1517, avg_hr: 156, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2451, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23874722355, start_time: "2026-08-06T16:23:02", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 2021, distance_m: 17654, elevation_gain_m: 46, avg_hr: 65, max_hr: 97, avg_power: null, np_power: null, avg_speed_mps: 8.73, calories: 64, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23874721694, start_time: "2026-08-06T12:28:03", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 1827, distance_m: 16930, elevation_gain_m: 102, avg_hr: 60, max_hr: 74, avg_power: null, np_power: null, avg_speed_mps: 9.27, calories: 33, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23845543059, start_time: "2026-08-04T08:58:58", local_date: "2026-08-04", discipline: "hiking", title: "Al Hamra Escursionismo", duration_s: 8759, distance_m: 8008, elevation_gain_m: 318, avg_hr: 108, max_hr: 168, avg_power: null, np_power: null, avg_speed_mps: 0.91, calories: 648, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: 23750560959, start_time: "2026-07-27T13:58:01", local_date: "2026-07-27", discipline: "cycling", title: "Ciclismo indoor", duration_s: 7245, distance_m: null, elevation_gain_m: null, avg_hr: 150, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: null, calories: 1085, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
 ];
-
-export function listActivities(days = 30): ActivityCard[] {
-  const items: ActivityCard[] = [];
-  for (let i = 0; i < days; i++) {
-    const seed = mulberry32(i + 1);
-    if (seed() < 0.42) continue; // rest days
-    const template = activitySeeds[Math.floor(seed() * activitySeeds.length)];
-    const id = 2400 - i * 7 - Math.floor(seed() * 5);
-    const start_time = dateOffset(i, 6 + Math.floor(seed() * 4), Math.floor(seed() * 60));
-    const local_date = localDate(i);
-    const variance = 0.92 + seed() * 0.16;
-    const distance_m = template.distance_m === null ? null : Math.round(template.distance_m * variance);
-    const duration_s = Math.round(template.duration_s * (0.95 + seed() * 0.1));
-    const avg_hr = template.avg_hr === null ? null : Math.round(template.avg_hr + (seed() - 0.5) * 8);
-    const max_hr = avg_hr === null ? null : avg_hr + Math.round(8 + seed() * 18);
-    const avg_power = template.avg_power === null ? null : Math.round((template.avg_power as number) * (0.96 + seed() * 0.08));
-    const np_power = template.np_power === null ? null : Math.round((template.np_power as number) * (0.96 + seed() * 0.08));
-    const avg_speed_mps =
-      distance_m === null ? null : round(distance_m / duration_s, 2);
-    const calories = Math.round((avg_hr ?? 130) * duration_s * 0.00018);
-    const training_load = Math.round((duration_s / 60) * (avg_hr ? (avg_hr - 100) / 80 : 0.6) * (0.8 + seed() * 0.4));
-    const completenessRoll = seed();
-    const data_completeness: ActivityCard["data_completeness"] =
-      completenessRoll > 0.88 ? "partial" : completenessRoll > 0.97 ? "missing" : "complete";
-    items.push({
-      id,
-      start_time,
-      local_date,
-      discipline: template.discipline,
-      title: template.title,
-      duration_s,
-      distance_m,
-      elevation_gain_m: template.elevation_gain_m === null ? null : Math.round(template.elevation_gain_m * variance),
-      avg_hr,
-      max_hr,
-      avg_power,
-      np_power,
-      avg_speed_mps,
-      calories,
-      training_load,
-      data_completeness,
-      sources: template.discipline === "strength" ? ["Manual", "Garmin"] : ["Garmin", "Strava"],
-    });
-  }
-  return items;
-}
-
-export const activities: ActivityCard[] = listActivities(90);
 
 /* --------------------------------------------------------------- activity detail */
 
@@ -422,36 +351,24 @@ export function getActivityStreams(id: number): ActivityStream {
 
 /* --------------------------------------------------------------- sleep */
 
-export function listSleep(days = 30): SleepSession[] {
-  const items: SleepSession[] = [];
-  for (let i = 0; i < days; i++) {
-    const seed = mulberry32(i + 11);
-    const score = Math.round(72 + seed() * 22);
-    const total = Math.round((6 * 3600 + seed() * 2 * 3600) / 60) * 60;
-    const deep = Math.round(total * (0.16 + seed() * 0.08));
-    const rem = Math.round(total * (0.20 + seed() * 0.06));
-    const light = total - deep - rem - Math.round(total * 0.04);
-    const awake = Math.round(total * (0.02 + seed() * 0.04));
-    items.push({
-      local_date: localDate(i),
-      start_time: dateOffset(i + 1, 22 + Math.round(seed() * 2), Math.round(seed() * 60)),
-      end_time: dateOffset(i, 6 + Math.round(seed() * 2), Math.round(seed() * 60)),
-      total_sleep_s: total,
-      deep_s: deep,
-      light_s: light,
-      rem_s: rem,
-      awake_s: awake,
-      sleep_score: score,
-      respiration_avg: round(12.5 + seed() * 2, 1),
-      spo2_avg: round(96.5 + seed() * 1.8, 1),
-      restlessness: Math.round(8 + seed() * 14),
-      sources: seed() > 0.3 ? ["Whoop", "Garmin"] : ["Whoop"],
-    });
-  }
-  return items;
-}
-
-export const sleepSessions: SleepSession[] = listSleep(30);
+// Real sleep sessions fetched from Garmin Connect (account: [REDACTED])
+// 13 nights spanning Sep 17–30, 2026. Sleep scores computed from deep+rem ratio
+// and total duration (Garmin's own sleep score was not available in the API response).
+export const sleepSessions: SleepSession[] = [
+  { local_date: "2026-09-30", start_time: "2026-09-29T21:53:00Z", end_time: "2026-09-30T06:03:00Z", total_sleep_s: 26940, deep_s: 2880, light_s: 17400, rem_s: 6660, awake_s: 2460, sleep_score: 64, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-29", start_time: "2026-09-28T21:52:00Z", end_time: "2026-09-29T04:57:00Z", total_sleep_s: 22260, deep_s: 6900, light_s: 12240, rem_s: 3120, awake_s: 3240, sleep_score: 61, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-28", start_time: "2026-09-27T20:19:00Z", end_time: "2026-09-28T04:53:00Z", total_sleep_s: 29400, deep_s: 6720, light_s: 13560, rem_s: 9120, awake_s: 1440, sleep_score: 76, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-27", start_time: "2026-09-26T23:00:00Z", end_time: "2026-09-27T05:16:00Z", total_sleep_s: 22500, deep_s: 7260, light_s: 11700, rem_s: 3540, awake_s: 60, sleep_score: 63, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-26", start_time: "2026-09-25T21:43:00Z", end_time: "2026-09-26T05:51:00Z", total_sleep_s: 28440, deep_s: 3120, light_s: 17940, rem_s: 7380, awake_s: 840, sleep_score: 67, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-25", start_time: "2026-09-25T00:58:00Z", end_time: "2026-09-25T04:01:00Z", total_sleep_s: 10920, deep_s: 2820, light_s: 6600, rem_s: 1500, awake_s: 60, sleep_score: 38, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-24", start_time: "2026-09-23T22:25:00Z", end_time: "2026-09-24T05:11:00Z", total_sleep_s: 24240, deep_s: 5100, light_s: 15300, rem_s: 3840, awake_s: 120, sleep_score: 60, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-23", start_time: "2026-09-22T22:32:00Z", end_time: "2026-09-23T05:10:00Z", total_sleep_s: 23580, deep_s: 5340, light_s: 13320, rem_s: 4920, awake_s: 300, sleep_score: 62, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-22", start_time: "2026-09-21T22:18:00Z", end_time: "2026-09-22T05:00:00Z", total_sleep_s: 24120, deep_s: 7860, light_s: 9540, rem_s: 6720, awake_s: 0, sleep_score: 72, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-21", start_time: "2026-09-20T21:25:00Z", end_time: "2026-09-21T05:02:00Z", total_sleep_s: 26160, deep_s: 5760, light_s: 14160, rem_s: 6240, awake_s: 1260, sleep_score: 68, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-20", start_time: "2026-09-19T21:47:00Z", end_time: "2026-09-20T06:03:00Z", total_sleep_s: 29760, deep_s: 6780, light_s: 14760, rem_s: 8220, awake_s: 0, sleep_score: 75, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-18", start_time: "2026-09-17T22:04:00Z", end_time: "2026-09-18T05:31:00Z", total_sleep_s: 26580, deep_s: 4620, light_s: 17760, rem_s: 4200, awake_s: 240, sleep_score: 62, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+  { local_date: "2026-09-17", start_time: "2026-09-16T21:45:00Z", end_time: "2026-09-17T05:01:00Z", total_sleep_s: 25020, deep_s: 6420, light_s: 14040, rem_s: 4560, awake_s: 0, sleep_score: 65, respiration_avg: null, spo2_avg: null, restlessness: null, sources: ["Garmin"] },
+];
 
 export function getSleepDay(date: string): SleepDay {
   const session = sleepSessions.find((s) => s.local_date === date) ?? sleepSessions[0];
