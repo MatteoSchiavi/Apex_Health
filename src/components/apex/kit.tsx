@@ -45,7 +45,7 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`rounded-[var(--radius-card)] border border-hairline bg-surface ${pad ? "p-4" : ""} ${className}`}
+      className={`rounded-[var(--radius-card)] border border-hairline bg-surface ${pad ? "p-6" : ""} ${className}`}
       style={style}
     >
       {children}
@@ -127,9 +127,9 @@ export function BigStat({
   tone?: "ink" | "primary" | "positive" | "alert" | "warning" | "muted";
 }) {
   const sizes = {
-    md: "text-[24px] leading-[30px] font-bold",
-    lg: "text-[32px] leading-[38px] font-bold",
-    xl: "text-[44px] leading-[50px] font-bold tracking-[-0.03em]",
+    md: "text-[28px] leading-[34px] font-light tracking-[-0.02em]",
+    lg: "text-[40px] leading-[46px] font-light tracking-[-0.02em]",
+    xl: "text-[56px] leading-[62px] font-light tracking-[-0.03em]",
   } as const;
   const toneCls = {
     ink: "text-ink",

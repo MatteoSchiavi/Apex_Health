@@ -85,31 +85,31 @@
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   /* radii (design law: 4px controls, 8px cards) */
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.375rem;
-  --radius-xl: 0.5rem;
-  --radius-2xl: 0.75rem;
-  --radius-card: 0.5rem;
-  --radius-control: 0.25rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-card: 1rem;
+  --radius-control: 0.375rem;
 }
 
 /* --------------------------------------------------- DARK (default) */
 :root {
-  --radius: 0.5rem;
+  --radius: 1rem;
 
   --c-bg: #0a0c10;
-  --c-bg-accent: #11141b;
-  --c-surface: #11141b;
-  --c-surface-2: #181c26;
-  --c-surface-3: #1f2430;
-  --c-hairline: rgba(255, 255, 255, 0.08);
-  --c-hairline-strong: rgba(255, 255, 255, 0.14);
+  --c-bg-accent: #0f1218;
+  --c-surface: #131722;
+  --c-surface-2: #1a1f2e;
+  --c-surface-3: #232938;
+  --c-hairline: rgba(255, 255, 255, 0.06);
+  --c-hairline-strong: rgba(255, 255, 255, 0.12);
 
-  --c-text: #e2e2e8;
-  --c-text-2: #c2c6d6;
-  --c-text-muted: #8c909f;
-  --c-text-faint: #5c6070;
+  --c-text: #e8eaf0;
+  --c-text-2: #b8bcc8;
+  --c-text-muted: #6b7280;
+  --c-text-faint: #4a4f5c;
 
   --c-primary: #3b82f6;
   --c-primary-soft: rgba(59, 130, 246, 0.12);
@@ -138,11 +138,11 @@
 
 /* --------------------------------------------------- LIGHT */
 .light {
-  --c-bg: #eef2f7;
-  --c-bg-accent: #f8fafc;
+  --c-bg: #f0f1f3;
+  --c-bg-accent: #fafafa;
   --c-surface: #ffffff;
-  --c-surface-2: #ffffff;
-  --c-surface-3: #eef2f7;
+  --c-surface-2: #f8f9fb;
+  --c-surface-3: #eef0f3;
   --c-hairline: rgba(15, 23, 42, 0.08);
   --c-hairline-strong: rgba(15, 23, 42, 0.16);
 
@@ -215,14 +215,14 @@
 
 /* hero page title */
 .page-title {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 36px;
-  letter-spacing: -0.02em;
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 40px;
+  letter-spacing: -0.025em;
   color: var(--c-text);
 }
 @media (max-width: 767px) {
-  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
+  .page-title { font-size: 24px; line-height: 32px; letter-spacing: -0.02em; }
 }
 
 /* scrollbar styling — subtle, fits the Apex monochrome system */
