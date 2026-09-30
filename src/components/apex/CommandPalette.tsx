@@ -67,8 +67,19 @@ export function CommandPalette({
   const { theme, setTheme } = useTheme();
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
+  const [recent, setRecent] = useState<string[]>([]); // recently-executed command ids (localStorage-persisted)
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Load recent selections from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("apex-cmd-recent");
+      if (raw) setRecent(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Reset query when palette opens
   useEffect(() => {
@@ -78,6 +89,19 @@ export function CommandPalette({
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
+
+  // Record recent selection (helper passed to commands below via wrapper)
+  const recordRecent = (id: string) => {
+    setRecent((cur) => {
+      const next = [id, ...cur.filter((x) => x !== id)].slice(0, 5);
+      try {
+        window.localStorage.setItem("apex-cmd-recent", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // Build commands
   const items: CommandItem[] = useMemo(() => {
@@ -201,6 +225,7 @@ export function CommandPalette({
         e.preventDefault();
         const item = filtered[activeIdx];
         if (item) {
+          recordRecent(item.id);
           item.run();
           onOpenChange(false);
         }
@@ -219,15 +244,37 @@ export function CommandPalette({
 
   // Build the flat filtered list (used by the active index)
   const flatFiltered = filtered;
+
+  // Pre-pend "Recent" group when no query and we have recent items
+  const recentItems = useMemo(() => {
+    if (query.trim()) return [];
+    return recent
+      .map((id) => items.find((it) => it.id === id))
+      .filter((it): it is CommandItem => !!it);
+  }, [recent, items, query]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, CommandItem[]>();
+    // Recent section first (only when no query)
+    if (recentItems.length > 0) {
+      map.set("recent", recentItems);
+    }
     filtered.forEach((it) => {
+      // Skip items already shown in recent (avoid duplicate display)
+      if (recentItems.includes(it)) return;
       const arr = map.get(it.group) ?? [];
       arr.push(it);
       map.set(it.group, arr);
     });
     return Array.from(map.entries());
-  }, [filtered]);
+  }, [filtered, recentItems]);
+
+  // Build the flat list for active index (includes recent + filtered minus recent duplicates)
+  const flatWithRecent = useMemo(() => {
+    if (recentItems.length === 0) return filtered;
+    const seen = new Set(recentItems.map((r) => r.id));
+    return [...recentItems, ...filtered.filter((it) => !seen.has(it.id))];
+  }, [filtered, recentItems]);
 
   if (!open) return null;
 
@@ -274,11 +321,12 @@ export function CommandPalette({
 
         {/* Results */}
         <div ref={listRef} className="scroll-area max-h-[440px] overflow-y-auto py-1">
-          {flatFiltered.length === 0 ? (
+          {flatWithRecent.length === 0 ? (
             <div className="px-4 py-8 text-center text-[13px] text-muted">No matches for "{query}"</div>
           ) : (
             grouped.map(([group, groupItems]) => {
               const groupLabel: Record<string, string> = {
+                recent: "Recent",
                 navigation: t("nav.overview") + " & " + t("nav.settings").toLowerCase(),
                 actions: "Quick actions",
                 metrics: t("nav.biometrics"),
@@ -289,7 +337,7 @@ export function CommandPalette({
                 <div key={group} className="mb-1">
                   <div className="eyebrow px-4 py-1.5">{groupLabel[group] ?? group}</div>
                   {groupItems.map((item) => {
-                    const idx = flatFiltered.indexOf(item);
+                    const idx = flatWithRecent.indexOf(item);
                     const active = idx === activeIdx;
                     const Icon = item.icon;
                     return (
@@ -299,6 +347,7 @@ export function CommandPalette({
                         data-idx={idx}
                         onMouseEnter={() => setActiveIdx(idx)}
                         onClick={() => {
+                          recordRecent(item.id);
                           item.run();
                           onOpenChange(false);
                         }}
@@ -351,7 +400,7 @@ export function CommandPalette({
           </div>
           <div className="num flex items-center gap-1">
             <Sparkles size={10} />
-            <span>{flatFiltered.length} results</span>
+            <span>{flatWithRecent.length} results</span>
           </div>
         </div>
       </div>

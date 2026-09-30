@@ -15,7 +15,8 @@
  * SportIcon, SourcePill, Badge, Empty, Hairline).
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { GitCompare, Search, X } from "lucide-react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { activities } from "@/lib/apex/data";
@@ -28,7 +29,9 @@ import {
   Badge,
   Empty,
   Hairline,
+  ApexButton,
 } from "@/components/apex/kit";
+import { ActivityCompareModal } from "@/components/apex/ActivityCompareModal";
 import {
   fmtClock,
   fmtDate,
@@ -61,18 +64,36 @@ export function ActivitiesPage() {
   const ui = useApexUi();
   const [range, setRange] = useState<RangeKey>("30d");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcut: "/" focuses search input (when not already in an input)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const filtered = useMemo(() => {
     const now = Date.now();
     const cutoffMs = RANGE_DAYS[range] * 24 * 3600 * 1000;
+    const q = search.trim().toLowerCase();
     return activities
       .filter((a) => {
         const ageMs = now - new Date(a.start_time).getTime();
         if (ageMs > cutoffMs) return false;
-        return matchesFilter(a.discipline, filter);
+        if (!matchesFilter(a.discipline, filter)) return false;
+        if (q && !(a.title.toLowerCase().includes(q) || a.discipline.toLowerCase().includes(q))) return false;
+        return true;
       })
       .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-  }, [range, filter]);
+  }, [range, filter, search]);
 
   return (
     <div className="mx-auto max-w-[1240px]">
@@ -80,20 +101,31 @@ export function ActivitiesPage() {
         title={t("activities.title")}
         subtitle={t("welcome.preview_activities")}
         actions={
-          <Segmented
-            value={range}
-            onChange={(v) => setRange(v as RangeKey)}
-            options={[
-              { value: "30d", label: t("activities.30d") },
-              { value: "90d", label: t("activities.90d") },
-              { value: "12m", label: t("activities.12m") },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ApexButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setCompareOpen(true)}
+              icon={<GitCompare size={13} />}
+            >
+              <span className="hidden sm:inline">Compare</span>
+            </ApexButton>
+            <Segmented
+              value={range}
+              onChange={(v) => setRange(v as RangeKey)}
+              options={[
+                { value: "30d", label: t("activities.30d") },
+                { value: "90d", label: t("activities.90d") },
+                { value: "12m", label: t("activities.12m") },
+              ]}
+            />
+          </div>
         }
       />
+      <ActivityCompareModal open={compareOpen} onOpenChange={setCompareOpen} />
 
-      {/* Filter chips */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      {/* Filter chips + search */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <Segmented
           size="sm"
           value={filter}
@@ -107,6 +139,31 @@ export function ActivitiesPage() {
             { value: "other", label: t("activities.filter_other") },
           ]}
         />
+        <div className="relative ml-auto">
+          <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+          <input
+            ref={searchRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search activities…"
+            className="num h-8 w-[200px] rounded-[var(--radius-control)] border border-hairline bg-surface2 pl-7 pr-7 text-[12px] text-ink placeholder:text-faint focus:border-primary focus:outline-none sm:w-[240px]"
+            aria-label="Search activities"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface3 hover:text-ink"
+              aria-label="Clear search"
+            >
+              <X size={11} />
+            </button>
+          )}
+          <kbd className="num absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[9px] text-faint sm:block" style={{ right: search ? "24px" : "8px" }}>
+            /
+          </kbd>
+        </div>
       </div>
 
       {/* Table — desktop / tablet */}
@@ -263,12 +320,20 @@ function ActivityRow({ a, locale, onClick }: { a: ActivityCard; locale: Locale; 
 
       {/* Avg HR */}
       <Td className="num whitespace-nowrap text-right tabular-nums text-ink2">
-        {a.avg_hr === null ? <span className="text-faint">—</span> : a.avg_hr}
+        {a.avg_hr === null || a.avg_hr === undefined || !Number.isFinite(a.avg_hr) ? (
+          <span className="text-faint">—</span>
+        ) : (
+          a.avg_hr
+        )}
       </Td>
 
       {/* Avg Power */}
       <Td className="num whitespace-nowrap text-right tabular-nums text-ink2">
-        {a.avg_power === null ? <span className="text-faint">—</span> : `${a.avg_power} W`}
+        {a.avg_power === null || a.avg_power === undefined || !Number.isFinite(a.avg_power) ? (
+          <span className="text-faint">—</span>
+        ) : (
+          `${a.avg_power} W`
+        )}
       </Td>
 
       {/* Load */}

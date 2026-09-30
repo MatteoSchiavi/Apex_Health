@@ -22,6 +22,7 @@
  */
 
 import { useMemo } from "react";
+import { Download } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { sleepSessions, getSleepDay } from "@/lib/apex/data";
@@ -37,6 +38,7 @@ import {
   Empty,
   SourcePill,
   BackLink,
+  ApexButton,
 } from "@/components/apex/kit";
 import { fmtDateLong, fmtHours, fmtClock, fmtNum } from "@/lib/apex/format";
 
@@ -118,13 +120,23 @@ export function SleepNightPage() {
         title={fmtDateLong(session.local_date, ui.locale)}
         subtitle={t("sleep.night")}
         actions={
-          <div className="flex flex-col items-end gap-0.5">
-            <Eyebrow>{t("sleep.score")}</Eyebrow>
-            <BigStat
-              value={fmtNum(score, 0)}
-              size="xl"
-              tone={scoreTone(score)}
-            />
+          <div className="flex items-center gap-2">
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => window.print()}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">{t("activities.export")}</span>
+            </ApexButton>
+            <div className="flex flex-col items-end gap-0.5">
+              <Eyebrow>{t("sleep.score")}</Eyebrow>
+              <BigStat
+                value={fmtNum(score, 0)}
+                size="xl"
+                tone={scoreTone(score)}
+              />
+            </div>
           </div>
         }
       />

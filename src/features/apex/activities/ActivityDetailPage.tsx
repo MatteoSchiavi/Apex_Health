@@ -92,7 +92,7 @@ export function ActivityDetailPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] bg-primarySoft text-primaryText">
               <SportIcon discipline={detail.discipline} size={18} />
             </span>
-            <ApexButton variant="secondary" size="sm">
+            <ApexButton variant="secondary" size="sm" onClick={() => window.print()}>
               {t("activities.export")}
             </ApexButton>
           </div>

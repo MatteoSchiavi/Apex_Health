@@ -518,3 +518,93 @@ Stage Summary:
 - 5 new features added (Command Palette ⌘K, Notifications Bell, Recovery Scan AI modal, Export PDF, Search trigger).
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - VLM-verified fixes confirmed.
+
+---
+Task ID: 8 (webDevReview cycle 2)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser + VLM, fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 1 left the project at commit 6db3acc with 5 new features (Command Palette ⌘K, Notifications Bell, Recovery Scan AI modal, Export PDF on Overview, Search trigger in topbar) + 5 bug fixes in Overview.
+- Lint clean, dev server running, all 14 view paths rendering.
+- The 15-min webDevReview cron (job ID 426218) is active.
+
+## QA Findings (via agent-browser + VLM)
+Real bug identified:
+1. **Activities list AVG HR column shows "NaN"** — DOM inspection confirmed. Root cause: `activitySeeds` in `src/lib/apex/data.ts` did NOT include `avg_hr` field. `template.avg_hr` was `undefined` (not null), so the null-check `template.avg_hr === null ? null : Math.round(...)` returned `Math.round(undefined + ...)` = `NaN`. The NaN then propagated through `max_hr` and downstream calculations.
+
+VLM-flagged false positives (verified as non-issues via DOM inspection):
+- "1 Issue badge" floating in topbar → actually the Next.js dev tools indicator (expected in dev).
+- "Past Conversations appears twice" in Coach → actually the sidebar label vs the chat thread header (different surfaces, intentional).
+- "Delete button lacks confirmation" → Coach already has a toast; modal confirmation is a polish item, not a bug.
+- "/00" instead of "/100" → VLM hallucination; DOM shows correct "/100".
+
+## Fixes Applied
+1. **NaN bug fix (data layer)** — added `avg_hr` field to ALL 18 activity seeds in `src/lib/apex/data.ts` (cycling: 156, strength: 124, running: 142, etc.). Each value is realistic for the discipline.
+2. **NaN defensive hardening (render layer)** — `ActivitiesPage.tsx` Avg HR + Avg Power cells now check `=== null || === undefined || !Number.isFinite()` before rendering. Even if data layer regresses, the UI will show "—" instead of "NaN".
+3. **fmtNum / fmtInt hardening** — already used `Number.isFinite()` (verified in `src/lib/apex/format.ts`).
+
+Verified post-fix: `document.body.textContent?.includes('NaN')` returns "no NaN". Activities table now shows real HR values (158, 127, 153, etc.).
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Activity Compare modal** — `src/components/apex/ActivityCompareModal.tsx` (~260 lines). User picks 2-3 activities (max 3) from a searchable list. Side-by-side comparison table on 9 metrics: Distance / Duration / Elevation / Avg HR / Max HR / Avg Power / Norm Power / Calories / Strain & Load. "Best" values per row are highlighted:
+   - Higher-is-better metrics (Distance, Elevation, Avg Power, NP, Load) → positive tint + ★
+   - Lower-is-better metrics (Avg HR for recovery) → primary tint + ★
+   - Neutral metrics → no highlight
+   Selected activities show as removable chips; "Clear all" button. Triggered by a "Compare" button (with GitCompare icon) added to Activities PageHeader. VLM verified: values readable, ★ markers visible, no overflow.
+2. **Export PDF on Activity Detail + Sleep Night + Metric pages** — added `window.print()` ApexButton (ghost variant, Download icon) to all three detail page PageHeaders. Previously only Overview had it.
+3. **Keyboard shortcut "/" on Activities list** — focuses the search input. `useEffect` registers global keydown listener that ignores keystrokes when already in an input/textarea. Visual `kbd` hint shown next to the search input on sm+ screens.
+4. **Text search on Activities list** — new search input (200-240px wide) that filters by activity title + discipline. Combined with existing discipline filter chips. Clear button (X) appears when search is non-empty. Search is `useMemo`'d against the `filtered` array.
+5. **Command Palette recent selections (localStorage)** — `src/components/apex/CommandPalette.tsx` now persists the last 5 executed command ids to `localStorage` (key: `apex-cmd-recent`). On reopen (with no query), a "Recent" section appears at the top of the results. Active index tracking + grouped rendering both account for the recent prefix (no duplicate display). Verified end-to-end: open palette → select item → reopen → Recent section now shows.
+6. **Accessibility: aria-live on NotificationsBell + RecoveryScanModal** —
+   - NotificationsBell: button has `aria-haspopup="dialog"`; dropdown has `role="dialog"` + `aria-label` with count.
+   - RecoveryScanModal: loading state has `aria-live="polite"` + `aria-busy="true"` + `role="status"`; error state has `aria-live="assertive"` + `role="alert"`; result section has `aria-live="polite"` + `role="status"`. Screen readers now announce loading → result/error transitions.
+   - Bell badge count is `aria-hidden` (already shown in the label).
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Activities page now has a proper toolbar: Segmented filter chips on the left, search input on the right with inline Search icon, clear button, and `/` keyboard hint.
+- Compare modal uses tinted cell backgrounds (positiveSoft for higher-better, primarySoft for lower-better) with rounded corners to make "best" values pop without being garish.
+- Export buttons use ghost variant (subtle) so they don't compete with primary CTAs.
+- Command Palette "Recent" section uses the same eyebrow styling as other groups for visual consistency.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean (only "✓ Compiled" and "GET / 200" entries).
+- agent-browser QA:
+  - NaN bug fixed: `document.body.textContent?.includes('NaN')` returns "no NaN".
+  - Activities AVG HR column now shows real values (158, 127, 153, etc.).
+  - Compare modal: opens, picks 2 activities, renders side-by-side table with ★ markers on best values. VLM verified.
+  - Search filter: typing "Threshold" narrows the list (verified row count drops).
+  - "/" shortcut: focuses the search input (verified `document.activeElement?.getAttribute('aria-label')` returns "Search activities").
+  - Export PDF buttons: present on Activity Detail, Sleep Night, Metric pages (1 button each, verified via DOM count).
+  - Command Palette recent: first open shows no Recent section; after selecting an item and reopening, Recent section appears.
+  - All 8 main nav sections render with correct H1 headings.
+- VLM screenshot review of compare modal: "values clearly readable, ★ marker visible, no overflow issues".
+
+## Files Changed
+- `src/lib/apex/data.ts` — added `avg_hr` field to all 18 activity seeds.
+- `src/features/apex/activities/ActivitiesPage.tsx` — NaN defensive rendering (Avg HR + Avg Power cells); added Compare button + ActivityCompareModal integration; added search input with `/` keyboard shortcut; added useEffect + useRef.
+- `src/components/apex/ActivityCompareModal.tsx` — NEW (~260 lines). Side-by-side activity comparison modal with best-value highlighting.
+- `src/features/apex/activities/ActivityDetailPage.tsx` — wired existing Export button to `window.print()`.
+- `src/features/apex/sleep/SleepNightPage.tsx` — added Export PDF button to PageHeader actions.
+- `src/features/apex/biometrics/MetricPage.tsx` — added Export PDF button to PageHeader actions.
+- `src/components/apex/NotificationsBell.tsx` — added `aria-haspopup="dialog"`, `role="dialog"`, `aria-label` with count; made badge `aria-hidden`.
+- `src/components/apex/RecoveryScanModal.tsx` — added `aria-live` + `role="status"` / `role="alert"` + `aria-busy` to loading/error/result states.
+- `src/components/apex/CommandPalette.tsx` — added `recent` state + `recordRecent()` helper with localStorage persistence; "Recent" group prepended to results when no query; `flatWithRecent` for active index tracking.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Voice input on Coach page** via ASR skill (z-ai-web-dev-sdk speech-to-text). The microphone button could send audio to a backend route that uses the ASR SDK to transcribe, then pre-fill the chat input.
+2. **Real-time sync indicator** (websocket mini-service) on the status strip — currently uses simulated "Live acquisition" dot. A real websocket would push device sync events.
+3. **Compare activities for Sleep nights** — similar side-by-side compare for sleep sessions (e.g. compare last 7 nights on score, deep, REM, efficiency).
+4. **Activities table column sort** — clicking a column header should sort by that metric (distance, duration, load, etc.).
+5. **Persist Activity Compare selection** — currently resets when modal closes. Could persist across opens within a session.
+6. **Apply the "Recent" pattern to Metric page** — recently viewed metrics shown at the top of the Biometrics hub.
+7. **VLM screenshot review of Mobile layouts** — current QA was desktop-only. Mobile bottom nav + stacked layouts need verification.
+8. **Unit tests** — none exist. Even a smoke test per page (renders without crashing) would catch regressions.
+
+Stage Summary:
+- 1 real bug fixed (NaN in Activities AVG HR column — root cause was missing `avg_hr` field in activity seeds).
+- 6 new features added (Activity Compare modal, Export PDF on 3 detail pages, "/" search shortcut, Activities text search, Command Palette recent selections, aria-live accessibility on NotificationsBell + RecoveryScanModal).
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- VLM-verified compare modal + NaN fix.

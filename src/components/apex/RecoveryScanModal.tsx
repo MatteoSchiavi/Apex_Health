@@ -130,7 +130,12 @@ export function RecoveryScanModal({
         <div className="scroll-area max-h-[60vh] overflow-y-auto px-5 py-4">
           {/* Loading */}
           {loading && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div
+              className="flex flex-col items-center justify-center py-12 text-center"
+              aria-live="polite"
+              aria-busy="true"
+              role="status"
+            >
               <Loader2 size={28} className="animate-spin text-primaryText" />
               <div className="mt-3 text-[13px] text-muted">{t("coach.loading")}</div>
               <div className="num mt-1 text-[10px] text-faint">
@@ -141,7 +146,11 @@ export function RecoveryScanModal({
 
           {/* Error */}
           {!loading && error && (
-            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <div
+              className="flex flex-col items-center justify-center gap-3 py-12 text-center"
+              aria-live="assertive"
+              role="alert"
+            >
               <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] bg-alertSoft text-alertText">
                 <AlertTriangle size={18} />
               </div>
@@ -152,7 +161,7 @@ export function RecoveryScanModal({
 
           {/* Result */}
           {!loading && !error && scan && (
-            <div className="space-y-4">
+            <div aria-live="polite" role="status">
               {/* One-sentence summary */}
               <div>
                 <Eyebrow>Summary</Eyebrow>

@@ -73,11 +73,13 @@ export function NotificationsBell() {
         className={`relative flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border transition-colors ${bellTone} hover:text-ink`}
         aria-label={`Notifications (${unreadCount})`}
         aria-expanded={open}
+        aria-haspopup="dialog"
       >
         <Bell size={14} />
         {unreadCount > 0 && (
           <span
             className={`absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full ${dotColor} px-1 text-[8px] font-bold text-white`}
+            aria-hidden
           >
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
@@ -85,7 +87,12 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1.5 w-[360px] overflow-hidden rounded-[var(--radius-card)] border border-hairline2 bg-surface shadow-[var(--c-shadow-flyout)]">
+        <div
+          className="absolute right-0 top-full z-50 mt-1.5 w-[360px] overflow-hidden rounded-[var(--radius-card)] border border-hairline2 bg-surface shadow-[var(--c-shadow-flyout)]"
+          role="dialog"
+          aria-modal="false"
+          aria-label={`${t("overview.open_alerts")} — ${unreadCount} ${unreadCount === 1 ? "alert" : "alerts"}`}
+        >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
             <div className="eyebrow">{t("overview.open_alerts")}</div>

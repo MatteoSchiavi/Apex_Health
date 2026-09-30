@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Download } from "lucide-react";
 import { useT, useI18n } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { metricCatalog, getMetricTrend } from "@/lib/apex/data";
@@ -27,6 +28,7 @@ import {
   BackLink,
   Segmented,
   Eyebrow,
+  ApexButton,
 } from "@/components/apex/kit";
 import { fmtNum, fmtDate, fmtDelta } from "@/lib/apex/format";
 import type { MetricTrend } from "@/lib/apex/types";
@@ -350,15 +352,25 @@ export function MetricPage() {
           </div>
         }
         actions={
-          <Segmented<RangeKey>
-            value={range}
-            onChange={(v) => setRange(v)}
-            options={[
-              { value: "7", label: t("biometrics.range_7d") },
-              { value: "28", label: t("biometrics.range_28d") },
-              { value: "90", label: t("biometrics.range_90d") },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => window.print()}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">{t("activities.export")}</span>
+            </ApexButton>
+            <Segmented<RangeKey>
+              value={range}
+              onChange={(v) => setRange(v)}
+              options={[
+                { value: "7", label: t("biometrics.range_7d") },
+                { value: "28", label: t("biometrics.range_28d") },
+                { value: "90", label: t("biometrics.range_90d") },
+              ]}
+            />
+          </div>
         }
       />
 
