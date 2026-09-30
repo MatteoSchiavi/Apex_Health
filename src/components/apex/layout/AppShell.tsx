@@ -20,6 +20,7 @@ import {
   ChevronRight,
   HeartPulse,
   Moon,
+  Search,
   Settings,
   Sun,
   Trophy,
@@ -33,6 +34,9 @@ import { devices, me } from "@/lib/apex/data";
 import type { ViewKey } from "@/lib/apex/types";
 import { timeAgo } from "@/lib/apex/format";
 import { SportIcon } from "../kit";
+import { CommandPalette, useCommandPaletteHotkey } from "../CommandPalette";
+import { NotificationsBell } from "../NotificationsBell";
+import { RecoveryScanModal } from "../RecoveryScanModal";
 
 interface NavItem {
   view: ViewKey;
@@ -219,8 +223,8 @@ function Sidebar({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => 
   );
 }
 
-/** Topbar (mobile) — brand + theme/locale compact controls. */
-function Topbar({ current }: { current: ViewKey }) {
+/** Topbar (mobile) — brand + theme/locale compact controls + search + scan. */
+function Topbar({ current, onSearch, onScan }: { current: ViewKey; onSearch: () => void; onScan: () => void }) {
   const t = useT();
   const currentLabel = NAV.find((n) => n.view === current)?.labelKey;
   return (
@@ -236,6 +240,15 @@ function Topbar({ current }: { current: ViewKey }) {
         {currentLabel ? t(currentLabel) : ""}
       </div>
       <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onSearch}
+          className="inline-flex h-6 items-center justify-center rounded-[var(--radius-control)] border border-hairline bg-bg px-2 text-muted transition-colors hover:text-ink"
+          aria-label={t("app.search")}
+        >
+          <Search size={12} />
+        </button>
+        <NotificationsBell />
         <LocaleToggle />
         <ThemeSegmentedCompact />
       </div>
@@ -348,16 +361,25 @@ export function AppShell({
     window.scrollTo(0, 0);
   }, [current]);
 
+  // Command palette (⌘K) state
+  const [cmdOpen, setCmdOpen] = useState(false);
+  useCommandPaletteHotkey(() => setCmdOpen((o) => !o));
+
+  // Recovery scan modal state
+  const [scanOpen, setScanOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-ink">
       <Sidebar current={current} onNav={onNav} />
       <div className="lg:pl-[244px]">
         {/* Desktop topbar */}
         <header className="sticky top-0 z-20 hidden h-14 items-center justify-between gap-3 border-b border-hairline bg-canvas/95 px-6 backdrop-blur lg:flex">
-          <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted">
+          <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted">
             {breadcrumb}
           </div>
           <div className="flex items-center gap-2">
+            <SearchTrigger onClick={() => setCmdOpen(true)} />
+            <NotificationsBell />
             <LocaleToggle />
             <ThemeSegmented />
             <AccountChip />
@@ -365,7 +387,7 @@ export function AppShell({
         </header>
 
         {/* Mobile topbar */}
-        <Topbar current={current} />
+        <Topbar current={current} onSearch={() => setCmdOpen(true)} onScan={() => setScanOpen(true)} />
 
         {/* Page content */}
         <main className="flex-1 px-4 pb-24 pt-4 lg:px-6 lg:pb-12 lg:pt-6">
@@ -373,7 +395,30 @@ export function AppShell({
         </main>
       </div>
       <BottomNav current={current} onNav={onNav} />
+
+      {/* Global overlays */}
+      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
+      <RecoveryScanModal open={scanOpen} onOpenChange={setScanOpen} />
     </div>
+  );
+}
+
+/** Search trigger — opens the ⌘K command palette. */
+function SearchTrigger({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="num group flex h-8 items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+      aria-label={t("app.search")}
+    >
+      <Search size={12} />
+      <span className="hidden xl:inline">{t("app.search")}</span>
+      <kbd className="num ml-1 hidden rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[9px] text-faint xl:inline">
+        ⌘K
+      </kbd>
+    </button>
   );
 }
 

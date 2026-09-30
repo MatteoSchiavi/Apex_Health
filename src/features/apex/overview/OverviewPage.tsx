@@ -17,6 +17,8 @@
  * 4px controls / 8px cards, 1px hairlines, tabular figures, label-caps eyebrows.
  */
 
+import { useState } from "react";
+import { Sparkles, Download, ChevronRight } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { overview } from "@/lib/apex/data";
@@ -37,6 +39,7 @@ import {
   Hairline,
   ApexButton,
 } from "@/components/apex/kit";
+import { RecoveryScanModal } from "@/components/apex/RecoveryScanModal";
 import {
   fmtNum,
   fmtHours,
@@ -63,6 +66,7 @@ function buildSpark(seed: number, count: number): number[] {
 export function OverviewPage() {
   const t = useT();
   const ui = useApexUi();
+  const [scanOpen, setScanOpen] = useState(false);
 
   // Telemetry state — live if any device in integration_status is active.
   const anyLive = overview.integration_status.some((d) => d.status === "active");
@@ -116,16 +120,35 @@ export function OverviewPage() {
         title={t("overview.title")}
         subtitle={t("welcome.preview_overview")}
         actions={
-          <ApexButton
-            variant="secondary"
-            size="sm"
-            onClick={() => ui.setView("biometrics")}
-            iconRight={<span aria-hidden>→</span>}
-          >
-            {t("nav.biometrics")}
-          </ApexButton>
+          <div className="flex items-center gap-2">
+            <ApexButton
+              variant="ghost"
+              size="sm"
+              onClick={() => window.print()}
+              icon={<Download size={13} />}
+            >
+              <span className="hidden sm:inline">{t("activities.export")}</span>
+            </ApexButton>
+            <ApexButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setScanOpen(true)}
+              icon={<Sparkles size={13} />}
+            >
+              Recovery Scan
+            </ApexButton>
+            <ApexButton
+              variant="primary"
+              size="sm"
+              onClick={() => ui.setView("biometrics")}
+              iconRight={<span aria-hidden>→</span>}
+            >
+              {t("nav.biometrics")}
+            </ApexButton>
+          </div>
         }
       />
+      <RecoveryScanModal open={scanOpen} onOpenChange={setScanOpen} />
 
       {/* --------------------------- 1. Status strip (full width) */}
       <Card pad={false} className="mt-4 overflow-hidden">
@@ -244,8 +267,7 @@ export function OverviewPage() {
               <span className="text-muted">{t("common.no_data")}</span>
             )}
             {warningAlerts.length > 0 && (
-              <span className="text-warningText">
-                {" "}
+              <span className="mt-2 block rounded-[var(--radius-control)] bg-warningSoft px-2 py-1 text-[12px] font-medium text-warningText">
                 {warningAlerts.map((a) => a.message).join(" ")}
               </span>
             )}
@@ -329,16 +351,20 @@ export function OverviewPage() {
               label={t("overview.acute_load")}
               value={fmtNum(overview.acute_load, 0)}
               unit="TSS"
+              sub={t("overview.range28")}
             />
             <StatPod
               label={t("overview.chronic_load")}
               value={fmtNum(overview.chronic_load, 0)}
               unit="TSS"
+              sub={t("overview.range28")}
             />
             <StatPod
-              label={`${t("overview.load")} 7d`}
+              label={t("overview.fitness")}
               value={fmtNum(overview.training_load_7d, 0)}
               unit="TSS"
+              sub={t("overview.avg7")}
+              tone="primary"
             />
           </div>
 
@@ -450,36 +476,49 @@ export function OverviewPage() {
                       ui.selectActivity(a.id);
                       ui.setView("activity-detail");
                     }}
-                    className="group flex w-full items-center gap-3 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5 text-left transition-colors hover:border-hairline2"
+                    className="group flex w-full items-start gap-2.5 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5 text-left transition-colors hover:border-hairline2"
                   >
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted transition-colors group-hover:bg-primarySoft group-hover:text-primaryText">
                       <SportIcon discipline={a.discipline} size={14} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] font-semibold text-ink">
+                      <div
+                        className="text-[12px] font-semibold leading-tight text-ink"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
                         {a.title}
                       </div>
-                      <div className="num mt-0.5 flex items-center gap-2 text-[10px] text-faint">
+                      <div className="num mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted">
                         <span>{friendlyDiscipline(a.discipline, ui.locale)}</span>
-                        <span aria-hidden>·</span>
+                        <span aria-hidden className="text-faint">·</span>
                         <span>{fmtClock(a.start_time, ui.locale)}</span>
-                        <span aria-hidden>·</span>
+                        <span aria-hidden className="text-faint">·</span>
                         <span>{fmtDuration(a.duration_s)}</span>
                         {a.distance_m !== null && (
                           <>
-                            <span aria-hidden>·</span>
-                            <span>
-                              {fmtDistance(a.distance_m, "metric", 1)} km
+                            <span aria-hidden className="text-faint">·</span>
+                            <span>{fmtDistance(a.distance_m, "metric", 1)} km</span>
+                          </>
+                        )}
+                        {a.training_load !== null && (
+                          <>
+                            <span aria-hidden className="text-faint">·</span>
+                            <span className="font-semibold text-primaryText">
+                              {a.training_load} TSS
                             </span>
                           </>
                         )}
                       </div>
                     </div>
-                    {a.training_load !== null && (
-                      <Badge tone="primary" className="shrink-0">
-                        {t("activities.load").split(" ")[0]} {a.training_load}
-                      </Badge>
-                    )}
+                    <ChevronRight
+                      size={12}
+                      className="mt-1 shrink-0 text-faint transition-colors group-hover:text-ink"
+                    />
                   </button>
                 </li>
               ))}
@@ -489,7 +528,20 @@ export function OverviewPage() {
 
         {/* ---------------- 7. Last Night (4 cols) */}
         <Card className="lg:col-span-4">
-          <CardHeader eyebrow={t("overview.last_night")} />
+          <CardHeader
+            eyebrow={t("overview.last_night")}
+            right={
+              overview.sleep ? (
+                <DeltaChip
+                  delta={overview.sleep_score.delta_7d}
+                  goodWhen="up"
+                  compact
+                  suffix={t("overview.vs7d")}
+                  showSuffix={false}
+                />
+              ) : null
+            }
+          />
           {overview.sleep ? (
             <button
               type="button"
@@ -499,23 +551,27 @@ export function OverviewPage() {
               }}
               className="group block w-full text-left"
             >
-              <div className="flex items-baseline gap-3">
-                <BigStat
-                  size="lg"
-                  value={fmtHours((overview.sleep_hours ?? 0) * 3600)}
-                  tone="ink"
-                />
-                <div className="flex flex-col">
-                  <span className="eyebrow !text-[9px]">{t("overview.sleep_score")}</span>
-                  <div className="num flex items-baseline gap-1.5 text-[18px] font-bold text-ink">
-                    {fmtNum(overview.sleep?.sleep_score ?? 0, 0)}
-                    <DeltaChip
-                      delta={overview.sleep_score.delta_7d}
-                      goodWhen="up"
-                      compact
-                      suffix={t("overview.vs7d")}
-                      showSuffix={false}
-                    />
+              {/* Sleep score hero + total hours as secondary */}
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="eyebrow !text-[9px]">{t("overview.sleep_score")}</div>
+                  <BigStat
+                    size="xl"
+                    value={fmtNum(overview.sleep?.sleep_score ?? 0, 0)}
+                    unit="/100"
+                    tone={
+                      (overview.sleep?.sleep_score ?? 0) >= 85
+                        ? "positive"
+                        : (overview.sleep?.sleep_score ?? 0) >= 70
+                        ? "ink"
+                        : "warning"
+                    }
+                  />
+                </div>
+                <div className="text-right">
+                  <div className="eyebrow !text-[9px]">{t("sleep.total")}</div>
+                  <div className="num text-[20px] font-bold text-ink">
+                    {fmtHours((overview.sleep_hours ?? 0) * 3600)}
                   </div>
                 </div>
               </div>
@@ -586,28 +642,29 @@ export function OverviewPage() {
 
           <Hairline className="my-3" />
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2">
-              <div className="eyebrow !text-[9px] truncate">{t("overview.overnight_peak")}</div>
-              <div className="num mt-1 flex items-baseline gap-0.5 text-[16px] font-bold text-ink">
-                {fmtNum(Math.round((overview.hrv_ms ?? 0) * 1.15), 0)}
-                <span className="text-[9px] font-medium text-muted">ms</span>
-              </div>
-            </div>
-            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2">
-              <div className="eyebrow !text-[9px] truncate">{t("overview.baseline7")}</div>
-              <div className="num mt-1 flex items-baseline gap-0.5 text-[16px] font-bold text-ink">
-                {fmtNum(overview.hrv_baseline_ms, 0)}
-                <span className="text-[9px] font-medium text-muted">ms</span>
-              </div>
-            </div>
-            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2">
-              <div className="eyebrow !text-[9px] truncate">{t("overview.norm30")}</div>
-              <div className="num mt-1 flex items-baseline gap-0.5 text-[16px] font-bold text-ink">
-                {fmtNum(overview.hrv_norm_30d, 0)}
-                <span className="text-[9px] font-medium text-muted">ms</span>
-              </div>
-            </div>
+          {/* Parasympathetic sub-stats — stack vertically to avoid eyebrow truncation */}
+          <div className="flex flex-col gap-2">
+            <ParasympRow
+              label={t("overview.overnight_peak")}
+              value={fmtNum(Math.round((overview.hrv_ms ?? 0) * 1.15), 0)}
+              unit="ms"
+              tone="positive"
+              hint={`+${fmtNum(Math.round((overview.hrv_ms ?? 0) * 1.15 - (overview.hrv_baseline_ms ?? 0)), 0)} ms ${t("overview.vs_baseline")}`}
+            />
+            <ParasympRow
+              label={t("overview.baseline7")}
+              value={fmtNum(overview.hrv_baseline_ms, 0)}
+              unit="ms"
+              tone="muted"
+              hint={`${t("overview.rolling")} 7d`}
+            />
+            <ParasympRow
+              label={t("overview.norm30")}
+              value={fmtNum(overview.hrv_norm_30d, 0)}
+              unit="ms"
+              tone="muted"
+              hint={`${t("overview.avg7")} 30d`}
+            />
           </div>
         </Card>
       </div>
@@ -630,8 +687,8 @@ function StageRow({
   const pct = total > 0 ? (seconds / total) * 100 : 0;
   return (
     <div className="flex items-center gap-2">
-      <span className="num w-12 shrink-0 text-[10px] text-faint">{label}</span>
-      <div className="num h-1.5 flex-1 overflow-hidden rounded-full bg-surface3">
+      <span className="num w-12 shrink-0 text-[10px] text-muted">{label}</span>
+      <div className="num h-1.5 flex-1 overflow-hidden rounded-full bg-surface3" title={`${label}: ${fmtHours(seconds)}`}>
         <div
           style={{ width: `${pct}%`, background: color, height: "100%", transition: "width 600ms cubic-bezier(0.16,1,0.3,1)" }}
         />
@@ -639,6 +696,47 @@ function StageRow({
       <span className="num w-12 shrink-0 text-right text-[10px] text-muted">
         {fmtHours(seconds)}
       </span>
+    </div>
+  );
+}
+
+/** Parasympathetic row — label on left, value on right, hint below. */
+function ParasympRow({
+  label,
+  value,
+  unit,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  tone: "positive" | "muted" | "primary";
+  hint?: string;
+}) {
+  const valTone = {
+    positive: "text-positiveText",
+    muted: "text-ink",
+    primary: "text-primaryText",
+  }[tone];
+  const dot = {
+    positive: "bg-positive",
+    muted: "bg-hairline2",
+    primary: "bg-primary",
+  }[tone];
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-[var(--radius-card)] border border-hairline bg-surface2 px-3 py-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+        <div className="min-w-0 flex-1">
+          <div className="eyebrow !text-[10px] break-words leading-tight">{label}</div>
+          {hint && <div className="num mt-0.5 text-[9px] text-faint">{hint}</div>}
+        </div>
+      </div>
+      <div className={`num flex shrink-0 items-baseline gap-0.5 text-[18px] font-bold ${valTone}`}>
+        {value}
+        <span className="text-[10px] font-medium text-muted">{unit}</span>
+      </div>
     </div>
   );
 }
