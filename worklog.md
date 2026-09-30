@@ -787,3 +787,86 @@ Stage Summary:
 - 4 new features added (Activity Detail stream hover tooltip, NotificationsBell mark-as-read + localStorage, Coach streaming LLM responses, Settings theme preview popover).
 - Lint clean, dev log clean, all 14 view paths render correctly.
 - All features verified end-to-end via agent-browser (including rapid DOM sampling for the streaming test).
+
+---
+Task ID: 11 (webDevReview cycle 5)
+Agent: main (cron-triggered webDevReview)
+Task: Assess project status, perform QA via agent-browser, fix bugs, add new features, improve styling details.
+
+## Project Status Assessment
+- Cycle 4 left the project at commit e3311f7 with 4 new features (Activity Detail stream hover, NotificationsBell mark-as-read, Coach streaming, Settings theme preview).
+- Lint clean, dev server running, all 14 view paths rendering.
+- The 15-min webDevReview cron (job ID 426218) is active.
+
+## QA Findings
+- Smoke test of all 8 main nav sections: all render with correct H1 headings.
+- No console errors or runtime exceptions across the QA pass.
+- Discovered platform limitation: the Caddy gateway (`/app/Caddyfile` in a separate container) can't route to mini-service ports the dev environment starts. Tested with curl — gateway returns 502 (Caddy error page) for `?XTransformPort=3005` while the sync service is alive on localhost:3005. Built the useSyncStatus hook with a graceful fallback simulator so the UI is useful in both dev and production.
+
+## New Features Added (per "Mandatory: Add more features and functionality")
+1. **Synchronized stream charts (shared hover state)** — `src/features/apex/activities/ActivityDetailPage.tsx`:
+   - Refactored: lifted the `hoverIdx` state from individual `StreamChart` components up to a new parent `StreamCharts` wrapper that owns the SHARED state.
+   - All 5 StreamCharts (HR / Power / Speed / Altitude / Cadence) now receive `hoverIdx` + `setHoverIdx` as props, so hovering ONE chart shows crosshairs on ALL of them at the same time index.
+   - Added a hover time indicator on the shared x-axis at the bottom — a small primary-colored time label appears at the exact hovered x-position.
+   - Verified: hovering HR shows crosshair on HR + Power + Speed + Altitude + Cadence charts simultaneously, all with their value at that index in the right-side display.
+2. **Real-time sync indicator (websocket mini-service)** — full stack:
+   - Backend: `mini-services/sync-service/index.ts` (~80 lines). Bun + socket.io server on port 3005. Broadcasts a fresh `apex:sync` event every 8-15s with payload `{provider, last_synced_at, freshness_ms, status, samples_synced}`. Cycles through Garmin/Whoop/Strava/Oura/COROS. Sends `apex:hello` handshake on connect. Graceful shutdown on SIGTERM/SIGINT.
+   - Frontend hook: `src/hooks/use-sync-status.ts` (~160 lines). Connects via `io("/?XTransformPort=3005")`. Falls back to a deterministic simulated sync event loop after 4s if the real socket can't connect (gateway limitation in dev). Each event has `simulated: true/false` so the UI can label it honestly.
+   - Overview status strip integration: real-time live "Validated biosignal" badge (positive) when connected; "Reconnecting" (warning) when disconnected; "Connecting…" (faint) on initial connect. Wifi/WifiOff icons. Latest sync line below the strip shows "garmin · 14:36 · freshness 3.4s · status active · live · port 3005" or "simulated · fallback" depending on source.
+   - Verified end-to-end: socket can't connect in dev (gateway limitation), fallback simulator kicks in after 4s, first sim event arrives, then periodic events every 8-15s. "simulated · fallback" label is shown honestly.
+3. **Coach real LLM backend with SSE streaming** — full stack:
+   - Backend: `src/app/api/coach/route.ts` (~110 lines). POST endpoint that calls `zai.chat.completions.create()` with a strict system prompt (grounded in measured data, restrained tone, always ends with medical disclaimer). Returns `text/event-stream` with `data: {type:"token",text:"..."}` chunks word-by-word, then `data: {type:"done"}`. Handles errors via `data: {type:"error",error:"..."}`.
+   - Frontend integration: `streamReplyLLM()` async helper in CoachPage that POSTs the full conversation history to `/api/coach`, reads the SSE stream via `getReader()`, parses `\n\n`-separated SSE events, and progressively fills the assistant message via `replaceMessage()`. After stream completes, appends an empty recommendation + a fixed disclaimer message to maintain the kind-badged structure.
+   - "Live LLM" toggle switch (Sparkles icon) added to the Coach sidebar — when ON, uses the real backend; when OFF (default), uses the canned deterministic reply. Toggle has aria-checked + a sliding pill design. Helpful subtext: "Real LLM (z-ai-web-dev-sdk) with SSE streaming." or "Canned deterministic replies."
+   - Verified end-to-end: toggled Live LLM ON, sent "How is my recovery today?", got 4 bubbles back — user message + LLM data response ("Your recovery score is 82 today, which is slightly above your 7-day average of 78. Heart rate variability (HRV) is at 45ms, within your normal range. Resting heart rate is 3 bpm lower than your 28-day...") + recommendation + disclaimer. Dev log shows `POST /api/coach 200 in 4.7s`.
+4. **Mobile polish — bottom nav** — `src/components/apex/layout/AppShell.tsx`:
+   - Touch target height increased from h-14 (56px) to h-16 (64px) — exceeds the 44px minimum by a comfortable margin.
+   - Icon size increased from 18 to 20.
+   - Gap between icon and label increased from 0.5 to 1 for better visual breathing.
+   - Added a top active-indicator bar: a 0.5px-tall, 32px-wide primary-colored bar at the top of the active tab, with rounded bottom corners. Makes the current section instantly scannable.
+
+## Styling Improvements (per "Mandatory: Improve styling with more details")
+- Stream chart hover: dashed crosshair + colored dot now syncs across all 5 charts.
+- Shared x-axis: hover time indicator slides along the bottom axis as the user hovers.
+- Overview status strip: Wifi/WifiOff icons + 3-state live indicator (connecting/connected/disconnected) with semantic colors.
+- Latest sync line: subtle hairline-separated row below the strip with mono time + freshness + status + source label.
+- Coach sidebar: "Live LLM" toggle with Sparkles icon, sliding pill switch, helpful subtext.
+- Mobile bottom nav: 64px touch targets, 20px icons, top active indicator bar.
+
+## Verification
+- Lint: `bun run lint` → exit 0, zero errors, zero warnings.
+- Dev log: clean — only "✓ Compiled", "GET / 200", and "POST /api/coach 200 in 4.7s" entries (the LLM call).
+- agent-browser QA:
+  - Synchronized stream charts: hovering HR shows crosshair on all 5 charts.
+  - Real-time sync indicator: fallback simulator activates after 4s, "simulated · fallback" label shown honestly, periodic events arrive every 8-15s.
+  - Coach Live LLM backend: toggled ON, sent message, got grounded response from real z-ai-web-dev-sdk LLM (verified: "Your recovery score is 82 today..." in the assistant bubble). POST /api/coach 200 in 4.7s.
+  - Mobile bottom nav: h-16 touch target, 20px icons, top active indicator bar visible.
+  - All 8 main nav sections render with correct H1 headings.
+  - No errors during the QA pass.
+
+## Files Changed
+- `mini-services/sync-service/package.json` + `index.ts` — NEW (~80 lines). Bun + socket.io server on port 3005.
+- `src/hooks/use-sync-status.ts` — NEW (~160 lines). Socket.io client hook with fallback simulator.
+- `src/app/api/coach/route.ts` — NEW (~110 lines). SSE streaming LLM endpoint.
+- `src/features/apex/overview/OverviewPage.tsx` — wired useSyncStatus hook; real-time status strip with Wifi/WifiOff icons, 3-state live indicator, latest sync line; removed the static `anyLive` check.
+- `src/features/apex/activities/ActivityDetailPage.tsx` — new StreamCharts parent wrapper owning shared hoverIdx; StreamChart refactored to controlled hover (props hoverIdx + setHoverIdx); added hover time indicator on shared x-axis.
+- `src/features/apex/coach/CoachPage.tsx` — added useAiBackend state; streamReplyLLM async helper with SSE parsing; wired into handleSend both branches; "Live LLM" toggle switch UI in sidebar with Sparkles icon + helpful subtext.
+- `src/components/apex/layout/AppShell.tsx` — BottomNav upgraded: h-14 → h-16 touch targets, icon 18 → 20, gap 0.5 → 1, added top active indicator bar.
+- `bun.lock` + `package.json` — added socket.io-client dependency.
+
+## Unresolved Issues / Next-Phase Recommendations
+Priority recommendations for next cycle:
+1. **Persist Activity Compare selection** across modal opens within a session.
+2. **Unit tests** — even a smoke test per page would catch regressions.
+3. **Settings: locale-aware date/time preview** when changing locale.
+4. **NotificationsBell: per-alert mark-as-read** on click (not just bulk).
+5. **Coach: continue existing conversation with LLM** — current implementation passes history; verify multi-turn context is preserved correctly.
+6. **Sync service: real device integration** — currently simulates device polling; could integrate with actual Garmin/Whoop APIs.
+7. **Synchronized stream charts: vertical sync line across charts** — draw a single vertical line that spans all 5 charts at the hover x-position (currently each chart draws its own line).
+8. **Activity Detail: shared y-axis tooltip** — show all 5 metric values at the hovered time in a single combined tooltip.
+
+Stage Summary:
+- 4 new features added (synchronized stream charts, real-time sync indicator with websocket mini-service + fallback, Coach real LLM backend with SSE streaming + Live LLM toggle, mobile bottom nav polish).
+- 1 platform limitation discovered (Caddy gateway can't route to mini-service ports in dev) — handled gracefully with fallback simulator + honest "simulated · fallback" label.
+- Lint clean, dev log clean, all 14 view paths render correctly.
+- All features verified end-to-end via agent-browser.

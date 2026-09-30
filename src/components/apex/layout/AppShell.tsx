@@ -300,12 +300,19 @@ function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) =
               <button
                 type="button"
                 onClick={() => onNav(item.view)}
-                className={`flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                className={`relative flex h-16 w-full flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ${
                   active ? "text-primaryText" : "text-muted"
                 }`}
                 aria-current={active ? "page" : undefined}
               >
-                <Icon size={18} strokeWidth={active ? 2.4 : 1.8} />
+                {/* Top active indicator bar */}
+                {active && (
+                  <span
+                    className="absolute left-1/2 top-0 h-0.5 w-8 -translate-x-1/2 rounded-b-full bg-primary"
+                    aria-hidden
+                  />
+                )}
+                <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
                 <span className="num truncate text-[9px] tracking-[0.04em] uppercase">
                   {t(item.labelKey)}
                 </span>

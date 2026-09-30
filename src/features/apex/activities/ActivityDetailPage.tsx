@@ -242,57 +242,12 @@ export function ActivityDetailPage() {
             className="mb-0"
           />
         </div>
-        <div className="space-y-1 p-4">
-          <StreamChart
-            label={t("activities.hr")}
-            unit="bpm"
-            data={streams.columns.hr}
-            color="var(--c-alert)"
-            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
-          />
-          <StreamChart
-            label={t("activities.power")}
-            unit="W"
-            data={streams.columns.power}
-            color="var(--c-primary)"
-            emptyLabel={t("activities.no_power")}
-            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
-          />
-          <StreamChart
-            label={t("activities.speed_stream")}
-            unit="km/h"
-            data={streams.columns.speed}
-            color="var(--c-positive)"
-            emptyLabel={t("activities.no_power")}
-            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
-          />
-          <StreamChart
-            label={t("activities.altitude")}
-            unit="m"
-            data={streams.columns.alt}
-            color="var(--c-text-2)"
-            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
-          />
-          <StreamChart
-            label={t("activities.cadence")}
-            unit="rpm"
-            data={streams.columns.cadence}
-            color="var(--c-warning)"
-            timeLabels={[detail.start_time, new Date(new Date(detail.start_time).getTime() + detail.duration_s * 1000).toISOString()]}
-          />
-          {/* Shared time axis */}
-          <div className="flex items-center gap-3 pt-2">
-            <div className="w-20 shrink-0" />
-            <div className="num flex flex-1 justify-between text-[10px] text-faint">
-              <span>00:00</span>
-              <span>{fmtDuration(detail.duration_s / 4)}</span>
-              <span>{fmtDuration(detail.duration_s / 2)}</span>
-              <span>{fmtDuration((detail.duration_s * 3) / 4)}</span>
-              <span>{fmtDuration(detail.duration_s)}</span>
-            </div>
-            <div className="w-28 shrink-0" />
-          </div>
-        </div>
+        <StreamCharts
+          streams={streams}
+          startTime={detail.start_time}
+          duration_s={detail.duration_s}
+          t={t}
+        />
       </Card>
 
       {/* Heart Rate Zone Distribution */}
@@ -538,6 +493,113 @@ function GpsTrace({ route }: { route: { lat: number; lng: number; ele: number | 
 
 /* ----------------------------------------------------------- Synchronized stream chart */
 
+/**
+ * StreamCharts — parent wrapper that owns the SHARED hoverIdx state.
+ * All child StreamCharts receive the same hoverIdx + a setter, so hovering
+ * one chart shows crosshairs on all of them at the same time index.
+ * Also renders the shared x-axis time labels at the bottom.
+ */
+function StreamCharts({
+  streams,
+  startTime,
+  duration_s,
+  t,
+}: {
+  streams: ActivityStream;
+  startTime: string;
+  duration_s: number;
+  t: (p: string) => string;
+}) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const endTime = new Date(new Date(startTime).getTime() + duration_s * 1000).toISOString();
+  const timeLabels: [string, string] = [startTime, endTime];
+
+  return (
+    <div className="space-y-1 p-4">
+      <StreamChart
+        label={t("activities.hr")}
+        unit="bpm"
+        data={streams.columns.hr}
+        color="var(--c-alert)"
+        timeLabels={timeLabels}
+        hoverIdx={hoverIdx}
+        setHoverIdx={setHoverIdx}
+      />
+      <StreamChart
+        label={t("activities.power")}
+        unit="W"
+        data={streams.columns.power}
+        color="var(--c-primary)"
+        emptyLabel={t("activities.no_power")}
+        timeLabels={timeLabels}
+        hoverIdx={hoverIdx}
+        setHoverIdx={setHoverIdx}
+      />
+      <StreamChart
+        label={t("activities.speed_stream")}
+        unit="km/h"
+        data={streams.columns.speed}
+        color="var(--c-positive)"
+        emptyLabel={t("activities.no_power")}
+        timeLabels={timeLabels}
+        hoverIdx={hoverIdx}
+        setHoverIdx={setHoverIdx}
+      />
+      <StreamChart
+        label={t("activities.altitude")}
+        unit="m"
+        data={streams.columns.alt}
+        color="var(--c-text-2)"
+        timeLabels={timeLabels}
+        hoverIdx={hoverIdx}
+        setHoverIdx={setHoverIdx}
+      />
+      <StreamChart
+        label={t("activities.cadence")}
+        unit="rpm"
+        data={streams.columns.cadence}
+        color="var(--c-warning)"
+        timeLabels={timeLabels}
+        hoverIdx={hoverIdx}
+        setHoverIdx={setHoverIdx}
+      />
+      {/* Shared time axis */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="w-20 shrink-0" />
+        <div className="num relative flex flex-1 justify-between text-[10px] text-faint">
+          <span>00:00</span>
+          <span>{fmtDuration(duration_s / 4)}</span>
+          <span>{fmtDuration(duration_s / 2)}</span>
+          <span>{fmtDuration((duration_s * 3) / 4)}</span>
+          <span>{fmtDuration(duration_s)}</span>
+          {/* Hover time indicator on the axis */}
+          {hoverIdx !== null && (
+            <span
+              className="absolute top-3 text-[10px] font-semibold tabular-nums text-primaryText"
+              style={{
+                left: `${(hoverIdx / Math.max(1, streams.columns.hr.length - 1)) * 100}%`,
+                transform: "translateX(-50%)",
+              }}
+            >
+              {(() => {
+                try {
+                  const startMs = new Date(startTime).getTime();
+                  const endMs = new Date(endTime).getTime();
+                  const tMs = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, streams.columns.hr.length - 1);
+                  return new Date(tMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+                } catch {
+                  return null;
+                }
+              })()}
+            </span>
+          )}
+        </div>
+        <div className="w-28 shrink-0" />
+      </div>
+    </div>
+  );
+}
+
 function StreamChart({
   label,
   unit,
@@ -545,6 +607,8 @@ function StreamChart({
   color,
   emptyLabel,
   timeLabels,
+  hoverIdx,
+  setHoverIdx,
 }: {
   label: string;
   unit: string;
@@ -553,8 +617,10 @@ function StreamChart({
   emptyLabel?: string;
   /** Optional [start, end] time strings for x-axis tooltip */
   timeLabels?: [string, string];
+  /** Shared hover index (controlled by parent StreamCharts) */
+  hoverIdx: number | null;
+  setHoverIdx: (idx: number | null) => void;
 }) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const points = data.filter((v): v is number => v !== null && Number.isFinite(v));
@@ -603,7 +669,7 @@ function StreamChart({
     ? H - 4 - ((hoverValue - min) / (max - min || 1)) * (H - 8)
     : 0;
 
-  // Mouse → nearest data index
+  // Mouse → nearest data index (lifted to parent)
   const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!hasData) return;
     const rect = containerRef.current?.getBoundingClientRect();
@@ -662,7 +728,7 @@ function StreamChart({
               vectorEffect="non-scaling-stroke"
             />
             <circle cx={lastX} cy={lastY} r={2.4} fill={color} vectorEffect="non-scaling-stroke" />
-            {/* Hover crosshair */}
+            {/* Hover crosshair (synced across all charts) */}
             {hoverIdx !== null && hoverValue !== null && Number.isFinite(hoverValue) && (
               <>
                 <line

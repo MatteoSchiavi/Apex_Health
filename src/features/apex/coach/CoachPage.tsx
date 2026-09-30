@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Plus, Trash2, Mic, Square, Loader2 } from "lucide-react";
+import { Send, Plus, Trash2, Mic, Square, Loader2, Sparkles } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { chatSessions, getChatSession } from "@/lib/apex/data";
@@ -299,6 +299,7 @@ export function CoachPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const voice = useVoiceInput();
+  const [useAiBackend, setUseAiBackend] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -447,6 +448,114 @@ export function CoachPage() {
     };
   }
 
+  /**
+   * Real-LLM streaming: calls /api/coach with the full conversation history,
+   * parses the SSE stream, and progressively fills the assistant message.
+   * Falls back to canned streamReply() if the backend fails or is unreachable.
+   */
+  async function streamReplyLLM(id: number, userMsg: string, currentMessages: ChatMessage[]): Promise<void> {
+    const nowIso = new Date().toISOString();
+
+    // Build the message history for the LLM (only user/assistant, skip kind badges)
+    const history = currentMessages
+      .filter((m) => m.role === "user" || (m.role === "assistant" && m.content))
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    // Placeholder assistant message — streamed into place
+    const streamingMsg: ChatMessage = {
+      id: nextMsgId(),
+      role: "assistant",
+      content: "",
+      referenced_data: null,
+      created_at: nowIso,
+      kind: "data",
+    };
+    appendMessages(id, [streamingMsg]);
+
+    try {
+      const resp = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history, locale: ui.locale }),
+      });
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let acc = "";
+
+      // Read chunks until done
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse complete SSE events (separated by \n\n)
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? ""; // keep the last (possibly partial) chunk
+
+        for (const evt of events) {
+          const line = evt.trim();
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6);
+          try {
+            const parsed = JSON.parse(json);
+            if (parsed.type === "token") {
+              acc += parsed.text;
+              replaceMessage(id, streamingMsg.id, (m) => ({ ...m, content: acc }));
+            } else if (parsed.type === "done") {
+              // Append a recommendation + disclaimer wrap-up so the kind-badged
+              // structure matches the canned path.
+              const rest: ChatMessage[] = [
+                {
+                  id: nextMsgId(),
+                  role: "assistant",
+                  content: "",
+                  referenced_data: null,
+                  created_at: nowIso,
+                  kind: "recommendation",
+                },
+                {
+                  id: nextMsgId(),
+                  role: "assistant",
+                  content: "This is an interpretation of measured data, not medical advice.",
+                  referenced_data: null,
+                  created_at: nowIso,
+                  kind: "disclaimer",
+                },
+              ];
+              appendMessages(id, rest);
+              updateSession(id, (s) => ({
+                ...s,
+                message_count: s.message_count + 3,
+                last_activity_at: nowIso,
+                preview: acc.slice(0, 80),
+              }));
+              setLoading(false);
+              return;
+            } else if (parsed.type === "error") {
+              throw new Error(parsed.error || "LLM error");
+            }
+          } catch {
+            /* ignore malformed JSON chunks */
+          }
+        }
+      }
+      // Stream ended without explicit "done"
+      throw new Error("Stream ended prematurely");
+    } catch (err) {
+      // Fallback: append the error message + canned reply
+      const errMsg = err instanceof Error ? err.message : "Unknown LLM error";
+      replaceMessage(id, streamingMsg.id, (m) => ({
+        ...m,
+        content: `[LLM backend unavailable — falling back to local canned reply]\n\nError: ${errMsg}`,
+      }));
+      // Then proceed with canned reply
+      streamReply(id, userMsg);
+    }
+  }
+
   function handleSend() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
@@ -481,7 +590,12 @@ export function CoachPage() {
 
       // Stream the assistant reply word-by-word (typewriter effect).
       setLoading(true);
-      streamReply(id, trimmed);
+      if (useAiBackend) {
+        // Fire-and-forget the async LLM call
+        streamReplyLLM(id, trimmed, [userMsg]);
+      } else {
+        streamReply(id, trimmed);
+      }
     } else {
       /* ----- continuing existing conversation */
       const id = currentId;
@@ -495,7 +609,12 @@ export function CoachPage() {
 
       // Stream the assistant reply word-by-word (typewriter effect).
       setLoading(true);
-      streamReply(id, trimmed);
+      const currentMessages = (messagesMap[id] ?? []).concat(userMsg);
+      if (useAiBackend) {
+        streamReplyLLM(id, trimmed, currentMessages);
+      } else {
+        streamReply(id, trimmed);
+      }
     }
   }
 
@@ -598,6 +717,33 @@ export function CoachPage() {
             >
               {t("coach.new_chat")}
             </ApexButton>
+            <Hairline className="my-2" />
+            {/* AI backend toggle */}
+            <label className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2.5 py-1.5 cursor-pointer transition-colors hover:bg-surface3">
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-ink2">
+                <Sparkles size={11} className="text-primaryText" />
+                Live LLM
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useAiBackend}
+                onClick={() => setUseAiBackend((v) => !v)}
+                className={`relative h-4 w-7 rounded-full transition-colors ${useAiBackend ? "bg-primary" : "bg-surface3"}`}
+                aria-label="Toggle live LLM backend"
+              >
+                <span
+                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+                    useAiBackend ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </label>
+            <p className="num mt-1 px-1 text-[10px] text-faint">
+              {useAiBackend
+                ? "Real LLM (z-ai-web-dev-sdk) with SSE streaming."
+                : "Canned deterministic replies."}
+            </p>
             <Hairline className="my-2" />
             {localSessions.length === 0 ? (
               <Empty title={t("coach.empty_chats")} />
