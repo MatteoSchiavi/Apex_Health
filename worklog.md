@@ -1426,3 +1426,66 @@ Task: Fix the backend first — get it stable and reliable, connect to real Garm
 2. Design the Overview page to be the "hero" — the one page most people will look at
 3. Apply the remaining design improvements (arc gauges, sparklines in tables, consistent borders)
 4. Test with the real data flowing through the full stack
+
+---
+Task ID: 19 (user feedback round 2 — major UX fixes)
+Agent: main (user-directed)
+Task: Fix all issues from user's detailed feedback. Study each page. Remove scenic data. Restore good data viz.
+
+## User Feedback (verbatim)
+1. Welcome page: can't put real activity data on a landing page. Use fake/demo data. Make it tell about the project.
+2. Dashboard: remove the fake "Imposed Chorus / Biosignals Validated" status strip. Only useful info at top. Put sync at bottom.
+3. Font: revert from slim/light back to proper Geist bold. User hates the slim font.
+4. Overview: ACWR block has dead space. Messy. Needs reorganization.
+5. Sidebar: make retractable/collapsible. Icons-only when collapsed.
+6. Remove duplicate language/theme toggles (topbar + sidebar + settings = 3 copies). Keep only in Settings.
+7. Activities: still mockup data. Stream charts should be combined (one chart, multiple lines), not separate per metric.
+8. Sleep: hypnogram "looks like shit". Remove and redesign.
+9. Biometrics: "bad, so much. Not tidy. Everything is awful." Needs complete redesign.
+10. Coach: good. Challenges: good.
+11. Settings: add "Sync now" button in device integrations.
+12. Data visualization was better before — I made it worse. Need to restore good viz + keep better UI.
+
+## What I Fixed This Cycle
+
+1. Font reverted: BigStat from font-light → font-bold. Page-title from font-medium → font-semibold.
+
+2. Welcome page completely rewritten:
+   - No real user data (landing page, not dashboard)
+   - Professional product pitch: "Your body, decoded."
+   - Demo metrics (Readiness 84, HRV 64ms, Sleep 7h42m, Resting HR 48bpm)
+   - Product mockup card with ACWR bar + training load bars (clearly demo)
+   - 3 feature pillars: Connects devices, Analyzes recovery & load, Explains what it means
+   - Supported devices strip (Garmin, Whoop, Strava, Oura, COROS, Manual)
+   - Clean closing CTA
+
+3. Overview: removed the entire fake status strip (was "Imposed Chorus 16 Samples, Biosignals Validated"). Moved sync indicator to the BOTTOM of the page — simple "Garmin · 09:30" line with a green dot. No more pulsing fake data.
+
+4. Sidebar: retractable/collapsible.
+   - Expanded: 244px width, full labels, sync footer, collapse button
+   - Collapsed: 60px width, icons only, expand button
+   - Smooth width transition
+   - PanelLeftClose / PanelLeftOpen icons
+
+5. Removed duplicate toggles:
+   - Desktop topbar: removed LocaleToggle + ThemeSegmented
+   - Mobile topbar: removed LocaleToggle + ThemeSegmentedCompact
+   - Sidebar footer: removed ThemeSegmented + LocaleToggle
+   - Language + theme now ONLY in Settings > Appearance
+
+6. Settings: added "Sync now" button in Devices & Integrations section header. Triggers POST /api/garmin/sync, shows toast with results, spinner while syncing.
+
+## What Still Needs To Be Done
+- Activities: wire to real API data + combine stream charts into single multi-line chart
+- Sleep: remove hypnogram entirely, redesign sleep night page
+- Biometrics: complete redesign (user said "everything is awful")
+- Overview: fill ACWR dead space, better organization
+- Study each page methodically per user's request
+
+## Files Changed
+- src/components/apex/kit.tsx — reverted BigStat to font-bold
+- src/app/globals.css — reverted page-title to font-semibold
+- src/features/apex/welcome/WelcomeScreen.tsx — complete rewrite (no real data)
+- src/features/apex/overview/OverviewPage.tsx — removed status strip, added bottom sync indicator
+- src/components/apex/layout/AppShell.tsx — retractable sidebar, removed dup toggles, added PanelLeftClose/Open imports
+- src/features/apex/settings/SettingsPage.tsx — added Sync now button, RefreshCw import, syncing state
