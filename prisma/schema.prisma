@@ -30,6 +30,8 @@ model User {
   sleepSessions  SleepSession[]
   dailyBiometrics DailyBiometric[]
   hrvReadings    HrvReading[]
+  calendarEvents CalendarEvent[]
+  uploadedDocuments UploadedDocument[]
 }
 
 model Activity {
@@ -119,4 +121,38 @@ model Integration {
   lastSyncedAt  String?
   isMain        Boolean  @default(false)
   connectedAt   DateTime @default(now())
+}
+
+model CalendarEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  kind      String   @default("session")
+  date      String
+  endDate   String?
+  priority  String   @default("normal")
+  taperDays Int?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+}
+
+model UploadedDocument {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  fileName   String
+  fileType   String
+  fileSize   Int
+  filePath   String
+  status     String   @default("pending")
+  parsedData String?
+  uploadedAt DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, uploadedAt])
 }
