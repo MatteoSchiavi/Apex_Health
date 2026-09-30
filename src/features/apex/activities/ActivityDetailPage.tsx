@@ -528,13 +528,15 @@ function GpsTrace({ route }: { route: { lat: number; lng: number; ele: number | 
   );
 }
 
-/* ----------------------------------------------------------- Synchronized stream chart */
+/* ----------------------------------------------------------- Multi-line stream chart */
 
 /**
- * StreamCharts — parent wrapper that owns the SHARED hoverIdx state.
- * All child StreamCharts receive the same hoverIdx + a setter, so hovering
- * one chart shows crosshairs on all of them at the same time index.
- * Also renders the shared x-axis time labels at the bottom.
+ * StreamCharts — single chart with all metrics overlaid as multi-colored lines.
+ * Each metric is normalized to its own min/max range so they can share one
+ * chart without one metric dominating the others.
+ *
+ * Hover shows a crosshair + tooltip with all 5 metric values at that time.
+ * Lap range highlight shows as a tinted band.
  */
 function StreamCharts({
   streams,
@@ -547,29 +549,55 @@ function StreamCharts({
   startTime: string;
   duration_s: number;
   t: (p: string) => string;
-  /** Optional lap range to highlight as a tinted band (from laps table hover) */
   lapRange?: { startIdx: number; endIdx: number } | null;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerW, setContainerW] = useState(0);
+
   const endTime = new Date(new Date(startTime).getTime() + duration_s * 1000).toISOString();
-  const timeLabels: [string, string] = [startTime, endTime];
-
-  // Track container width so we can position the tooltip correctly
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () => setContainerW(el.getBoundingClientRect().width);
-    update();
-    const obs = new ResizeObserver(update);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  // Compute the combined tooltip data
-  const streamCount = streams.columns.hr.length;
+  const streamCount = streams.t.length;
   const hoverPct = hoverIdx !== null ? (hoverIdx / Math.max(1, streamCount - 1)) * 100 : 0;
+
+  // Define the metrics to plot
+  const metrics = [
+    { key: "hr", label: t("activities.hr"), unit: "bpm", data: streams.columns.hr, color: "var(--c-alert)" },
+    { key: "power", label: t("activities.power"), unit: "W", data: streams.columns.power, color: "var(--c-primary)" },
+    { key: "speed", label: t("activities.speed_stream"), unit: "km/h", data: streams.columns.speed, color: "var(--c-positive)" },
+    { key: "alt", label: t("activities.altitude"), unit: "m", data: streams.columns.alt, color: "var(--c-text-2)" },
+    { key: "cadence", label: t("activities.cadence"), unit: "rpm", data: streams.columns.cadence, color: "var(--c-warning)" },
+  ].filter((m) => m.data.some((v) => v !== null && Number.isFinite(v)));
+
+  // Chart dimensions
+  const W = 1000;
+  const H = 200;
+  const padL = 48;
+  const padR = 16;
+  const padT = 16;
+  const padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // Compute normalized paths for each metric
+  const metricPaths = metrics.map((m) => {
+    const validData = m.data.filter((v): v is number => v !== null && Number.isFinite(v));
+    if (validData.length < 2) return { ...m, path: "", min: 0, max: 0 };
+    const min = Math.min(...validData);
+    const max = Math.max(...validData);
+    const range = max - min || 1;
+    const stepX = plotW / Math.max(1, m.data.length - 1);
+    let path = "";
+    let started = false;
+    m.data.forEach((v, i) => {
+      if (v === null || !Number.isFinite(v)) return;
+      const x = padL + i * stepX;
+      const y = padT + plotH - ((v - min) / range) * plotH;
+      if (!started) { path += `M${x.toFixed(1)},${y.toFixed(1)}`; started = true; }
+      else { path += ` L${x.toFixed(1)},${y.toFixed(1)}`; }
+    });
+    return { ...m, path, min, max };
+  });
+
+  // Hover tooltip data
   const hoverTimeStr = hoverIdx !== null
     ? (() => {
         try {
@@ -577,354 +605,129 @@ function StreamCharts({
           const endMs = new Date(endTime).getTime();
           const tMs = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, streamCount - 1);
           return new Date(tMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-        } catch {
-          return null;
-        }
+        } catch { return null; }
       })()
     : null;
 
-  // Combined tooltip rows: each metric with its value at hoverIdx
-  const tooltipRows = hoverIdx !== null
-    ? [
-        { label: t("activities.hr"), value: streams.columns.hr[hoverIdx], unit: "bpm", color: "var(--c-alert)" },
-        { label: t("activities.power"), value: streams.columns.power[hoverIdx], unit: "W", color: "var(--c-primary)" },
-        { label: t("activities.speed_stream"), value: streams.columns.speed[hoverIdx], unit: "km/h", color: "var(--c-positive)" },
-        { label: t("activities.altitude"), value: streams.columns.alt[hoverIdx], unit: "m", color: "var(--c-text-2)" },
-        { label: t("activities.cadence"), value: streams.columns.cadence[hoverIdx], unit: "rpm", color: "var(--c-warning)" },
-      ]
-    : [];
-
-  // Tooltip position: flip to left side if it would overflow the right edge
-  const tooltipOnLeft = hoverPct > 65;
-
-  return (
-    <div className="relative space-y-1 p-4" ref={containerRef}>
-      {/* Lap range band — tinted overlay highlighting the hovered lap's time range */}
-      {lapRange && (
-        <div
-          className="pointer-events-none absolute top-2 bottom-10 z-10 bg-primarySoft border-x border-primary/30"
-          style={{
-            left: `calc(80px + (100% - 80px - 112px - 32px) * ${lapRange.startIdx / Math.max(1, streamCount - 1)} + 16px)`,
-            width: `calc((100% - 80px - 112px - 32px) * ${(lapRange.endIdx - lapRange.startIdx) / Math.max(1, streamCount - 1)})`,
-          }}
-          aria-hidden
-        />
-      )}
-      {/* Vertical sync line — spans the full height of all 5 charts at the
-          hovered x-position. Positioned absolutely over the chart area
-          (between the 80px label column on the left and the 112px value
-          column on the right). */}
-      {hoverIdx !== null && (
-        <div
-          className="pointer-events-none absolute top-2 bottom-10 z-20 w-px bg-primaryText/40"
-          style={{
-            left: `calc(80px + (100% - 80px - 112px - 32px) * ${hoverPct / 100} + 16px)`,
-          }}
-          aria-hidden
-        />
-      )}
-      <StreamChart
-        label={t("activities.hr")}
-        unit="bpm"
-        data={streams.columns.hr}
-        color="var(--c-alert)"
-        timeLabels={timeLabels}
-        hoverIdx={hoverIdx}
-        setHoverIdx={setHoverIdx}
-      />
-      <StreamChart
-        label={t("activities.power")}
-        unit="W"
-        data={streams.columns.power}
-        color="var(--c-primary)"
-        emptyLabel={t("activities.no_power")}
-        timeLabels={timeLabels}
-        hoverIdx={hoverIdx}
-        setHoverIdx={setHoverIdx}
-      />
-      <StreamChart
-        label={t("activities.speed_stream")}
-        unit="km/h"
-        data={streams.columns.speed}
-        color="var(--c-positive)"
-        emptyLabel={t("activities.no_power")}
-        timeLabels={timeLabels}
-        hoverIdx={hoverIdx}
-        setHoverIdx={setHoverIdx}
-      />
-      <StreamChart
-        label={t("activities.altitude")}
-        unit="m"
-        data={streams.columns.alt}
-        color="var(--c-text-2)"
-        timeLabels={timeLabels}
-        hoverIdx={hoverIdx}
-        setHoverIdx={setHoverIdx}
-      />
-      <StreamChart
-        label={t("activities.cadence")}
-        unit="rpm"
-        data={streams.columns.cadence}
-        color="var(--c-warning)"
-        timeLabels={timeLabels}
-        hoverIdx={hoverIdx}
-        setHoverIdx={setHoverIdx}
-      />
-
-      {/* Combined tooltip — shows all 5 metric values at the hovered time */}
-      {hoverIdx !== null && hoverTimeStr && (
-        <div
-          className="pointer-events-none absolute z-30 w-[200px] rounded-[var(--radius-card)] border border-hairline2 bg-surface shadow-[var(--c-shadow-flyout)]"
-          style={{
-            top: 8,
-            left: tooltipOnLeft ? undefined : `calc(80px + (100% - 80px - 112px - 200px - 16px) * ${hoverPct / 100} + 16px)`,
-            right: tooltipOnLeft ? `calc(112px + (100% - 80px - 112px - 200px - 16px) * ${(100 - hoverPct) / 100} + 16px)` : undefined,
-          }}
-          role="status"
-          aria-live="polite"
-          aria-label={`At ${hoverTimeStr}: ${tooltipRows.map((r) => `${r.label} ${r.value ?? "—"}`).join(", ")}`}
-        >
-          <div className="flex items-center justify-between border-b border-hairline px-2.5 py-1.5">
-            <span className="eyebrow !text-[9px]">{hoverTimeStr}</span>
-            <span className="num text-[9px] text-faint">sample {hoverIdx + 1} / {streamCount}</span>
-          </div>
-          <ul className="px-2.5 py-1.5">
-            {tooltipRows.map((row, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ background: row.color }}
-                    aria-hidden
-                  />
-                  <span className="text-muted truncate">{row.label}</span>
-                </span>
-                <span
-                  className="num font-semibold tabular-nums shrink-0"
-                  style={{ color: row.value === null || row.value === undefined || !Number.isFinite(row.value) ? "var(--c-text-faint)" : "var(--c-text)" }}
-                >
-                  {row.value === null || row.value === undefined || !Number.isFinite(row.value)
-                    ? "—"
-                    : `${Math.round(row.value)} ${row.unit}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Shared time axis */}
-      <div className="flex items-center gap-3 pt-2">
-        <div className="w-20 shrink-0" />
-        <div className="num relative flex flex-1 justify-between text-[10px] text-faint">
-          <span>00:00</span>
-          <span>{fmtDuration(duration_s / 4)}</span>
-          <span>{fmtDuration(duration_s / 2)}</span>
-          <span>{fmtDuration((duration_s * 3) / 4)}</span>
-          <span>{fmtDuration(duration_s)}</span>
-          {/* Hover time indicator on the axis */}
-          {hoverIdx !== null && (
-            <span
-              className="absolute top-3 text-[10px] font-semibold tabular-nums text-primaryText"
-              style={{
-                left: `${hoverPct}%`,
-                transform: "translateX(-50%)",
-              }}
-            >
-              {hoverTimeStr?.slice(0, 5)}
-            </span>
-          )}
-        </div>
-        <div className="w-28 shrink-0" />
-      </div>
-    </div>
-  );
-}
-
-function StreamChart({
-  label,
-  unit,
-  data,
-  color,
-  emptyLabel,
-  timeLabels,
-  hoverIdx,
-  setHoverIdx,
-}: {
-  label: string;
-  unit: string;
-  data: (number | null)[];
-  color: string;
-  emptyLabel?: string;
-  /** Optional [start, end] time strings for x-axis tooltip */
-  timeLabels?: [string, string];
-  /** Shared hover index (controlled by parent StreamCharts) */
-  hoverIdx: number | null;
-  setHoverIdx: (idx: number | null) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const points = data.filter((v): v is number => v !== null && Number.isFinite(v));
-  const hasData = points.length >= 2;
-
-  const W = 1000;
-  const H = 38;
-  const stepX = W / Math.max(1, data.length - 1);
-
-  let path = "";
-  let min = 0;
-  let max = 0;
-  let avg = 0;
-  let lastX = 0;
-  let lastY = 0;
-
-  if (hasData) {
-    min = Math.min(...points);
-    max = Math.max(...points);
-    avg = Math.round(points.reduce((a, b) => a + b, 0) / points.length);
-    const range = max - min || 1;
-    let started = false;
-    path = data
-      .map((v, i) => {
-        if (v === null || !Number.isFinite(v)) return "";
-        const x = i * stepX;
-        const y = H - 4 - ((v - min) / range) * (H - 8);
-        if (!started) {
-          started = true;
-          lastX = x;
-          lastY = y;
-          return `M${x.toFixed(2)},${y.toFixed(2)}`;
-        }
-        lastX = x;
-        lastY = y;
-        return `L${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  // Hover state: compute value + position for tooltip
-  const hoverValue = hoverIdx !== null ? data[hoverIdx] : null;
-  const hoverX = hoverIdx !== null ? hoverIdx * stepX : 0;
-  const hoverY = hoverIdx !== null && hoverValue !== null && hasData
-    ? H - 4 - ((hoverValue - min) / (max - min || 1)) * (H - 8)
-    : 0;
-
-  // Mouse → nearest data index (lifted to parent)
+  // Mouse handler
   const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!hasData) return;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const relX = (e.clientX - rect.left) / rect.width;
-    const idx = Math.max(0, Math.min(data.length - 1, Math.round(relX * (data.length - 1))));
-    setHoverIdx(idx);
+    setHoverIdx(Math.max(0, Math.min(streamCount - 1, Math.round(relX * (streamCount - 1)))));
   };
 
-  // Interpolated time at hover index (linear between start and end)
-  const hoverTime = hoverIdx !== null && timeLabels
-    ? (() => {
-        try {
-          const startMs = new Date(timeLabels[0]).getTime();
-          const endMs = new Date(timeLabels[1]).getTime();
-          if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
-          const t = startMs + ((endMs - startMs) * hoverIdx) / Math.max(1, data.length - 1);
-          return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  // X-axis time labels
+  const xLabels = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+    const ms = new Date(startTime).getTime() + duration_s * f * 1000;
+    return new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  });
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex items-center gap-3 border-b border-hairline/60 pb-1 last:border-b-0"
-      onMouseMove={handleMove}
-      onMouseLeave={() => setHoverIdx(null)}
-    >
-      <div className="w-20 shrink-0">
-        <div className="eyebrow !text-[10px] truncate">{label}</div>
-      </div>
-      <div className="h-9 min-w-0 flex-1">
-        {hasData ? (
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            className="h-9 w-full"
-            preserveAspectRatio="none"
-            aria-hidden
-          >
-            <path
-              d={`${path} L${lastX.toFixed(2)},${H} L0,${H} Z`}
-              fill={color}
-              fillOpacity={0.08}
-              stroke="none"
-            />
-            <path
-              d={path}
-              fill="none"
-              stroke={color}
-              strokeWidth={1.3}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
-            />
-            <circle cx={lastX} cy={lastY} r={2.4} fill={color} vectorEffect="non-scaling-stroke" />
-            {/* Hover crosshair (synced across all charts) */}
-            {hoverIdx !== null && hoverValue !== null && Number.isFinite(hoverValue) && (
-              <>
-                <line
-                  x1={hoverX}
-                  y1={0}
-                  x2={hoverX}
-                  y2={H}
-                  stroke="var(--c-text-muted)"
-                  strokeWidth={0.5}
-                  strokeDasharray="2 2"
-                  vectorEffect="non-scaling-stroke"
-                />
-                <circle
-                  cx={hoverX}
-                  cy={hoverY}
-                  r={3}
-                  fill={color}
-                  stroke="var(--c-surface)"
-                  strokeWidth={1}
-                  vectorEffect="non-scaling-stroke"
-                />
-              </>
-            )}
-          </svg>
-        ) : (
-          <div className="flex h-9 items-center text-[11px] italic text-faint">
-            {emptyLabel ?? "—"}
+    <div className="relative p-4" ref={containerRef}>
+      {/* Legend */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        {metricPaths.map((m) => (
+          <div key={m.key} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />
+            <span className="text-[11px] font-medium text-muted">{m.label}</span>
+            <span className="num text-[10px] text-faint">{Math.round(m.min)}–{Math.round(m.max)}</span>
           </div>
-        )}
+        ))}
       </div>
-      <div className="num w-28 shrink-0 text-right text-[11px]">
-        {hasData ? (
-          hoverIdx !== null && hoverValue !== null && Number.isFinite(hoverValue) ? (
+
+      {/* Lap range band */}
+      {lapRange && (
+        <div
+          className="pointer-events-none absolute top-[60px] bottom-[50px] z-10 bg-primarySoft border-x border-primary/30"
+          style={{
+            left: `calc(16px + (100% - 32px) * ${lapRange.startIdx / Math.max(1, streamCount - 1)})`,
+            width: `calc((100% - 32px) * ${(lapRange.endIdx - lapRange.startIdx) / Math.max(1, streamCount - 1)})`,
+          }}
+          aria-hidden
+        />
+      )}
+
+      {/* The chart */}
+      <div onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto" }} preserveAspectRatio="none">
+          {/* Grid lines (horizontal) */}
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line key={f} x1={padL} y1={padT + plotH * f} x2={W - padR} y2={padT + plotH * f}
+              stroke="var(--c-hairline)" strokeWidth="0.5" strokeDasharray="2 3" />
+          ))}
+
+          {/* Multi-line paths */}
+          {metricPaths.map((m) => (
+            <path key={m.key} d={m.path} fill="none" stroke={m.color} strokeWidth="1.5"
+              strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          ))}
+
+          {/* Hover crosshair */}
+          {hoverIdx !== null && (
             <>
-              <span className="font-bold tabular-nums text-ink" style={{ color }}>
-                {Math.round(hoverValue)}
-              </span>
-              <span className="text-faint"> {unit}</span>
-              {hoverTime && (
-                <div className="tabular-nums text-[9px] text-faint">{hoverTime}</div>
-              )}
+              <line
+                x1={padL + hoverPct / 100 * plotW} y1={padT}
+                x2={padL + hoverPct / 100 * plotW} y2={padT + plotH}
+                stroke="var(--c-text-muted)" strokeWidth="0.5" strokeDasharray="2 3"
+                vectorEffect="non-scaling-stroke"
+              />
+              {/* Dots at hover position for each metric */}
+              {metricPaths.map((m) => {
+                const v = m.data[hoverIdx];
+                if (v === null || !Number.isFinite(v)) return null;
+                const range = m.max - m.min || 1;
+                const y = padT + plotH - ((v - m.min) / range) * plotH;
+                return (
+                  <circle key={m.key} cx={padL + hoverPct / 100 * plotW} cy={y} r="3"
+                    fill={m.color} stroke="var(--c-surface)" strokeWidth="1.5"
+                    vectorEffect="non-scaling-stroke" />
+                );
+              })}
             </>
-          ) : (
-            <>
-              <span className="font-semibold tabular-nums text-ink">{avg}</span>
-              <span className="text-faint"> {unit}</span>
-              <div className="tabular-nums text-[9px] text-faint">
-                {min}–{max}
-              </div>
-            </>
-          )
-        ) : (
-          <span className="text-faint">—</span>
-        )}
+          )}
+        </svg>
       </div>
+
+      {/* X-axis labels */}
+      <div className="num mt-1 flex justify-between px-12 text-[9px] text-faint">
+        {xLabels.map((label, i) => <span key={i}>{label}</span>)}
+      </div>
+
+      {/* Hover tooltip */}
+      {hoverIdx !== null && hoverTimeStr && (
+        <div
+          className="pointer-events-none absolute z-30 w-[220px] rounded-[var(--radius-card)] border border-hairline2 bg-surface shadow-[var(--c-shadow-flyout)]"
+          style={{
+            top: 8,
+            left: hoverPct > 65 ? undefined : `calc(${hoverPct}% - 110px)`,
+            right: hoverPct > 65 ? `calc(${100 - hoverPct}% - 110px)` : undefined,
+          }}
+          role="status" aria-live="polite"
+        >
+          <div className="flex items-center justify-between border-b border-hairline px-3 py-1.5">
+            <span className="eyebrow !text-[9px]">{hoverTimeStr}</span>
+            <span className="num text-[9px] text-faint">{hoverIdx + 1}/{streamCount}</span>
+          </div>
+          <ul className="px-3 py-1.5">
+            {metricPaths.map((m) => {
+              const v = m.data[hoverIdx];
+              return (
+                <li key={m.key} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: m.color }} />
+                    <span className="text-muted truncate">{m.label}</span>
+                  </span>
+                  <span className="num font-semibold tabular-nums shrink-0"
+                    style={{ color: v === null || !Number.isFinite(v) ? "var(--c-text-faint)" : "var(--c-text)" }}>
+                    {v === null || !Number.isFinite(v) ? "—" : `${Math.round(v)} ${m.unit}`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
