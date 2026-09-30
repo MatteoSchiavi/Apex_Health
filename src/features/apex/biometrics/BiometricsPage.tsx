@@ -195,36 +195,36 @@ export function BiometricsPage() {
   const labDate = labMarkers[0]?.date;
 
   return (
-    <div className="mx-auto max-w-[1240px] px-1 py-2">
+    <div className="mx-auto max-w-[1240px]">
       <PageHeader
         title={t("biometrics.title")}
         subtitle={t("biometrics.hub_subtitle")}
         actions={
-          <div className="relative w-full max-w-[280px]">
+          <div className="relative w-full max-w-[240px]">
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("biometrics.search")}
               aria-label={t("biometrics.search")}
-              className="num h-9 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 text-[13px] text-ink placeholder:text-faint focus-visible:border-hairline2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="num h-9 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
             />
           </div>
         }
       />
 
-      {/* Metric catalog — grouped grid */}
-      <div className="mt-8 space-y-10">
-        {/* Recent metrics section (only when no search query) */}
+      {/* Metric catalog — clean grid, no huge spacing */}
+      <div className="mt-4 space-y-6">
+        {/* Recent metrics */}
         {!query && recent.length > 0 && (
           <section>
             <SectionHeader eyebrow={
               <span className="flex items-center gap-1.5">
                 <Clock size={11} className="text-primaryText" />
-                {t("biometrics.search").includes("Filter") ? "Recently viewed" : "Recently viewed"}
+                Recently viewed
               </span>
             } />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {recent
                 .map((key) => metricCatalog.find((m) => m.key === key))
                 .filter((m): m is MetricCatalogItem => !!m)
@@ -235,13 +235,14 @@ export function BiometricsPage() {
           </section>
         )}
 
+        {/* Metric groups */}
         {GROUP_ORDER.map((g) => {
           const items = grouped.get(g);
           if (!items || items.length === 0) return null;
           return (
             <section key={g}>
               <SectionHeader eyebrow={t(`biometrics.group_${g}`)} />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {items.map((m) => (
                   <MetricCard key={m.key} m={m} t={t} onSelect={selectMetric} />
                 ))}
@@ -251,19 +252,12 @@ export function BiometricsPage() {
         })}
 
         {visibleCount === 0 && (
-          <Empty
-            title={t("biometrics.no_data")}
-            body={
-              <span className="mono">
-                {query}
-              </span>
-            }
-          />
+          <Empty title={t("biometrics.no_data")} body={<span className="mono">{query}</span>} />
         )}
       </div>
 
-      {/* Lab Panel — visually separated */}
-      <section className="mt-12">
+      {/* Lab Panel */}
+      <section className="mt-8">
         <SectionHeader
           eyebrow={t("biometrics.group_lab")}
           title={t("biometrics.lab_panel_title")}
@@ -325,8 +319,6 @@ function MetricCard({
   t: (p: string) => string;
   onSelect: (key: string) => void;
 }) {
-  // Latest window — 30-day trend per the design brief; we read `last` and the
-  // 7-day delta from the trend stats. The sparkline shows the trailing 14d.
   const trend = getMetricTrend(m.key, 30);
   const last = trend.stats.last;
   const delta7 = trend.stats.delta_7d;
@@ -335,33 +327,27 @@ function MetricCard({
   const color = colorForGroup(m.group);
 
   return (
-    <Card
+    <button
+      type="button"
       onClick={() => onSelect(m.key)}
-      className="group cursor-pointer transition-colors hover:border-hairline2 hover:bg-surface2/40"
+      className="group flex w-full flex-col gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-4 text-left transition-all hover:border-hairline2 hover:bg-surface2"
     >
-      <CardHeader
-        title={<span className="truncate">{m.label}</span>}
-        right={<SourcePill>{m.source}</SourcePill>}
-      />
-      <div className="mt-2 flex items-end justify-between gap-3">
+      <div className="flex items-center justify-between">
+        <span className="truncate text-[13px] font-semibold text-ink">{m.label}</span>
+        <SourcePill>{m.source}</SourcePill>
+      </div>
+      <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <BigStat
-            size="md"
-            value={fmtNum(last, decimalsFor(m.key))}
-            unit={m.unit}
-            tone="ink"
-          />
-          <div className="mt-1.5">
-            <DeltaChip
-              delta={delta7}
-              goodWhen={goodWhen}
-              suffix={t("overview.vs7d")}
-              compact
-            />
+          <div className="num text-[24px] font-bold tracking-[-0.02em] text-ink">
+            {fmtNum(last, decimalsFor(m.key))}
+            <span className="text-[11px] font-medium text-muted"> {m.unit}</span>
+          </div>
+          <div className="mt-1">
+            <DeltaChip delta={delta7} goodWhen={goodWhen} suffix={t("overview.vs7d")} compact />
           </div>
         </div>
-        <Sparkline data={sparkData} color={color} width={120} height={38} />
+        <Sparkline data={sparkData} color={color} width={100} height={36} />
       </div>
-    </Card>
+    </button>
   );
 }
