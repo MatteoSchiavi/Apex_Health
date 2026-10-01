@@ -2370,3 +2370,30 @@ Stage Summary:
   - The New-challenge Sheet is mock-only — it does not persist a new challenge (the canonical `challenges` array in `src/lib/apex/data.ts` is off-limits and there is no multi-user backend for challenges). The Sheet collects the fields the backend `POST /challenges` would receive and shows a note explaining this.
   - `PATCH /labs/[id]` is wired end-to-end (verified) but the Labs page does not yet expose an inline editor — adding panels (POST) and deleting panels (DELETE) are surfaced; editing happens via the API only. A follow-up task could expose an Edit button on the panel detail that reuses the Add form in PATCH mode.
   - The custom `MarkerTrendChart` reuses `ChartTooltip` from `@/components/apex/charts` so tooltips match the rest of the app, but the chart body itself is bespoke SVG (necessary because the shared `InteractiveLineChart` does not support a ref-range band or per-point tone). It follows the Apex visual vocabulary (hairlines, semantic-state colours, mono numerals, var(--c-*) tokens only) — no new visual vocabulary introduced.
+
+---
+Task ID: ROUND-3 (user feedback: charts, calendar, hypnogram, Labs/Challenges, Overview fixes)
+Agent: main (Z.ai Code) + 3 parallel subagents (SN, TC, LC)
+Task: User gave 10 specific modifications. All addressed.
+
+Work Log:
+- Built reusable interactive chart primitives (src/components/apex/charts.tsx): InteractiveBarChart, InteractiveLineChart, InteractiveComboChart, ChartTooltip, ChartLegend, ChartInfoBadge. All SVG with hover crosshair + tooltip showing exact values at cursor.
+- Overview ACWR: replaced static LoadChart with InteractiveComboChart (acute bars + chronic line, hover shows date + values). Added ChartInfoBadge explaining what bars/lines mean. Added ChartLegend.
+- Overview sleep panel: redesigned compact 4-column layout (Score | Total+Window+Efficiency | Composition bar+values | Vitals strip). No dead space, data-dense.
+- Overview devices section: removed per user request. Gear card widens to fill space.
+- Sleep night (subagent SN): removed duplicate composition from DurationAnalysisCard; built proper estimated Hypnogram SVG (3-5 cycles, deep front-loaded, REM back-loaded, awake bands, hover tooltip per segment, honest "Estimated from stage totals" caption).
+- Training (subagent TC): expandable calendar (Week/Month Segmented toggle, month grid with prev/next/today, tap day to add event). Load chart replaced with InteractiveComboChart + ChartInfoBadge + ChartLegend.
+- Labs (subagent LC): full implementation — Row 1 status tiles, Row 2 marker trend chart with ref-range band, Row 3 panels table + Add panel form. New /api/labs routes. Auto-seeds 3 demo panels.
+- Challenges (subagent LC): full implementation — Row 1 Where I stand (4 rank tiles), Row 2 active challenges + rankings table, Row 3 past challenges, privacy card with per-metric switches. Mock data in socialData.ts.
+- Activity discipline icons: added Sailboat + Ship icons for sailing/boating (were falling back to generic).
+- All pages verified via agent-browser: 0 errors, no console errors, lint clean, tsc clean.
+
+Stage Summary:
+- All 10 user-requested modifications done + pushed (commit 326791e).
+- Interactive charts with hover tooltips now on ACWR, Training load, Sleep hypnogram, Labs marker trend.
+- Overview sleep panel compact + data-dense. Devices section removed.
+- Sleep night has a proper hypnogram (estimated, honestly labeled).
+- Training calendar expands to monthly with event creation.
+- Labs page fully built (markers + donations + trend chart + add panel form).
+- Challenges page fully built (rankings + challenges + privacy controls).
+- Sailing/boating have distinct icons (Sailboat/Ship).
