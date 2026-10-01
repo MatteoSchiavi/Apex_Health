@@ -117,7 +117,7 @@ export const useApexUi = create<ApexUiState>()(
     }),
     {
       name: "apex-ui",
-      storage: createJSONStorage(() => (typeof window === "undefined" ? undefined : (window.localStorage as Storage))),
+      storage: createJSONStorage(() => (typeof window === "undefined" ? (undefined as unknown as Storage) : (window.localStorage as Storage))),
       partialize: (s) => ({
         authed: s.authed,
         theme: s.theme,

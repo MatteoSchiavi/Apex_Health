@@ -53,10 +53,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Compose the message list: system prompt + user/assistant history
-    const chatMessages = [
+    const chatMessages: { role: "assistant" | "user"; content: string }[] = [
       { role: "assistant", content: SYSTEM_PROMPT },
       ...messages.map((m) => ({
-        role: m.role === "user" ? "user" : "assistant",
+        role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
         content: m.content,
       })),
     ];

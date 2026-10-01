@@ -261,6 +261,7 @@ export function RecoveryScanModal({
 
 // Helper to navigate to coach from the modal footer
 import { useApexUi } from "@/lib/apex";
-function ui_setView(view: Parameters<ReturnType<typeof useApexUi>["setView"]>[0]) {
+import type { ViewKey } from "@/lib/apex/types";
+function ui_setView(view: ViewKey) {
   useApexUi.getState().setView(view);
 }

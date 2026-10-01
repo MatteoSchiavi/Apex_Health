@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
           },
         ],
         thinking: { type: "disabled" },
-      });
+      } as never);
 
       const rawContent = response.choices[0]?.message?.content ?? "";
       extractedData = safeParseJson(rawContent);
