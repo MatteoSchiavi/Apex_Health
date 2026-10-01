@@ -2111,3 +2111,25 @@ Stage Summary:
   - "Load more" in the list page just expands the rendered slice (the list is already fully loaded for the window). The "previous 7 nights" mini bars on the night page use the most recent 7 nights from the same fetch — no separate API call.
   - Did NOT restart the dev server (per instructions). The dev server is currently running and was hit by the agent-browser QA flow; no errors logged for the sleep endpoints.
   - Did NOT edit the forbidden files (types.ts, i18n.ts, kit.tsx, AppShell.tsx, page.tsx, store.ts, ThemePreviewCard.tsx, metricInfo.ts). The new helper file lives under src/lib/apex/ (allowed). The new API route lives under src/app/api/sleep/summary/ (allowed). The kit, i18n, and store are imported unchanged.
+
+---
+Task ID: ROUND-2 (user-requested fixes + strict redesigns)
+Agent: main (Z.ai Code)
+Task: User reported 6 issues: gear has no add button, Overview+Sleep still look bad (paste the design again), metric pages need info buttons, accent color should not influence data, mobile unusable + sidebar shows only 4 tabs, settings theme toggle bug.
+
+Work Log:
+- Read the re-pasted design file (Part 1 Overview + Part 2 Activity Detail + Part 3 Agent harness).
+- Fixed theme preview card bug (user: 'dark selector also becomes light'): ThemePreviewCard now locally re-declares all theme CSS vars via inline style, so each preview renders in its own theme regardless of <html> class. Verified via getComputedStyle: Dark card bg=rgb(8,8,10), Light card bg=rgb(250,250,250) when light is active.
+- Fixed mobile nav (user: 'sidebar only shows 4 tabs'): added MobileNavDrawer (full grouped nav, opened from hamburger in topbar OR 'More' button in bottom bar). Bottom bar reduced to 4 quick tabs (Overview/Training/Activities/Coach) + More. All 10 pages now reachable on mobile.
+- Accent-color reform (user: 'data color must reflect state'): added kit state-tone helpers (scoreTone, acwrTone, rangeTone, hrvDevTone, toneFor) + InfoButton + MetricInfoContent + metricInfo.ts (16 metrics with 4-section explanations).
+- Delegated 4 parallel subagents:
+  - O: Overview strict redesign per Part 1 (Row 0-4 with exact col-spans, state-tone data, no fake floor/cap, tone-reactive ACWR line, computed biomarker badge, gear-due + integration cards).
+  - S: Sleep list+night strict redesign per plan §4 (range Segmented, regularity/debt summary, duration/timing, compact table; night: score card with computed badge, composition bar NOT hypnogram, vitals vs baseline with InfoButtons, HRV curve, 7-night context).
+  - G: Gear page full impl per plan §6 (Add-gear button in header + empty state, summary strip, gear cards with state-tone progress, log-service sheet, history, inline detail expander).
+  - MI: InfoButton on every metric page + biometric tile, with 4-section content; data-color reform (sparkline + chart line + BigStat use state tones, accent reserved for non-data UI).
+- Agent-browser QA verified: Overview renders Readiness/Recovery/Strain trio + InfoButtons + sleep card + gear-due + integrations. Gear page has Add-gear button + 3 seeded gear cards + Log service. Sleep list has range toggle + compact table. Sleep night has computed badge + composition (no hypnogram) + prev/next arrows. Biometrics hub has InfoButton on every tile (clicked HRV → 4-section popover). Mobile nav drawer shows all groups. Theme preview cards render in their own theme. All API routes return 200. Lint clean.
+
+Stage Summary:
+- All 6 user-reported issues fixed + pushed (commit 1b3b57c).
+- Overview now strictly follows Part 1 spec (Row 0-4). Sleep list+night strictly follows plan §4 (no hypnogram, honest composition, real deltas). Gear page fully implemented with add button. Every metric page/tile has an info button with explanations. Data uses state colors, accent reserved for non-data. Mobile nav drawer shows all pages. Theme preview cards render correctly.
+- Remaining: Part 2 Activity Detail v2 (page modes + KPI families + W/kg with real weight + HR zones from real HRmax + impact card + compared-to-recent). Part 3 backend agent harness (out of scope for UI). Phase 4 (Settings restructure, onboarding, Social privacy, landing). Phase 5 (nutrition).
