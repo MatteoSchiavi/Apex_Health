@@ -1841,3 +1841,24 @@ Stage Summary:
   - Inline TODO i18n literals are marked with `// TODO i18n` and should be promoted to `act_*` keys in `src/lib/apex/i18n.ts` (a shared file I was told NOT to edit).
   - The weekly-volume chart is fixed at 12 weeks regardless of the range selector; the range selector only controls the LIST. The plan spec said "default last 12 weeks" for the chart, so this is intentional.
   - `me.units` is "metric" in the mock data, so the page currently always renders metric units. If/when the API surfaces the real user's units preference, wire `units` from the `/me` endpoint instead.
+
+---
+Task ID: ROUND-1 (Phase 0 + Phase 1 execution + QA)
+Agent: main (Z.ai Code)
+Task: Execute the 12-page plan — Phase 0 correctness fixes + Phase 1 core loop (Coach, Training, Activities). Parallelized across 4 subagents (2-a, 2-b, 2-c, 2-d).
+
+Work Log:
+- Delegated 4 parallel subagents: 2-a (Phase 0 cross-cutting fixes), 2-b (Coach §1), 2-c (Training §2), 2-d (Activities §3). All completed successfully.
+- All new API routes return 200: /api/coach/chats, /api/context-docs, /api/activities/weekly, /api/gym/plan, /api/gym/feedback, /api/activities (enhanced).
+- Lint clean (0 errors, 0 warnings).
+- Agent-browser QA found a Coach page client-side crash: infinite update loop (useEffect depending on `ui` store object → selectChat → re-render → loop). Fixed by using `useApexUi.getState().selectChat(currentId)` and dropping `ui` from deps.
+- Added ViewErrorBoundary to page.tsx (class component) that isolates per-view render errors and surfaces the stack inline in dev — this made the invisible client error diagnosable and will prevent future single-page crashes from killing the whole app.
+- Re-verified: Coach renders (3-column: sessions rail, conversation with suggested prompts from real events, context panel). Training renders (Today's session rest-day state + Generate, This week 7-day cells, Edit routine). Activities renders (range + filters + summary strip + weekly volume). Gear + Labs placeholder pages render. Login shows redesigned show/hide password + back link.
+
+Stage Summary:
+- Phase 0 (6 correctness fixes) + Phase 1 (3 page redesigns) DONE and pushed (commit 4cd0b87).
+- Nav restructured into 4 groups (Today/Train/Recover/Community) + Settings pinned, Gear+Labs wired, sign-out in sidebar.
+- 4 pre-existing tsc errors remain in legacy frontend/ + examples/ dirs (not our Next.js app; out of scope).
+- Remaining for subsequent rounds: Phase 2 (Sleep list+night, Biometrics hub+metric), Phase 3 (Gear, Labs full pages), Phase 4 (Settings restructure, onboarding, Social privacy, landing page), Phase 5 (nutrition).
+- A few inline English strings marked `// TODO i18n` by subagents need consolidation into i18n.ts (en+it) in a later pass.
+- Activities summary DeltaChip shows delta prominently before value — minor visual; verify in browser.
