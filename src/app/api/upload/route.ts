@@ -20,7 +20,7 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
 export async function POST(req: NextRequest) {
   try {
-    const email = process.env.GARMIN_EMAIL || "[REDACTED]";
+    const email = process.env.GARMIN_EMAIL || "";
     const user = await db.user.findFirst({ where: { email } });
     if (!user) return NextResponse.json({ ok: false, error: "No user" }, { status: 404 });
 
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
  */
 export async function GET() {
   try {
-    const email = process.env.GARMIN_EMAIL || "[REDACTED]";
+    const email = process.env.GARMIN_EMAIL || "";
     const user = await db.user.findFirst({ where: { email } });
     if (!user) return NextResponse.json({ ok: false, error: "No user" }, { status: 404 });
 

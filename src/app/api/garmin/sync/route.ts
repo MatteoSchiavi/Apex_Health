@@ -14,7 +14,7 @@ import { db } from "@/lib/db";
 export async function POST(req: NextRequest) {
   try {
     // Ensure a user exists
-    const email = process.env.GARMIN_EMAIL || "[REDACTED]";
+    const email = process.env.GARMIN_EMAIL || "";
     let user = await db.user.findFirst({ where: { email } });
     if (!user) {
       user = await db.user.create({
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
  */
 export async function GET() {
   try {
-    const email = process.env.GARMIN_EMAIL || "[REDACTED]";
+    const email = process.env.GARMIN_EMAIL || "";
     const user = await db.user.findFirst({ where: { email } });
     if (!user) {
       return NextResponse.json({ ok: false, error: "No user found. Run POST /api/garmin/sync first." });

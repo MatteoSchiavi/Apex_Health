@@ -207,7 +207,7 @@ export const overview: Overview = {
 
 /* --------------------------------------------------------------- activities list */
 
-// Real activities fetched from Garmin Connect (account: [REDACTED])
+// Real activities fetched from Garmin Connect.
 // 30 activities spanning Jul–Sep 2026, including mountain biking, sailing,
 // open water swimming, hiking, and boating on Lake Como / La Maddalena.
 export const activities: ActivityCard[] = [
@@ -351,7 +351,7 @@ export function getActivityStreams(id: number): ActivityStream {
 
 /* --------------------------------------------------------------- sleep */
 
-// Real sleep sessions fetched from Garmin Connect (account: [REDACTED])
+// Real sleep sessions fetched from Garmin Connect.
 // 13 nights spanning Sep 17–30, 2026. Sleep scores computed from deep+rem ratio
 // and total duration (Garmin's own sleep score was not available in the API response).
 export const sleepSessions: SleepSession[] = [
