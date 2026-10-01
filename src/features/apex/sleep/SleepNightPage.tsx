@@ -10,14 +10,28 @@
  *       30-day score distribution (top third / typical / low) — not a
  *       constant. Efficiency with an "Asleep ÷ sleep window" tooltip.
  *       Latency tile is REMOVED (no source provides it).
- *     - Duration analysis: time asleep + real DeltaChip vs target
- *       (goodWhen="up"), sleep window, deep + REM, awake. ONE stage
- *       composition bar — denominator = time asleep (deep + light + REM),
- *       labels read "of time asleep".
- *   Row 2 (col-12): Stage composition, honest mode — one horizontal stacked
- *     bar + a table: stage, duration, % of sleep, 30-day average, typical
- *     range. NO timeline is drawn. Caption: "This source provides stage
- *     totals only — no timeline."
+ *     - Duration analysis: 4 compact MiniStats — Total sleep (with real
+ *       DeltaChip vs target, goodWhen="up"), Sleep window + efficiency
+ *       footnote, Deep + REM with % of sleep, Awake with % of window.
+ *       NO stage composition bar — the composition lives only in the
+ *       Stages card below (the user's duplicate-composition complaint).
+ *   Row 2 (col-12): Stages — estimated hypnogram + composition bar + table.
+ *     - Hypnogram (estimated): the DB stores only 4 stage TOTALS per
+ *       night (deep_s / light_s / rem_s / awake_s — NO real timeline).
+ *       We synthesise a plausible sleep architecture from those totals:
+ *       3–5 cycles of ~90 min, deep sleep front-loaded (most in cycle 1),
+ *       REM back-loaded (most in the last cycle), light spread evenly
+ *       throughout, awake time scattered as short wake episodes BETWEEN
+ *       cycles (biased toward later in the night — early-morning
+ *       awakening is common). Step-line SVG, Y-axis stages (Awake top /
+ *       REM / Light / Deep bottom — the standard sleep chart order),
+ *       X-axis time from bedtime to wake. Awake periods highlighted with
+ *       faint red bands so the user can see "when I woke up". Hover a
+ *       segment to see stage + time range + duration. Caption: "Estimated
+ *       from stage totals — no real timeline data."
+ *     - Composition: ONE horizontal stacked bar (deep / light / REM,
+ *       denominator = time asleep) + a table with stage, duration, % of
+ *       sleep, 30-day average, typical range.
  *   Row 3 (col-12 xl:col-6 + col-12 xl:col-6):
  *     - Left: vitals against baseline — Resting HR, SpO₂, Respiration,
  *       Skin Temp (if available) as RangeBar against your 30-day band
@@ -31,7 +45,8 @@
  *     readiness and recovery with a link to the Overview.
  *
  * Coherence law: kit-only. Data tone from scoreTone / rangeTone / hrvDevTone.
- * The fake hypnogram is GONE — this source provides stage totals only.
+ * The hypnogram is clearly labelled as an ESTIMATE so the user knows it's a
+ * synthesis from the 4 stage totals, not a measurement.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -476,15 +491,9 @@ function DurationAnalysisCard({
   const deepS = session.deep_s ?? 0;
   const remS = session.rem_s ?? 0;
   const awakeS = session.awake_s ?? 0;
-
-  // Stage composition: ONE horizontal stacked bar (deep / light / REM),
-  // denominator = time asleep. Plan §4 fixes the unit bug — all stages
-  // in seconds, all %s "of time asleep".
-  const stages: { key: StageKey; secs: number; color: string }[] = [
-    { key: "deep", secs: deepS, color: STAGE_VARS.deep },
-    { key: "light", secs: session.light_s ?? 0, color: STAGE_VARS.light },
-    { key: "rem", secs: remS, color: STAGE_VARS.rem },
-  ];
+  // Total asleep is the denominator for the "Deep + REM" % footnote. The
+  // composition BAR is NOT here — it lives in the Stages card below so the
+  // composition is no longer shown twice on the night page.
   const totalAsleep = deepS + (session.light_s ?? 0) + remS;
 
   return (
@@ -522,41 +531,8 @@ function DurationAnalysisCard({
         />
       </div>
 
-      {/* Stage composition bar — single horizontal stacked bar, denominator
-          = time asleep (deep + light + REM). Plan §4: labels read "of time
-          asleep". */}
-      <div className="mt-4">
-        <div className="mb-1.5 flex items-center justify-between">
-          <Eyebrow>{"Composition · of time asleep" /* TODO i18n */}</Eyebrow>
-          <span className="num text-[10px] text-faint">
-            {fmtHours(totalAsleep)} asleep
-          </span>
-        </div>
-        <div className="flex h-6 w-full overflow-hidden rounded-[var(--radius-control)] bg-surface3">
-          {stages.map((s) => {
-            const pct = totalAsleep > 0 ? (s.secs / totalAsleep) * 100 : 0;
-            if (pct <= 0) return null;
-            return (
-              <div
-                key={s.key}
-                className="flex items-center justify-center text-[9px] font-semibold text-white/80 transition-all"
-                style={{ width: `${pct}%`, background: s.color }}
-                title={`${t_label(s.key)}: ${fmtHours(s.secs)} (${Math.round(pct)}% of time asleep)`}
-              >
-                {pct > 12 && <span>{Math.round(pct)}%</span>}
-              </div>
-            );
-          })}
-        </div>
-        <div className="num mt-1.5 flex items-center gap-4 text-[10px] text-muted">
-          <LegendDot color={STAGE_VARS.deep} label={t("sleep.deep")} />
-          <LegendDot color={STAGE_VARS.light} label={t("sleep.light")} />
-          <LegendDot color={STAGE_VARS.rem} label={t("sleep.rem")} />
-        </div>
-        <div className="num mt-1 text-[10px] text-faint">
-          {"This source provides stage totals only — no timeline." /* TODO i18n */}
-        </div>
-      </div>
+      {/* Composition is NOT here — it lives only in the Stages card (Row 2)
+          so the user no longer sees the same composition twice. */}
     </Card>
   );
 }
@@ -594,6 +570,459 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       <span>{label}</span>
     </span>
   );
+}
+
+/* ----------------------------------------------------- Row 2: Hypnogram
+ * The DB stores only 4 stage TOTALS per night (deep_s / light_s / rem_s /
+ * awake_s — NO real stage timeline). The user wants a hypnogram showing
+ * when they woke up, their phases, and whether phases are regular. Since
+ * there's no real timeline, we synthesise a plausible sleep architecture
+ * from the 4 totals — clearly labelled as an ESTIMATE so the user knows
+ * it's a synthesis, not a measurement.
+ *
+ * Algorithm: choose 3–5 cycles of ~90 min based on the asleep duration.
+ * Within each cycle: Light (descent) → Deep → Light (ascent) → REM. Deep
+ * sleep is front-loaded (most in cycle 1), REM is back-loaded (most in the
+ * last cycle), Light is spread evenly across cycles. Awake time is
+ * scattered as short wake episodes BETWEEN cycles, biased toward later
+ * in the night (early-morning awakening is common). The four stage
+ * totals are scaled proportionally so the synthesised timeline spans the
+ * full sleep window (end_time − start_time) exactly.
+ *
+ * Rendering: an SVG step-line. Y-axis has 4 levels in the standard
+ * hypnogram order (Awake top → REM → Light → Deep bottom) so the user can
+ * see when they woke up at the top and their phases dropping down. X-axis
+ * is time from bedtime to wake. Awake periods get a faint red background
+ * band so they're visible at a glance. Hovering a segment shows a tooltip
+ * with the stage label, the time range, and the duration.
+ */
+
+type HypnogramSeg = {
+  stage: StageKey;
+  startMs: number;
+  endMs: number;
+  durS: number;
+};
+
+function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
+  const deep = session.deep_s ?? 0;
+  const light = session.light_s ?? 0;
+  const rem = session.rem_s ?? 0;
+  const awake = session.awake_s ?? 0;
+  const asleep = deep + light + rem;
+  if (asleep <= 0) return [];
+
+  const startMs = new Date(session.start_time).getTime();
+  const endMs = new Date(session.end_time).getTime();
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    endMs <= startMs
+  ) {
+    return [];
+  }
+
+  // The stored totals may not exactly sum to the sleep window (some
+  // sources round total_sleep_s vs the per-stage totals). Scale the four
+  // stage totals proportionally so the synthesised timeline spans the
+  // window exactly.
+  const windowS = (endMs - startMs) / 1000;
+  const rawTotal = deep + light + rem + awake;
+  const scale = rawTotal > 0 ? windowS / rawTotal : 1;
+  const D = deep * scale;
+  const L = light * scale;
+  const R = rem * scale;
+  const A = awake * scale;
+
+  // Number of cycles: 3–5 based on the asleep duration (each ~90 min).
+  // Plan §4 calls for ~4–5 cycles; we use 3 for short nights, 5 for long.
+  let numCycles = Math.max(3, Math.min(5, Math.round((D + L + R) / (90 * 60))));
+  if (D + L + R < 3 * 3600) numCycles = 3;
+  if (D + L + R > 9 * 3600) numCycles = 5;
+
+  // Deep front-loaded (weights ∝ numCycles − i); REM back-loaded (∝ i + 1);
+  // light spread evenly.
+  const deepW: number[] = [];
+  const remW: number[] = [];
+  const lightW: number[] = [];
+  for (let i = 0; i < numCycles; i++) {
+    deepW.push(numCycles - i);
+    remW.push(i + 1);
+    lightW.push(1);
+  }
+  const dSum = deepW.reduce((s, v) => s + v, 0) || 1;
+  const rSum = remW.reduce((s, v) => s + v, 0) || 1;
+  const lSum = lightW.reduce((s, v) => s + v, 0) || 1;
+  const deepPer = deepW.map((w) => (D * w) / dSum);
+  const remPer = remW.map((w) => (R * w) / rSum);
+  const lightPer = lightW.map((w) => (L * w) / lSum);
+
+  // Awake: scatter between cycles (numCycles − 1 between-cycle awakenings),
+  // biased toward later in the night (early-morning awakening is common).
+  const awakeSlots = Math.max(0, numCycles - 1);
+  const awakeW: number[] = [];
+  for (let i = 0; i < awakeSlots; i++) awakeW.push(i + 1.5);
+  const aSum = awakeW.reduce((s, v) => s + v, 0) || 1;
+  const awakePer = awakeW.map((w) => (A * w) / aSum);
+
+  // Build segments: each cycle is Light (descent) → Deep → Light (ascent)
+  // → REM. Between cycles, a short awake block (WASO episode). Slivers
+  // (< 1 s) are skipped to keep the chart legible.
+  const raw: HypnogramSeg[] = [];
+  let t = startMs;
+  const push = (stage: StageKey, durS: number) => {
+    if (durS < 1) return;
+    raw.push({ stage, startMs: t, endMs: t + durS * 1000, durS });
+    t += durS * 1000;
+  };
+  for (let i = 0; i < numCycles; i++) {
+    push("light", lightPer[i] / 2);
+    push("deep", deepPer[i]);
+    push("light", lightPer[i] / 2);
+    push("rem", remPer[i]);
+    if (i < numCycles - 1) push("awake", awakePer[i]);
+  }
+
+  // Merge consecutive same-stage segments (e.g. when deep is 0 in a
+  // cycle, the two light halves merge into one light block).
+  const merged: HypnogramSeg[] = [];
+  for (const seg of raw) {
+    const last = merged[merged.length - 1];
+    if (last && last.stage === seg.stage) {
+      last.endMs = seg.endMs;
+      last.durS += seg.durS;
+    } else {
+      merged.push({ ...seg });
+    }
+  }
+
+  // Clip the final segment to endMs (handles rounding over/undershoot
+  // from skipping sub-second slivers — the difference is at most a few
+  // seconds).
+  if (merged.length) {
+    const last = merged[merged.length - 1];
+    if (last.endMs !== endMs) {
+      last.endMs = endMs;
+      last.durS = (endMs - last.startMs) / 1000;
+    }
+  }
+  return merged;
+}
+
+function Hypnogram({ session }: { session: SessionItem }) {
+  const t = useT();
+  const segments = useMemo(
+    () => buildHypnogramSegments(session),
+    [session],
+  );
+  const [hover, setHover] = useState<number | null>(null);
+
+  // Geometry (viewBox coordinates). The SVG is responsive — `w-full` +
+  // `preserveAspectRatio` scales the viewBox to the container width.
+  const W = 1000;
+  const H = 300;
+  const padLeft = 60;
+  const padRight = 22;
+  const padTop = 16;
+  const padBottom = 36;
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
+
+  // Standard hypnogram Y-axis order: Awake (top) → REM → Light → Deep
+  // (bottom). The user asked to see "when I woke up" — those are the high
+  // points — and their phases dropping down through REM / Light / Deep.
+  const stageOrder: StageKey[] = ["awake", "rem", "light", "deep"];
+  const stageLabel: Record<StageKey, string> = {
+    awake: t("sleep.awake"),
+    rem: t("sleep.rem"),
+    light: t("sleep.light"),
+    deep: t("sleep.deep"),
+  };
+  const stageY: Record<StageKey, number> = {
+    awake: padTop + 0.07 * plotH,
+    rem: padTop + 0.35 * plotH,
+    light: padTop + 0.63 * plotH,
+    deep: padTop + 0.93 * plotH,
+  };
+
+  const startMs = new Date(session.start_time).getTime();
+  const endMs = new Date(session.end_time).getTime();
+  const totalMs = Math.max(endMs - startMs, 1);
+  const xFor = (ms: number) =>
+    padLeft + ((ms - startMs) / totalMs) * plotW;
+
+  // X-axis ticks: every 2 h for long nights, every 1 h for short ones.
+  const tickStepMs = totalMs > 8 * 3600 * 1000 ? 2 * 3600 * 1000 : 3600 * 1000;
+  const ticks: { x: number; label: string }[] = [];
+  for (let ms = 0; ms <= totalMs + 1; ms += tickStepMs) {
+    const m = Math.min(ms, totalMs);
+    ticks.push({
+      x: xFor(startMs + m),
+      label: new Date(startMs + m).toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    });
+  }
+  // Always include the final tick (wake time) so the chart ends cleanly.
+  const lastLabel = new Date(endMs).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  if (!ticks.length || ticks[ticks.length - 1].label !== lastLabel) {
+    ticks.push({ x: xFor(endMs), label: lastLabel });
+  }
+
+  if (!segments.length) {
+    return (
+      <div className="rounded-[var(--radius-control)] border border-dashed border-hairline2 px-4 py-6 text-center">
+        <div className="text-[12px] font-semibold text-ink2">
+          {"No stage data" /* TODO i18n */}
+        </div>
+        <div className="num mt-0.5 text-[11px] text-faint">
+          {"This night has no recorded deep / light / REM totals, so an estimated hypnogram can't be built." /* TODO i18n */}
+        </div>
+      </div>
+    );
+  }
+
+  const hoveredSeg = hover !== null ? segments[hover] : null;
+  const hoverXPct = hoveredSeg
+    ? ((xFor(hoveredSeg.startMs) + xFor(hoveredSeg.endMs)) / 2 / W) * 100
+    : 0;
+  const flip = hoverXPct > 75;
+
+  return (
+    <div className="relative">
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full"
+          style={{ minWidth: 480 }}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label={"Estimated hypnogram" /* TODO i18n */}
+          onMouseLeave={() => setHover(null)}
+        >
+          {/* Plot background — faint so the step-line reads cleanly. */}
+          <rect
+            x={padLeft}
+            y={padTop}
+            width={plotW}
+            height={plotH}
+            fill="var(--c-surface-3)"
+            opacity={0.25}
+          />
+
+          {/* Horizontal stage grid lines (dashed). */}
+          {stageOrder.map((s) => (
+            <line
+              key={`grid-${s}`}
+              x1={padLeft}
+              y1={stageY[s]}
+              x2={padLeft + plotW}
+              y2={stageY[s]}
+              stroke="var(--c-hairline)"
+              strokeWidth={1}
+              strokeDasharray="2 4"
+            />
+          ))}
+
+          {/* Awake highlight bands (full plot height, faint red) so the
+              user can see "when I woke up" at a glance. */}
+          {segments.map((seg, i) =>
+            seg.stage === "awake" ? (
+              <rect
+                key={`awake-${i}`}
+                x={xFor(seg.startMs)}
+                y={padTop}
+                width={Math.max(1.5, xFor(seg.endMs) - xFor(seg.startMs))}
+                height={plotH}
+                fill="var(--c-alert)"
+                opacity={0.09}
+              />
+            ) : null,
+          )}
+
+          {/* Vertical transitions between consecutive segments (drawn
+              BEFORE the horizontals so the horizontals sit on top). */}
+          {segments.slice(1).map((seg, i) => {
+            const prev = segments[i];
+            return (
+              <line
+                key={`v-${i}`}
+                x1={xFor(seg.startMs)}
+                y1={stageY[prev.stage]}
+                x2={xFor(seg.startMs)}
+                y2={stageY[seg.stage]}
+                stroke="var(--c-text-faint)"
+                strokeWidth={1.2}
+                opacity={0.7}
+              />
+            );
+          })}
+
+          {/* Horizontal segment lines (the step-line) — stage colour,
+              thicker on hover. */}
+          {segments.map((seg, i) => {
+            const x1 = xFor(seg.startMs);
+            const x2 = xFor(seg.endMs);
+            const y = stageY[seg.stage];
+            const isHover = hover === i;
+            return (
+              <line
+                key={`h-${i}`}
+                x1={x1}
+                y1={y}
+                x2={x2}
+                y2={y}
+                stroke={STAGE_VARS[seg.stage]}
+                strokeWidth={isHover ? 5 : 3.5}
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          {/* Y-axis stage labels. */}
+          {stageOrder.map((s) => (
+            <text
+              key={`yl-${s}`}
+              x={padLeft - 10}
+              y={stageY[s] + 3.5}
+              textAnchor="end"
+              style={{
+                fontSize: 10,
+                fill: "var(--c-text-muted)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              {stageLabel[s]}
+            </text>
+          ))}
+
+          {/* X-axis baseline + ticks. */}
+          <line
+            x1={padLeft}
+            y1={padTop + plotH}
+            x2={padLeft + plotW}
+            y2={padTop + plotH}
+            stroke="var(--c-hairline-strong)"
+            strokeWidth={1}
+          />
+          {ticks.map((tick, i) => (
+            <g key={`xt-${i}`}>
+              <line
+                x1={tick.x}
+                y1={padTop + plotH}
+                x2={tick.x}
+                y2={padTop + plotH + 4}
+                stroke="var(--c-hairline-strong)"
+                strokeWidth={1}
+              />
+              <text
+                x={tick.x}
+                y={padTop + plotH + 18}
+                textAnchor="middle"
+                style={{
+                  fontSize: 10,
+                  fill: "var(--c-text-muted)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {tick.label}
+              </text>
+            </g>
+          ))}
+
+          {/* Hover hit-rects — one transparent rect per segment, full
+              plot height so the user can hover anywhere within the
+              segment's time range. */}
+          {segments.map((seg, i) => {
+            const x1 = xFor(seg.startMs);
+            const x2 = xFor(seg.endMs);
+            return (
+              <rect
+                key={`hit-${i}`}
+                x={x1}
+                y={padTop}
+                width={Math.max(3, x2 - x1)}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setHover(i)}
+                style={{ cursor: "pointer" }}
+              />
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Hover tooltip — positioned at the segment's centre x, near the
+          top of the chart. Flips to the left side when the segment is in
+          the right quarter of the chart so the tooltip doesn't overflow. */}
+      {hover !== null && hoveredSeg && (
+        <div
+          style={{
+            position: "absolute",
+            left: flip ? undefined : `${hoverXPct}%`,
+            right: flip ? `${100 - hoverXPct}%` : undefined,
+            top: 4,
+            transform: flip ? undefined : "translateX(8px)",
+            pointerEvents: "none",
+            zIndex: 30,
+          }}
+          className="num min-w-[170px] max-w-[230px] rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
+        >
+          <div className="mb-1 flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ background: STAGE_VARS[hoveredSeg.stage] }}
+            />
+            <span className="text-[11px] font-semibold text-ink">
+              {stageLabel[hoveredSeg.stage]}
+            </span>
+          </div>
+          <div className="text-[10px] text-muted">
+            {new Date(hoveredSeg.startMs).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })}
+            {" → "}
+            {new Date(hoveredSeg.endMs).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })}
+          </div>
+          <div className="num mt-0.5 text-[10px] text-faint">
+            {fmtDurShort(hoveredSeg.durS)}
+            {" · "}
+            {hoveredSeg.stage === "awake"
+              ? "wake episode" /* TODO i18n */
+              : "cycle phase" /* TODO i18n */}
+          </div>
+        </div>
+      )}
+
+      {/* Caption — explicit that this is a synthesis from stage totals. */}
+      <div className="num mt-2 text-[10px] text-faint">
+        {"Estimated from stage totals — no real timeline data" /* TODO i18n */}
+      </div>
+    </div>
+  );
+}
+
+/** Short duration format for the hypnogram tooltip: "5m", "30m", "1h 23m",
+ *  "2h 5m". */
+function fmtDurShort(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return "—";
+  const total = Math.round(s);
+  const h = Math.floor(total / 3600);
+  const m = Math.round((total % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 /* --------------------------------------------------------- Row 2: Stages */
@@ -635,6 +1064,12 @@ function StageCompositionCard({
           </span>
         }
       />
+
+      {/* Hypnogram (estimated). Sits ABOVE the composition bar so the
+          user sees the night's phase structure first, then the totals. */}
+      <Hypnogram session={session} />
+
+      <Hairline className="my-4" />
 
       {/* ONE horizontal stacked bar — deep / light / REM. Denominator =
           time asleep so the three stages sum to 100%. Plan §4 fixes the
@@ -716,10 +1151,6 @@ function StageCompositionCard({
         </table>
       </div>
 
-      {/* Caption — explicit about source limitation (plan §4). */}
-      <div className="num mt-3 text-[11px] text-faint">
-        {"This source provides stage totals only — no timeline." /* TODO i18n */}
-      </div>
     </Card>
   );
 }

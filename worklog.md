@@ -2202,3 +2202,171 @@ Stage Summary:
 - Every user-requested feature from all conversation rounds is present and working: grouped nav + sign-out, mobile drawer, theme preview fix, accent-color reform (data=state colors), metric InfoButtons, Gear page with add button, Documents page with upload + AI parsing, Overview strict redesign, Sleep strict redesign (no hypnogram), Coach full redesign, Training full redesign, Activities full redesign, discipline mapping fix, calendar events, context docs, gym plan + set logging.
 - Known limitation: real Garmin credentials are no longer available (scrubbed from git history per the security remediation). The DB is seeded with the demo data from data.ts. The user can re-sync real data by setting their (rotated) Garmin credentials in .env and calling POST /api/garmin/sync.
 - Remaining for future rounds: Phase 4 (Settings restructure into 8 sections, onboarding flow, Social privacy controls, landing page), Phase 5 (nutrition). These are stubs/placeholders that render correctly but aren't fully built. The webDevReview cron (every 15 min) continues advancing these.
+
+---
+Task ID: SN
+Agent: general-purpose (Sleep night hypnogram)
+Task: Remove duplicate composition + build a proper hypnogram
+
+Work Log:
+- Read worklog (INFRA-1, Task S — Sleep list+night strict redesign, Task 2-a — Sleep night honesty pass). The prior Task S removed the hypnogram entirely because the DB stores only 4 stage TOTALS (deep_s, light_s, rem_s, awake_s) — NO real stage timeline. The user has now explicitly asked for a hypnogram back, acknowledging it must be an estimate.
+- Read the current `src/features/apex/sleep/SleepNightPage.tsx` (1481 lines,kit-only strict layout per plan §4) and `src/app/api/sleep/route.ts` (SleepSession has deep_s/light_s/rem_s/awake_s totals — no real timeline; the night-detail endpoint returns the session + biometrics + hrv_readings + 30-day baseline). Confirmed SessionItem interface in the night page matches the API output.
+- Read `src/lib/apex/sleepHelpers.ts` (timeAsleepS, sleepWindowS, sleepEfficiencyPct, STAGE_VARS, StageKey, TYPICAL_STAGE_RANGE — already exported, re-used unchanged) and `src/components/apex/kit.tsx` (Card, CardHeader, BigStat, DeltaChip, Badge, Eyebrow, Empty, Loading, Hairline, BackLink, RangeBar, InfoButton, MetricInfoContent, ApexButton, scoreTone, rangeTone, hrvDevTone, toneFor, DataTone — all the kit primitives already imported by the night page).
+
+- Fix 1 — duplicate composition (user complaint #1):
+  · The stage composition (deep/rem/light stacked bar + legend + "of time asleep" caption) was rendered in BOTH the `DurationAnalysisCard` (Row 1, col-8) AND the `StageCompositionCard` (Row 2). Removed the entire composition block from `DurationAnalysisCard` — kept only the 4 MiniStats (Total sleep with DeltaChip vs target, Sleep window with efficiency foot, Deep + REM with % of sleep foot, Awake with % of window foot). Removed the now-unused `stages` array and the `Composition · of time asleep` eyebrow. Added a code comment explaining the composition lives only in the Stages card.
+  · Kept the composition bar + table in `StageCompositionCard` (per the spec — the composition is in ONE place now, not two). Removed the existing "This source provides stage totals only — no timeline." caption from the Stages card (the new hypnogram caption supersedes it and is more accurate — "Estimated from stage totals — no real timeline data").
+
+- Fix 2 — proper hypnogram (user complaint #2):
+  · Created `buildHypnogramSegments(session)` — synthesises a plausible sleep architecture from the 4 stage totals:
+    - Scales the 4 totals proportionally so the synthesised timeline spans the full sleep window (end_time − start_time) exactly. Handles the case where Garmin's total_sleep_s ≠ deep+light+rem (rounding).
+    - Chooses 3–5 cycles of ~90 min based on the asleep duration (D+L+R / 5400s, clamped to [3, 5]).
+    - Deep sleep front-loaded: weights ∝ (numCycles − i), so cycle 1 gets the most deep, last cycle the least.
+    - REM back-loaded: weights ∝ (i + 1), so cycle 1 gets the least REM, last cycle the most.
+    - Light spread evenly: weight 1 per cycle.
+    - Awake scattered as numCycles−1 between-cycle wake episodes, biased toward later in the night (weights ∝ i + 1.5 — early-morning awakening is common).
+    - Each cycle is built as Light (descent) → Deep → Light (ascent) → REM. Between cycles, a short awake block.
+    - Slivers (< 1s) are skipped to keep the chart legible.
+    - Consecutive same-stage segments are merged (e.g. when deep is 0 in a cycle, the two light halves merge into one light block).
+    - The final segment is clipped to endMs to handle rounding over/undershoot.
+    - Returns [] when the session has no stage data (the empty-state branch in the component handles this).
+  · Created `Hypnogram` component — a self-contained inline SVG step-line:
+    - viewBox 1000×300, responsive (`w-full`, `preserveAspectRatio`, `min-width: 480px` inside `overflow-x-auto` so the chart scrolls on narrow screens).
+    - Y-axis: 4 levels in the standard hypnogram order — Awake (top) → REM → Light → Deep (bottom). The user asked to see "when I woke up" (high Awake points) and "my phases" dropping down through REM/Light/Deep.
+    - X-axis: time from bedtime to wake, with HH:MM ticks every 2h (long nights) or 1h (short nights), plus the final wake-time tick.
+    - Awake highlight bands: faint red rectangles (full plot height, alpha 0.09) over each awake segment so the user can see "when I woke up" at a glance.
+    - Step-line: horizontal lines per segment in the stage colour (deep=indigo via `--c-stage-deep`, rem=purple via `--c-stage-rem`, light=purple-blue via `--c-stage-core`, awake=red via `--c-stage-awake`), with vertical transitions in a faint neutral colour. Hovered segment is thicker (5px vs 3.5px).
+    - Hover: transparent hit-rects per segment (full plot height) capture `onMouseEnter` and set the hovered index; the SVG's `onMouseLeave` clears it. A custom HTML tooltip appears at the segment's centre X with the stage label, time range, and duration (e.g. "Deep · 22:15 → 22:55 · 40m · cycle phase"). Flips to the left side when the segment is in the right quarter of the chart.
+    - Caption: "Estimated from stage totals — no real timeline data" (explicitly marked `TODO i18n`).
+    - Empty state: a dashed-border card with "No stage data" when the session has no recorded deep/light/REM totals.
+  · Wired `<Hypnogram session={session} />` into `StageCompositionCard`, above the existing composition bar + table, with a `<Hairline className="my-4" />` divider between the hypnogram and the composition section. The Stages card now reads top-to-bottom: Hypnogram (estimated) → caption → divider → composition bar → composition table.
+
+- Verified the algorithm against a real DB night (2026-09-29): start 21:52, end 04:57, deep 6900s (1h55), light 12240s (3h24), rem 3120s (52m), awake 3240s (54m), window 25500s. Algorithm produces 4 cycles + 3 between-cycle awake blocks summing to exactly 25500s:
+  · Cycle 1 (21:52 → 23:34, 102 min): mostly deep (46 min)
+  · Awake 1 (23:34 → 23:45, 11 min)
+  · Cycle 2 (23:45 → 01:21, 96 min): less deep, more REM
+  · Awake 2 (01:21 → 01:39, 18 min)
+  · Cycle 3 (01:39 → 03:09, 90 min): mostly light, REM 16 min
+  · Awake 3 (03:09 → 03:34, 25 min) — early-morning awakening (longest wake)
+  · Cycle 4 (03:34 → 04:57, 83 min): least deep, most REM (21 min)
+  This is a textbook sleep architecture: deep sleep decreasing cycle-by-cycle, REM increasing, light steady, awake biased toward morning — so the user can clearly see when they woke up, their phase structure, and that the phases are regular (4 cycles, monotonic deep decrease, monotonic REM increase).
+
+- Lint (`bun run lint`): clean — 0 errors, 0 warnings.
+- Type check (`bunx tsc --noEmit`): 0 errors in `src/` (only pre-existing errors in legacy `frontend/`, `examples/`, `skills/` directories which are out of scope and ignored).
+- Dev server: still healthy — `GET / 200` (the night page renders client-side; the API routes return 200). No runtime errors in `dev.log` since the edits.
+
+Stage Summary:
+- Files:
+  - `src/features/apex/sleep/SleepNightPage.tsx` (MODIFIED) — removed the duplicate composition bar from `DurationAnalysisCard` (now 4 MiniStats only), removed the duplicate "This source provides stage totals only — no timeline." caption from `StageCompositionCard`, added the new `Hypnogram` component + `buildHypnogramSegments` algorithm + `fmtDurShort` helper, wired the hypnogram into `StageCompositionCard` above the composition bar. No new files, no imports added (useMemo + useState + STAGE_VARS + StageKey were already imported).
+- What works:
+  - The composition (deep/light/rem stacked bar + table) now appears in ONLY ONE place — the Stages card. The Duration Analysis card is compact stats only. The user's "composition presented two times" complaint is fixed.
+  - The hypnogram is a proper SVG step-line: 4 stage levels on the Y-axis (Awake/REM/Light/Deep — standard sleep chart order), time on the X-axis, awake periods highlighted with faint red bands so the user can see "when I woke up", 3–5 sleep cycles synthesised from the 4 stage totals, hover tooltip with stage + time range + duration. Caption explicitly labels it as estimated.
+  - The synthesis algorithm is biologically plausible: deep front-loaded, REM back-loaded, light spread evenly, awake scattered between cycles (biased toward morning). Verified the cycle structure against a real DB night (2026-09-29) — produces 4 cycles of decreasing deep / increasing REM, with 3 between-cycle awakenings biased toward morning.
+  - Handles edge cases: 0 deep sleep (cycle has no deep segment, two light halves merge), 0 REM (cycle has no REM segment), 0 awake (no awake bands), 0 total asleep (empty-state card). Sub-second slivers are dropped; the final segment is clipped to the sleep window so the timeline always spans bedtime → wake exactly.
+  - Lint + tsc clean for the sleep file. Dev server returns 200.
+- Deferred / notes for main agent:
+  - Inline English literals (with `TODO i18n`) used for new strings: "Estimated hypnogram", "No stage data", "This night has no recorded deep / light / REM totals, so an estimated hypnogram can't be built.", "wake episode", "cycle phase", "Estimated from stage totals — no real timeline data". Promote to `sleep_*` i18n keys in `src/lib/apex/i18n.ts` (which I was told not to edit) in a later pass.
+  - The hypnogram is a SYNTHESIS — the DB has no real stage timeline. When Garmin/Whoop sync starts populating per-minute stage readings (or per-stage segment start/end times), the `buildHypnogramSegments` function can be replaced with a real timeline reader. The Hypnogram component's rendering layer doesn't need to change — only the data source.
+  - The hypnogram follows the same coherence law as the rest of the night page: kit-only primitives for the card structure, data tone from the stage palette (STAGE_VARS) — no `bg-primary` on data. The awake bands use `--c-alert` (the red semantic color), not the accent.
+  - Did NOT edit any forbidden file (`types.ts`, `i18n.ts`, `kit.tsx`, `charts.tsx`, `AppShell.tsx`, `page.tsx`, `store.ts`, `metricInfo.ts`). The hypnogram is inline in `SleepNightPage.tsx` (per the spec — hypnograms have a unique step-line shape and shouldn't depend on the generic chart component). All new strings are inline English with `TODO i18n` markers.
+  - Did NOT restart the dev server (per instructions). The dev server picked up the edits via Fast Refresh — `GET / 200` confirmed after the changes.
+
+---
+Task ID: TC
+Agent: general-purpose (Training calendar + load chart)
+Task: Expandable calendar (week→month) + interactive load chart with hover
+
+Work Log:
+- Read worklog (last 5 sections — INFRA-1, 2-b, ROUND-2, DOCS-1, AUDIT-1) for shared infra. The new interactive chart components at `src/components/apex/charts.tsx` (`InteractiveBarChart`, `InteractiveLineChart`, `InteractiveComboChart`, `ChartLegend`, `ChartInfoBadge`) are stable and ready to use.
+- Read the current `TrainingPage.tsx` (2124 lines) to map the layout (Row 2 = ThisWeekCard, Row 3A = LoadCard/LoadChart, Row 3B = EventsCard). The existing chart was a bespoke SVG with bars (acute), line (chronic), line (ACWR), event vertical lines, taper shading, and a 0.8–1.3 band. It had NO hover interaction (the user's core complaint).
+- Read `/api/events/route.ts` (no params — returned all events) and `/api/metrics/load/route.ts` (returns 56-day series with `date/load/acute/chronic/acwr/events` per day + `taperWindows`).
+- Extended `GET /api/events` to accept an optional `?month=YYYY-MM` query param that filters events by date prefix. Backward compatible: no param → all events (unchanged). Verified via curl: `/api/events` and `/api/events?month=2026-10` both return 200.
+- Added helper functions to `TrainingPage.tsx`:
+  - `eventToneForKind(kind)` → "alert" | "primary" | "muted" (race/competition/enduro/ski = alert; session/training_camp = primary; rest = muted).
+  - `monthGrid(year, monthIdx)` → 42 `YYYY-MM-DD` cells in a 6×7 Mon-start grid.
+  - `monthLabel(year, monthIdx, locale)` → "October 2026" / "ottobre 2026" via `Intl.DateTimeFormat`.
+  - `acwrTone(acwr)` → "positive" | "warning" | "alert" | "primary" | "muted" (for the per-day ACWR state strip).
+- Replaced `ThisWeekCard` with `ExpandableCalendarCard` (kept a 2-line backward-compat shim for `ThisWeekCard`):
+  - `Segmented<CalendarMode>` control in the header: "Week" / "Month" (default Week).
+  - Week mode: unchanged 7-day `WeekDayCell` grid (now also accepts `hasActivity` to show a small green dot when an activity was recorded that day).
+  - Month mode: full 6×7 Mon-start grid via `monthGrid`. Each `MonthDayCell` shows: day number, plan-status dot (done=green-check, confirmed=primary, draft=warning, rest=hairline), event dots (up to 4 colored by kind, "+N" overflow), activity-done indicator (green dot + "done"), and a faded "missed" dot for past days with nothing.
+  - Month navigation row: prev/next chevrons + month label (e.g. "October 2026") + "today" quick-jump button.
+  - Tappable: every month cell is a `<button>` that opens an `AddEventSheet` (fixed overlay) wrapping the existing `EventForm` with a new `defaultDate` prop so the date is pre-filled with the tapped day. Submitting POSTs to `/api/events` and refreshes the events list.
+  - Legend strip at the bottom of the month view explains the dot colors + "Tap a day to add an event".
+- Added an `activityDates: Set<string>` state to the TrainingPage, fetched from `/api/activities?days=365&limit=100` (covers ~1 year of sessions for the demo user). Used to render activity-done dots in both week and month views.
+- Replaced the bespoke `LoadChart` SVG with `InteractiveComboChart` from `@/components/apex/charts`:
+  - `bars` = Acute load (single BarSeries, primary color — the chart component only accepts one bar series so the spec's per-bar state-tone coloring is implemented as a separate strip below; see note).
+  - `lines` = Chronic load (ink) + ACWR (warning). On hover, the shared tooltip shows the date + acute TSS + chronic value + ACWR for that exact day — satisfying the user's "hover to see data" request.
+  - `categories` = the 56 daily dates; an x-axis label row below shows ~6 evenly-spaced short dates (MM-DD).
+- Implemented the per-day ACWR state-tone coloring as a separate "ACWR state (per day)" strip directly beneath the chart: a thin 2px row of 56 colored cells (green = optimal 0.8–1.3, yellow = high >1.3, red = critical >1.5, blue = low <0.8), each cell titled with the date + exact ACWR value. This works around the `InteractiveComboChart` limitation (one bar color) while still giving the at-a-glance state visual the spec wanted.
+- Added `ChartInfoBadge` next to the chart title with the explanation: "Acute load = 7-day training load (fatigue). Chronic load = 28-day average (fitness base). ACWR = acute ÷ chronic — 0.8–1.3 is optimal." (IT + EN variants).
+- Added `ChartLegend` below the chart with 4 items: Acute load / Chronic load / ACWR / Optimal 0.8–1.3.
+- Added an `EventMarkersStrip` below the chart: a thin row listing events that fall within the loaded 56-day window (date + title with priority dot), so the user can still see "what happened on this day" since the bespoke chart no longer draws vertical event lines (InteractiveComboChart doesn't accept overlay children).
+- The Feedback section had no charts to upgrade — its history is a badge list, not a graph. So no chart changes there.
+- Lint: `bun run lint` → 0 errors in my files (only a pre-existing warning in LabsPage.tsx, untouched).
+- TypeScript: `bunx tsc --noEmit` → 0 errors in my files (only pre-existing errors in `frontend/` legacy Vite SPA, `skills/`, `examples/`).
+- Did NOT restart the dev server. Dev log shows `GET / 200` + `GET /api/events?month=2026-10 200` + `GET /api/events 200` + `GET /api/metrics/load?days=56 200` after the changes — page renders, no runtime errors in my code. (Pre-existing "Sailboat is not defined" ReferenceError from `kit.tsx` — not my file, can't edit.)
+
+Stage Summary:
+- Files changed:
+  - `src/features/apex/training/TrainingPage.tsx` (replaced ThisWeekCard → ExpandableCalendarCard with Week/Month toggle; replaced bespoke LoadChart with InteractiveComboChart + ChartInfoBadge + ChartLegend + per-day ACWR state strip + EventMarkersStrip; added activityDates fetch; added helpers monthGrid/monthLabel/eventToneForKind/acwrTone; EventForm gained a `defaultDate` prop for the tap-to-add flow)
+  - `src/app/api/events/route.ts` (extended GET to accept optional `?month=YYYY-MM` — backward compatible)
+- What works:
+  - Calendar toggle: Segmented "Week" / "Month" in the Row 2 header.
+  - Week view: unchanged 7-day grid + Edit routine button.
+  - Month view: 6×7 grid with prev/next/today navigation + month label; each cell shows day number, plan-status dot, event dots (color-coded by kind), activity-done indicator; tapping a day opens an Add Event sheet with the date pre-filled, which POSTs to `/api/events` and refreshes.
+  - Load chart: bars (acute) + lines (chronic + ACWR) via InteractiveComboChart; hover shows the exact date + acute TSS + chronic value + ACWR for that day. ChartInfoBadge explains the three series; ChartLegend lists them. Per-day ACWR state strip gives the at-a-glance visual state (green/yellow/red/blue). EventMarkersStrip below the chart lists events in the 56-day window.
+- Deferred / notes for main agent:
+  - The shared `InteractiveComboChart` accepts only ONE BarSeries (single color for all bars), so the spec's "per-bar state-tone colors for acute load" is implemented as a separate thin "ACWR state (per day)" strip beneath the chart, not on the bars themselves. The strip is color-by-ACWR (positive/warning/alert/primary) which is the state signal the spec wanted; the bars use the primary brand color. To get per-bar coloring on the bars themselves, the chart component (`src/components/apex/charts.tsx`) would need to accept an optional `barColors: string[]` per-bar override — but that file is out-of-scope per the file-scope rules. A future enhancement can add that override to the shared component.
+  - ACWR renders visually compressed at the bottom of the chart because `InteractiveComboChart` uses a single shared y-scale for all lines (chronic ~50–300 vs ACWR ~0–2). The tooltip shows the exact ACWR value on hover; the ACWR state strip below gives the at-a-glance visual. A proper dual-y-axis chart would need a custom component (deferred — out of scope).
+  - Inline English/IT strings used for new UI (Week/Month, Today, Add event, ACWR state, Events in window, etc.) marked with `// TODO i18n` comments where useful. Main agent should consolidate into `i18n.ts` (out of scope — can't edit `i18n.ts`).
+  - `ThisWeekCard` and `Legend` helpers kept in the file (backward-compat shim + small unused helper). Both pass lint (top-level function declarations don't trigger no-unused-vars). Safe to remove in a future cleanup.
+  - `/api/events?month=YYYY-MM` is implemented but the Training page currently fetches all events and filters client-side (the events list also needs all events). The new endpoint is there for future per-month pagination if the events list grows.
+
+---
+Task ID: LC
+Agent: general-purpose (Labs + Challenges full impl)
+Task: Build Labs page (markers + donations) + Challenges page (rankings + privacy)
+
+Work Log:
+- Read worklog, plan §7 (labs) + §9 (social), existing LabsPage (placeholder) and SocialPage (initial challenge-card-only stub).
+- Read shared infra: LabPanel type in `src/lib/apex/types.ts`, Prisma `LabPanel` model in `prisma/schema.prisma`, kit primitives (Card, BigStat, Badge, RangeBar, DeltaChip, Segmented, Empty, Loading, Hairline, Eyebrow, PageHeader, InfoButton, ChartInfoBadge, scoreTone, rangeTone, toneFor), i18n keys (`labs.*`, `social_*`), `challenges` mock in `data.ts`, `useApexUi` store, `me`.
+- Created `src/lib/apex/labsHelpers.ts` (off-limits-friendly helper): CORE_MARKERS catalog (Hb/Hct/ferritin/iron/WBC/PLT with default ref ranges), DEFAULT_RANGES, statusForValue, markerValue, markerRange, panelMarkerKeys, JSON serialize/parse helpers for the Prisma `extraMarkers` + `referenceRanges` TEXT columns, daysUntil.
+- Created `src/app/api/labs/route.ts` — GET list (newest-first, seeds 3 demo panels when user has none: a baseline blood test 90d ago, a whole-blood donation 42d ago with `nextEligibleDate` 14d in the future, a follow-up test 21d ago with borderline-low ferritin), POST create (accepts panelDate, panelType, donationType, six core markers, extraMarkers, referenceRanges, nextEligibleDate, notes — merges reference_ranges over defaults before persisting). Follows the `ensureUser` pattern from `/api/dashboard`.
+- Created `src/app/api/labs/[id]/route.ts` — GET detail, PATCH (any subset of fields, same merge logic for reference_ranges), DELETE. Closes the plan §7 finding "no update or delete route, so a typo in a panel cannot be corrected."
+- Created `src/features/apex/labs/MarkerTrendChart.tsx` — custom inline SVG (the shared `InteractiveLineChart` only supports a single baseline line, not a band). Draws: hairline grid, ref-range shaded band (positive soft fill + thin band-edge lines), midpoint dashed baseline, primary-blue trend line, per-point dots coloured positive when in-range and alert when out-of-range, vertical dashed markers on donation panels, hover crosshair + ChartTooltip (reused from `@/components/apex/charts`).
+- Rewrote `src/features/apex/labs/LabsPage.tsx` (full implementation, ~1000 lines):
+  - Row 1, Status (col-12 → 4 tiles): Next donation (BigStat, "14 days" / "Eligible now" / "No donation recorded" + the nextEligibleDate below), Latest ferritin (BigStat + status Badge via rangeTone/toneFor), Latest haemoglobin (same treatment), Last panel (date + blood-test/donation Badge).
+  - Row 2, Marker trends (col-12): CardHeader with ChartInfoBadge (per-marker explanation text), Segmented marker selector (six core + any extras discovered across panels), ref-range text, MarkerTrendChart, four-dot legend (in-range / out-of-range / trend / donation).
+  - Row 3, Panels and entry (col-12 xl:col-8 + col-12 xl:col-4): Left, panels table newest first with per-marker range dots (positive/warning/alert/borderline tone) and tiny value labels; clicking a row expands an inline detail with every marker as a RangeBar + the delta vs the previous panel + notes + Delete. Right, Add panel form (date, type Segmented: blood_test/donation, donation type select shown when relevant, six core markers each with value + ref-low/high inputs pre-filled from the last panel, "+ add marker" for extras with name/value/unit/ref-low/ref-high, next-eligible date, private notes, Save button).
+  - Privacy line card under the form (uses the existing `labs.privacy_note` i18n string — "Numeric values are stored as provided. Free-text notes are encrypted at the application layer." — matches what the backend code does today).
+- Created `src/lib/apex/socialData.ts` (new file, off-limits `data.ts` untouched): PARTICIPANTS (6 friends + `me`), CHALLENGE_BOARDS (per-challenge leaderboards, 5-7 participants each, user's value matches the canonical `challenges[].my_value`), PAST_CHALLENGES (3 finished with winner + user's finishing place), RANKINGS (4 headline metrics × 3 periods × 7 participants — deterministic, week/month/all-time), PRIVACY_DEFAULTS (steps / activities / distance on; sleep_score / training_load off — per plan §9), helpers `findParticipant`, `getRanking`, `myRank`.
+- Rewrote `src/features/apex/social/SocialPage.tsx` (full implementation, ~860 lines):
+  - Row 1, Where I stand (col-12 → 4 tiles): per headline metric (Steps / Activities / Training load / Sleep score) — rank #/N Badge, big value with unit, DeltaChip vs previous week.
+  - Row 2, Challenges and rankings (col-12 xl:col-7 + col-12 xl:col-5):
+    - Left, Active challenges: one card each (joined or not). Each shows title (tappable → opens leaderboard sheet), metric + unit, days-left badge + ends date, your progress vs leader (RangeBar), 3-stat strip (your rank / participants / leader's value), participant-initials avatars (user highlighted primary), View leaderboard + Join/Leave. Plus "New challenge" button in the page header that opens a Sheet (name, metric Segmented, start, end).
+    - Right, Rankings: Segmented metric selector (Steps/Activities/Training load/Sleep score) + Segmented period toggle (This week / This month / All time). Sorted table with rank #, name (user's row highlighted bg-primarySoft), value with unit, Δ-week DeltaChip. When the user has opted out of a metric the empty state explains the opt-out.
+  - Row 3, Past challenges (col-12, collapsed): header "X finished · Y podiums" + chevron toggles a list of finished challenges with the winner's name (Trophy icon), date, participant count, and the user's finishing place as a Badge.
+  - Privacy card (col-12): per-metric switches (Switch from `@/components/ui/switch`). States are persisted to `localStorage` (joined challenges → `apex:challenge:joined`, privacy → `apex:privacy:social`). Steps/activities/distance default on; sleep_score/training_load default off (per plan §9).
+  - Challenge leaderboard Sheet (right side) opens on View-leaderboard click with the sorted leaderboard + a summary card "Your rank #N of M — gap to leader".
+
+Stage Summary:
+- Files added:
+  - `src/lib/apex/labsHelpers.ts` — marker catalog, status compute, JSON serialize/parse.
+  - `src/app/api/labs/route.ts` — GET list + POST create (seeds 3 demo panels).
+  - `src/app/api/labs/[id]/route.ts` — GET detail + PATCH update + DELETE.
+  - `src/features/apex/labs/MarkerTrendChart.tsx` — custom inline SVG with ref-range band, per-point tone, donation markers, hover tooltip.
+  - `src/lib/apex/socialData.ts` — participants, leaderboards, past challenges, rankings, privacy defaults.
+- Files rewritten (full implementation, replacing placeholder/stub):
+  - `src/features/apex/labs/LabsPage.tsx` — Row 1 status, Row 2 trend chart + marker selector, Row 3 panels table + inline detail + Add form + privacy note.
+  - `src/features/apex/social/SocialPage.tsx` — Row 1 stand tiles, Row 2 challenges + rankings, Row 3 past challenges, privacy card + leaderboard sheet + new-challenge sheet.
+- What works:
+  - GET /api/labs returns the 3 seeded demo panels (verified via curl: panels with dates 2026-09-10, 2026-08-20, 2026-07-03, nextEligibleDate 2026-10-15). POST /api/labs creates new panels. PATCH /api/labs/[id] updates any subset. DELETE /api/labs/[id] removes a panel. All routes return 200/201 (verified via curl + dev.log).
+  - Labs page renders in the browser (verified via agent-browser snapshot): Row 1 shows "14 days / 15 Oct / 27 ng/mL BORDERLINE / 14.1 g/dL NORMAL / 10 Sept BLOOD TEST". Row 2 shows the marker Segmented (Hb/Hct/Ferritin/Iron/WBC/PLT + Vitamin D/hs-CRP/HbA1c extras), ref range "13.5–17.5 g/dL", trend chart, legend. Row 3 shows the panels table with all three rows.
+  - Challenges page renders in the browser (verified via agent-browser snapshot): Row 1 shows the 4 stand tiles (#3/7, 71,250 steps, +2350 / #2/7, 12, +2 / #3/7, 392 TSS, +34 / #3/7, 81/100, +3). Row 2 shows 3 challenge cards (2 joined with Leave button, 1 not-joined with Join button) plus the rankings table (7 rows, user's row highlighted). Row 3 shows "3 finished · 1 podiums" toggle. Privacy card shows 5 switches with the correct default on/off state. Challenge leaderboard Sheet opens with the sorted leaderboard when "View leaderboard →" is clicked.
+  - `bun run lint` passes (0 errors, 0 warnings after removing one unused eslint-disable directive).
+- Deferred / notes:
+  - A handful of UI strings are inline English with `/* TODO i18n */` markers (page-section eyebrows like "History", "Panels"; toast messages; sheet "Cancel"/"Create"; the new-challenge sheet's mock notice; the rankings opt-out empty-state body). The i18n keys for labs.* + social_* (active_challenges, where_stand, join, leave, new_challenge, period_*, rankings, privacy, past, rank) already exist in `src/lib/apex/i18n.ts` and are wired; the TODOs are extras that can be added later without touching the off-limits i18n file.
+  - The New-challenge Sheet is mock-only — it does not persist a new challenge (the canonical `challenges` array in `src/lib/apex/data.ts` is off-limits and there is no multi-user backend for challenges). The Sheet collects the fields the backend `POST /challenges` would receive and shows a note explaining this.
+  - `PATCH /labs/[id]` is wired end-to-end (verified) but the Labs page does not yet expose an inline editor — adding panels (POST) and deleting panels (DELETE) are surfaced; editing happens via the API only. A follow-up task could expose an Edit button on the panel detail that reuses the Add form in PATCH mode.
+  - The custom `MarkerTrendChart` reuses `ChartTooltip` from `@/components/apex/charts` so tooltips match the rest of the app, but the chart body itself is bespoke SVG (necessary because the shared `InteractiveLineChart` does not support a ref-range band or per-point tone). It follows the Apex visual vocabulary (hairlines, semantic-state colours, mono numerals, var(--c-*) tokens only) — no new visual vocabulary introduced.

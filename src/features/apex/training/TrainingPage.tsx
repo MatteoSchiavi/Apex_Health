@@ -22,8 +22,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Calendar,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Edit2,
   Plus,
@@ -54,6 +56,14 @@ import {
   ConfirmPopover,
   DeltaChip,
 } from "@/components/apex/kit";
+import {
+  InteractiveComboChart,
+  ChartLegend,
+  ChartInfoBadge,
+  type BarCategory,
+  type BarSeries,
+  type LineSeries,
+} from "@/components/apex/charts";
 
 /* --------------------------------------------------------------- types */
 
@@ -172,6 +182,44 @@ const DEFAULT_ROUTINE: Record<number, { title: string; start: string; discipline
   7: { title: "Recovery Day", start: "", discipline: "rest" },
 };
 
+/** Calendar event kind → badge tone (matches spec: race=alert, session=primary, rest=muted). */
+function eventToneForKind(kind: string): "alert" | "primary" | "muted" {
+  if (["race", "competition", "enduro", "ski"].includes(kind)) return "alert";
+  if (["session", "training_camp"].includes(kind)) return "primary";
+  return "muted";
+}
+
+/** Build a 6×7 (42-cell) month grid of `YYYY-MM-DD` strings, Mon-start.
+ *  Cells from the previous/next month are included so the grid is always full. */
+function monthGrid(year: number, monthIdx: number): string[] {
+  const first = new Date(Date.UTC(year, monthIdx, 1));
+  const firstWd = first.getUTCDay() === 0 ? 7 : first.getUTCDay(); // 1=Mon … 7=Sun
+  const start = new Date(first);
+  start.setUTCDate(start.getUTCDate() - (firstWd - 1));
+  const cells: string[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setUTCDate(start.getUTCDate() + i);
+    cells.push(d.toISOString().slice(0, 10));
+  }
+  return cells;
+}
+
+/** Format a month label like "October 2026" / "ottobre 2026" using the user's locale. */
+function monthLabel(year: number, monthIdx: number, locale: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale === "it" ? "it-IT" : "en-US", {
+      year: "numeric",
+      month: "long",
+    }).format(new Date(Date.UTC(year, monthIdx, 1)));
+  } catch {
+    const names = locale === "it"
+      ? ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+      : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${names[monthIdx]} ${year}`;
+  }
+}
+
 /* ----------------------------------------------------------- main page */
 
 export function TrainingPage() {
@@ -238,6 +286,24 @@ export function TrainingPage() {
     })();
   }, []);
 
+  // ----- activity dates (for "activity done" dots in the month calendar) -----
+  // Fetch up to 100 most-recent activities (covers ~1 year of sessions for the
+  // demo user). We only need local_date — built into a Set for O(1) lookup.
+  const [activityDates, setActivityDates] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/activities?days=365&limit=100", { cache: "no-store" });
+        const json = await res.json();
+        if (json.ok && Array.isArray(json.activities)) {
+          setActivityDates(new Set(json.activities.map((a: { local_date?: string }) => a.local_date).filter(Boolean)));
+        }
+      } catch {
+        /* ignore — calendar still works, just no activity dots */
+      }
+    })();
+  }, []);
+
   // ----- feedback (server seeded + local additions) -----
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackEntry[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(true);
@@ -280,9 +346,15 @@ export function TrainingPage() {
         </div>
       </div>
 
-      {/* Row 2: This week */}
+      {/* Row 2: This week / This month (expandable calendar) */}
       <div className="mt-6">
-        <ThisWeekCard today={today} plan={plan} events={events} />
+        <ExpandableCalendarCard
+          today={today}
+          plan={plan}
+          events={events}
+          activityDates={activityDates}
+          onEventsChanged={loadEvents}
+        />
       </div>
 
       {/* Row 3: Load + Events */}
@@ -1075,63 +1147,417 @@ function ThisWeekCard({
   plan: Plan | null;
   events: ApexEvent[];
 }) {
+  // Backward-compat shim — the new expandable card below wraps this. Kept
+  // only so any other internal callers don't break during the migration.
+  return <ExpandableCalendarCard today={today} plan={plan} events={events} activityDates={new Set()} onEventsChanged={() => {}} />;
+}
+
+type CalendarMode = "week" | "month";
+
+function ExpandableCalendarCard({
+  today,
+  plan,
+  events,
+  activityDates,
+  onEventsChanged,
+}: {
+  today: string;
+  plan: Plan | null;
+  events: ApexEvent[];
+  activityDates: Set<string>;
+  onEventsChanged: () => void;
+}) {
   const t = useT();
   const ui = useApexUi();
 
-  // build Monday → Sunday of the current week
-  const todayWd = isoWeekday(today); // 1=Mon … 7=Sun
-  const monday = addDays(today, -(todayWd - 1));
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  // mode toggle (default: week)
+  const [mode, setMode] = useState<CalendarMode>("week");
 
+  // month navigation (only used in month mode). Anchored to today's month
+  // initially so the user sees their current month first.
+  const [cursor, setCursor] = useState<{ year: number; monthIdx: number }>(() => {
+    const d = new Date(`${today}T00:00:00Z`);
+    return { year: d.getUTCFullYear(), monthIdx: d.getUTCMonth() };
+  });
+
+  // routine editor state (week mode only — kept from the original card)
   const [editing, setEditing] = useState(false);
   const [routine, setRoutine] = useState<Record<number, { title: string; start: string; discipline: string }>>(DEFAULT_ROUTINE);
+
+  // build Monday → Sunday of the current week (week mode)
+  const todayWd = isoWeekday(today); // 1=Mon … 7=Sun
+  const monday = addDays(today, -(todayWd - 1));
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+
+  // 6×7 month grid (month mode)
+  const grid = useMemo(() => monthGrid(cursor.year, cursor.monthIdx), [cursor.year, cursor.monthIdx]);
+
+  // add-event sheet (month mode tap-to-add)
+  const [addDate, setAddDate] = useState<string | null>(null);
+
+  function goPrevMonth() {
+    setCursor((c) => {
+      const m = c.monthIdx - 1;
+      return m < 0 ? { year: c.year - 1, monthIdx: 11 } : { year: c.year, monthIdx: m };
+    });
+  }
+  function goNextMonth() {
+    setCursor((c) => {
+      const m = c.monthIdx + 1;
+      return m > 11 ? { year: c.year + 1, monthIdx: 0 } : { year: c.year, monthIdx: m };
+    });
+  }
+  function goTodayMonth() {
+    const d = new Date(`${today}T00:00:00Z`);
+    setCursor({ year: d.getUTCFullYear(), monthIdx: d.getUTCMonth() });
+  }
+
+  // weekday header row labels (Mon … Sun)
+  const weekdayHeaders = WEEKDAY_KEYS.map((k) => t(k));
+
+  // ---- shared routine slot lookup (used by both views)
+  const routineFor = (date: string) => {
+    const wd = isoWeekday(date);
+    return routine[wd];
+  };
 
   return (
     <Card pad={false} className="overflow-hidden">
       <div className="p-4 pb-0">
         <SectionHeader
           eyebrow={ui.locale === "it" ? "Lun → Dom" : "Mon → Sun"}
-          title={t("train_this_week")}
+          title={
+            mode === "week"
+              ? t("train_this_week")
+              : monthLabel(cursor.year, cursor.monthIdx, ui.locale)
+          }
           right={
-            <ApexButton
-              variant="secondary"
-              size="sm"
-              icon={<Edit2 size={12} />}
-              onClick={() => setEditing((v) => !v)}
-            >
-              {t("train_edit_routine")}
-            </ApexButton>
+            <span className="flex items-center gap-2">
+              <Segmented<CalendarMode>
+                size="sm"
+                value={mode}
+                onChange={(v) => setMode(v)}
+                options={[
+                  { value: "week", label: ui.locale === "it" ? "Settimana" : "Week" },
+                  { value: "month", label: ui.locale === "it" ? "Mese" : "Month" },
+                ]}
+              />
+              {mode === "week" && (
+                <ApexButton
+                  variant="secondary"
+                  size="sm"
+                  icon={<Edit2 size={12} />}
+                  onClick={() => setEditing((v) => !v)}
+                >
+                  {t("train_edit_routine")}
+                </ApexButton>
+              )}
+            </span>
           }
         />
       </div>
-      <div className="grid grid-cols-1 gap-px border-t border-hairline bg-hairline sm:grid-cols-4 lg:grid-cols-7">
-        {days.map((d) => {
-          const wd = isoWeekday(d);
-          const isToday = d === today;
-          const isPast = dayDiff(d, today) < 0;
-          const routineSlot = routine[wd];
-          const isRest = routineSlot?.discipline === "rest";
-          const ev = events.find((e) => e.date === d);
-          const planForDay = d === today && plan ? plan : null;
-          const planStatus: PlanStatus | null = planForDay?.status ?? null;
-          return (
-            <WeekDayCell
-              key={d}
-              date={d}
-              weekdayKey={WEEKDAY_KEYS[wd - 1]}
-              isToday={isToday}
-              isPast={isPast}
-              routineSlot={routineSlot}
-              isRest={isRest}
-              event={ev}
-              planStatus={planStatus}
-              editing={editing}
-              onRoutineChange={(newSlot) => setRoutine((r) => ({ ...r, [wd]: newSlot }))}
-            />
-          );
-        })}
-      </div>
+
+      {mode === "week" ? (
+        <div className="grid grid-cols-1 gap-px border-t border-hairline bg-hairline sm:grid-cols-4 lg:grid-cols-7">
+          {weekDays.map((d) => {
+            const wd = isoWeekday(d);
+            const isToday = d === today;
+            const isPast = dayDiff(d, today) < 0;
+            const routineSlot = routine[wd];
+            const isRest = routineSlot?.discipline === "rest";
+            const ev = events.find((e) => e.date === d);
+            const planForDay = d === today && plan ? plan : null;
+            const planStatus: PlanStatus | null = planForDay?.status ?? null;
+            const hasActivity = activityDates.has(d);
+            return (
+              <WeekDayCell
+                key={d}
+                date={d}
+                weekdayKey={WEEKDAY_KEYS[wd - 1]}
+                isToday={isToday}
+                isPast={isPast}
+                routineSlot={routineSlot}
+                isRest={isRest}
+                event={ev}
+                planStatus={planStatus}
+                editing={editing}
+                onRoutineChange={(newSlot) => setRoutine((r) => ({ ...r, [wd]: newSlot }))}
+                hasActivity={hasActivity}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="border-t border-hairline">
+          {/* month navigation row */}
+          <div className="flex items-center justify-between gap-2 px-4 py-2">
+            <button
+              type="button"
+              onClick={goPrevMonth}
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface2 hover:text-ink"
+              aria-label={ui.locale === "it" ? "Mese precedente" : "Previous month"}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <div className="flex items-center gap-2">
+              <Calendar size={12} className="text-faint" />
+              <span className="text-[13px] font-semibold text-ink">
+                {monthLabel(cursor.year, cursor.monthIdx, ui.locale)}
+              </span>
+              <button
+                type="button"
+                onClick={goTodayMonth}
+                className="num eyebrow !text-[9px] !tracking-[0.08em] rounded-[var(--radius-control)] border border-hairline px-1.5 py-0.5 text-muted hover:bg-surface2 hover:text-ink"
+              >
+                {ui.locale === "it" ? "oggi" : "today"}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={goNextMonth}
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface2 hover:text-ink"
+              aria-label={ui.locale === "it" ? "Mese successivo" : "Next month"}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          {/* weekday header */}
+          <div className="grid grid-cols-7 gap-px border-t border-hairline bg-hairline">
+            {weekdayHeaders.map((label) => (
+              <div key={label} className="bg-surface px-1 py-1 text-center eyebrow !text-[9px] !tracking-[0.08em] text-faint">
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* 6×7 day grid */}
+          <div className="grid grid-cols-7 gap-px bg-hairline">
+            {grid.map((date) => {
+              const inMonth = date.slice(5, 7) === String(cursor.monthIdx + 1).padStart(2, "0")
+                && date.slice(0, 4) === String(cursor.year);
+              const isToday = date === today;
+              const isPast = dayDiff(date, today) < 0;
+              const dayEvents = events.filter((e) => e.date === date);
+              const routineSlot = routineFor(date);
+              const isRest = routineSlot?.discipline === "rest";
+              const planForDay = date === today && plan ? plan : null;
+              const planStatus: PlanStatus | null = planForDay?.status ?? null;
+              const hasActivity = activityDates.has(date);
+
+              return (
+                <MonthDayCell
+                  key={date}
+                  date={date}
+                  inMonth={inMonth}
+                  isToday={isToday}
+                  isPast={isPast}
+                  isRest={isRest}
+                  planStatus={planStatus}
+                  events={dayEvents}
+                  hasActivity={hasActivity}
+                  onAddEvent={() => setAddDate(date)}
+                />
+              );
+            })}
+          </div>
+
+          {/* small legend strip */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[10px] text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-alert" />
+              {ui.locale === "it" ? "Gara" : "Race"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+              {ui.locale === "it" ? "Sessione" : "Session"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />
+              {ui.locale === "it" ? "Riposo" : "Rest"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-positive" />
+              {ui.locale === "it" ? "Allenamento fatto" : "Activity done"}
+            </span>
+            <span className="ml-auto text-faint">
+              {/* TODO i18n */}
+              {ui.locale === "it" ? "Tocca un giorno per aggiungere" : "Tap a day to add an event"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* tap-to-add sheet (month mode) */}
+      {addDate && (
+        <AddEventSheet
+          date={addDate}
+          today={today}
+          onClose={() => setAddDate(null)}
+          onSaved={() => {
+            setAddDate(null);
+            onEventsChanged();
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+/** A modal-ish sheet (fixed overlay) used to add a calendar event for a specific date. */
+function AddEventSheet({
+  date,
+  today,
+  onClose,
+  onSaved,
+}: {
+  date: string;
+  today: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ui = useApexUi();
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 sm:items-center sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-hairline bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+        <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <Plus size={14} className="text-primaryText" />
+            <span className="text-[13px] font-semibold text-ink">
+              {/* TODO i18n */}
+              {ui.locale === "it" ? "Aggiungi evento" : "Add event"}
+            </span>
+            <span className="num mono text-[11px] text-faint">{fmtDate(date, ui.locale)}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface2 hover:text-ink"
+            aria-label={ui.locale === "it" ? "Chiudi" : "Close"}
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-4">
+          <EventForm
+            today={today}
+            defaultDate={date}
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthDayCell({
+  date,
+  inMonth,
+  isToday,
+  isPast,
+  isRest,
+  planStatus,
+  events: dayEvents,
+  hasActivity,
+  onAddEvent,
+}: {
+  date: string;
+  inMonth: boolean;
+  isToday: boolean;
+  isPast: boolean;
+  isRest: boolean;
+  planStatus: PlanStatus | null;
+  events: ApexEvent[];
+  hasActivity: boolean;
+  onAddEvent: () => void;
+}) {
+  const ui = useApexUi();
+  const dayNum = parseInt(date.slice(8, 10), 10);
+
+  // status dot
+  let statusDot: React.ReactNode = null;
+  if (planStatus === "done") {
+    statusDot = (
+      <span className="flex h-3 w-3 items-center justify-center rounded-full bg-positiveSoft text-positive">
+        <Check size={7} strokeWidth={3} />
+      </span>
+    );
+  } else if (planStatus === "confirmed") {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />;
+  } else if (planStatus === "draft") {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />;
+  } else if (isRest) {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onAddEvent}
+      className={`group relative flex min-h-[58px] flex-col gap-1 bg-surface p-1.5 text-left transition-colors hover:bg-surface2 ${
+        isToday ? "outline outline-1 -outline-offset-0 outline-primary" : ""
+      } ${inMonth ? "" : "opacity-40"}`}
+      aria-label={`${fmtDate(date, ui.locale)} — ${ui.locale === "it" ? "aggiungi evento" : "add event"}`}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <span
+          className={`num mono text-[12px] font-semibold leading-none ${
+            isToday ? "text-primaryText" : inMonth ? "text-ink" : "text-faint"
+          }`}
+          style={{ fontFeatureSettings: '"tnum" 1' }}
+        >
+          {dayNum}
+        </span>
+        {statusDot}
+      </div>
+
+      {/* event dots row */}
+      {dayEvents.length > 0 && (
+        <div className="flex flex-wrap gap-0.5">
+          {dayEvents.slice(0, 4).map((e) => {
+            const tone = eventToneForKind(e.kind);
+            const cls =
+              tone === "alert"
+                ? "bg-alert"
+                : tone === "primary"
+                ? "bg-primary"
+                : "bg-faint";
+            return (
+              <span
+                key={e.id}
+                title={e.title}
+                className={`inline-block h-1.5 w-1.5 rounded-full ${cls}`}
+              />
+            );
+          })}
+          {dayEvents.length > 4 && (
+            <span className="num text-[8px] leading-none text-faint">+{dayEvents.length - 4}</span>
+          )}
+        </div>
+      )}
+
+      {/* activity-done indicator */}
+      {hasActivity && (
+        <div className="mt-auto flex items-center gap-0.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-positive" />
+          <span className="text-[8px] leading-none text-positive">
+            {/* TODO i18n */}
+            {ui.locale === "it" ? "fatto" : "done"}
+          </span>
+        </div>
+      )}
+
+      {/* past-day dim overlay (no plan done) */}
+      {isPast && !planStatus && !hasActivity && dayEvents.length === 0 && (
+        <span className="absolute right-1 top-1 h-1 w-1 rounded-full bg-alert/40" />
+      )}
+    </button>
   );
 }
 
@@ -1146,6 +1572,7 @@ function WeekDayCell({
   planStatus,
   editing,
   onRoutineChange,
+  hasActivity = false,
 }: {
   date: string;
   weekdayKey: string;
@@ -1157,6 +1584,7 @@ function WeekDayCell({
   planStatus: PlanStatus | null;
   editing: boolean;
   onRoutineChange: (s: { title: string; start: string; discipline: string }) => void;
+  hasActivity?: boolean;
 }) {
   const t = useT();
   const ui = useApexUi();
@@ -1212,6 +1640,12 @@ function WeekDayCell({
             <span className="eyebrow !text-[9px] !tracking-[0.08em] text-primaryText">
               {ui.locale === "it" ? "oggi" : "today"}
             </span>
+          )}
+          {hasActivity && !isToday && (
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full bg-positive"
+              title={ui.locale === "it" ? "Attività registrata" : "Activity recorded"}
+            />
           )}
         </div>
         {statusDot}
@@ -1288,10 +1722,24 @@ function LoadCard({
   const t = useT();
   const ui = useApexUi();
 
+  // ChartInfoBadge text — explains what the three series mean.
+  const infoText = ui.locale === "it"
+    ? "Carico acuto = somma del carico di allenamento degli ultimi 7 giorni (affaticamento attuale). "
+      + "Carico cronico = media mobile a 28 giorni (base di fitness). "
+      + "ACWR = acuto ÷ cronico — tra 0.8 e 1.3 è la fascia ottimale."
+    : "Acute load = 7-day training load (fatigue). "
+      + "Chronic load = 28-day average (fitness base). "
+      + "ACWR = acute ÷ chronic — 0.8–1.3 is optimal.";
+
   return (
     <Card>
       <CardHeader
-        eyebrow={t("train_load")}
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5">
+            {t("train_load")}
+            <ChartInfoBadge text={infoText} />
+          </span>
+        }
         right={
           <span className="num text-[10px] text-faint">
             {ui.locale === "it" ? "56 giorni · 0.8–1.3 banda" : "56 days · 0.8–1.3 band"}
@@ -1334,16 +1782,34 @@ function LoadCard({
             />
           </div>
           <LoadChart series={load.series} taperWindows={load.taperWindows} events={events} />
+
+          {/* event markers strip — quick visual cue for events falling in the
+              56-day window (the chart itself no longer draws the event lines
+              since InteractiveComboChart doesn't accept overlay children). */}
+          <EventMarkersStrip series={load.series} events={events} />
         </>
       )}
     </Card>
   );
 }
 
+/** Per-bar ACWR state tone — used to colour the "ACWR state" mini-strip that
+ *  runs beneath the chart. The InteractiveComboChart component takes a single
+ *  BarSeries (one colour for all bars), so the spec's per-bar state-tone
+ *  coloring is implemented as a separate thin strip here, where each day's
+ *  ACWR state is shown as a tiny coloured cell aligned with the bar above. */
+function acwrTone(acwr: number | null): "positive" | "warning" | "alert" | "primary" | "muted" {
+  if (acwr == null) return "muted";
+  if (acwr > 1.5) return "alert";
+  if (acwr > 1.3) return "warning";
+  if (acwr >= 0.8) return "positive";
+  return "primary";
+}
+
 function LoadChart({
   series,
-  taperWindows,
-  events,
+  taperWindows: _taperWindows,
+  events: _events,
 }: {
   series: DayLoad[];
   taperWindows: TaperWindow[];
@@ -1351,165 +1817,146 @@ function LoadChart({
 }) {
   const ui = useApexUi();
 
-  // SVG dimensions
-  const W = 720;
-  const H = 220;
-  const PAD = { top: 10, right: 40, bottom: 18, left: 32 };
-  const innerW = W - PAD.left - PAD.right;
-  const innerH = H - PAD.top - PAD.bottom;
+  // Downsample if too many days — 56 bars at width 600 is fine but we cap at 56
+  // anyway via the API. Categories are the dates (YYYY-MM-DD → short label).
+  const categories: BarCategory[] = useMemo(
+    () => series.map((s) => ({ label: s.date })),
+    [series],
+  );
 
-  // y-axis: daily load bars (left)
-  const maxLoad = Math.max(50, ...series.map((s) => s.load));
-  // y-axis right: ACWR 0–2 (clip)
-  const acwrMax = 2;
-  const acwrMin = 0;
-  // chronic line uses the same scale as load (since chronic is a load too)
-  const maxChronic = Math.max(...series.map((s) => s.chronic ?? 0), maxLoad);
+  // Acute load bars (single series — InteractiveComboChart accepts one).
+  // Colour is primary; per-bar ACWR state-tone is rendered in the strip below.
+  const bars: BarSeries = {
+    name: ui.locale === "it" ? "Carico acuto (7d)" : "Acute load (7d)",
+    color: "var(--c-primary)",
+    values: series.map((s) => s.acute),
+  };
 
-  const yScaleMax = Math.max(maxLoad, maxChronic) * 1.1;
-  const barWidth = innerW / series.length;
-  const x = (i: number) => PAD.left + i * barWidth + barWidth / 2;
-  const yLoad = (v: number) => PAD.top + innerH - (v / yScaleMax) * innerH;
-  const yAcwr = (v: number) =>
-    PAD.top + innerH - ((Math.max(acwrMin, Math.min(acwrMax, v)) - acwrMin) / (acwrMax - acwrMin)) * innerH;
+  // Two lines: chronic load (ink) + ACWR (warning). Note: InteractiveComboChart
+  // uses a single shared y-scale for ALL lines, so ACWR (range ~0–2) renders
+  // visually compressed at the bottom relative to chronic (~50–300). The
+  // tooltip still shows the exact value per day; the ACWR state strip below
+  // gives the at-a-glance visual state.
+  const lines: LineSeries[] = [
+    {
+      name: ui.locale === "it" ? "Carico cronico (28d)" : "Chronic load (28d)",
+      color: "var(--c-ink)",
+      values: series.map((s) => s.chronic),
+    },
+    {
+      name: "ACWR",
+      color: "var(--c-warning)",
+      values: series.map((s) => s.acwr),
+    },
+  ];
 
-  // chronic line path
-  const chronicPoints = series
-    .map((s, i) => (s.chronic != null ? `${x(i).toFixed(2)},${yLoad(s.chronic).toFixed(2)}` : null))
-    .filter((p): p is string => p != null);
-  const chronicPath = "M" + chronicPoints.join(" L");
-
-  // event vertical lines
-  const eventLines = events.filter((e) => {
-    const idx = series.findIndex((s) => s.date === e.date);
-    return idx >= 0;
-  });
-
-  // taper window shading
-  const taperRects = taperWindows
-    .map((w) => {
-      const startIdx = series.findIndex((s) => s.date === w.start);
-      const endIdx = series.findIndex((s) => s.date === w.end);
-      if (startIdx < 0 && endIdx < 0) return null;
-      const s = Math.max(0, startIdx);
-      const e = endIdx < 0 ? series.length - 1 : endIdx;
-      return { x1: x(s) - barWidth / 2, x2: x(e) + barWidth / 2 };
-    })
-    .filter((r): r is { x1: number; x2: number } => r != null);
-
-  // 0.8–1.3 band on ACWR axis
-  const bandTopY = yAcwr(1.3);
-  const bandBotY = yAcwr(0.8);
-
-  // x-axis labels — first, middle, last
-  const labelIdx = [0, Math.floor(series.length / 2), series.length - 1];
+  // x-axis labels — short date (MM-DD). Show ~6 evenly spaced labels.
+  const labelStride = Math.max(1, Math.floor(series.length / 6));
 
   return (
-    <div className="num w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }} aria-hidden>
-        {/* ACWR 0.8–1.3 band */}
-        <rect x={PAD.left} y={bandTopY} width={innerW} height={Math.max(0, bandBotY - bandTopY)} fill="var(--c-positive)" opacity={0.07} />
+    <div className="w-full">
+      <InteractiveComboChart
+        categories={categories}
+        bars={bars}
+        lines={lines}
+        height={220}
+        barUnit="TSS"
+        formatBarValue={(v) => (v === null ? "—" : `${v.toFixed(0)} TSS`)}
+        formatLineValue={(v) => (v === null ? "—" : v.toFixed(2))}
+      />
 
-        {/* taper windows */}
-        {taperRects.map((r, i) => (
-          <rect
-            key={`taper-${i}`}
-            x={r.x1}
-            y={PAD.top}
-            width={Math.max(0, r.x2 - r.x1)}
-            height={innerH}
-            fill="var(--c-warning)"
-            opacity={0.08}
-          />
-        ))}
-
-        {/* y grid + labels (left, load) */}
-        {[0, 0.25, 0.5, 0.75, 1].map((p) => {
-          const yv = PAD.top + innerH - p * innerH;
-          const val = Math.round(yScaleMax * p);
-          return (
-            <g key={`grid-${p}`}>
-              <line x1={PAD.left} y1={yv} x2={W - PAD.right} y2={yv} stroke="var(--c-hairline)" strokeWidth={1} />
-              <text x={PAD.left - 4} y={yv + 3} textAnchor="end" fontSize={9} fill="var(--c-faint)">
-                {val}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* ACWR right-axis labels */}
-        {[0, 0.8, 1.0, 1.3, 2.0].map((v) => {
-          const yv = yAcwr(v);
-          return (
-            <text key={`acwr-${v}`} x={W - PAD.right + 4} y={yv + 3} textAnchor="start" fontSize={9} fill="var(--c-faint)">
-              {v.toFixed(1)}
-            </text>
-          );
-        })}
-
-        {/* event vertical lines */}
-        {eventLines.map((e) => {
-          const idx = series.findIndex((s) => s.date === e.date);
-          if (idx < 0) return null;
-          const xv = x(idx);
-          return (
-            <g key={`ev-${e.id}`}>
-              <line x1={xv} y1={PAD.top} x2={xv} y2={PAD.top + innerH} stroke="var(--c-warning)" strokeWidth={1} strokeDasharray="3,3" opacity={0.7} />
-              <text x={xv + 2} y={PAD.top + 8} fontSize={8} fill="var(--c-warningText)">
-                {e.title.slice(0, 8)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* daily load bars */}
-        {series.map((s, i) => {
-          const h = (s.load / yScaleMax) * innerH;
-          const y = PAD.top + innerH - h;
-          return (
-            <rect
-              key={s.date}
-              x={x(i) - barWidth / 2 + 0.5}
-              y={y}
-              width={Math.max(1, barWidth - 1)}
-              height={Math.max(0, h)}
-              fill="var(--c-primary)"
-              opacity={0.55}
-            />
-          );
-        })}
-
-        {/* chronic line */}
-        {chronicPoints.length > 1 && (
-          <path d={chronicPath} fill="none" stroke="var(--c-ink)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} />
+      {/* x-axis labels */}
+      <div className="mt-1 flex justify-between text-[9px] text-faint">
+        {series.map((s, i) =>
+          i % labelStride === 0 || i === series.length - 1 ? (
+            <span key={s.date} className="num">
+              {s.date.slice(5)}
+            </span>
+          ) : null,
         )}
-
-        {/* ACWR line (secondary axis) — drawn on top */}
-        {(() => {
-          const pts = series
-            .map((s, i) => (s.acwr != null ? `${x(i).toFixed(2)},${yAcwr(s.acwr).toFixed(2)}` : null))
-            .filter((p): p is string => p != null);
-          if (pts.length < 2) return null;
-          return <path d={"M" + pts.join(" L")} fill="none" stroke="var(--c-warning)" strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round" />;
-        })()}
-
-        {/* x-axis labels */}
-        {labelIdx.map((i) => (
-          <text key={`xl-${i}`} x={x(i)} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--c-faint)">
-            {series[i].date.slice(5)}
-          </text>
-        ))}
-
-        {/* axis baselines */}
-        <line x1={PAD.left} y1={PAD.top + innerH} x2={W - PAD.right} y2={PAD.top + innerH} stroke="var(--c-hairline2)" strokeWidth={1} />
-      </svg>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted">
-        <Legend color="var(--c-primary)" label={ui.locale === "it" ? "Carico giornaliero" : "Daily load"} />
-        <Legend color="var(--c-ink)" label={ui.locale === "it" ? "Cronico (28d)" : "Chronic (28d)"} />
-        <Legend color="var(--c-warning)" label="ACWR" />
-        <Legend color="var(--c-positive)" opacity={0.18} label={ui.locale === "it" ? "Banda 0.8–1.3" : "0.8–1.3 band"} />
-        <Legend color="var(--c-warning)" opacity={0.18} label={ui.locale === "it" ? "Taper" : "Taper"} />
       </div>
+
+      {/* per-bar ACWR state-tone strip — at-a-glance fatigue state per day */}
+      <div className="mt-3">
+        <div className="eyebrow !text-[9px] !tracking-[0.08em] mb-1 text-faint">
+          {ui.locale === "it" ? "Stato ACWR (per giorno)" : "ACWR state (per day)"}
+        </div>
+        <div
+          className="flex h-2 w-full overflow-hidden rounded-[2px] border border-hairline"
+          title={ui.locale === "it" ? "Verde = ottimale (0.8–1.3) · Giallo = alto (>1.3) · Rosso = critico (>1.5) · Blu = basso (<0.8)" : "Green = optimal (0.8–1.3) · Yellow = high (>1.3) · Red = critical (>1.5) · Blue = low (<0.8)"}
+        >
+          {series.map((s) => {
+            const tone = acwrTone(s.acwr);
+            const bg =
+              tone === "alert"
+                ? "var(--c-alert)"
+                : tone === "warning"
+                ? "var(--c-warning)"
+                : tone === "positive"
+                ? "var(--c-positive)"
+                : tone === "primary"
+                ? "var(--c-primary)"
+                : "var(--c-surface3)";
+            return (
+              <span
+                key={s.date}
+                title={`${s.date} · ACWR ${s.acwr == null ? "—" : s.acwr.toFixed(2)}`}
+                className="block flex-1"
+                style={{ background: bg, minWidth: 1 }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* legend */}
+      <div className="mt-3">
+        <ChartLegend
+          items={[
+            { name: ui.locale === "it" ? "Carico acuto (7d)" : "Acute load (7d)", color: "var(--c-primary)" },
+            { name: ui.locale === "it" ? "Carico cronico (28d)" : "Chronic load (28d)", color: "var(--c-ink)" },
+            { name: "ACWR", color: "var(--c-warning)" },
+            { name: ui.locale === "it" ? "Ottimale 0.8–1.3" : "Optimal 0.8–1.3", color: "var(--c-positive)" },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Thin row listing events that fall within the loaded window, with their
+ *  date + title so the user can see "what happened on this day" without the
+ *  overlay lines we used to draw on the bespoke chart. */
+function EventMarkersStrip({
+  series,
+  events,
+}: {
+  series: DayLoad[];
+  events: ApexEvent[];
+}) {
+  const ui = useApexUi();
+  const inWindow = events.filter((e) => series.some((s) => s.date === e.date));
+  if (inWindow.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-hairline pt-3 text-[10px] text-muted">
+      <span className="eyebrow !text-[9px] !tracking-[0.08em] text-faint">
+        {ui.locale === "it" ? "Eventi nella finestra" : "Events in window"}:
+      </span>
+      {inWindow.slice(0, 8).map((e) => (
+        <span key={e.id} className="inline-flex items-center gap-1">
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              e.priority === "priority_1" || e.priority === "high" ? "bg-alert" : "bg-primary"
+            }`}
+          />
+          <span className="num">{e.date.slice(5)}</span>
+          <span className="text-faint">·</span>
+          <span className="text-ink2">{e.title}</span>
+        </span>
+      ))}
+      {inWindow.length > 8 && (
+        <span className="text-faint">+{inWindow.length - 8}</span>
+      )}
     </div>
   );
 }
@@ -1734,18 +2181,22 @@ function EventRow({
 function EventForm({
   event,
   today,
+  defaultDate,
   onClose,
   onSaved,
 }: {
   event?: ApexEvent;
   today: string;
+  /** Optional pre-filled date used by the month-calendar tap-to-add flow.
+   *  Ignored when `event` is provided (editing an existing event). */
+  defaultDate?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const ui = useApexUi();
   const [title, setTitle] = useState(event?.title || "");
   const [kind, setKind] = useState(event?.kind || "session");
-  const [date, setDate] = useState(event?.date || today);
+  const [date, setDate] = useState(event?.date || defaultDate || today);
   const [priority, setPriority] = useState(event?.priority || "normal");
   const [taperDays, setTaperDays] = useState<number>(event?.taperDays ?? 5);
   const [note, setNote] = useState(event?.note || "");

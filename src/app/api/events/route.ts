@@ -3,19 +3,31 @@ import { db } from "@/lib/db";
 
 /**
  * Calendar Events API
- * GET  /api/events — list all events for the user
+ * GET  /api/events              — list all events for the user
+ * GET  /api/events?month=YYYY-MM — list events whose `date` falls in that calendar month
  * POST /api/events — create a new event
  * DELETE /api/events?id=N — delete an event
+ *
+ * The optional `month` param is a forward-looking extension used by the
+ * expandable month-calendar view on the Training page. Existing callers
+ * (no params) are unaffected — they keep getting the full list.
  */
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const email = process.env.GARMIN_EMAIL || "";
     const user = await db.user.findFirst({ where: { email } });
     if (!user) return NextResponse.json({ ok: false, error: "No user" }, { status: 404 });
 
+    const { searchParams } = new URL(req.url);
+    const month = searchParams.get("month"); // "YYYY-MM" or null
+
+    const where = month
+      ? { userId: user.id, date: { startsWith: month } }
+      : { userId: user.id };
+
     const events = await db.calendarEvent.findMany({
-      where: { userId: user.id },
+      where,
       orderBy: { date: "asc" },
     });
 

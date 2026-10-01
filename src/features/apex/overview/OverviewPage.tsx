@@ -75,6 +75,7 @@ import {
   toneFor,
   type DataTone,
 } from "@/components/apex/kit";
+import { InteractiveComboChart, ChartLegend, ChartInfoBadge } from "@/components/apex/charts";
 import { METRIC_EXPLANATIONS } from "@/lib/apex/metricInfo";
 import {
   fmtNum,
@@ -713,7 +714,18 @@ export function OverviewPage() {
         {/* ACWR / load card */}
         <Card className="xl:col-span-8">
           <CardHeader
-            eyebrow={t("overview.acwr_title")}
+            eyebrow={
+              <span className="flex items-center gap-1.5">
+                {t("overview.acwr_title")}
+                <ChartInfoBadge text={
+                  <span>
+                    <strong className="text-ink2">Acute load</strong> (bars) = your training load over the last 7 days — current fatigue.{" "}
+                    <strong className="text-ink2">Chronic load</strong> (line) = 28-day rolling average — your fitness base.{" "}
+                    <strong className="text-ink2">ACWR</strong> = acute ÷ chronic. 0.8–1.3 is the optimal zone; above 1.5 is high injury-risk.
+                  </span>
+                } />
+              </span>
+            }
             right={
               <span className="num text-[10px] text-faint">
                 {t("overview.optimal_window")}: {fmtNum(ACWR_OPT.low, 2)}–{fmtNum(ACWR_OPT.high, 2)}
@@ -756,10 +768,10 @@ export function OverviewPage() {
             </div>
           )}
 
-          {/* 28-day acute (bar) / chronic (line) chart */}
+          {/* 28-day acute (bar) / chronic (line) chart with interactive hover */}
           <div className="mt-4">
             {load && load.length > 0 ? (
-              <LoadChart series={load} />
+              <InteractiveLoadChart series={load} />
             ) : (
               <div className="rounded-[var(--radius-card)] border border-dashed border-hairline2 px-4 py-6 text-center text-[12px] text-muted">
                 {/* TODO i18n */}
@@ -846,7 +858,7 @@ export function OverviewPage() {
         </Card>
       </div>
 
-      {/* ====================================================== ROW 3 — Last night's sleep */}
+      {/* ====================================================== ROW 3 — Last night's sleep (compact, data-dense) */}
       {showSleep && data.sleep && (
         <Card className="mt-4" pad>
           <CardHeader
@@ -874,38 +886,99 @@ export function OverviewPage() {
             onClick={() => { ui.selectSleepDate(data.date); ui.setView("sleep"); }}
             className="group block w-full text-left"
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
-              {/* Score + total */}
-              <div className="md:col-span-4">
+            {/* Compact 4-column layout: Score | Total | Stages (bar + values) | Vitals */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {/* Col 1 — Sleep score */}
+              <div className="flex flex-col justify-center">
                 <Eyebrow>{t("overview.sleep_score")}</Eyebrow>
-                <BigStat
-                  size="xl"
-                  value={fmtNum(data.sleep?.sleep_score ?? 0, 0)}
-                  unit="/100"
-                  tone={sleepTone === "positive" ? "positive" : sleepTone === "warning" ? "warning" : sleepTone === "alert" ? "alert" : "muted"}
-                />
-                <div className="mt-3">
-                  <ScoreBar value={data.sleep?.sleep_score ?? null} tone={toneFor(sleepTone)} height={6} />
+                <div className="num mt-0.5 flex items-baseline gap-1">
+                  <span
+                    className={`text-[32px] font-bold leading-none tabular-nums ${
+                      sleepTone === "positive" ? "text-positiveText" : sleepTone === "warning" ? "text-warningText" : sleepTone === "alert" ? "text-alertText" : "text-ink"
+                    }`}
+                  >
+                    {fmtNum(data.sleep?.sleep_score ?? 0, 0)}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted">/100</span>
                 </div>
-                <div className="num mt-3 flex items-baseline gap-1.5 text-[11px] text-muted">
-                  <span>{t("sleep.total")}</span>
-                  <span className="text-[16px] font-bold text-ink">{fmtHours(data.sleep?.total_sleep_s ?? null)}</span>
+                <div className="mt-2">
+                  <ScoreBar value={data.sleep?.sleep_score ?? null} tone={toneFor(sleepTone)} height={4} />
                 </div>
               </div>
 
-              {/* Stage bar + legend */}
-              <div className="md:col-span-5">
+              {/* Col 2 — Total sleep + window */}
+              <div className="flex flex-col justify-center">
+                <Eyebrow>{t("sleep.total")}</Eyebrow>
+                <div className="num mt-0.5 text-[24px] font-bold leading-none tabular-nums text-ink">
+                  {fmtHours(data.sleep?.total_sleep_s ?? null)}
+                </div>
+                <div className="num mt-1.5 text-[10px] text-muted">
+                  <span className="text-faint">Window </span>
+                  {fmtHours((data.sleep?.end_time ? new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime() : 0) / 1000)}
+                </div>
+                <div className="num mt-0.5 text-[10px] text-muted">
+                  <span className="text-faint">Efficiency </span>
+                  {(() => {
+                    const total = data.sleep?.total_sleep_s ?? 0;
+                    const window = data.sleep?.end_time ? (new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime()) / 1000 : 0;
+                    return window > 0 ? `${Math.round((total / window) * 100)}%` : "—";
+                  })()}
+                </div>
+              </div>
+
+              {/* Col 3 — Stage composition bar + values */}
+              <div className="col-span-2 sm:col-span-2">
+                <Eyebrow>{/* TODO i18n */}Composition</Eyebrow>
                 <SleepStageBar sleep={data.sleep} />
-              </div>
-
-              {/* Mini stats: respiration / spo2 / restlessness */}
-              <div className="md:col-span-3">
-                <div className="grid grid-cols-3 gap-2 md:grid-cols-1">
-                  <StatPod label={t("sleep.respiration")} value={fmtNum(data.sleep?.respiration_avg ?? null, 1)} unit="brpm" />
-                  <StatPod label={t("sleep.spo2")} value={fmtNum(data.sleep?.spo2_avg ?? null, 1)} unit="%" />
-                  <StatPod label={t("sleep.restlessness")} value={fmtNum(data.sleep?.restlessness ?? null, 0)} unit="%" />
+                <div className="num mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                  {(() => {
+                    const s = data.sleep!;
+                    const deep = s.stages.deep_s ?? 0;
+                    const rem = s.stages.rem_s ?? 0;
+                    const light = s.stages.light_s ?? 0;
+                    const awake = s.stages.awake_s ?? 0;
+                    const total = deep + light + rem || 1;
+                    const stages = [
+                      { label: "Deep", v: deep, color: "var(--c-stage-deep)" },
+                      { label: "REM", v: rem, color: "var(--c-stage-rem)" },
+                      { label: "Light", v: light, color: "var(--c-stage-core)" },
+                      { label: "Awake", v: awake, color: "var(--c-stage-awake)" },
+                    ];
+                    return stages.map((st) => (
+                      <div key={st.label} className="flex items-center justify-between gap-1">
+                        <span className="flex items-center gap-1 text-muted">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
+                          {st.label}
+                        </span>
+                        <span className="font-medium text-ink2">
+                          {fmtHours(st.v)} <span className="text-faint">· {Math.round((st.v / total) * 100)}%</span>
+                        </span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
+            </div>
+
+            {/* Vitals row — compact strip */}
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-hairline pt-2.5 text-[11px]">
+              <span className="flex items-center gap-1 text-muted">
+                <span className="text-faint">{t("sleep.respiration")}</span>
+                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.respiration_avg ?? null, 1) ?? "—"}</span>
+                <span className="text-faint">brpm</span>
+              </span>
+              <span className="flex items-center gap-1 text-muted">
+                <span className="text-faint">{t("sleep.spo2")}</span>
+                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.spo2_avg ?? null, 1) ?? "—"}</span>
+                <span className="text-faint">%</span>
+              </span>
+              <span className="flex items-center gap-1 text-muted">
+                <span className="text-faint">{t("sleep.restlessness")}</span>
+                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.restlessness ?? null, 0) ?? "—"}%</span>
+              </span>
+              <span className="num text-faint">
+                {fmtClock(data.sleep?.start_time ?? null, ui.locale)} → {fmtClock(data.sleep?.end_time ?? null, ui.locale)}
+              </span>
             </div>
           </button>
         </Card>
@@ -961,7 +1034,7 @@ export function OverviewPage() {
 
         {/* Gear due for service */}
         {gearDueList.length > 0 && (
-          <Card className="md:col-span-4">
+          <Card className="md:col-span-7">
             <CardHeader
               eyebrow={
                 <span className="flex items-center gap-1.5">
@@ -1022,48 +1095,9 @@ export function OverviewPage() {
           </Card>
         )}
 
-        {/* Integration health */}
-        <Card className={gearDueList.length > 0 ? "md:col-span-3" : "md:col-span-7"}>
-          <CardHeader eyebrow={t("overview.integrations")} />
-          {integrations.length === 0 ? (
-            <Empty title="No integrations connected" />
-          ) : integrationsQuiet ? (
-            <div className="flex items-center gap-2 text-[12px] text-positiveText">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-positive" />
-              {/* TODO i18n */}
-              All synced
-            </div>
-          ) : (
-            <ul className="flex flex-col gap-2.5">
-              {integrations.map((i, idx) => {
-                const failed = i.consecutive_failures > 0 || i.status === "error";
-                const paused = i.status === "paused";
-                const statusTone: DataTone = failed ? "alert" : paused ? "warning" : "positive";
-                return (
-                  <li key={`${i.provider}-${idx}`} className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-                        statusTone === "alert" ? "bg-alert" : statusTone === "warning" ? "bg-warning" : "bg-positive"
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-[12px] font-semibold text-ink">{i.provider}</span>
-                        <span className="num shrink-0 text-[10px] text-faint">
-                          {relativeTime(i.last_synced_at)}
-                        </span>
-                      </div>
-                      <div className="num text-[10px] text-muted">
-                        {i.is_main ? "main · " : ""}
-                        {failed ? `${i.consecutive_failures} failure${i.consecutive_failures === 1 ? "" : "s"}` : paused ? "paused" : "active"}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+        {/* Integration health — REMOVED per user request ("I don't need it.
+            Let's keep that in the settings or in the top bar"). The gear card
+            now spans the remaining width. */}
       </div>
 
       {/* ------------------------------------------------- date stamp */}
@@ -1274,7 +1308,7 @@ function NextEventBlock({
 }
 
 /** 28-day acute (bar) / chronic (line) SVG chart. */
-function LoadChart({ series }: { series: DayLoad[] }) {
+function InteractiveLoadChart({ series }: { series: DayLoad[] }) {
   // Render only days where acute + chronic are both non-null (the first ~27
   // days have null chronic because the rolling window isn't full).
   const usable = series.filter((d) => d.acute !== null && d.chronic !== null);
@@ -1285,85 +1319,41 @@ function LoadChart({ series }: { series: DayLoad[] }) {
       </div>
     );
   }
-  const W = 600;
-  const H = 96;
-  const padL = 4;
-  const padR = 4;
-  const padT = 6;
-  const padB = 14;
-  const innerW = W - padL - padR;
-  const innerH = H - padT - padB;
-  const maxVal = Math.max(
-    ...usable.map((d) => Math.max(d.acute ?? 0, d.chronic ?? 0)),
-    10,
-  );
-  const barW = innerW / usable.length;
-  const x = (i: number) => padL + i * barW + barW / 2;
-  const y = (v: number) => padT + innerH - (v / maxVal) * innerH;
 
-  // Chronic line as a polyline path.
-  const linePath = usable
-    .map((d, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(d.chronic ?? 0).toFixed(1)}`)
-    .join(" ");
+  const categories = usable.map((d) => ({ label: d.date.slice(5) })); // MM-DD
+  const acuteBars = {
+    name: "Acute (7d)",
+    color: "var(--c-positive)",
+    values: usable.map((d) => d.acute ?? 0),
+  };
+  const chronicLine = {
+    name: "Chronic (28d)",
+    color: "var(--c-text-muted)",
+    values: usable.map((d) => d.chronic ?? 0),
+  };
+  const acwrLine = {
+    name: "ACWR",
+    color: "var(--c-warning)",
+    values: usable.map((d) => d.acwr ?? 0),
+  };
 
   return (
-    <div className="w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ aspectRatio: `${W} / ${H}` }}>
-        {/* horizontal grid lines */}
-        {[0.25, 0.5, 0.75, 1].map((f, i) => (
-          <line
-            key={i}
-            x1={padL}
-            x2={W - padR}
-            y1={padT + innerH * (1 - f)}
-            y2={padT + innerH * (1 - f)}
-            stroke="var(--c-hairline)"
-            strokeWidth="0.5"
-          />
-        ))}
-        {/* acute bars (state-tone coloured: positive when in optimal band,
-            warning when elevated, alert when >1.5) */}
-        {usable.map((d, i) => {
-          const aT = acwrTone(d.acwr != null && d.chronic != null && d.chronic > 0 ? d.acwr / d.chronic : null);
-          const fill =
-            aT === "positive" ? "var(--c-positive)" : aT === "warning" ? "var(--c-warning)" : aT === "alert" ? "var(--c-alert)" : "var(--c-hairline2)";
-          const v = d.acute ?? 0;
-          const h = (v / maxVal) * innerH;
-          return (
-            <rect
-              key={i}
-              x={padL + i * barW + barW * 0.15}
-              y={padT + innerH - h}
-              width={barW * 0.7}
-              height={h}
-              fill={fill}
-              rx={1}
-            />
-          );
-        })}
-        {/* chronic line */}
-        <path d={linePath} fill="none" stroke="var(--c-primary)" strokeWidth="1.5" strokeLinejoin="round" />
-        {/* x-axis: first / mid / last date */}
-        <text x={padL} y={H - 2} fontSize="9" fill="var(--c-text-faint)" className="num">
-          {usable[0].date.slice(5)}
-        </text>
-        <text x={W / 2} y={H - 2} fontSize="9" fill="var(--c-text-faint)" textAnchor="middle" className="num">
-          {usable[Math.floor(usable.length / 2)].date.slice(5)}
-        </text>
-        <text x={W - padR} y={H - 2} fontSize="9" fill="var(--c-text-faint)" textAnchor="end" className="num">
-          {usable[usable.length - 1].date.slice(5)}
-        </text>
-      </svg>
-      <div className="num mt-1 flex items-center gap-3 text-[10px] text-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-2.5 rounded-sm bg-positive" />
-          Acute (7d)
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-3 bg-primary" />
-          Chronic (28d)
-        </span>
-      </div>
+    <div>
+      <InteractiveComboChart
+        categories={categories}
+        bars={acuteBars}
+        lines={[chronicLine]}
+        height={130}
+        formatBarValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
+        formatLineValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
+      />
+      <ChartLegend
+        className="mt-2"
+        items={[
+          { name: "Acute load (7-day fatigue)", color: "var(--c-positive)" },
+          { name: "Chronic load (28-day base)", color: "var(--c-text-muted)" },
+        ]}
+      />
     </div>
   );
 }
