@@ -1,5 +1,29 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
+> ## 🚀 Quick Start (Web UI)
+>
+> The web UI is a **Next.js 16 app** at the repository root. It auto-configures
+> on first run — no manual `.env` setup or database creation needed.
+>
+> ```bash
+> bun install          # install dependencies
+> bun run dev          # start dev server (auto-creates .env + DB + seeds demo data)
+> ```
+>
+> Then open **http://localhost:3000** and sign in (any password works for the
+> demo). The app comes with 30 real activities, 13 sleep sessions, and 7 days
+> of biometrics pre-seeded.
+>
+> **To sync your real Garmin data**: edit `.env` (auto-created on first run)
+> and fill in your `GARMIN_EMAIL` + `GARMIN_PASSWORD`, then call
+> `POST /api/garmin/sync`.
+>
+> ---
+>
+> The sections below describe the original Python backend architecture.
+> The Next.js web UI at the root is the current active frontend — the
+> `frontend/` directory contains the legacy Vite SPA (not used anymore).
+
 ![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
