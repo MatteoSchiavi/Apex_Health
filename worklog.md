@@ -2133,3 +2133,23 @@ Stage Summary:
 - All 6 user-reported issues fixed + pushed (commit 1b3b57c).
 - Overview now strictly follows Part 1 spec (Row 0-4). Sleep list+night strictly follows plan §4 (no hypnogram, honest composition, real deltas). Gear page fully implemented with add button. Every metric page/tile has an info button with explanations. Data uses state colors, accent reserved for non-data. Mobile nav drawer shows all pages. Theme preview cards render correctly.
 - Remaining: Part 2 Activity Detail v2 (page modes + KPI families + W/kg with real weight + HR zones from real HRmax + impact card + compared-to-recent). Part 3 backend agent harness (out of scope for UI). Phase 4 (Settings restructure, onboarding, Social privacy, landing). Phase 5 (nutrition).
+
+---
+Task ID: DOCS-1 (Documents page + AI parsing)
+Agent: main (Z.ai Code)
+Task: User reported no way to upload documents (lab tests, medical reports, training plans, dietary plans — not just blood work). The /api/upload + /api/parse-document backend existed but had no UI surface.
+
+Work Log:
+- Built DocumentsPage (src/features/apex/documents/DocumentsPage.tsx): upload dropzone (drag-drop + browse) with 7 category chips (Lab test, Blood work, Medical report, Training plan, Dietary plan, Prescription, Other); document list with status badges, Parse/View/Re-parse + Delete (ConfirmPopover); expandable parsed-data viewer that renders the right schema per document_type (markers table with state-tone badges, sessions list, daily targets + meals, medications, findings, recommendations, notes).
+- Prisma: UploadedDocument gained category + source columns; db:push synced.
+- /api/upload: POST accepts category in formData; added DELETE ?id=N (removes file + record); GET lists docs.
+- /api/parse-document: PDF support via pdf-parse v2 (PDFParse class) + raw content-stream fallback for simple digital PDFs; broadened extraction prompt to 6 document types with per-type JSON schemas (lab_results, medical_report, training_plan, dietary_plan, prescription, biometric_report). Images via VLM, text/CSV via LLM, PDFs via text-then-LLM.
+- Nav: new ViewKey 'documents' added to Recover group (after Labs) in desktop sidebar + mobile drawer. Router + breadcrumb wired. i18n keys (en + it) for the documents.* block + nav.documents.
+- Installed pdf-parse@2.4.5. Initial import (default) failed — pdf-parse v2 is a class (PDFParse), not a function. Fixed to `new PDFParse(new Uint8Array(buf)).getText()`. Added raw content-stream regex fallback (matches (...) Tj and [(...) ...] TJ operators) for simple digital PDFs where the library fails (e.g. sandbox missing standardFontDataUrl).
+- Verified end-to-end: uploaded lab_test.txt → auto-parsed → 7 markers with correct status (Ferritin=LOW, LDL=HIGH). Uploaded training_plan.pdf → PDF text extracted via raw fallback → 3 sessions parsed (cycling 90m, strength 60m, running 45m). Parsed-data viewer renders markers table with state-tone badges.
+- agent-browser QA: Documents page renders on desktop + mobile; upload dropzone + category chips + document list + parsed-data viewer all work; mobile nav drawer includes Documents under RECOVER.
+- Lint clean. All routes 200.
+
+Stage Summary:
+- The user's complaint is resolved: there is now a prominent Documents page (in the Recover nav group, after Labs) where the user can upload any health/performance document — lab tests, medical reports, training plans, dietary plans, prescriptions, blood work, or other. The AI reads the file (image via VLM, text/CSV via LLM, PDF via text extraction + LLM) and extracts structured data (markers with reference-range status, training sessions, dietary targets + meals, medications, findings, recommendations). The parsed data is displayed in an expandable viewer with the right schema per document type, using state-tone colors for in-range/abnormal/out-of-range markers.
+- Remaining: the import-to-system buttons (import markers to Labs, sessions to Training, etc.) are present in i18n but not yet wired to actual import routes — that's a Phase 4/5 task. PDF parsing works for digital PDFs; scanned PDFs still need an image-upload fallback (the error message tells the user to upload as an image).
