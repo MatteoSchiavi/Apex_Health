@@ -313,7 +313,7 @@ export function OverviewPage() {
           {/* Recovery + Strain as small rings */}
           <div className="flex gap-6 sm:gap-8">
             <MiniRing label="Recovery" value={data.recovery.value} tone={scoreTone(data.recovery.value)} />
-            <MiniRing label="Strain" value={data.strain.value} tone="neutral" neutral />
+            <MiniRing label="Strain" value={data.strain.value} tone="muted" neutral />
           </div>
         </div>
 

@@ -3,17 +3,22 @@
 /**
  * Apex Health — Settings page.
  *
- * Route purpose: "How do I control the system?"
+ * Re-skinned per ui-language/RULES.md (9 principles):
+ *   1. One answer: "Tune the app to your units, theme, and connected devices."
+ *   2. No big hero — settings are about control, not data.
+ *   3. No outlines on cards; no card-in-card. No nested bordered tiles.
+ *   4. Sentence-case labels, 13px minimum (no all-caps eyebrows).
+ *   5. Numbers stay white; status = dot + word (StatusDot).
+ *   6. Accent (orange) is not a status colour — used for accent picker + actions.
+ *   7. Plain words ("Settings", not "SETTINGS").
+ *   8. Charts: n/a.
+ *   9. Sections: use `Section` label + content. Devices table is rows.
  *
- * Sectioned layout — each section is a Card with a SectionHeader. Profile and
- * Devices & Integrations span the full row; Appearance + Security, and
- * Owner + About pair on a 2-col grid on desktop. Inputs are uncontrolled and
- * prefilled from `me`. State-affecting controls (theme, locale, units, sign
- * out) actually work via the store. Cosmetic actions (invite, disconnect
- * device, save changes) fire a toast via the radix `useToast` hook.
+ * State-affecting controls (theme, locale, units, sign out) actually work via
+ * the store. Cosmetic actions (invite, disconnect device) fire a toast.
  *
- * Design law: monochrome + 3 semantic colors, hairlines, label-caps eyebrows,
- * tabular figures, mono where appropriate. No new visual vocabulary.
+ * `GarminConnectForm` is left intact (off-limits per task) — it renders inside
+ * the Devices section without any extra wrapping from this page.
  */
 
 import { useState } from "react";
@@ -27,13 +32,12 @@ import { GarminConnectForm } from "./GarminConnectForm";
 import { useToast } from "@/hooks/use-toast";
 import {
   ApexButton,
-  Badge,
   Card,
-  Eyebrow,
   Hairline,
-  PageHeader,
-  SectionHeader,
+  PageSentence,
+  Section,
   Segmented,
+  StatusDot,
 } from "@/components/apex/kit";
 import { ThemePreviewCard } from "@/components/apex/ThemePreviewCard";
 
@@ -50,9 +54,7 @@ const ACCENT_COLORS = [
 /* ----------------------------------------------------------- input styles */
 
 const inputCls =
-  "num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-faint transition-colors";
-
-const labelCls = "eyebrow mb-1.5 block";
+  "num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-2 text-[14px] text-ink placeholder:text-faint transition-colors";
 
 /* ------------------------------------------------------------ main page */
 
@@ -74,317 +76,330 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1240px]">
-      <PageHeader title={t("settings.title")} subtitle={t("settings.title_sub")} />
+    <div className="mx-auto max-w-[1240px] space-y-8 px-6 py-8">
+      {/* ===== Title + page sentence ===== */}
+      <div>
+        <h1 className="page-title">Settings</h1>
+        <PageSentence className="mt-2">
+          Tune the app to your units, theme, and connected devices.
+        </PageSentence>
+      </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* 1. Profile (full row) */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* ===== Profile (full row) ===== */}
         <Card className="lg:col-span-2">
-          <SectionHeader eyebrow={t("settings.profile_title")} title={t("settings.profile_title")} />
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              toast({ title: t("settings.saved") });
-            }}
-            className="space-y-4"
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label={t("settings.name")}>
-                <input className={inputCls} defaultValue={me.name} type="text" />
-              </Field>
-              <Field label={t("settings.email")}>
-                <input className={inputCls} defaultValue={me.email} type="email" />
-              </Field>
-              <Field label={t("settings.dob")}>
-                <input className={inputCls} defaultValue={me.dob ?? ""} type="date" />
-              </Field>
-              <Field label={t("settings.sex")}>
-                <select
-                  className={inputCls}
-                  defaultValue={me.sex ?? "other"}
-                >
-                  <option value="male">male</option>
-                  <option value="female">female</option>
-                  <option value="other">other</option>
-                </select>
-              </Field>
-              <Field label={t("settings.height")}>
-                <div className="flex items-center gap-2">
-                  <input
-                    className={inputCls}
-                    type="number"
-                    defaultValue={
-                      ui.units === "metric"
-                        ? me.height_cm ?? 0
-                        : Math.round((me.height_cm ?? 0) / 30.48)
-                    }
+          <Section label={t("settings.profile_title")}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                toast({ title: t("settings.saved") });
+              }}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label={t("settings.name")}>
+                  <input className={inputCls} defaultValue={me.name} type="text" />
+                </Field>
+                <Field label={t("settings.email")}>
+                  <input className={inputCls} defaultValue={me.email} type="email" />
+                </Field>
+                <Field label={t("settings.dob")}>
+                  <input className={inputCls} defaultValue={me.dob ?? ""} type="date" />
+                </Field>
+                <Field label={t("settings.sex")}>
+                  <select className={inputCls} defaultValue={me.sex ?? "other"}>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </Field>
+                <Field label={t("settings.height")}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className={inputCls}
+                      type="number"
+                      defaultValue={
+                        ui.units === "metric"
+                          ? me.height_cm ?? 0
+                          : Math.round((me.height_cm ?? 0) / 30.48)
+                      }
+                    />
+                    <span className="num shrink-0 text-[13px] font-medium text-ink2">
+                      {ui.units === "metric" ? "cm" : "ft"}
+                    </span>
+                  </div>
+                </Field>
+                <Field label={t("settings.timezone")}>
+                  <input className={inputCls} defaultValue={me.timezone} type="text" />
+                </Field>
+              </div>
+
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <Field label={t("settings.units")}>
+                  <Segmented
+                    value={ui.units}
+                    onChange={(v) => ui.setUnits(v as "metric" | "imperial")}
+                    options={[
+                      { value: "metric", label: t("settings.metric") },
+                      { value: "imperial", label: t("settings.imperial") },
+                    ]}
                   />
-                  <span className="num shrink-0 text-[11px] font-medium uppercase tracking-[0.06em] text-muted">
-                    {ui.units === "metric" ? "cm" : "ft"}
-                  </span>
+                </Field>
+                <ApexButton type="submit" variant="secondary" size="sm">
+                  {t("settings.save_changes")}
+                </ApexButton>
+              </div>
+            </form>
+          </Section>
+        </Card>
+
+        {/* ===== Appearance ===== */}
+        <Card>
+          <Section label={t("settings.appearance_title")}>
+            <div className="space-y-5">
+              <Field label={t("settings.language")}>
+                <Segmented
+                  value={ui.locale}
+                  onChange={(v) => ui.setLocale(v as "en" | "it")}
+                  options={[
+                    { value: "en", label: "EN" },
+                    { value: "it", label: "IT" },
+                  ]}
+                />
+                <LocalePreview locale={ui.locale} />
+              </Field>
+
+              <Field label={t("settings.theme")}>
+                <div className="grid grid-cols-2 gap-2 sm:max-w-[400px]">
+                  <ThemePreviewCard
+                    previewTheme="dark"
+                    isActive={(theme ?? "dark") === "dark"}
+                    onApply={() => applyTheme("dark")}
+                  />
+                  <ThemePreviewCard
+                    previewTheme="light"
+                    isActive={theme === "light"}
+                    onApply={() => applyTheme("light")}
+                  />
+                </div>
+                <div className="mt-2">
+                  <Segmented
+                    value={(theme as "dark" | "light") ?? "dark"}
+                    onChange={(v) => applyTheme(v as "dark" | "light")}
+                    options={[
+                      { value: "dark", label: t("theme.dark") },
+                      { value: "light", label: t("theme.light") },
+                    ]}
+                  />
                 </div>
               </Field>
-              <Field label={t("settings.timezone")}>
-                <input className={inputCls} defaultValue={me.timezone} type="text" />
-              </Field>
-            </div>
 
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <Field label={t("settings.units")}>
-                <Segmented
-                  value={ui.units}
-                  onChange={(v) => ui.setUnits(v as "metric" | "imperial")}
-                  options={[
-                    { value: "metric", label: t("settings.metric") },
-                    { value: "imperial", label: t("settings.imperial") },
-                  ]}
-                />
+              {/* Accent color selector — no borders on swatches */}
+              <Field label="Accent color">
+                <div className="flex flex-wrap items-center gap-3">
+                  {ACCENT_COLORS.map((c) => {
+                    const selected = ui.accentColor === c.value;
+                    return (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => ui.setAccentColor(c.value)}
+                        className="flex flex-col items-center gap-1.5"
+                        aria-label={`Accent: ${c.name}`}
+                        aria-pressed={selected}
+                      >
+                        <span
+                          className="flex h-9 w-9 items-center justify-center rounded-full transition-transform"
+                          style={{
+                            background: c.value,
+                            transform: selected ? "scale(1.08)" : "scale(1)",
+                          }}
+                        >
+                          {selected && (
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                              <path
+                                d="M3.5 8L6.5 11L12.5 5"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </span>
+                        <span className={`text-[13px] ${selected ? "font-medium text-ink" : "text-ink2"}`}>
+                          {c.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="num mt-2 text-[13px] text-ink2">
+                  The accent color drives interactive states, active nav, buttons, and chart highlights across the entire app.
+                </p>
               </Field>
-              <ApexButton type="submit" variant="secondary" size="sm">
-                {t("settings.save_changes")}
+
+              <p className="num text-[13px] text-ink2">{t("settings.theme_note")}</p>
+
+              {/* TTS voice + auto-play — flat, no nested bordered tile */}
+              <Hairline />
+              <div>
+                <div className="text-[14px] font-medium text-ink2">Coach voice (TTS)</div>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <select
+                    value={ui.ttsVoice}
+                    onChange={(e) => ui.setTtsVoice(e.target.value)}
+                    className={`${inputCls}`}
+                    aria-label="TTS voice"
+                  >
+                    <option value="tongtong">tongtong — warm, friendly</option>
+                    <option value="chuichui">chuichui — lively</option>
+                    <option value="xiaochen">xiaochen — composed, professional</option>
+                    <option value="jam">jam — British gentleman</option>
+                    <option value="kazi">kazi — clear, standard</option>
+                    <option value="douji">douji — natural, fluent</option>
+                    <option value="luodo">luodo — expressive</option>
+                  </select>
+                  <label className="flex cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-control)] bg-surface2 px-2.5 py-2">
+                    <span className="text-[14px] text-ink2">Auto-play responses</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={ui.ttsAutoPlay}
+                      onClick={() => ui.setTtsAutoPlay(!ui.ttsAutoPlay)}
+                      className={`relative h-5 w-9 rounded-full transition-colors ${ui.ttsAutoPlay ? "bg-primary" : "bg-surface3"}`}
+                      aria-label="Toggle auto-play"
+                    >
+                      <span
+                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                          ui.ttsAutoPlay ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <ApexButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      setPreviewState("loading");
+                      try {
+                        const resp = await fetch("/api/tts", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            text: "Apex Health. Recovery score eighty-four. HRV sixty-four milliseconds.",
+                            voice: ui.ttsVoice,
+                            speed: 1.0,
+                          }),
+                        });
+                        if (!resp.ok) throw new Error("TTS failed");
+                        const blob = await resp.blob();
+                        const url = URL.createObjectURL(blob);
+                        const audio = new Audio(url);
+                        audio.onplay = () => setPreviewState("playing");
+                        audio.onended = () => setPreviewState("idle");
+                        audio.onerror = () => setPreviewState("idle");
+                        await audio.play();
+                      } catch {
+                        setPreviewState("idle");
+                      }
+                    }}
+                    icon={
+                      previewState === "loading" ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : previewState === "playing" ? (
+                        <Square size={11} fill="currentColor" />
+                      ) : (
+                        <Volume2 size={13} />
+                      )
+                    }
+                  >
+                    <span className="hidden sm:inline">
+                      {previewState === "loading"
+                        ? "Loading…"
+                        : previewState === "playing"
+                        ? "Playing…"
+                        : "Preview voice"}
+                    </span>
+                  </ApexButton>
+                  <span className="num text-[13px] text-ink2">
+                    Plays a short sample with the selected voice.
+                  </span>
+                </div>
+                <p className="num mt-2 text-[13px] text-ink2">
+                  Voice used when reading Coach messages aloud. Auto-play reads each new assistant response automatically.
+                </p>
+              </div>
+            </div>
+          </Section>
+        </Card>
+
+        {/* ===== Security & Sessions ===== */}
+        <Card>
+          <Section label={t("settings.security_title")}>
+            <div className="space-y-4">
+              <div>
+                <div className="text-[14px] text-ink2">{t("settings.session_current")}</div>
+                <div className="num mt-1 text-[16px] font-semibold text-ink">
+                  {t("settings.signed_in_as", { email: me.email })}
+                </div>
+                <div className="num mt-0.5 text-[13px] text-ink2">{t("settings.last_active")}</div>
+              </div>
+              <ApexButton
+                variant="danger"
+                size="md"
+                className="w-full"
+                onClick={() => ui.signOut()}
+              >
+                {t("settings.sign_out")}
               </ApexButton>
             </div>
-          </form>
+          </Section>
         </Card>
 
-        {/* 2. Appearance (half) */}
-        <Card>
-          <SectionHeader eyebrow={t("settings.appearance_title")} title={t("settings.appearance_title")} />
-          <div className="space-y-4">
-            <Field label={t("settings.language")}>
-              <Segmented
-                value={ui.locale}
-                onChange={(v) => ui.setLocale(v as "en" | "it")}
-                options={[
-                  { value: "en", label: "EN" },
-                  { value: "it", label: "IT" },
-                ]}
-              />
-              {/* Locale-aware date/time preview */}
-              <LocalePreview locale={ui.locale} />
-            </Field>
-            <Field label={t("settings.theme")}>
-              <div className="grid grid-cols-2 gap-2 sm:max-w-[400px]">
-                <ThemePreviewCard
-                  previewTheme="dark"
-                  isActive={(theme ?? "dark") === "dark"}
-                  onApply={() => applyTheme("dark")}
-                />
-                <ThemePreviewCard
-                  previewTheme="light"
-                  isActive={theme === "light"}
-                  onApply={() => applyTheme("light")}
-                />
-              </div>
-              <div className="mt-2">
-                <Segmented
-                  value={(theme as "dark" | "light") ?? "dark"}
-                  onChange={(v) => applyTheme(v as "dark" | "light")}
-                  options={[
-                    { value: "dark", label: t("theme.dark") },
-                    { value: "light", label: t("theme.light") },
-                  ]}
-                />
-              </div>
-            </Field>
-            {/* Accent color selector */}
-            <Field label="Accent color">
-              <div className="flex flex-wrap items-center gap-2">
-                {ACCENT_COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => ui.setAccentColor(c.value)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
-                      ui.accentColor === c.value
-                        ? "ring-2 ring-offset-2 ring-offset-surface"
-                        : "ring-0"
-                    }`}
-                    style={{
-                      background: c.value,
-                      boxShadow: ui.accentColor === c.value ? `0 0 0 2px ${c.value}` : "none",
-                    }}
-                    aria-label={`Accent: ${c.name}`}
-                    title={c.name}
-                  >
-                    {ui.accentColor === c.value && (
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path d="M3.5 8L6.5 11L12.5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <p className="num mt-2 text-[10px] text-faint">
-                The accent color drives interactive states, active nav, buttons, and chart highlights across the entire app.
-              </p>
-            </Field>
-            <p className="num text-[11px] text-faint">
-              {t("settings.theme_note")}
-            </p>
-
-            {/* TTS voice + auto-play settings */}
-            <div className="mt-2 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
-              <div className="eyebrow !text-[10px]">Coach voice (TTS)</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <select
-                  value={ui.ttsVoice}
-                  onChange={(e) => ui.setTtsVoice(e.target.value)}
-                  className="num rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-2 text-[12px] text-ink focus:border-primary focus:outline-none"
-                  aria-label="TTS voice"
-                >
-                  <option value="tongtong">tongtong — warm, friendly</option>
-                  <option value="chuichui">chuichui — lively</option>
-                  <option value="xiaochen">xiaochen — composed, professional</option>
-                  <option value="jam">jam — British gentleman</option>
-                  <option value="kazi">kazi — clear, standard</option>
-                  <option value="douji">douji — natural, fluent</option>
-                  <option value="luodo">luodo — expressive</option>
-                </select>
-                <label className="flex cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-2">
-                  <span className="text-[12px] text-ink2">Auto-play responses</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={ui.ttsAutoPlay}
-                    onClick={() => ui.setTtsAutoPlay(!ui.ttsAutoPlay)}
-                    className={`relative h-4 w-7 rounded-full transition-colors ${ui.ttsAutoPlay ? "bg-primary" : "bg-surface3"}`}
-                    aria-label="Toggle auto-play"
-                  >
-                    <span
-                      className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-                        ui.ttsAutoPlay ? "translate-x-3.5" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                </label>
-              </div>
-              {/* Voice preview: play a sample with the selected voice */}
-              <div className="mt-2 flex items-center gap-2">
-                <ApexButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={async () => {
-                    setPreviewState("loading");
-                    try {
-                      const resp = await fetch("/api/tts", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          text: "Apex Health. Recovery score eighty-four. HRV sixty-four milliseconds.",
-                          voice: ui.ttsVoice,
-                          speed: 1.0,
-                        }),
-                      });
-                      if (!resp.ok) throw new Error("TTS failed");
-                      const blob = await resp.blob();
-                      const url = URL.createObjectURL(blob);
-                      const audio = new Audio(url);
-                      audio.onplay = () => setPreviewState("playing");
-                      audio.onended = () => setPreviewState("idle");
-                      audio.onerror = () => setPreviewState("idle");
-                      await audio.play();
-                    } catch {
-                      setPreviewState("idle");
-                    }
-                  }}
-                  icon={
-                    previewState === "loading" ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : previewState === "playing" ? (
-                      <Square size={11} fill="currentColor" />
-                    ) : (
-                      <Volume2 size={13} />
-                    )
-                  }
-                >
-                  <span className="hidden sm:inline">
-                    {previewState === "loading"
-                      ? "Loading…"
-                      : previewState === "playing"
-                      ? "Playing…"
-                      : "Preview voice"}
-                  </span>
-                </ApexButton>
-                <span className="num text-[10px] text-faint">
-                  Plays a short sample with the selected voice.
-                </span>
-              </div>
-              <p className="num mt-2 text-[10px] text-faint">
-                Voice used when reading Coach messages aloud. Auto-play reads each new assistant response automatically.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        {/* 3. Security & Sessions (half) */}
-        <Card>
-          <SectionHeader eyebrow={t("settings.security_title")} title={t("settings.security_title")} />
-          <div className="space-y-3">
-            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
-              <div className="eyebrow">{t("settings.session_current")}</div>
-              <div className="num mt-1 text-[13px] font-semibold text-ink">
-                {t("settings.signed_in_as", { email: me.email })}
-              </div>
-              <div className="num mt-0.5 text-[11px] text-muted">
-                {t("settings.last_active")}
-              </div>
-            </div>
-            <ApexButton
-              variant="danger"
-              size="md"
-              className="w-full"
-              onClick={() => ui.signOut()}
-            >
-              {t("settings.sign_out")}
-            </ApexButton>
-          </div>
-        </Card>
-
-        {/* 4. Devices & Integrations (full row) */}
+        {/* ===== Devices & Integrations (full row) ===== */}
         <Card pad={false} className="lg:col-span-2">
-          <div className="p-4">
-            <SectionHeader
-              eyebrow={t("settings.devices_title")}
-              title={t("settings.devices_title")}
-              right={
-                <ApexButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={async () => {
-                    setSyncing(true);
-                    try {
-                      const resp = await fetch("/api/garmin/sync", { method: "POST" });
-                      const data = await resp.json();
-                      if (data.ok) {
-                        toast({ title: `Synced ${data.report.activities} activities, ${data.report.sleepSessions} sleep sessions` });
-                      } else {
-                        toast({ title: `Sync failed: ${data.error}`, variant: "destructive" });
-                      }
-                    } catch (e) {
-                      toast({ title: `Sync failed: ${e instanceof Error ? e.message : "unknown"}`, variant: "destructive" });
+          <div className="p-7 pb-3">
+            <div className="flex items-end justify-between gap-3">
+              <div className="text-[14px] font-medium text-ink2">{t("settings.devices_title")}</div>
+              <ApexButton
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
+                    const resp = await fetch("/api/garmin/sync", { method: "POST" });
+                    const data = await resp.json();
+                    if (data.ok) {
+                      toast({ title: `Synced ${data.report.activities} activities, ${data.report.sleepSessions} sleep sessions` });
+                    } else {
+                      toast({ title: `Sync failed: ${data.error}`, variant: "destructive" });
                     }
-                    setSyncing(false);
-                  }}
-                  icon={syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                  disabled={syncing}
-                >
-                  <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync now"}</span>
-                </ApexButton>
-              }
-            />
+                  } catch (e) {
+                    toast({ title: `Sync failed: ${e instanceof Error ? e.message : "unknown"}`, variant: "destructive" });
+                  }
+                  setSyncing(false);
+                }}
+                icon={syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                disabled={syncing}
+              >
+                <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync now"}</span>
+              </ApexButton>
+            </div>
           </div>
           <Hairline />
           <div className="overflow-x-auto">
-            <table className="num w-full min-w-[640px] text-left text-[12px]">
+            <table className="num w-full min-w-[640px] text-left text-[14px]">
               <thead>
-                <tr className="border-b border-hairline text-faint">
-                  <th className="eyebrow px-4 py-2 font-semibold">{t("settings.provider")}</th>
-                  <th className="eyebrow px-4 py-2 font-semibold">{t("settings.status")}</th>
-                  <th className="eyebrow px-4 py-2 font-semibold">{t("settings.is_main")}</th>
-                  <th className="eyebrow px-4 py-2 font-semibold">{t("settings.last_sync")}</th>
-                  <th className="eyebrow px-4 py-2 font-semibold">{t("settings.connected_at")}</th>
-                  <th className="eyebrow px-4 py-2 text-right font-semibold">{t("settings.actions")}</th>
+                <tr className="border-b border-hairline text-ink2">
+                  <th className="px-4 py-2 font-medium">{t("settings.provider")}</th>
+                  <th className="px-4 py-2 font-medium">{t("settings.status")}</th>
+                  <th className="px-4 py-2 font-medium">{t("settings.is_main")}</th>
+                  <th className="px-4 py-2 font-medium">{t("settings.last_sync")}</th>
+                  <th className="px-4 py-2 font-medium">{t("settings.connected_at")}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t("settings.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -396,17 +411,15 @@ export function SettingsPage() {
                     </td>
                     <td className="px-4 py-3">
                       {d.is_main ? (
-                        <Badge tone="primary" dot>
-                          {t("settings.main")}
-                        </Badge>
+                        <StatusDot tone="neutral" label={t("settings.main")} />
                       ) : (
-                        <span className="text-faint">—</span>
+                        <span className="text-ink2">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted">
+                    <td className="px-4 py-3 text-ink2">
                       {d.last_synced_at ? timeAgo(d.last_synced_at, ui.locale) : "—"}
                     </td>
-                    <td className="px-4 py-3 text-muted">
+                    <td className="px-4 py-3 text-ink2">
                       {fmtDate(d.connected_at, ui.locale)}
                     </td>
                     <td className="px-4 py-3">
@@ -459,48 +472,46 @@ export function SettingsPage() {
               </tbody>
             </table>
           </div>
-          {/* Garmin Connect form — lets the user enter their Garmin credentials
-              from the web UI (instead of editing .env). Validates by logging
-              in, then stores in the Integration table for future syncs. */}
+          {/* Garmin Connect form — left intact (off-limits per task). */}
           <GarminConnectForm onConnected={() => { setSyncing(false); }} />
         </Card>
 
-        {/* 5. Owner Settings (half — owner-only) */}
+        {/* ===== Owner Settings (owner-only) ===== */}
         {me.role === "owner" && (
           <Card>
-            <SectionHeader eyebrow={t("settings.owner_title")} title={t("settings.owner_title")} />
-            <div className="space-y-4">
-              <OwnerInvite />
-              <div>
-                <Eyebrow>{t("settings.ai_tier")}</Eyebrow>
-                <div className="mt-1.5">
-                  <Segmented
-                    value={aiTier}
-                    onChange={(v) => setAiTier(v as "off" | "basic" | "pro")}
-                    options={[
-                      { value: "off", label: t("settings.ai_tier_off") },
-                      { value: "basic", label: t("settings.ai_tier_basic") },
-                      { value: "pro", label: t("settings.ai_tier_pro") },
-                    ]}
-                  />
+            <Section label={t("settings.owner_title")}>
+              <div className="space-y-4">
+                <OwnerInvite />
+                <div>
+                  <div className="text-[14px] font-medium text-ink2">{t("settings.ai_tier")}</div>
+                  <div className="mt-2">
+                    <Segmented
+                      value={aiTier}
+                      onChange={(v) => setAiTier(v as "off" | "basic" | "pro")}
+                      options={[
+                        { value: "off", label: t("settings.ai_tier_off") },
+                        { value: "basic", label: t("settings.ai_tier_basic") },
+                        { value: "pro", label: t("settings.ai_tier_pro") },
+                      ]}
+                    />
+                  </div>
                 </div>
+                <p className="num text-[13px] text-ink2">{t("settings.invite_disclaimer")}</p>
               </div>
-              <p className="num text-[11px] text-faint">
-                {t("settings.invite_disclaimer")}
-              </p>
-            </div>
+            </Section>
           </Card>
         )}
 
-        {/* 6. About (half or full if not owner) */}
+        {/* ===== About ===== */}
         <Card className={me.role === "owner" ? "" : "lg:col-span-2"}>
-          <SectionHeader eyebrow={t("settings.about")} title={t("settings.about")} />
-          <div className="space-y-2">
-            <Row label={t("settings.version")} value={t("settings.version_value")} />
-            <Row label={t("settings.build")} value={t("settings.build_value")} />
-            <Row label={t("settings.stack")} value={t("settings.stack_value")} />
-            <Row label={t("settings.repo")} value={t("settings.repo_value")} />
-          </div>
+          <Section label={t("settings.about")}>
+            <div className="divide-y divide-[var(--c-divider)]">
+              <AboutRow label={t("settings.version")} value={t("settings.version_value")} />
+              <AboutRow label={t("settings.build")} value={t("settings.build_value")} />
+              <AboutRow label={t("settings.stack")} value={t("settings.stack_value")} />
+              <AboutRow label={t("settings.repo")} value={t("settings.repo_value")} />
+            </div>
+          </Section>
         </Card>
       </div>
     </div>
@@ -512,17 +523,17 @@ export function SettingsPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="block">
-      <span className={labelCls}>{label}</span>
+      <div className="mb-1.5 text-[14px] font-medium text-ink2">{label}</div>
       {children}
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function AboutRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-0">
-      <span className="eyebrow shrink-0">{label}</span>
-      <span className="num truncate text-[12px] font-medium text-ink2">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 py-2.5">
+      <span className="text-[14px] text-ink2">{label}</span>
+      <span className="num truncate text-[14px] font-medium text-ink">{value}</span>
     </div>
   );
 }
@@ -534,9 +545,8 @@ function StatusBadge({
   status: "active" | "paused" | "error";
   t: (p: string) => string;
 }) {
-  if (status === "active") return <Badge tone="positive" dot>{t("settings.active")}</Badge>;
-  if (status === "paused") return <Badge tone="warning" dot>{t("settings.paused")}</Badge>;
-  return <Badge tone="alert" dot>{t("settings.error")}</Badge>;
+  const tone = status === "active" ? "ok" : status === "paused" ? "watch" : "alert";
+  return <StatusDot tone={tone} label={t(`settings.${status}`)} />;
 }
 
 function OwnerInvite() {
@@ -552,8 +562,8 @@ function OwnerInvite() {
   };
 
   return (
-    <form onSubmit={onInvite} className="space-y-1.5">
-      <Eyebrow>{t("settings.invite_friend")}</Eyebrow>
+    <form onSubmit={onInvite} className="space-y-2">
+      <div className="text-[14px] font-medium text-ink2">{t("settings.invite_friend")}</div>
       <div className="flex items-center gap-2">
         <input
           className={inputCls}
@@ -572,10 +582,6 @@ function OwnerInvite() {
 
 /* ----------------------------------------------------------- locale preview */
 
-/**
- * LocalePreview — shows how a date + time + number will format under the
- * selected locale, so users can preview the change before applying.
- */
 function LocalePreview({ locale }: { locale: "en" | "it" }) {
   const sampleDate = new Date();
   const localeTag = locale === "it" ? "it-IT" : "en-GB";
@@ -592,16 +598,16 @@ function LocalePreview({ locale }: { locale: "en" | "it" }) {
   });
   const numStr = (1234.5).toLocaleString(localeTag, { minimumFractionDigits: 1 });
   return (
-    <div className="mt-2 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5">
-      <div className="num flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-muted">Preview ({localeTag})</span>
-        <span className="text-faint">{locale === "it" ? "Italiano" : "English"}</span>
+    <div className="mt-3 rounded-[var(--radius-control)] bg-surface2 p-3">
+      <div className="num flex items-center justify-between gap-2 text-[13px]">
+        <span className="text-ink2">Preview ({localeTag})</span>
+        <span className="text-ink2">{locale === "it" ? "Italiano" : "English"}</span>
       </div>
-      <div className="num mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12px] text-ink2">
-        <span className="font-semibold text-ink">{dateStr}</span>
-        <span className="text-faint" aria-hidden>·</span>
+      <div className="num mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[14px] text-ink">
+        <span className="font-semibold">{dateStr}</span>
+        <span className="text-ink2" aria-hidden>·</span>
         <span className="tabular-nums">{timeStr}</span>
-        <span className="text-faint" aria-hidden>·</span>
+        <span className="text-ink2" aria-hidden>·</span>
         <span className="tabular-nums">{numStr}</span>
       </div>
     </div>

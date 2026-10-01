@@ -1,40 +1,35 @@
 "use client";
 
 /**
- * Apex Health — Biometrics hub / catalog.
+ * Apex Health — Biometrics hub (re-skin per ui-language/RULES.md).
  *
- * Route purpose: "What are my measurements doing?"
+ * Reference: OverviewPage.tsx — "Body signals" title, a page sentence,
+ * grouped rows (label · value · status dot · sparkline), no 24-card grid.
  *
- * A directory/explorer of every metric the backend exposes, grouped by
- * physiological domain. The catalog is read dynamically from the data layer
- * (no hard-coded list) so adding a metric to the backend surfaces it here
- * automatically. A search input filters by label as the user types.
- *
- * Below the metric catalog: a Lab Panel section — visually separated to
- * communicate the seriousness of clinical bloodwork. Each marker carries
- * its reference range and a status badge (normal / low / high / borderline).
- * The footer carries the medical disclaimer.
+ * Layout:
+ *   - Page title "Body signals" + a page sentence + the search input.
+ *   - Today vs baseline: a focus row of compact tiles — HRV, Resting HR,
+ *     Sleep score, SpO₂ — each = label · value · StatusDot · sparkline.
+ *     No borders.
+ *   - Grouped rows (Recovery, Cardiovascular, Sleep, Body, Performance)
+ *     with the `Row` primitive. No cards, no "LOW" chip, no source badge.
+ *   - Lab Panel table at the bottom (unchanged shape, sentence-case
+ *     headers).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
-import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { metricCatalog, labMarkers, getMetricTrend } from "@/lib/apex/data";
 import {
   Card,
-  CardHeader,
-  PageHeader,
-  BigStat,
-  DeltaChip,
-  Badge,
-  SectionHeader,
-  Empty,
-  SourcePill,
+  Section,
+  StatusDot,
+  PageSentence,
   Sparkline,
-  Hairline,
   InfoButton,
   MetricInfoContent,
+  Hairline,
 } from "@/components/apex/kit";
 import { fmtNum, fmtDate } from "@/lib/apex/format";
 import { getMetricExplanation } from "@/lib/apex/metricInfo";
@@ -61,44 +56,10 @@ const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   skin_temp: "none",
 };
 
-/** Display decimals by metric key (mirrors the data layer's rounding logic). */
 function decimalsFor(key: string): number {
   if (["weight", "acwr", "skin_temp", "respiration"].includes(key)) return 2;
   if (["spo2", "sleep_efficiency"].includes(key)) return 1;
   return 0;
-}
-
-/** Sparkline / chart color by metric group. */
-function colorForGroup(group: string): string {
-  switch (group) {
-    case "recovery":
-      return "var(--c-positive)";
-    case "performance":
-      return "var(--c-positive)";
-    case "cardio":
-      return "var(--c-primary)";
-    case "sleep":
-      return "var(--c-primary)";
-    case "body":
-      return "var(--c-text-faint)";
-    case "lab":
-      return "var(--c-text-faint)";
-    default:
-      return "var(--c-primary)";
-  }
-}
-
-/** Sparkline color by computed status tone — per the user's reform, DATA
- *  color reflects STATE (in-range / abnormal / no-baseline), not the accent. */
-function sparkColorForStatus(tone: "neutral" | "positive" | "alert"): string {
-  switch (tone) {
-    case "positive":
-      return "var(--c-positive)";
-    case "alert":
-      return "var(--c-alert)";
-    default:
-      return "var(--c-text-muted)";
-  }
 }
 
 /** Catalog group order — recovery first (the hero signal), lab last. */
@@ -110,45 +71,53 @@ const GROUP_ORDER: Array<MetricCatalogItem["group"]> = [
   "performance",
 ];
 
+const GROUP_LABEL: Record<MetricCatalogItem["group"], string> = {
+  recovery: "Recovery",
+  cardio: "Cardiovascular",
+  sleep: "Sleep",
+  body: "Body composition",
+  performance: "Performance",
+  lab: "Lab panels",
+};
+
+/** The four "today vs baseline" focus metrics — one Row each. */
+const FOCUS_KEYS = ["hrv", "resting_hr", "sleep_score", "spo2"] as const;
+
 /* ----------------------------------------------------------- LabPanel row */
 
-function LabRow({ marker, t }: { marker: LabMarker; t: (p: string) => string }) {
+function LabRow({ marker }: { marker: LabMarker }) {
   const toneMap: Record<
     LabMarker["status"],
-    "positive" | "alert" | "warning" | "neutral"
+    "ok" | "watch" | "alert" | "neutral"
   > = {
-    normal: "positive",
+    normal: "ok",
     low: "alert",
     high: "alert",
-    borderline: "warning",
+    borderline: "watch",
     unknown: "neutral",
   };
   const statusLabel: Record<LabMarker["status"], string> = {
-    normal: t("biometrics.status_normal"),
-    low: t("biometrics.status_low"),
-    high: t("biometrics.status_high"),
-    borderline: t("biometrics.status_borderline"),
-    unknown: t("biometrics.status_unknown"),
+    normal: "Normal",
+    low: "Low",
+    high: "High",
+    borderline: "Borderline",
+    unknown: "—",
   };
   const dp = labDecimals(marker.value);
   return (
     <tr className="border-b border-hairline last:border-0 hover:bg-surface2/40">
-      <td className="px-4 py-2.5 font-medium text-ink">{marker.label}</td>
+      <td className="px-4 py-2.5 text-[14px] font-medium text-ink">{marker.label}</td>
       <td className="px-4 py-2.5 text-right">
-        <span className="mono text-ink">
-          {fmtNum(marker.value, dp)}
-        </span>
-        <span className="ml-1 text-[11px] text-faint">{marker.unit}</span>
+        <span className="num text-ink">{fmtNum(marker.value, dp)}</span>
+        <span className="ml-1 text-[12px] text-ink3">{marker.unit}</span>
       </td>
       <td className="px-4 py-2.5 text-right">
-        <span className="mono text-muted">
+        <span className="num text-ink3">
           {fmtNum(marker.ref_low, dp)}–{fmtNum(marker.ref_high, dp)}
         </span>
       </td>
       <td className="px-4 py-2.5 text-right">
-        <Badge tone={toneMap[marker.status]} dot>
-          {statusLabel[marker.status]}
-        </Badge>
+        <StatusDot tone={toneMap[marker.status]} label={statusLabel[marker.status]} />
       </td>
     </tr>
   );
@@ -163,12 +132,10 @@ function labDecimals(v: number | null): number {
 /* ----------------------------------------------------------- BiometricsPage */
 
 export function BiometricsPage() {
-  const t = useT();
   const ui = useApexUi();
   const [query, setQuery] = useState("");
-  const [recent, setRecent] = useState<string[]>([]); // recently-viewed metric keys
+  const [recent, setRecent] = useState<string[]>([]);
 
-  // Load recent metrics from localStorage on mount
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem("apex-recent-metrics");
@@ -178,7 +145,6 @@ export function BiometricsPage() {
     }
   }, []);
 
-  // Wrap ui.selectMetric to also persist the key
   const selectMetric = (key: string) => {
     setRecent((cur) => {
       const next = [key, ...cur.filter((x) => x !== key)].slice(0, 6);
@@ -211,196 +177,232 @@ export function BiometricsPage() {
   const labDate = labMarkers[0]?.date;
 
   return (
-    <div className="mx-auto max-w-[1240px]">
-      <PageHeader
-        title={t("biometrics.title")}
-        subtitle={t("biometrics.hub_subtitle")}
-        actions={
-          <div className="relative w-full max-w-[240px]">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("biometrics.search")}
-              aria-label={t("biometrics.search")}
-              className="num h-9 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
-            />
-          </div>
-        }
-      />
-
-      {/* Metric catalog — clean grid, no huge spacing */}
-      <div className="mt-4 space-y-6">
-        {/* Recent metrics */}
-        {!query && recent.length > 0 && (
-          <section>
-            <SectionHeader eyebrow={
-              <span className="flex items-center gap-1.5">
-                <Clock size={11} className="text-primaryText" />
-                Recently viewed
-              </span>
-            } />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {recent
-                .map((key) => metricCatalog.find((m) => m.key === key))
-                .filter((m): m is MetricCatalogItem => !!m)
-                .map((m) => (
-                  <MetricCard key={`recent-${m.key}`} m={m} t={t} onSelect={selectMetric} />
-                ))}
-            </div>
-          </section>
-        )}
-
-        {/* Metric groups */}
-        {GROUP_ORDER.map((g) => {
-          const items = grouped.get(g);
-          if (!items || items.length === 0) return null;
-          return (
-            <section key={g}>
-              <SectionHeader eyebrow={t(`biometrics.group_${g}`)} />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {items.map((m) => (
-                  <MetricCard key={m.key} m={m} t={t} onSelect={selectMetric} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-
-        {visibleCount === 0 && (
-          <Empty title={t("biometrics.no_data")} body={<span className="mono">{query}</span>} />
-        )}
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ====== Header ====== */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="page-title">Body signals</h1>
+          <PageSentence className="mt-2">
+            Your measurements, compared against your own 30-day baseline.
+          </PageSentence>
+        </div>
+        <div className="relative w-full max-w-[240px]">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter metrics…"
+            aria-label="Filter metrics"
+            className="num h-9 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 text-[14px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
+          />
+        </div>
       </div>
 
-      {/* Lab Panel */}
-      <section className="mt-8">
-        <SectionHeader
-          eyebrow={t("biometrics.group_lab")}
-          title={t("biometrics.lab_panel_title")}
-          right={
-            labDate && (
-              <div className="num text-[11px] text-muted">
-                {t("biometrics.lab_drawn")} · {fmtDate(labDate)}
-              </div>
-            )
-          }
-        />
-        <Card pad={false} className="overflow-hidden">
-          <div className="overflow-x-auto scroll-area">
-            <table className="w-full min-w-[560px] text-[13px]">
-              <thead>
-                <tr className="border-b border-hairline text-left">
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    {t("overview.biomarkers")}
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    {t("biometrics.last")}
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    {t("biometrics.ref_range")}
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    {t("settings.status")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {labMarkers.map((m) => (
-                  <LabRow key={m.key} marker={m} t={t} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Hairline />
-          <div className="flex items-start gap-2 px-4 py-2.5">
-            <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-alert/60" aria-hidden />
-            <div className="text-[11px] leading-[16px] text-alert/70">
-              {t("biometrics.lab_disclaimer")}
+      {/* ====== Today vs baseline — the focus row (no borders) ====== */}
+      {!query && (
+        <Card>
+          <Section label="Today vs baseline">
+            <div className="grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+              {FOCUS_KEYS.map((k) => {
+                const m = metricCatalog.find((it) => it.key === k);
+                if (!m) return null;
+                return (
+                  <FocusRow
+                    key={k}
+                    m={m}
+                    onSelect={() => selectMetric(k)}
+                  />
+                );
+              })}
+            </div>
+          </Section>
+        </Card>
+      )}
+
+      {/* ====== Recently viewed (rows) ====== */}
+      {!query && recent.length > 0 && (
+        <Card pad={false}>
+          <div className="px-7 pt-7">
+            <div className="mb-3 flex items-center gap-1.5 text-[14px] font-medium text-ink2">
+              <Clock size={13} />
+              Recently viewed
             </div>
           </div>
+          <div className="px-7">
+            {recent
+              .map((key) => metricCatalog.find((m) => m.key === key))
+              .filter((m): m is MetricCatalogItem => !!m)
+              .map((m) => (
+                <MetricRow
+                  key={`recent-${m.key}`}
+                  m={m}
+                  onSelect={() => selectMetric(m.key)}
+                />
+              ))}
+          </div>
         </Card>
-      </section>
+      )}
+
+      {/* ====== Metric groups (rows, not cards) ====== */}
+      {GROUP_ORDER.map((g) => {
+        const items = grouped.get(g);
+        if (!items || items.length === 0) return null;
+        return (
+          <Card pad={false} key={g}>
+            <div className="px-7 pt-7 pb-3">
+              <div className="text-[14px] font-medium text-ink2">{GROUP_LABEL[g]}</div>
+            </div>
+            <div className="px-7 pb-7 divide-y divide-[var(--c-divider)]">
+              {items.map((m) => (
+                <MetricRow
+                  key={m.key}
+                  m={m}
+                  onSelect={() => selectMetric(m.key)}
+                />
+              ))}
+            </div>
+          </Card>
+        );
+      })}
+
+      {visibleCount === 0 && (
+        <Card>
+          <div className="text-[14px] text-ink2">
+            No metrics match <span className="num">{query}</span>.
+          </div>
+        </Card>
+      )}
+
+      {/* ====== Lab Panel ====== */}
+      <Card pad={false}>
+        <div className="px-7 pt-7 pb-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="text-[14px] font-medium text-ink2">{GROUP_LABEL.lab}</div>
+          {labDate && (
+            <div className="num text-[12px] text-ink3">
+              Drawn {fmtDate(labDate)}
+            </div>
+          )}
+        </div>
+        <div className="px-7 pb-4 overflow-x-auto scroll-area">
+          <table className="w-full min-w-[560px] text-[14px]">
+            <thead>
+              <tr className="border-b border-hairline text-left">
+                <th className="px-1 py-2.5 text-[14px] font-medium text-ink2">Marker</th>
+                <th className="px-1 py-2.5 text-right text-[14px] font-medium text-ink2">Last</th>
+                <th className="px-1 py-2.5 text-right text-[14px] font-medium text-ink2">Reference range</th>
+                <th className="px-1 py-2.5 text-right text-[14px] font-medium text-ink2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {labMarkers.map((m) => (
+                <LabRow key={m.key} marker={m} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Hairline />
+        <div className="flex items-start gap-2 px-7 py-3">
+          <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-alert/60" aria-hidden />
+          <div className="text-[12px] leading-[16px] text-ink3">
+            Lab interpretation is informational only — consult a clinician before acting.
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
 
-/* ----------------------------------------------------- Metric card (cell) */
-
-/**
- * Plan §5 finding: the hub's "Low / High / Fair" badge used to come from the
- * catalog's `direction` field (which says whether lower-or-higher is better),
- * NOT whether the current value is low or high. This helper COMPUTES a status
- * from the latest value vs a personal band (30-day mean ± 1 SD). When there is
- * no usable baseline (no data, or zero variance) it returns a neutral "—"
- * instead of a misleading Low/High.
- */
-function computeMetricStatus(
-  last: number | null,
-  mean: number | null,
-  sd: number | null,
-  t: (p: string) => string,
-): { label: string; tone: "neutral" | "positive" | "alert" } {
-  if (last === null || mean === null) return { label: "—", tone: "neutral" };
-  if (sd === null || sd === 0) return { label: "—", tone: "neutral" };
-  if (last < mean - sd) return { label: t("biometrics.status_low"), tone: "alert" };
-  if (last > mean + sd) return { label: t("biometrics.status_high"), tone: "alert" };
-  // TODO i18n — main agent will add a biometrics.in_range key
-  return { label: "In range", tone: "positive" };
-}
-
-function MetricCard({
+/* ----------------------------------------------------- Focus row (today vs baseline)
+ * A compact tile (not bordered) for the 4 hero metrics: label · value ·
+ * StatusDot · sparkline. */
+function FocusRow({
   m,
-  t,
   onSelect,
 }: {
   m: MetricCatalogItem;
-  t: (p: string) => string;
-  onSelect: (key: string) => void;
+  onSelect: () => void;
 }) {
   const trend = getMetricTrend(m.key, 30);
   const last = trend.stats.last;
   const mean = trend.stats.mean;
-  const delta7 = trend.stats.delta_7d;
+  const sd = standardDeviation(trend.points.map((p) => p.value));
+  const status = computeMetricStatus(last, mean, sd);
   const sparkData = trend.points.slice(-14).map((p) => p.value);
-  const goodWhen = GOOD_WHEN[m.key] ?? "up";
+  const sparkColor =
+    status.tone === "ok"
+      ? "var(--c-ok)"
+      : status.tone === "alert"
+      ? "var(--c-alert)"
+      : "var(--c-text-3)";
 
-  // Plan §5: computed status from latest vs personal band (mean ± 1 SD).
-  const validVals = trend.points
-    .map((p) => p.value)
-    .filter((v): v is number => v !== null && Number.isFinite(v));
-  const sd =
-    validVals.length > 1 && mean !== null
-      ? Math.sqrt(
-          validVals.reduce((s, v) => s + (v - mean) ** 2, 0) / validVals.length,
-        )
-      : null;
-  const status = computeMetricStatus(last, mean, sd, t);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-surface2 -mx-2 px-2 rounded-[var(--radius-control)]"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-ink2">{m.label}</div>
+        <div className="mt-1">
+          <StatusDot tone={status.tone} label={status.label} />
+        </div>
+      </div>
+      <div className="shrink-0">
+        <Sparkline data={sparkData} color={sparkColor} width={90} height={32} />
+      </div>
+      <div className="num flex shrink-0 items-baseline gap-1 text-ink">
+        <span className="text-[24px] font-semibold">{fmtNum(last, decimalsFor(m.key))}</span>
+        <span className="text-[13px] text-ink2">{m.unit}</span>
+      </div>
+    </button>
+  );
+}
 
-  // Plan: data color reflects STATE. The sparkline uses the same tone as the
-  // status badge (positive / alert / neutral) so the card reads state at a glance.
-  const sparkColor = sparkColorForStatus(status.tone);
+/* ----------------------------------------------------- Metric row (grouped)
+ * A div-based row (the kit `Row` renders as a `<button>` when onClick is
+ * passed, but we need a nested `<InfoButton>` which is also a `<button>` —
+ * and you can't nest buttons). So we use a div with role="button".
+ * Layout: label · sparkline · StatusDot · value. No borders, no "LOW"
+ * chip, no source badge. */
+function MetricRow({
+  m,
+  onSelect,
+}: {
+  m: MetricCatalogItem;
+  onSelect: () => void;
+}) {
+  const trend = getMetricTrend(m.key, 30);
+  const last = trend.stats.last;
+  const mean = trend.stats.mean;
+  const sd = standardDeviation(trend.points.map((p) => p.value));
+  const status = computeMetricStatus(last, mean, sd);
+  const sparkData = trend.points.slice(-14).map((p) => p.value);
+  const sparkColor =
+    status.tone === "ok"
+      ? "var(--c-ok)"
+      : status.tone === "alert"
+      ? "var(--c-alert)"
+      : "var(--c-text-3)";
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(m.key)}
+      onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect(m.key);
+          onSelect();
         }
       }}
-      className="group flex w-full cursor-pointer flex-col gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-4 text-left transition-all hover:border-hairline2 hover:bg-surface2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-surface2 -mx-2 px-2 rounded-[var(--radius-control)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 cursor-pointer"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1">
-          <span className="truncate text-[13px] font-semibold text-ink">{m.label}</span>
-          {/* Wrapper stops click-propagation so opening the info popover does
-              not also fire the card's onClick (which navigates to the metric
-              detail page). InfoButton itself is from the shared kit. */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1">
+          <span className="text-[14px] font-medium text-ink2">{m.label}</span>
           <span
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             className="inline-flex"
           >
             <InfoButton title={m.label}>
@@ -408,25 +410,40 @@ function MetricCard({
             </InfoButton>
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Badge tone={status.tone} dot>
-            {status.label}
-          </Badge>
-          <SourcePill>{m.source}</SourcePill>
-        </div>
       </div>
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="num text-[24px] font-bold tracking-[-0.02em] text-ink">
-            {fmtNum(last, decimalsFor(m.key))}
-            <span className="text-[11px] font-medium text-muted"> {m.unit}</span>
-          </div>
-          <div className="mt-1">
-            <DeltaChip delta={delta7} goodWhen={goodWhen} suffix={t("overview.vs7d")} compact />
-          </div>
-        </div>
-        <Sparkline data={sparkData} color={sparkColor} width={100} height={36} />
+      <div className="shrink-0">
+        <Sparkline data={sparkData} color={sparkColor} width={90} height={32} />
+      </div>
+      <div className="shrink-0">
+        <StatusDot tone={status.tone} label={status.label} />
+      </div>
+      <div className="num flex shrink-0 items-baseline gap-1 text-ink">
+        <span className="text-[20px] font-semibold">{fmtNum(last, decimalsFor(m.key))}</span>
+        <span className="text-[13px] text-ink2">{m.unit}</span>
       </div>
     </div>
   );
+}
+
+/* ----------------------------------------------------- helpers */
+function standardDeviation(values: (number | null)[]): number | null {
+  const valid = values.filter((v): v is number => v !== null && Number.isFinite(v));
+  if (valid.length < 2) return null;
+  const mean = valid.reduce((s, v) => s + v, 0) / valid.length;
+  const variance = valid.reduce((s, v) => s + (v - mean) ** 2, 0) / valid.length;
+  return Math.sqrt(variance);
+}
+
+/** Computed status from the latest value vs a personal band (30-day mean
+ *  ± 1 SD). When there's no usable baseline, returns a neutral "—". */
+function computeMetricStatus(
+  last: number | null,
+  mean: number | null,
+  sd: number | null,
+): { label: string; tone: "neutral" | "ok" | "watch" | "alert" } {
+  if (last === null || mean === null) return { label: "—", tone: "neutral" };
+  if (sd === null || sd === 0) return { label: "—", tone: "neutral" };
+  if (last < mean - sd) return { label: "Low", tone: "alert" };
+  if (last > mean + sd) return { label: "High", tone: "alert" };
+  return { label: "In range", tone: "ok" };
 }

@@ -39,22 +39,17 @@ import { localToday, addDays, dayDiff, isoWeekday } from "@/lib/apex/localTime";
 import { fmtDate, fmtNum } from "@/lib/apex/format";
 import {
   Card,
-  CardHeader,
-  PageHeader,
-  StatPod,
-  Badge,
-  Eyebrow,
-  SectionHeader,
+  Section,
+  PageSentence,
+  StatusDot,
   Empty,
   Loading,
   ApexButton,
   Hairline,
-  SourcePill,
   Segmented,
   Stepper,
   RestTimerRing,
   ConfirmPopover,
-  DeltaChip,
 } from "@/components/apex/kit";
 import {
   InteractiveComboChart,
@@ -324,41 +319,66 @@ export function TrainingPage() {
     loadFeedback();
   }, [loadFeedback]);
 
-  const subtitle = `${fmtDate(today, ui.locale)} · ${ui.locale === "it" ? "zona allenamento" : "training zone"}`;
+  // Derive the page sentence (principle 1: one answer per screen).
+  const pageSentence = useMemo(() => {
+    if (planLoading) return ui.locale === "it" ? "Carico la sessione di oggi…" : "Loading today's session…";
+    if (planError) return ui.locale === "it" ? "Non riesco a caricare il piano." : "Couldn't load your plan.";
+    if (!plan) {
+      const wd = isoWeekday(today);
+      const routine = DEFAULT_ROUTINE[wd];
+      if (routine?.discipline === "rest") {
+        return ui.locale === "it"
+          ? "Giorno di riposo. Genera un piano quando sei pronto."
+          : "Rest day today. Generate a plan when you're ready.";
+      }
+      return ui.locale === "it"
+        ? "Nessun piano per oggi. Genera una bozza per iniziare."
+        : "No plan yet for today. Generate a draft to get started.";
+    }
+    const exerciseCount = plan.exercises.length;
+    const statusWord = plan.status === "confirmed"
+      ? (ui.locale === "it" ? "Confermata" : "Confirmed")
+      : plan.status === "done"
+      ? (ui.locale === "it" ? "Completata" : "Done")
+      : (ui.locale === "it" ? "Bozza" : "Draft");
+    return ui.locale === "it"
+      ? `Oggi: ${plan.title} · ${exerciseCount} esercizi · ${statusWord}`
+      : `Today: ${plan.title} · ${exerciseCount} exercises · ${statusWord}`;
+  }, [plan, planLoading, planError, today, ui.locale]);
 
   return (
-    <div className="mx-auto max-w-[1240px] pb-16">
-      <PageHeader title={t("training.title")} subtitle={subtitle} />
-
-      {/* Row 1: Today's session + Why this plan */}
-      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-8">
-          <TodaySessionCard
-            today={today}
-            plan={plan}
-            planLoading={planLoading}
-            planError={planError}
-            onReload={loadPlan}
-          />
-        </div>
-        <div className="xl:col-span-4">
-          <WhyThisPlanCard plan={plan} today={today} />
-        </div>
+    <div className="mx-auto max-w-[1240px] space-y-8 px-6 py-8 pb-16">
+      {/* ====== Page title + sentence (principle 1) ====== */}
+      <div>
+        <h1 className="page-title">{ui.locale === "it" ? "Allenamento" : "Training"}</h1>
+        <PageSentence className="mt-2">{pageSentence}</PageSentence>
       </div>
 
-      {/* Row 2: This week / This month (expandable calendar) */}
-      <div className="mt-6">
-        <ExpandableCalendarCard
-          today={today}
-          plan={plan}
-          events={events}
-          activityDates={activityDates}
-          onEventsChanged={loadEvents}
-        />
-      </div>
+      {/* ====== Hero — Today's session (principle 2: one hero, 2× anything) ====== */}
+      <TodaySessionCard
+        today={today}
+        plan={plan}
+        planLoading={planLoading}
+        planError={planError}
+        onReload={loadPlan}
+      />
 
-      {/* Row 3: Load + Events */}
-      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-12">
+      {/* ====== Why this plan (secondary, supports the hero) ====== */}
+      {plan && (
+        <WhyThisPlanCard plan={plan} today={today} />
+      )}
+
+      {/* ====== This week / This month (expandable calendar) ====== */}
+      <ExpandableCalendarCard
+        today={today}
+        plan={plan}
+        events={events}
+        activityDates={activityDates}
+        onEventsChanged={loadEvents}
+      />
+
+      {/* ====== Load chart + Events ====== */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="xl:col-span-8">
           <LoadCard load={load} events={events} />
         </div>
@@ -372,15 +392,13 @@ export function TrainingPage() {
         </div>
       </div>
 
-      {/* Row 4: Feedback */}
-      <div className="mt-6">
-        <FeedbackCard
-          today={today}
-          history={feedbackHistory}
-          loading={feedbackLoading}
-          onSubmitted={loadFeedback}
-        />
-      </div>
+      {/* ====== Feedback ====== */}
+      <FeedbackCard
+        today={today}
+        history={feedbackHistory}
+        loading={feedbackLoading}
+        onSubmitted={loadFeedback}
+      />
     </div>
   );
 }
@@ -406,21 +424,23 @@ function TodaySessionCard({
   if (planLoading) {
     return (
       <Card>
-        <CardHeader eyebrow={t("train_today_session")} />
-        <Loading label={ui.locale === "it" ? "Carico il piano…" : "Loading plan…"} />
+        <Section label={ui.locale === "it" ? "Oggi" : "Today"}>
+          <Loading label={ui.locale === "it" ? "Carico il piano…" : "Loading plan…"} />
+        </Section>
       </Card>
     );
   }
   if (planError) {
     return (
       <Card>
-        <CardHeader eyebrow={t("train_today_session")} />
-        <div className="text-[13px] text-alertText">{planError}</div>
-        <div className="mt-3">
-          <ApexButton variant="secondary" size="sm" onClick={onReload}>
-            {ui.locale === "it" ? "Riprova" : "Retry"}
-          </ApexButton>
-        </div>
+        <Section label={ui.locale === "it" ? "Oggi" : "Today"}>
+          <div className="text-[14px] text-alertText">{planError}</div>
+          <div className="mt-3">
+            <ApexButton variant="secondary" size="sm" onClick={onReload}>
+              {ui.locale === "it" ? "Riprova" : "Retry"}
+            </ApexButton>
+          </div>
+        </Section>
       </Card>
     );
   }
@@ -460,43 +480,41 @@ function NoPlanCard({ today, onGenerated }: { today: string; onGenerated: () => 
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={t("train_today_session")}
-        title={
-          isRest
-            ? ui.locale === "it"
-              ? "Giorno di riposo"
-              : "Rest day"
-            : routine?.title || (ui.locale === "it" ? "Nessun piano" : t("train_no_plan"))
-        }
-        right={<SourcePill>{fmtDate(today, ui.locale)}</SourcePill>}
-      />
-      <div className="text-[13px] text-muted">
-        {isRest
-          ? ui.locale === "it"
-            ? "Recupero attivo — camminata leggera, mobilità, sonno prioritizzato."
-            : "Active recovery — light walk, mobility, sleep prioritised."
-          : ui.locale === "it"
-          ? `Slot di routine: ${routine?.start || "—"} · ${routine?.discipline}`
-          : `Routine slot: ${routine?.start || "—"} · ${routine?.discipline}`}
-      </div>
+      <Section label={ui.locale === "it" ? "Oggi" : "Today"}>
+        {/* Hero line — the plan title (or rest day) is the dominant element */}
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-[28px] font-semibold tracking-[-0.02em] text-ink">
+            {isRest
+              ? (ui.locale === "it" ? "Giorno di riposo" : "Rest day")
+              : (routine?.title || (ui.locale === "it" ? "Nessun piano" : t("train_no_plan")))}
+          </h2>
+          <span className="num text-[14px] text-muted">{fmtDate(today, ui.locale)}</span>
+        </div>
+        <p className="mt-2 text-[16px] text-ink2">
+          {isRest
+            ? (ui.locale === "it"
+              ? "Recupero attivo — camminata leggera, mobilità, sonno prioritizzato."
+              : "Active recovery — light walk, mobility, sleep prioritised.")
+            : (ui.locale === "it"
+              ? `Slot di routine: ${routine?.start || "—"} · ${routine?.discipline}`
+              : `Routine slot: ${routine?.start || "—"} · ${routine?.discipline}`)}
+        </p>
 
-      <div className="mt-5 flex items-center gap-3">
-        <ApexButton onClick={generate} disabled={creating} icon={<Plus size={14} />}>
-          {creating
-            ? ui.locale === "it"
-              ? "Genero…"
-              : "Generating…"
-            : t("train_generate")}
-        </ApexButton>
-        {!isRest && (
-          <span className="text-[12px] text-faint">
-            {ui.locale === "it"
-              ? "Il coach creerà un piano da confermare."
-              : "The coach will draft a plan you can confirm."}
-          </span>
-        )}
-      </div>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <ApexButton onClick={generate} disabled={creating} icon={<Plus size={14} />}>
+            {creating
+              ? (ui.locale === "it" ? "Genero…" : "Generating…")
+              : t("train_generate")}
+          </ApexButton>
+          {!isRest && (
+            <span className="text-[14px] text-muted">
+              {ui.locale === "it"
+                ? "Il coach creerà un piano da confermare."
+                : "The coach will draft a plan you can confirm."}
+            </span>
+          )}
+        </div>
+      </Section>
     </Card>
   );
 }
@@ -524,69 +542,70 @@ function DraftPlanCard({ plan, onReload }: { plan: Plan; onReload: () => void })
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={t("train_today_session")}
-        title={plan.title}
-        right={
-          <span className="flex items-center gap-2">
-            <Badge tone="neutral" dot>
-              {t("train_draft")}
-            </Badge>
-            <SourcePill>{fmtDate(plan.date, ui.locale)}</SourcePill>
-          </span>
-        }
-      />
-
-      {plan.adjustmentNote && (
-        <div className="mb-4 rounded-[var(--radius-control)] border border-hairline bg-surface2 p-3">
-          <Eyebrow className="!text-[10px]">{t("train_adjustment_note")}</Eyebrow>
-          <div className="mt-1 text-[12px] leading-relaxed text-ink2">
-            {plan.adjustmentNote}
+      <Section label={ui.locale === "it" ? "Oggi" : "Today"}>
+        {/* Hero line — the plan title is the dominant element */}
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-[28px] font-semibold tracking-[-0.02em] text-ink">
+            {plan.title}
+          </h2>
+          <div className="flex shrink-0 items-center gap-3">
+            <StatusDot tone="watch" label={t("train_draft")} />
+            <span className="num text-[14px] text-muted">{fmtDate(plan.date, ui.locale)}</span>
           </div>
         </div>
-      )}
 
-      <div className="overflow-hidden rounded-[var(--radius-control)] border border-hairline">
-        <table className="w-full text-left text-[12px]">
-          <thead className="bg-surface2 text-faint">
-            <tr>
-              <th className="px-3 py-2 font-medium">#</th>
-              <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Esercizio" : "Exercise"}</th>
-              <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Gruppo" : "Group"}</th>
-              <th className="px-3 py-2 text-right font-medium">Sets</th>
-              <th className="px-3 py-2 text-right font-medium">Reps</th>
-              <th className="px-3 py-2 text-right font-medium">kg</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plan.exercises.map((ex, i) => (
-              <tr key={ex.id} className="border-t border-hairline">
-                <td className="px-3 py-2 text-faint">{i + 1}</td>
-                <td className="px-3 py-2 font-semibold text-ink">{ex.name}</td>
-                <td className="px-3 py-2 text-muted">{ex.muscle_group}</td>
-                <td className="num px-3 py-2 text-right">{ex.sets}</td>
-                <td className="num px-3 py-2 text-right">{ex.reps}</td>
-                <td className="num px-3 py-2 text-right">{ex.weight_kg ?? 0}</td>
+        {plan.adjustmentNote && (
+          <div className="mt-3 rounded-[var(--radius-control)] bg-surface2 p-4">
+            <div className="text-[14px] font-medium text-ink2">
+              {t("train_adjustment_note")}
+            </div>
+            <div className="mt-1 text-[14px] leading-relaxed text-ink2">
+              {plan.adjustmentNote}
+            </div>
+          </div>
+        )}
+
+        {/* Exercise list — flat table, surface-2 header, divider rows (no Card border) */}
+        <div className="mt-5 overflow-hidden rounded-[var(--radius-control)] bg-surface2">
+          <table className="w-full text-left text-[14px]">
+            <thead className="text-muted">
+              <tr>
+                <th className="px-3 py-2 font-medium">#</th>
+                <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Esercizio" : "Exercise"}</th>
+                <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Gruppo" : "Group"}</th>
+                <th className="px-3 py-2 text-right font-medium">Sets</th>
+                <th className="px-3 py-2 text-right font-medium">Reps</th>
+                <th className="px-3 py-2 text-right font-medium">kg</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {plan.exercises.map((ex, i) => (
+                <tr key={ex.id} className="border-t border-[var(--c-divider)]">
+                  <td className="px-3 py-2 text-muted">{i + 1}</td>
+                  <td className="px-3 py-2 font-semibold text-ink">{ex.name}</td>
+                  <td className="px-3 py-2 text-muted">{ex.muscle_group}</td>
+                  <td className="num px-3 py-2 text-right">{ex.sets}</td>
+                  <td className="num px-3 py-2 text-right">{ex.reps}</td>
+                  <td className="num px-3 py-2 text-right">{ex.weight_kg ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      <div className="mt-5 flex items-center gap-3">
-        <ApexButton onClick={confirm} disabled={confirming} icon={<Check size={14} />}>
-          {confirming
-            ? ui.locale === "it"
-              ? "Confermo…"
-              : "Confirming…"
-            : t("train_confirm")}
-        </ApexButton>
-        <span className="text-[12px] text-faint">
-          {ui.locale === "it"
-            ? "La conferma avvia la modalità sessione live."
-            : "Confirming starts live session mode."}
-        </span>
-      </div>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <ApexButton onClick={confirm} disabled={confirming} icon={<Check size={14} />}>
+            {confirming
+              ? (ui.locale === "it" ? "Confermo…" : "Confirming…")
+              : t("train_confirm")}
+          </ApexButton>
+          <span className="text-[14px] text-muted">
+            {ui.locale === "it"
+              ? "La conferma avvia la modalità sessione live."
+              : "Confirming starts live session mode."}
+          </span>
+        </div>
+      </Section>
     </Card>
   );
 }
@@ -714,8 +733,10 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
   if (!ex) {
     return (
       <Card>
-        <CardHeader eyebrow={t("train_today_session")} title={plan.title} />
-        <Empty title={ui.locale === "it" ? "Nessun esercizio nel piano." : "No exercises in plan."} />
+        <Section label={ui.locale === "it" ? "Oggi" : "Today"}>
+          <div className="text-[28px] font-semibold tracking-[-0.02em] text-ink">{plan.title}</div>
+          <Empty title={ui.locale === "it" ? "Nessun esercizio nel piano." : "No exercises in plan."} />
+        </Section>
       </Card>
     );
   }
@@ -727,26 +748,27 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={t("train_live_mode")}
-        title={plan.title}
-        right={
-          <span className="flex items-center gap-2">
-            <Badge tone={mode === "complete" ? "positive" : "primary"} dot>
-              {mode === "complete"
+      <Section label={ui.locale === "it" ? "Sessione live" : "Live session"}>
+        {/* Hero line — plan title is the dominant element */}
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-[28px] font-semibold tracking-[-0.02em] text-ink">
+            {plan.title}
+          </h2>
+          <div className="flex shrink-0 items-center gap-3">
+            <StatusDot
+              tone={mode === "complete" ? "ok" : "neutral"}
+              label={mode === "complete"
                 ? t("training.done")
-                : ui.locale === "it"
-                ? `Serie ${completedSets}/${totalSets}`
-                : `Set ${completedSets}/${totalSets}`}
-            </Badge>
-            <SourcePill>{fmtDate(plan.date, ui.locale)}</SourcePill>
-          </span>
-        }
-      />
+                : (ui.locale === "it" ? `Serie ${completedSets}/${totalSets}` : `Set ${completedSets}/${totalSets}`)}
+            />
+            <span className="num text-[14px] text-muted">{fmtDate(plan.date, ui.locale)}</span>
+          </div>
+        </div>
+      </Section>
 
       {/* progress bar */}
       {mode !== "complete" && (
-        <div className="mb-4">
+        <div className="mt-4">
           <div className="num h-1.5 w-full overflow-hidden rounded-full bg-surface3">
             <div
               className="bg-primary transition-all"
@@ -757,9 +779,9 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
       )}
 
       {mode === "complete" ? (
-        <FinishSummary plan={plan} startedAt={startedAtRef.current} />
+        <div className="mt-4"><FinishSummary plan={plan} startedAt={startedAtRef.current} /></div>
       ) : mode === "rest" ? (
-        <div className="flex flex-col items-center gap-4 py-4">
+        <div className="mt-4 flex flex-col items-center gap-4 py-4">
           <RestTimerRing
             secondsLeft={restLeft}
             total={restTotal || ex.rest_s}
@@ -768,7 +790,7 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
               setRestLeft(0);
             }}
           />
-          <div className="text-[12px] text-faint">
+          <div className="text-[14px] text-muted">
             {ui.locale === "it" ? "Prossimo" : "Up next"}:{" "}
             <span className="text-ink2">
               {isLastSetOfEx
@@ -778,45 +800,45 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* current exercise card */}
-          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-4">
+        <div className="mt-4 space-y-4">
+          {/* current exercise — surface-2 panel inside the Card, NO border */}
+          <div className="rounded-[var(--radius-card)] bg-surface2 p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <Eyebrow className="!text-[10px]">
+                <div className="text-[14px] text-ink2">
                   {ui.locale === "it" ? "Esercizio" : "Exercise"} {exIdx + 1}/{plan.exercises.length}
-                </Eyebrow>
-                <div className="mt-1 text-[20px] font-semibold tracking-[-0.01em] text-ink">
+                </div>
+                <div className="mt-1 text-[24px] font-semibold tracking-[-0.01em] text-ink">
                   {ex.name}
                 </div>
-                <div className="text-[12px] text-muted">{ex.muscle_group}</div>
+                <div className="text-[14px] text-muted">{ex.muscle_group}</div>
               </div>
               <div className="text-right">
-                <div className="num mono text-[12px] text-faint">
+                <div className="num text-[14px] text-muted">
                   {t("train_target", { sets: ex.sets, reps: ex.reps })}
                 </div>
                 <SetDots total={ex.sets} current={setIdx} logs={logsForEx} />
               </div>
             </div>
 
-            <Hairline className="my-3 !bg-hairline/40" />
+            <Hairline className="my-3 !bg-[var(--c-divider)]" />
 
             {/* Last time line */}
-            <div className="text-[12px] text-muted">
+            <div className="text-[14px] text-muted">
               {historyLoading ? (
                 <span>…</span>
               ) : history.length > 0 ? (
                 <>
-                  <span className="eyebrow !text-[9px]">{t("train_last_time")}</span>{" "}
-                  <span className="num mono text-ink2">
+                  <span className="text-ink2">{t("train_last_time")}</span>{" "}
+                  <span className="num text-ink2">
                     {history[0].weightKg} kg × {history[0].reps}{" "}
-                    <span className="text-faint">· {fmtDate(history[0].date, ui.locale)}</span>
+                    <span className="text-muted">· {fmtDate(history[0].date, ui.locale)}</span>
                   </span>
                 </>
               ) : (
                 <>
-                  <span className="eyebrow !text-[9px]">{t("train_last_time")}</span>{" "}
-                  <span className="text-faint">
+                  <span className="text-ink2">{t("train_last_time")}</span>{" "}
+                  <span className="text-muted">
                     {ui.locale === "it" ? "prima volta" : "first time"}
                   </span>
                 </>
@@ -826,33 +848,33 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
             {/* steppers */}
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
-                <div className="eyebrow !text-[9px] mb-1.5">{t("train_weight")}</div>
+                <div className="mb-1.5 text-[14px] font-medium text-ink2">{t("train_weight")}</div>
                 <Stepper value={weight} onChange={setWeight} step={2.5} min={0} max={400} suffix="kg" />
               </div>
               <div>
-                <div className="eyebrow !text-[9px] mb-1.5">{t("train_reps")}</div>
+                <div className="mb-1.5 text-[14px] font-medium text-ink2">{t("train_reps")}</div>
                 <Stepper value={reps} onChange={setReps} step={1} min={0} max={50} />
               </div>
             </div>
 
             {ex.notes && (
-              <div className="mt-3 text-[11px] italic leading-snug text-muted">{ex.notes}</div>
+              <div className="mt-3 text-[14px] italic leading-snug text-muted">{ex.notes}</div>
             )}
 
             {/* RPE chip row — only on the last set of an exercise */}
             {isLastSetOfEx && (
               <div className="mt-4">
-                <div className="eyebrow !text-[9px] mb-1.5">{t("train_rpe")} (6–10)</div>
+                <div className="mb-1.5 text-[14px] font-medium text-ink2">{t("train_rpe")} (6–10)</div>
                 <div className="flex flex-wrap gap-1.5">
                   {[6, 7, 8, 9, 10].map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => setRpe(rpe === r ? null : r)}
-                      className={`num h-7 rounded-[var(--radius-control)] border px-2.5 text-[12px] font-semibold transition-colors ${
+                      className={`num h-7 rounded-[var(--radius-control)] px-2.5 text-[14px] font-semibold transition-colors ${
                         rpe === r
-                          ? "border-primary bg-primarySoft text-primaryText"
-                          : "border-hairline bg-surface text-muted hover:bg-surface2"
+                          ? "bg-primarySoft text-primaryText"
+                          : "bg-surface text-muted hover:bg-surface3 hover:text-ink2"
                       }`}
                     >
                       {r}
@@ -862,9 +884,9 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
                     <button
                       type="button"
                       onClick={() => setRpe(null)}
-                      className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2 text-muted hover:text-ink"
+                      className="h-7 rounded-[var(--radius-control)] bg-surface px-2 text-muted hover:bg-surface3 hover:text-ink"
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
                   )}
                 </div>
@@ -878,31 +900,31 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
             </div>
           </div>
 
-          {/* Up next (collapsible) */}
+          {/* Up next (collapsible) — surface-2 panel, NO border */}
           {upNext.length > 0 && (
-            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface">
+            <div className="rounded-[var(--radius-card)] bg-surface2">
               <button
                 type="button"
                 onClick={() => setCollapsedUpNext((v) => !v)}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left"
               >
-                <span className="eyebrow !text-[10px]">{t("train_up_next")}</span>
-                <span className="flex items-center gap-2 text-[11px] text-muted">
+                <span className="text-[14px] font-medium text-ink2">{t("train_up_next")}</span>
+                <span className="flex items-center gap-2 text-[14px] text-muted">
                   {upNext.length} {ui.locale === "it" ? "esercizi" : "exercises"}
-                  {collapsedUpNext ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  {collapsedUpNext ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                 </span>
               </button>
               {!collapsedUpNext && (
-                <div className="border-t border-hairline px-3 py-2">
+                <div className="border-t border-[var(--c-divider)] px-4 py-2">
                   {upNext.map((e, i) => (
                     <div
                       key={e.id}
-                      className="flex items-center justify-between py-1.5 text-[12px]"
+                      className="flex items-center justify-between py-1.5 text-[14px]"
                     >
                       <span className="text-ink2">
                         {exIdx + 2 + i}. {e.name}
                       </span>
-                      <span className="num mono text-faint">
+                      <span className="num text-muted">
                         {e.sets} × {e.reps} · {e.weight_kg ?? 0}kg
                       </span>
                     </div>
@@ -912,31 +934,31 @@ function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void 
             </div>
           )}
 
-          {/* Whole session expander */}
-          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface">
+          {/* Whole session expander — surface-2 panel, NO border */}
+          <div className="rounded-[var(--radius-card)] bg-surface2">
             <button
               type="button"
               onClick={() => setShowWhole((v) => !v)}
-              className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+              className="flex w-full items-center justify-between px-4 py-2.5 text-left"
             >
-              <span className="eyebrow !text-[10px]">{t("train_whole_session")}</span>
-              {showWhole ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <span className="text-[14px] font-medium text-ink2">{t("train_whole_session")}</span>
+              {showWhole ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
             {showWhole && (
-              <div className="border-t border-hairline px-3 py-2">
+              <div className="border-t border-[var(--c-divider)] px-4 py-2">
                 {plan.exercises.map((e, i) => {
                   const done = plan.setLogs.filter((l) => l.exerciseId === e.id).length;
                   return (
                     <div
                       key={e.id}
-                      className={`flex items-center justify-between py-1.5 text-[12px] ${
+                      className={`flex items-center justify-between py-1.5 text-[14px] ${
                         i === exIdx ? "text-primaryText" : ""
                       }`}
                     >
                       <span className={i === exIdx ? "font-semibold" : "text-ink2"}>
                         {i + 1}. {e.name}
                       </span>
-                      <span className="num mono text-faint">
+                      <span className="num text-muted">
                         {done}/{e.sets}
                       </span>
                     </div>
@@ -1002,49 +1024,60 @@ function FinishSummary({ plan, startedAt }: { plan: Plan; startedAt: number }) {
 
   return (
     <div>
-      <div className="rounded-[var(--radius-card)] border border-positive/40 bg-positiveSoft px-4 py-3 text-[13px] font-medium text-positiveText">
-        {ui.locale === "it"
-          ? "Sessione completata. Recupero attivo consigliato."
-          : "Session complete. Active recovery recommended."}
+      {/* Session-complete banner — surface contrast only (positive-soft fill), no border */}
+      <div className="rounded-[var(--radius-card)] bg-positiveSoft px-4 py-3 text-[14px] font-medium text-positiveText">
+        <div className="flex items-center gap-2">
+          <StatusDot tone="ok" label={ui.locale === "it" ? "Completata" : "Complete"} />
+          <span>
+            {ui.locale === "it"
+              ? "Sessione completata. Recupero attivo consigliato."
+              : "Session complete. Active recovery recommended."}
+          </span>
+        </div>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatPod
-          label={t("train_total_volume")}
-          value={fmtNum(totalVolume, 0)}
-          unit="kg"
-          sub={ui.locale === "it" ? "serie × rip × kg" : "sets × reps × kg"}
-        />
-        <StatPod
-          label={t("train_duration")}
-          value={fmtMSS(durationS)}
-          sub={ui.locale === "it" ? "min:sec" : "min:sec"}
-        />
-        <StatPod
+      {/* 3 numbers — flat, surface-2 contrast only, no bordered tiles */}
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Fact label={t("train_total_volume")} value={fmtNum(totalVolume, 0)} unit="kg" />
+        <Fact label={t("train_duration")} value={fmtMSS(durationS)} />
+        <Fact
           label={ui.locale === "it" ? "Serie totali" : "Sets logged"}
-          value={plan.setLogs.length}
-          sub={`${plan.exercises.length} ${ui.locale === "it" ? "esercizi" : "exercises"}`}
+          value={String(plan.setLogs.length)}
+          unit={`${plan.exercises.length} ${ui.locale === "it" ? "esercizi" : "exercises"}`}
         />
       </div>
-      <div className="mt-4">
-        <Eyebrow className="!text-[10px]">{t("train_personal_bests")}</Eyebrow>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="mt-5">
+        <div className="mb-2 text-[14px] font-medium text-ink2">{t("train_personal_bests")}</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {Array.from(perExercise.values()).map((e) => (
             <div
               key={e.name}
-              className="flex items-center justify-between rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[12px]"
+              className="flex items-center justify-between rounded-[var(--radius-control)] bg-surface2 px-3 py-2 text-[14px]"
             >
               <span className="text-ink2">{e.name}</span>
-              <span className="num mono text-faint">
+              <span className="num text-muted">
                 {e.maxKg}kg × {e.maxReps}
               </span>
             </div>
           ))}
           {perExercise.size === 0 && (
-            <div className="text-[12px] text-faint">
+            <div className="text-[14px] text-muted">
               {ui.locale === "it" ? "Nessuna serie registrata." : "No sets logged."}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Fact — a small flat label + value (no border, no eyebrow). */
+function Fact({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div className="rounded-[var(--radius-control)] bg-surface2 px-4 py-3">
+      <div className="text-[14px] text-ink2">{label}</div>
+      <div className="num mt-1 flex items-baseline gap-1 text-[28px] font-semibold text-ink">
+        {value}
+        {unit && <span className="text-[14px] font-medium text-ink2">{unit}</span>}
       </div>
     </div>
   );
@@ -1064,69 +1097,59 @@ function WhyThisPlanCard({ plan, today }: { plan: Plan | null; today: string }) 
 
   return (
     <Card>
-      <CardHeader eyebrow={t("train_why_plan")} />
-      <div className="space-y-4">
-        <div>
-          <Eyebrow className="!text-[10px]">{t("train_adjustment_note")}</Eyebrow>
-          <div className="mt-1 text-[12px] leading-relaxed text-ink2">
-            {plan.adjustmentNote || (ui.locale === "it" ? "—" : "—")}
+      <Section label={t("train_why_plan")}>
+        <div className="space-y-4">
+          <div>
+            <div className="text-[14px] font-medium text-ink2">{t("train_adjustment_note")}</div>
+            <div className="mt-1 text-[14px] leading-relaxed text-ink2">
+              {plan.adjustmentNote || (ui.locale === "it" ? "—" : "—")}
+            </div>
+          </div>
+
+          <Hairline className="!bg-[var(--c-divider)]" />
+
+          <div>
+            <div className="text-[14px] font-medium text-ink2">
+              {ui.locale === "it" ? "Oggi" : "Today"}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-[14px]">
+              <StatusDot
+                tone={overview.readiness.value !== null && overview.readiness.value >= 75 ? "ok" : overview.readiness.value !== null && overview.readiness.value >= 50 ? "watch" : overview.readiness.value !== null ? "alert" : "neutral"}
+                label={`${ui.locale === "it" ? "Prontezza" : "Readiness"} ${overview.readiness.value ?? "—"}`}
+              />
+              <StatusDot
+                tone={overview.acwr == null ? "neutral" : overview.acwr >= 0.8 && overview.acwr <= 1.3 ? "ok" : overview.acwr > 1.5 ? "alert" : "watch"}
+                label={`ACWR ${fmtNum(overview.acwr, 2)}`}
+              />
+            </div>
+          </div>
+
+          <Hairline className="!bg-[var(--c-divider)]" />
+
+          <div>
+            <div className="text-[14px] font-medium text-ink2">
+              {ui.locale === "it" ? "Ultimo feedback" : "Last feedback"}
+            </div>
+            {lastFb ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-[14px] text-muted">
+                <span className="num text-ink2">
+                  {fmtDate(lastFb.date, ui.locale)}
+                </span>
+                <span>RPE {lastFb.rpe}</span>
+                <span>{ui.locale === "it" ? "Indol." : "Soreness"} {lastFb.soreness}</span>
+                {lastFb.injuryFlag && (
+                  <StatusDot tone="alert" label={lastFb.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")} />
+                )}
+              </div>
+            ) : (
+              <div className="mt-1 text-[14px] text-muted">
+                {ui.locale === "it" ? "Nessun feedback recente." : "No recent feedback."}
+              </div>
+            )}
           </div>
         </div>
-
-        <Hairline className="!bg-hairline/40" />
-
-        <div>
-          <Eyebrow className="!text-[10px]">
-            {ui.locale === "it" ? "Oggi" : "Today"}
-          </Eyebrow>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Badge tone="primary" dot>
-              {ui.locale === "it" ? "Prontezza" : "Readiness"} {overview.readiness.value}
-            </Badge>
-            <Badge
-              tone={
-                overview.acwr == null
-                  ? "neutral"
-                  : overview.acwr >= 0.8 && overview.acwr <= 1.3
-                  ? "positive"
-                  : "warning"
-              }
-              dot
-            >
-              ACWR {fmtNum(overview.acwr, 2)}
-            </Badge>
-          </div>
-        </div>
-
-        <Hairline className="!bg-hairline/40" />
-
-        <div>
-          <Eyebrow className="!text-[10px]">
-            {ui.locale === "it" ? "Ultimo feedback" : "Last feedback"}
-          </Eyebrow>
-          {lastFb ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-              <span className="num mono text-ink2">
-                {fmtDate(lastFb.date, ui.locale)}
-              </span>
-              <Badge tone="neutral">RPE {lastFb.rpe}</Badge>
-              <Badge tone="neutral">
-                {ui.locale === "it" ? "Indol." : "Soreness"} {lastFb.soreness}
-              </Badge>
-              {lastFb.injuryFlag && (
-                <Badge tone="alert" dot>
-                  {lastFb.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")}
-                </Badge>
-              )}
-            </div>
-          ) : (
-            <div className="mt-1 text-[12px] text-faint">
-              {ui.locale === "it" ? "Nessun feedback recente." : "No recent feedback."}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 text-[10px] text-faint">
+      </Section>
+      <div className="mt-3 text-[13px] text-muted">
         {ui.locale === "it"
           ? "Aggiornato al fuso orario locale"
           : "Computed in your local timezone"}{" "}
@@ -1223,42 +1246,42 @@ function ExpandableCalendarCard({
 
   return (
     <Card pad={false} className="overflow-hidden">
-      <div className="p-4 pb-0">
-        <SectionHeader
-          eyebrow={ui.locale === "it" ? "Lun → Dom" : "Mon → Sun"}
-          title={
-            mode === "week"
-              ? t("train_this_week")
-              : monthLabel(cursor.year, cursor.monthIdx, ui.locale)
-          }
-          right={
-            <span className="flex items-center gap-2">
-              <Segmented<CalendarMode>
+      <div className="p-7 pb-0">
+        <div className="mb-4 flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[14px] text-ink2">{ui.locale === "it" ? "Lun → Dom" : "Mon → Sun"}</div>
+            <div className="mt-1 text-[20px] font-semibold tracking-[-0.015em] text-ink">
+              {mode === "week"
+                ? t("train_this_week")
+                : monthLabel(cursor.year, cursor.monthIdx, ui.locale)}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Segmented<CalendarMode>
+              size="sm"
+              value={mode}
+              onChange={(v) => setMode(v)}
+              options={[
+                { value: "week", label: ui.locale === "it" ? "Settimana" : "Week" },
+                { value: "month", label: ui.locale === "it" ? "Mese" : "Month" },
+              ]}
+            />
+            {mode === "week" && (
+              <ApexButton
+                variant="secondary"
                 size="sm"
-                value={mode}
-                onChange={(v) => setMode(v)}
-                options={[
-                  { value: "week", label: ui.locale === "it" ? "Settimana" : "Week" },
-                  { value: "month", label: ui.locale === "it" ? "Mese" : "Month" },
-                ]}
-              />
-              {mode === "week" && (
-                <ApexButton
-                  variant="secondary"
-                  size="sm"
-                  icon={<Edit2 size={12} />}
-                  onClick={() => setEditing((v) => !v)}
-                >
-                  {t("train_edit_routine")}
-                </ApexButton>
-              )}
-            </span>
-          }
-        />
+                icon={<Edit2 size={12} />}
+                onClick={() => setEditing((v) => !v)}
+              >
+                {t("train_edit_routine")}
+              </ApexButton>
+            )}
+          </div>
+        </div>
       </div>
 
       {mode === "week" ? (
-        <div className="grid grid-cols-1 gap-px border-t border-hairline bg-hairline sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-1 gap-px border-t border-[var(--c-divider)] bg-[var(--c-divider)] sm:grid-cols-4 lg:grid-cols-7">
           {weekDays.map((d) => {
             const wd = isoWeekday(d);
             const isToday = d === today;
@@ -1288,7 +1311,7 @@ function ExpandableCalendarCard({
           })}
         </div>
       ) : (
-        <div className="border-t border-hairline">
+        <div className="border-t border-[var(--c-divider)]">
           {/* month navigation row */}
           <div className="flex items-center justify-between gap-2 px-4 py-2">
             <button
@@ -1300,16 +1323,16 @@ function ExpandableCalendarCard({
               <ChevronLeft size={14} />
             </button>
             <div className="flex items-center gap-2">
-              <Calendar size={12} className="text-faint" />
-              <span className="text-[13px] font-semibold text-ink">
+              <Calendar size={14} className="text-muted" />
+              <span className="text-[14px] font-semibold text-ink">
                 {monthLabel(cursor.year, cursor.monthIdx, ui.locale)}
               </span>
               <button
                 type="button"
                 onClick={goTodayMonth}
-                className="num eyebrow !text-[9px] !tracking-[0.08em] rounded-[var(--radius-control)] border border-hairline px-1.5 py-0.5 text-muted hover:bg-surface2 hover:text-ink"
+                className="num rounded-[var(--radius-control)] bg-surface2 px-2 py-0.5 text-[13px] font-semibold text-muted hover:bg-surface3 hover:text-ink"
               >
-                {ui.locale === "it" ? "oggi" : "today"}
+                {ui.locale === "it" ? "Oggi" : "Today"}
               </button>
             </div>
             <button
@@ -1323,16 +1346,16 @@ function ExpandableCalendarCard({
           </div>
 
           {/* weekday header */}
-          <div className="grid grid-cols-7 gap-px border-t border-hairline bg-hairline">
+          <div className="grid grid-cols-7 gap-px border-t border-[var(--c-divider)] bg-[var(--c-divider)]">
             {weekdayHeaders.map((label) => (
-              <div key={label} className="bg-surface px-1 py-1 text-center eyebrow !text-[9px] !tracking-[0.08em] text-faint">
+              <div key={label} className="bg-surface px-1 py-1.5 text-center text-[12px] font-medium text-muted">
                 {label}
               </div>
             ))}
           </div>
 
           {/* 6×7 day grid */}
-          <div className="grid grid-cols-7 gap-px bg-hairline">
+          <div className="grid grid-cols-7 gap-px bg-[var(--c-divider)]">
             {grid.map((date) => {
               const inMonth = date.slice(5, 7) === String(cursor.monthIdx + 1).padStart(2, "0")
                 && date.slice(0, 4) === String(cursor.year);
@@ -1363,24 +1386,24 @@ function ExpandableCalendarCard({
           </div>
 
           {/* small legend strip */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[10px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[13px] text-muted">
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-alert" />
+              <span className="inline-block h-2 w-2 rounded-full bg-alert" />
               {ui.locale === "it" ? "Gara" : "Race"}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="inline-block h-2 w-2 rounded-full bg-primary" />
               {ui.locale === "it" ? "Sessione" : "Session"}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />
+              <span className="inline-block h-2 w-2 rounded-full bg-surface3" />
               {ui.locale === "it" ? "Riposo" : "Rest"}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-positive" />
+              <span className="inline-block h-2 w-2 rounded-full bg-positive" />
               {ui.locale === "it" ? "Allenamento fatto" : "Activity done"}
             </span>
-            <span className="ml-auto text-faint">
+            <span className="ml-auto text-muted">
               {/* TODO i18n */}
               {ui.locale === "it" ? "Tocca un giorno per aggiungere" : "Tap a day to add an event"}
             </span>
@@ -1424,15 +1447,15 @@ function AddEventSheet({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-hairline bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-        <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+      <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+        <div className="flex items-center justify-between border-b border-[var(--c-divider)] px-4 py-2.5">
           <div className="flex items-center gap-2">
             <Plus size={14} className="text-primaryText" />
-            <span className="text-[13px] font-semibold text-ink">
+            <span className="text-[14px] font-semibold text-ink">
               {/* TODO i18n */}
               {ui.locale === "it" ? "Aggiungi evento" : "Add event"}
             </span>
-            <span className="num mono text-[11px] text-faint">{fmtDate(date, ui.locale)}</span>
+            <span className="num text-[13px] text-muted">{fmtDate(date, ui.locale)}</span>
           </div>
           <button
             type="button"
@@ -1443,7 +1466,7 @@ function AddEventSheet({
             <X size={14} />
           </button>
         </div>
-        <div className="p-4">
+        <div className="p-5">
           <EventForm
             today={today}
             defaultDate={date}
@@ -1493,7 +1516,7 @@ function MonthDayCell({
   } else if (planStatus === "draft") {
     statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />;
   } else if (isRest) {
-    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />;
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-surface3" />;
   }
 
   return (
@@ -1501,14 +1524,14 @@ function MonthDayCell({
       type="button"
       onClick={onAddEvent}
       className={`group relative flex min-h-[58px] flex-col gap-1 bg-surface p-1.5 text-left transition-colors hover:bg-surface2 ${
-        isToday ? "outline outline-1 -outline-offset-0 outline-primary" : ""
+        isToday ? "bg-surface2" : ""
       } ${inMonth ? "" : "opacity-40"}`}
       aria-label={`${fmtDate(date, ui.locale)} — ${ui.locale === "it" ? "aggiungi evento" : "add event"}`}
     >
       <div className="flex items-start justify-between gap-1">
         <span
-          className={`num mono text-[12px] font-semibold leading-none ${
-            isToday ? "text-primaryText" : inMonth ? "text-ink" : "text-faint"
+          className={`num text-[12px] font-semibold leading-none ${
+            isToday ? "text-primaryText" : inMonth ? "text-ink" : "text-muted"
           }`}
           style={{ fontFeatureSettings: '"tnum" 1' }}
         >
@@ -1527,7 +1550,7 @@ function MonthDayCell({
                 ? "bg-alert"
                 : tone === "primary"
                 ? "bg-primary"
-                : "bg-faint";
+                : "bg-muted";
             return (
               <span
                 key={e.id}
@@ -1537,7 +1560,7 @@ function MonthDayCell({
             );
           })}
           {dayEvents.length > 4 && (
-            <span className="num text-[8px] leading-none text-faint">+{dayEvents.length - 4}</span>
+            <span className="num text-[12px] leading-none text-muted">+{dayEvents.length - 4}</span>
           )}
         </div>
       )}
@@ -1546,7 +1569,7 @@ function MonthDayCell({
       {hasActivity && (
         <div className="mt-auto flex items-center gap-0.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-positive" />
-          <span className="text-[8px] leading-none text-positive">
+          <span className="text-[12px] leading-none text-positiveText">
             {/* TODO i18n */}
             {ui.locale === "it" ? "fatto" : "done"}
           </span>
@@ -1609,7 +1632,7 @@ function WeekDayCell({
     statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />;
     statusLabel = t("train_draft");
   } else if (isRest) {
-    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />;
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-surface3" />;
     statusLabel = t("train_rest_day");
   } else if (isPast) {
     statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-alert/50" />;
@@ -1627,9 +1650,9 @@ function WeekDayCell({
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-baseline gap-1.5">
-          <span className="mono eyebrow !text-[10px] !tracking-[0.08em]">{t(weekdayKey)}</span>
+          <span className="text-[14px] font-medium text-muted">{t(weekdayKey)}</span>
           <span
-            className={`num mono text-[20px] font-semibold leading-none ${
+            className={`num text-[20px] font-semibold leading-none ${
               isToday ? "text-primaryText" : "text-ink"
             }`}
             style={{ fontFeatureSettings: '"tnum" 1' }}
@@ -1637,7 +1660,7 @@ function WeekDayCell({
             {dayNum}
           </span>
           {isToday && (
-            <span className="eyebrow !text-[9px] !tracking-[0.08em] text-primaryText">
+            <span className="text-[13px] font-medium text-primaryText">
               {ui.locale === "it" ? "oggi" : "today"}
             </span>
           )}
@@ -1651,7 +1674,7 @@ function WeekDayCell({
         {statusDot}
       </div>
 
-      <Hairline className="!bg-hairline/60" />
+      <Hairline className="!bg-[var(--c-divider)]" />
 
       {editing ? (
         <div className="space-y-1.5">
@@ -1664,7 +1687,7 @@ function WeekDayCell({
                 title: e.target.value,
               })
             }
-            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[11px] text-ink"
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[14px] text-ink"
           />
           <input
             type="text"
@@ -1676,15 +1699,15 @@ function WeekDayCell({
                 start: e.target.value,
               })
             }
-            className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[11px] text-ink"
+            className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[14px] text-ink"
           />
         </div>
       ) : (
         <div>
-          <div className="truncate text-[12px] font-semibold leading-tight text-ink2">
+          <div className="truncate text-[14px] font-semibold leading-tight text-ink2">
             {routineSlot?.title || (ui.locale === "it" ? "—" : "—")}
           </div>
-          <div className="num mt-0.5 flex items-center gap-1.5 text-[10px] text-faint">
+          <div className="num mt-0.5 flex items-center gap-1.5 text-[13px] text-muted">
             {routineSlot?.start && <span>{routineSlot.start}</span>}
             <span>·</span>
             <span>{statusLabel}</span>
@@ -1694,12 +1717,10 @@ function WeekDayCell({
 
       {event && (
         <div className="mt-auto">
-          <Badge
-            tone={event.priority === "priority_1" || event.priority === "high" ? "warning" : "primary"}
-            dot
-          >
-            {event.title}
-          </Badge>
+          <StatusDot
+            tone={event.priority === "priority_1" || event.priority === "high" ? "watch" : "neutral"}
+            label={event.title}
+          />
         </div>
       )}
     </div>
@@ -1733,53 +1754,58 @@ function LoadCard({
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={
-          <span className="inline-flex items-center gap-1.5">
-            {t("train_load")}
-            <ChartInfoBadge text={infoText} />
-          </span>
-        }
-        right={
-          <span className="num text-[10px] text-faint">
-            {ui.locale === "it" ? "56 giorni · 0.8–1.3 banda" : "56 days · 0.8–1.3 band"}
-          </span>
-        }
-      />
+      <Section label={t("train_load")}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[14px] text-ink2">
+            {ui.locale === "it" ? "56 giorni · banda 0.8–1.3" : "56 days · 0.8–1.3 band"}
+          </div>
+          <ChartInfoBadge text={infoText} />
+        </div>
+      </Section>
       {!load ? (
         <Loading label={ui.locale === "it" ? "Carico carico…" : "Loading load…"} />
       ) : load.series.length === 0 ? (
         <Empty title={ui.locale === "it" ? "Nessun dato" : "No data yet"} />
       ) : (
         <>
-          {/* summary row */}
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <StatPod
+          {/* Summary row — compact numbers + StatusDot, no bordered tiles */}
+          <div className="mb-5 grid grid-cols-3 gap-4">
+            <LoadFact
               label={ui.locale === "it" ? "Carico acuto" : "Acute load"}
               value={fmtNum(load.summary.acute_load, 0)}
               unit="TSS"
               sub="7d"
             />
-            <StatPod
+            <LoadFact
               label={ui.locale === "it" ? "Carico cronico" : "Chronic load"}
               value={fmtNum(load.summary.chronic_load, 0)}
               unit="TSS"
               sub="28d"
             />
-            <StatPod
-              label="ACWR"
-              value={fmtNum(load.summary.acwr, 2)}
-              sub="0.8–1.3"
-              tone={
-                load.summary.acwr == null
-                  ? "ink"
-                  : load.summary.acwr >= 0.8 && load.summary.acwr <= 1.3
-                  ? "ink"
-                  : load.summary.acwr > 1.3
-                  ? "alert"
-                  : "primary"
-              }
-            />
+            <div className="rounded-[var(--radius-control)] bg-surface2 px-4 py-3">
+              <div className="text-[14px] text-ink2">ACWR</div>
+              <div className="num mt-1 flex items-baseline gap-1 text-[28px] font-semibold text-ink">
+                {fmtNum(load.summary.acwr, 2)}
+              </div>
+              <div className="mt-1">
+                <StatusDot
+                  tone={load.summary.acwr == null
+                    ? "neutral"
+                    : load.summary.acwr >= 0.8 && load.summary.acwr <= 1.3
+                    ? "ok"
+                    : load.summary.acwr > 1.5
+                    ? "alert"
+                    : "watch"}
+                  label={load.summary.acwr == null
+                    ? "—"
+                    : load.summary.acwr >= 0.8 && load.summary.acwr <= 1.3
+                    ? (ui.locale === "it" ? "Ottimale" : "Optimal")
+                    : load.summary.acwr > 1.5
+                    ? (ui.locale === "it" ? "Rischio alto" : "High risk")
+                    : (ui.locale === "it" ? "Elevato" : "Elevated")}
+                />
+              </div>
+            </div>
           </div>
           <LoadChart series={load.series} taperWindows={load.taperWindows} events={events} />
 
@@ -1790,6 +1816,31 @@ function LoadCard({
         </>
       )}
     </Card>
+  );
+}
+
+/** LoadFact — a compact number for the load summary row. Surface-2 contrast
+ *  only, no border, no eyebrow. */
+function LoadFact({
+  label,
+  value,
+  unit,
+  sub,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  sub: string;
+}) {
+  return (
+    <div className="rounded-[var(--radius-control)] bg-surface2 px-4 py-3">
+      <div className="text-[14px] text-ink2">{label}</div>
+      <div className="num mt-1 flex items-baseline gap-1 text-[28px] font-semibold text-ink">
+        {value}
+        <span className="text-[14px] font-medium text-ink2">{unit}</span>
+      </div>
+      <div className="mt-1 text-[13px] text-muted">{sub}</div>
+    </div>
   );
 }
 
@@ -1866,7 +1917,7 @@ function LoadChart({
       />
 
       {/* x-axis labels */}
-      <div className="mt-1 flex justify-between text-[9px] text-faint">
+      <div className="mt-1 flex justify-between text-[12px] text-muted">
         {series.map((s, i) =>
           i % labelStride === 0 || i === series.length - 1 ? (
             <span key={s.date} className="num">
@@ -1878,11 +1929,11 @@ function LoadChart({
 
       {/* per-bar ACWR state-tone strip — at-a-glance fatigue state per day */}
       <div className="mt-3">
-        <div className="eyebrow !text-[9px] !tracking-[0.08em] mb-1 text-faint">
+        <div className="mb-1 text-[13px] text-muted">
           {ui.locale === "it" ? "Stato ACWR (per giorno)" : "ACWR state (per day)"}
         </div>
         <div
-          className="flex h-2 w-full overflow-hidden rounded-[2px] border border-hairline"
+          className="flex h-2 w-full overflow-hidden rounded-[2px] bg-surface3"
           title={ui.locale === "it" ? "Verde = ottimale (0.8–1.3) · Giallo = alto (>1.3) · Rosso = critico (>1.5) · Blu = basso (<0.8)" : "Green = optimal (0.8–1.3) · Yellow = high (>1.3) · Red = critical (>1.5) · Blue = low (<0.8)"}
         >
           {series.map((s) => {
@@ -1938,24 +1989,24 @@ function EventMarkersStrip({
   const inWindow = events.filter((e) => series.some((s) => s.date === e.date));
   if (inWindow.length === 0) return null;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-hairline pt-3 text-[10px] text-muted">
-      <span className="eyebrow !text-[9px] !tracking-[0.08em] text-faint">
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--c-divider)] pt-3 text-[13px] text-muted">
+      <span className="text-muted">
         {ui.locale === "it" ? "Eventi nella finestra" : "Events in window"}:
       </span>
       {inWindow.slice(0, 8).map((e) => (
         <span key={e.id} className="inline-flex items-center gap-1">
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${
+            className={`inline-block h-2 w-2 rounded-full ${
               e.priority === "priority_1" || e.priority === "high" ? "bg-alert" : "bg-primary"
             }`}
           />
           <span className="num">{e.date.slice(5)}</span>
-          <span className="text-faint">·</span>
+          <span className="text-muted">·</span>
           <span className="text-ink2">{e.title}</span>
         </span>
       ))}
       {inWindow.length > 8 && (
-        <span className="text-faint">+{inWindow.length - 8}</span>
+        <span className="text-muted">+{inWindow.length - 8}</span>
       )}
     </div>
   );
@@ -1995,9 +2046,8 @@ function EventsCard({
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={t("train_events")}
-        right={
+      <Section label={t("train_events")}>
+        <div className="flex items-center justify-end">
           <ApexButton
             variant="secondary"
             size="sm"
@@ -2009,8 +2059,8 @@ function EventsCard({
           >
             {ui.locale === "it" ? "Aggiungi" : "Add"}
           </ApexButton>
-        }
-      />
+        </div>
+      </Section>
 
       {loading ? (
         <Loading />
@@ -2051,12 +2101,12 @@ function EventsCard({
               <button
                 type="button"
                 onClick={() => setShowPast((v) => !v)}
-                className="flex w-full items-center justify-between pt-2 text-[11px] text-muted hover:text-ink"
+                className="flex w-full items-center justify-between pt-2 text-[14px] text-muted hover:text-ink"
               >
-                <span className="eyebrow !text-[10px]">
+                <span className="text-[14px] font-medium">
                   {ui.locale === "it" ? `Passati (${past.length})` : `Past (${past.length})`}
                 </span>
-                {showPast ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                {showPast ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
               {showPast &&
                 past.map((e) => (
@@ -2092,30 +2142,28 @@ function EventRow({
   const taperDay = taper - days;
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
+    <div className="rounded-[var(--radius-card)] bg-surface2 p-4">
       <div className="flex items-start gap-3">
-        <div className="num mono flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-[var(--radius-control)] bg-surface text-ink">
-          <span className="text-[10px] leading-none text-faint">
+        <div className="num flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-[var(--radius-control)] bg-surface text-ink">
+          <span className="text-[13px] leading-none text-muted">
             {event.date.slice(5, 7)}
           </span>
-          <span className="text-[14px] font-bold leading-none">{event.date.slice(8, 10)}</span>
+          <span className="text-[18px] font-bold leading-none">{event.date.slice(8, 10)}</span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="truncate text-[13px] font-semibold text-ink">{event.title}</div>
+            <div className="truncate text-[16px] font-semibold text-ink">{event.title}</div>
             <div className="flex shrink-0 items-center gap-1">
               {isPriority && (
-                <Badge tone="warning" dot>
-                  {ui.locale === "it" ? "Priorità" : "Priority"}
-                </Badge>
+                <StatusDot tone="watch" label={ui.locale === "it" ? "Priorità" : "Priority"} />
               )}
               <button
                 type="button"
                 onClick={onEdit}
-                className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface3 hover:text-ink"
+                className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface3 hover:text-ink"
                 aria-label={t("train_edit_event")}
               >
-                <Edit2 size={12} />
+                <Edit2 size={14} />
               </button>
               <ConfirmPopover
                 message={ui.locale === "it" ? "Eliminare questo evento?" : "Delete this event?"}
@@ -2129,15 +2177,15 @@ function EventRow({
               >
                 <button
                   type="button"
-                  className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-alertSoft hover:text-alertText"
+                  className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-alertSoft hover:text-alertText"
                   aria-label={ui.locale === "it" ? "Elimina" : "Delete"}
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={14} />
                 </button>
               </ConfirmPopover>
             </div>
           </div>
-          <div className="num mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          <div className="num mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
             <span>{event.kind}</span>
             <span>·</span>
             <span>
@@ -2164,13 +2212,14 @@ function EventRow({
           </div>
           {inTaper && (
             <div className="mt-2">
-              <Badge tone="warning" dot>
-                {t("train_taper_progress", { n: taperDay, total: taper })}
-              </Badge>
+              <StatusDot
+                tone="watch"
+                label={t("train_taper_progress", { n: taperDay, total: taper })}
+              />
             </div>
           )}
           {event.note && (
-            <div className="mt-1 text-[11px] italic leading-snug text-muted">{event.note}</div>
+            <div className="mt-1 text-[14px] italic leading-snug text-muted">{event.note}</div>
           )}
         </div>
       </div>
@@ -2243,27 +2292,27 @@ function EventForm({
   ];
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface p-3">
+    <div className="rounded-[var(--radius-card)] bg-surface2 p-4">
       <div className="space-y-2.5">
         <div>
-          <div className="eyebrow !text-[10px] mb-1">
+          <div className="mb-1 text-[14px] font-medium text-ink2">
             {ui.locale === "it" ? "Titolo" : "Title"}
           </div>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
             placeholder="Marathon, ski trip…"
           />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <div className="eyebrow !text-[10px] mb-1">Kind</div>
+            <div className="mb-1 text-[14px] font-medium text-ink2">Kind</div>
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value)}
-              className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+              className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
             >
               {kindOptions.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -2273,20 +2322,20 @@ function EventForm({
             </select>
           </div>
           <div>
-            <div className="eyebrow !text-[10px] mb-1">
+            <div className="mb-1 text-[14px] font-medium text-ink2">
               {ui.locale === "it" ? "Data" : "Date"}
             </div>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+              className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
             />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <div className="eyebrow !text-[10px] mb-1">
+            <div className="mb-1 text-[14px] font-medium text-ink2">
               {ui.locale === "it" ? "Priorità" : "Priority"}
             </div>
             <Segmented
@@ -2299,18 +2348,18 @@ function EventForm({
             />
           </div>
           <div>
-            <div className="eyebrow !text-[10px] mb-1">
+            <div className="mb-1 text-[14px] font-medium text-ink2">
               {ui.locale === "it" ? "Taper (gg)" : "Taper (d)"}
             </div>
             <Stepper value={taperDays} onChange={setTaperDays} step={1} min={0} max={21} />
           </div>
         </div>
         <div>
-          <div className="eyebrow !text-[10px] mb-1">{ui.locale === "it" ? "Note" : "Notes"}</div>
+          <div className="mb-1 text-[14px] font-medium text-ink2">{ui.locale === "it" ? "Note" : "Notes"}</div>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
             rows={2}
           />
         </div>
@@ -2427,29 +2476,28 @@ function FeedbackCard({
 
   return (
     <Card>
-      <CardHeader
-        eyebrow={t("train_feedback")}
-        right={
-          <span className="num text-[10px] text-faint">
+      <Section label={t("train_feedback")}>
+        <div className="flex items-center justify-end">
+          <span className="num text-[14px] text-muted">
             {ui.locale === "it" ? "oggi" : "today"} · {fmtDate(today, ui.locale)}
           </span>
-        }
-      />
+        </div>
+      </Section>
 
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <div className="eyebrow !text-[10px] mb-2">{t("train_rpe_label")}</div>
+            <div className="mb-2 text-[14px] font-medium text-ink2">{t("train_rpe_label")}</div>
             <div className="flex flex-wrap gap-1.5">
               {Array.from({ length: 10 }, (_, i) => i + 1).map((r) => (
                 <button
                   key={r}
                   type="button"
                   onClick={() => setRpe(rpe === r ? null : r)}
-                  className={`num h-7 rounded-[var(--radius-control)] border px-2 text-[12px] font-semibold transition-colors ${
+                  className={`num h-7 rounded-[var(--radius-control)] px-2 text-[14px] font-semibold transition-colors ${
                     rpe === r
-                      ? "border-primary bg-primarySoft text-primaryText"
-                      : "border-hairline bg-surface text-muted hover:bg-surface2"
+                      ? "bg-primarySoft text-primaryText"
+                      : "bg-surface2 text-muted hover:bg-surface3 hover:text-ink2"
                   }`}
                 >
                   {r}
@@ -2458,17 +2506,17 @@ function FeedbackCard({
             </div>
           </div>
           <div>
-            <div className="eyebrow !text-[10px] mb-2">{t("train_soreness")}</div>
+            <div className="mb-2 text-[14px] font-medium text-ink2">{t("train_soreness")}</div>
             <div className="flex flex-wrap gap-1.5">
               {Array.from({ length: 5 }, (_, i) => i + 1).map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSoreness(soreness === s ? null : s)}
-                  className={`num h-7 rounded-[var(--radius-control)] border px-2.5 text-[12px] font-semibold transition-colors ${
+                  className={`num h-7 rounded-[var(--radius-control)] px-2.5 text-[14px] font-semibold transition-colors ${
                     soreness === s
-                      ? "border-primary bg-primarySoft text-primaryText"
-                      : "border-hairline bg-surface text-muted hover:bg-surface2"
+                      ? "bg-primarySoft text-primaryText"
+                      : "bg-surface2 text-muted hover:bg-surface3 hover:text-ink2"
                   }`}
                 >
                   {s}
@@ -2478,7 +2526,7 @@ function FeedbackCard({
           </div>
         </div>
 
-        <Hairline className="!bg-hairline/40" />
+        <Hairline className="!bg-[var(--c-divider)]" />
 
         <div>
           <label className="flex cursor-pointer items-center gap-2.5">
@@ -2488,45 +2536,41 @@ function FeedbackCard({
               onChange={(e) => setInjuryFlag(e.target.checked)}
               className="h-4 w-4 rounded border-hairline2"
             />
-            <span className="text-[12px] font-medium text-ink2">
+            <span className="text-[14px] font-medium text-ink2">
               {t("train_injury_flag")}
             </span>
           </label>
           {injuryFlag && (
             <div className="mt-2.5">
-              <div className="eyebrow !text-[10px] mb-1.5">{t("train_body_area")}</div>
+              <div className="mb-1.5 text-[14px] font-medium text-ink2">{t("train_body_area")}</div>
               <input
                 type="text"
                 value={bodyArea}
                 onChange={(e) => setBodyArea(e.target.value)}
                 placeholder="Knee, lower back, right shoulder…"
-                className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+                className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
               />
             </div>
           )}
         </div>
 
         <div>
-          <div className="eyebrow !text-[10px] mb-1.5">{t("train_notes")}</div>
+          <div className="mb-1.5 text-[14px] font-medium text-ink2">{t("train_notes")}</div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1.5 text-[14px] text-ink"
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ApexButton onClick={submit} disabled={saving || (rpe == null && soreness == null && !notes)}>
             {saving
-              ? ui.locale === "it"
-                ? "Salvo…"
-                : "Saving…"
-              : ui.locale === "it"
-              ? "Salva"
-              : "Save"}
+              ? (ui.locale === "it" ? "Salvo…" : "Saving…")
+              : (ui.locale === "it" ? "Salva" : "Save")}
           </ApexButton>
-          <span className="text-[11px] text-faint">
+          <span className="text-[13px] text-muted">
             {/* TODO i18n: train_feedback_local_hint */}
             {ui.locale === "it"
               ? "Salvato in questo dispositivo (nessun modello Feedback nello schema)."
@@ -2536,32 +2580,30 @@ function FeedbackCard({
       </div>
 
       <div className="mt-5">
-        <Eyebrow className="!text-[10px] mb-2">
+        <div className="mb-2 text-[14px] font-medium text-ink2">
           {ui.locale === "it" ? "Cronologia" : "History"}
-        </Eyebrow>
+        </div>
         {loading ? (
           <Loading />
         ) : history.length === 0 ? (
           <Empty title={t("train_no_feedback")} />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-[var(--c-divider)]">
             {history.map((f) => (
               <li
                 key={f.id}
-                className="flex items-start gap-3 rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[12px]"
+                className="flex flex-wrap items-center gap-3 py-2.5 text-[14px]"
               >
-                <span className="num mono shrink-0 text-faint">{fmtDate(f.date, ui.locale)}</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {f.rpe > 0 && <Badge tone="neutral">RPE {f.rpe}</Badge>}
+                <span className="num shrink-0 text-muted">{fmtDate(f.date, ui.locale)}</span>
+                <div className="flex flex-wrap items-center gap-3">
+                  {f.rpe > 0 && <span className="text-ink2">RPE {f.rpe}</span>}
                   {f.soreness > 0 && (
-                    <Badge tone="neutral">
+                    <span className="text-ink2">
                       {ui.locale === "it" ? "Indol." : "Sore"} {f.soreness}
-                    </Badge>
+                    </span>
                   )}
                   {f.injuryFlag && (
-                    <Badge tone="alert" dot>
-                      {f.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")}
-                    </Badge>
+                    <StatusDot tone="alert" label={f.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")} />
                   )}
                   {f.notes && <span className="text-muted">· {f.notes}</span>}
                 </div>

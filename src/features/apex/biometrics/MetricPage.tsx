@@ -1,33 +1,40 @@
 "use client";
 
 /**
- * Apex Health — Metric detail.
+ * Apex Health — Metric detail (re-skin per ui-language/RULES.md).
  *
- * Route purpose: "How has this metric changed?"
+ * Reference: OverviewPage.tsx — hero + StatusDot + InteractiveLineChart +
+ * rows for stats.
  *
- * The detail view shows one metric across a selectable time window (7 / 28 /
- * 90 days) with a hero stat + 7d/28d deltas, a four-up stat pod row, an inline
- * SVG line chart (with baseline reference and Y / X axes), a calm context
- * panel that frames the latest value against the personal 28-day baseline,
- * and a footer carrying source provenance and a data-completeness note.
+ * Layout:
+ *   - BackLink, page title = metric name (with InfoButton), a page
+ *     sentence ("Your HRV over the last 30 days"), range Segmented, CSV /
+ *     print buttons.
+ *   - Hero card: the current value at 40px text-ink + a StatusDot + two
+ *     DeltaChips (7d, 28d).
+ *   - Chart card: InteractiveLineChart with the baseline band + the latest
+ *     point marked. ChartInfoBadge next to the title.
+ *   - Stats card: rows (Mean, Min, Max, Baseline) — no bordered tiles.
+ *   - Context panel: a calm paragraph framing the latest value against
+ *     the personal baseline.
+ *   - Footer: source + data completeness.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { useT, useI18n } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { metricCatalog, getMetricTrend } from "@/lib/apex/data";
 import {
   Card,
-  CardHeader,
-  PageHeader,
+  Section,
+  StatusDot,
+  Row,
+  PageSentence,
+  ChartFrame,
   BigStat,
-  StatPod,
-  DeltaChip,
-  SourcePill,
   BackLink,
   Segmented,
-  Eyebrow,
+  DeltaChip,
   ApexButton,
   InfoButton,
   MetricInfoContent,
@@ -37,14 +44,13 @@ import {
   toneFor,
   type DataTone,
 } from "@/components/apex/kit";
+import { InteractiveLineChart, ChartInfoBadge, ChartLegend } from "@/components/apex/charts";
 import { fmtNum, fmtDate, fmtDelta } from "@/lib/apex/format";
 import { getMetricExplanation } from "@/lib/apex/metricInfo";
-import type { MetricTrend } from "@/lib/apex/types";
 import { exportCsv } from "@/lib/apex/csv";
 
 /* ----------------------------------------------------- metric meta helpers */
 
-/** Per-metric semantic direction — what counts as "good". */
 const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   hrv: "up",
   hrv_norm: "up",
@@ -63,14 +69,6 @@ const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   skin_temp: "none",
 };
 
-/**
- * Plan §5 finding: the Sleep Score metric page used to be titled "Readiness"
- * because a `LABEL_KEYS.sleep_score` mapping pointed at the readiness label.
- * The Next.js catalog (`metricCatalog` in lib/apex/data.ts) is now correct
- * (`sleep_score` → "Sleep Score", `readiness` → "Readiness Score"), but this
- * guard ensures the two are never swapped even if the catalog is edited
- * incorrectly. It only overrides when the catalog label disagrees.
- */
 const LABEL_GUARD: Record<string, string> = {
   sleep_score: "Sleep Score",
   readiness: "Readiness Score",
@@ -82,20 +80,11 @@ function decimalsFor(key: string): number {
   return 0;
 }
 
-/**
- * State-based chart color — per the user's reform, DATA color reflects STATE
- * (in-range / abnormal / out-of-range), not the accent. The accent is reserved
- * for non-data UI (active nav, buttons, focus rings, brand).
- *
- * Returns a CSS `var(--c-…)` token. Falls back to a neutral muted line when
- * the metric has no clean state interpretation.
- */
-function stateColorFor(
-  key: string,
-  value: number | null,
-  meta: { group: string },
-): string {
-  if (value === null || !Number.isFinite(value)) return "var(--c-text-faint)";
+/** State-based chart color. Per RULES principle 5, the data color reflects
+ *  state (good / watch / alert), not the accent. The accent is reserved
+ *  for non-data UI. Returns a CSS `var(--c-…)` token. */
+function stateColorFor(key: string, value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "var(--c-text-3)";
   let tone: DataTone;
   switch (key) {
     case "readiness":
@@ -110,56 +99,63 @@ function stateColorFor(
       tone = rangeTone(value, 95, 100);
       break;
     case "respiration":
-      // 12–20 brpm is the normal adult range.
       tone = rangeTone(value, 12, 20);
       break;
     case "sleep_efficiency":
       tone = rangeTone(value, 85, 100);
       break;
     case "vo2max":
-      // Population bands are sex/age dependent; treat as positive (any
-      // value is fine for an otherwise-trained adult).
       tone = "positive";
       break;
     case "skin_temp":
-      // No direction; the variance itself is the signal.
       tone = "muted";
       break;
     default:
-      // For metrics where "good" depends on direction (hrv up, resting_hr
-      // down, weight down), there's no universal reference range — use a
-      // neutral muted line. The DeltaChip already encodes the direction.
       tone = "muted";
   }
   switch (tone) {
     case "positive":
-      return "var(--c-positive)";
+      return "var(--c-ok)";
     case "warning":
-      return "var(--c-warning)";
+      return "var(--c-watch)";
     case "alert":
       return "var(--c-alert)";
     default:
-      return "var(--c-text-muted)";
+      return "var(--c-text-3)";
   }
 }
 
-function colorForGroup(group: string): string {
-  switch (group) {
+/** Map a metric value to a DataTone for the hero StatusDot. */
+function stateToneFor(key: string, value: number | null): DataTone {
+  if (value === null || !Number.isFinite(value)) return "muted";
+  switch (key) {
+    case "readiness":
     case "recovery":
-      return "var(--c-positive)";
-    case "performance":
-      return "var(--c-positive)";
-    case "cardio":
-      return "var(--c-primary)";
-    case "sleep":
-      return "var(--c-primary)";
-    case "body":
-      return "var(--c-text-faint)";
-    case "lab":
-      return "var(--c-text-faint)";
+    case "sleep_score":
+      return scoreTone(value);
+    case "acwr":
+      return acwrTone(value);
+    case "spo2":
+      return rangeTone(value, 95, 100);
+    case "respiration":
+      return rangeTone(value, 12, 20);
+    case "sleep_efficiency":
+      return rangeTone(value, 85, 100);
+    case "vo2max":
+      return "positive";
+    case "skin_temp":
+      return "muted";
     default:
-      return "var(--c-primary)";
+      return "muted";
   }
+}
+
+function statusWord(t: DataTone): string {
+  return t === "positive" ? "Good" : t === "warning" ? "Watch" : t === "alert" ? "Alert" : "—";
+}
+
+function statusDot(t: DataTone): "neutral" | "ok" | "watch" | "alert" {
+  return t === "positive" ? "ok" : t === "warning" ? "watch" : t === "alert" ? "alert" : "neutral";
 }
 
 type RangeKey = "7" | "28" | "90";
@@ -168,320 +164,71 @@ function daysFor(r: RangeKey): number {
   return r === "7" ? 7 : r === "28" ? 28 : 90;
 }
 
-/* ----------------------------------------------------------- MetricChart */
-
-function MetricChart({
-  trend,
-  color,
-  dp,
-  baselineLabel,
-  emptyLabel,
-}: {
-  trend: MetricTrend;
-  color: string;
-  dp: number;
-  baselineLabel: string;
-  emptyLabel: string;
-}) {
-  const { locale } = useI18n();
-  const ref = useRef<HTMLDivElement>(null);
-  const [w, setW] = useState(760);
-  const H = 260;
-  const pad = { top: 16, right: 24, bottom: 32, left: 56 };
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0].contentRect;
-      setW(Math.max(320, Math.floor(r.width)));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const plotW = Math.max(1, w - pad.left - pad.right);
-  const plotH = H - pad.top - pad.bottom;
-  const pts = trend.points;
-
-  const validIdxs: number[] = [];
-  for (let i = 0; i < pts.length; i++) {
-    if (pts[i].value !== null && Number.isFinite(pts[i].value as number)) {
-      validIdxs.push(i);
-    }
-  }
-
-  if (validIdxs.length < 2) {
-    return (
-      <div
-        ref={ref}
-        className="flex items-center justify-center text-[12px] text-muted"
-        style={{ height: H }}
-      >
-        {emptyLabel}
-      </div>
-    );
-  }
-
-  const validVals = validIdxs.map((i) => pts[i].value as number);
-  let minV = Math.min(...validVals);
-  let maxV = Math.max(...validVals);
-  const span = maxV - minV || 1;
-  minV -= span * 0.1;
-  maxV += span * 0.1;
-  const range = maxV - minV || 1;
-
-  const n = pts.length;
-  const xFor = (i: number) => pad.left + (n === 1 ? 0 : (i / (n - 1)) * plotW);
-  const yFor = (v: number) => pad.top + plotH - ((v - minV) / range) * plotH;
-
-  // Line + area paths
-  let lineD = "";
-  let firstX = 0;
-  let lastX = 0;
-  let lastY = 0;
-  validIdxs.forEach((idx, k) => {
-    const x = xFor(idx);
-    const y = yFor(pts[idx].value as number);
-    if (k === 0) {
-      lineD += `M${x.toFixed(1)},${y.toFixed(1)}`;
-      firstX = x;
-    } else {
-      lineD += ` L${x.toFixed(1)},${y.toFixed(1)}`;
-    }
-    lastX = x;
-    lastY = y;
-  });
-  const areaD = `${lineD} L${lastX.toFixed(1)},${(pad.top + plotH).toFixed(
-    1
-  )} L${firstX.toFixed(1)},${(pad.top + plotH).toFixed(1)} Z`;
-
-  // Baseline reference (28d-equivalent baseline from stats)
-  const baseline = trend.stats.baseline;
-  const baselineY =
-    baseline !== null && baseline >= minV && baseline <= maxV
-      ? yFor(baseline)
-      : null;
-
-  // Y axis ticks: max, mid, min
-  const yTicks = [
-    { v: maxV, y: pad.top },
-    { v: (maxV + minV) / 2, y: pad.top + plotH / 2 },
-    { v: minV, y: pad.top + plotH },
-  ];
-
-  // X axis ticks: start, middle, end
-  const midIdx = Math.floor((n - 1) / 2);
-  const xTicks = [
-    { i: 0, anchor: "start" as const, label: fmtDate(pts[0].date, locale) },
-    {
-      i: midIdx,
-      anchor: "middle" as const,
-      label: fmtDate(pts[midIdx].date, locale),
-    },
-    {
-      i: n - 1,
-      anchor: "end" as const,
-      label: fmtDate(pts[n - 1].date, locale),
-    },
-  ];
-
-  return (
-    <div ref={ref} className="w-full" style={{ height: H }}>
-      <svg
-        width={w}
-        height={H}
-        viewBox={`0 0 ${w} ${H}`}
-        className="block"
-        aria-label={`${trend.label} trend`}
-        role="img"
-      >
-        {/* Y axis grid + labels */}
-        {yTicks.map((yt, i) => (
-          <g key={`y-${i}`}>
-            <line
-              x1={pad.left}
-              x2={w - pad.right}
-              y1={yt.y}
-              y2={yt.y}
-              stroke="var(--c-hairline)"
-              strokeWidth={1}
-              shapeRendering="crispEdges"
-            />
-            <text
-              x={pad.left - 8}
-              y={yt.y + 3.5}
-              textAnchor="end"
-              fontSize={10}
-              className="mono"
-              fill="var(--c-text-muted)"
-            >
-              {fmtNum(yt.v, dp)}
-            </text>
-          </g>
-        ))}
-
-        {/* Baseline reference line */}
-        {baselineY !== null && (
-          <g>
-            <line
-              x1={pad.left}
-              x2={w - pad.right}
-              y1={baselineY}
-              y2={baselineY}
-              stroke={color}
-              strokeWidth={1}
-              strokeDasharray="4 4"
-              opacity={0.55}
-            />
-            <text
-              x={w - pad.right}
-              y={baselineY - 5}
-              textAnchor="end"
-              fontSize={9}
-              className="eyebrow"
-              fill="var(--c-text-muted)"
-            >
-              {baselineLabel}
-            </text>
-          </g>
-        )}
-
-        {/* Area fill */}
-        <path d={areaD} fill={color} fillOpacity={0.07} stroke="none" />
-
-        {/* Trend line */}
-        <path
-          d={lineD}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.75}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Last point */}
-        <circle
-          cx={lastX}
-          cy={lastY}
-          r={3.25}
-          fill={color}
-          stroke="var(--c-surface)"
-          strokeWidth={1.5}
-        />
-
-        {/* X axis tick labels */}
-        {xTicks.map((xt, i) => (
-          <text
-            key={`x-${i}`}
-            x={xFor(xt.i)}
-            y={H - pad.bottom + 18}
-            textAnchor={xt.anchor}
-            fontSize={10}
-            className="mono"
-            fill="var(--c-text-muted)"
-          >
-            {xt.label}
-          </text>
-        ))}
-      </svg>
-    </div>
-  );
+function rangeLabel(r: RangeKey): string {
+  return r === "7" ? "7 days" : r === "28" ? "28 days" : "90 days";
 }
 
 /* ----------------------------------------------------------- MetricPage */
 
-export function MetricPage() {
-  const t = useT();
+export function MetricPage({
+  range: rangeProp,
+  setRange: setRangeProp,
+}: {
+  range?: RangeKey;
+  setRange?: (r: RangeKey) => void;
+} = {}) {
   const ui = useApexUi();
-  const [range, setRange] = useState<RangeKey>("90");
+  const [internalRange, setInternalRange] = useState<RangeKey>("90");
+  const range = rangeProp ?? internalRange;
+  const setRange = setRangeProp ?? setInternalRange;
+
   const key = ui.selectedMetricKey ?? "hrv";
 
   const meta = useMemo(() => {
     const found = metricCatalog.find((m) => m.key === key) ?? metricCatalog[0];
-    // Plan §5 title guard: ensure sleep_score / readiness are never mislabeled.
     const guard = LABEL_GUARD[key];
     return guard && found.label !== guard ? { ...found, label: guard } : found;
   }, [key]);
-  const days = daysFor(range);
-  const trend = useMemo(() => getMetricTrend(key, days), [key, days]);
+  const trend = useMemo(() => getMetricTrend(key, daysFor(range)), [key, range]);
 
   const goodWhen = GOOD_WHEN[key] ?? "up";
   const last = trend.stats.last;
   const baseline = trend.stats.baseline;
   const dp = decimalsFor(key);
 
-  // Plan: data color reflects STATE (not the accent). The chart line uses a
-  // state-derived color; the hero BigStat uses the same tone where it maps
-  // cleanly (score / range / ACWR), and falls back to neutral ink otherwise.
-  const chartColor = stateColorFor(key, last, meta);
-  const heroTone = (() => {
-    if (last === null || !Number.isFinite(last)) return "ink";
-    let tone: DataTone;
-    switch (key) {
-      case "readiness":
-      case "recovery":
-      case "sleep_score":
-        tone = scoreTone(last);
-        break;
-      case "acwr":
-        tone = acwrTone(last);
-        break;
-      case "spo2":
-        tone = rangeTone(last, 95, 100);
-        break;
-      case "respiration":
-        tone = rangeTone(last, 12, 20);
-        break;
-      case "sleep_efficiency":
-        tone = rangeTone(last, 85, 100);
-        break;
-      default:
-        return "ink";
-    }
-    return toneFor(tone);
-  })();
+  const chartColor = stateColorFor(key, last);
+  const heroTone = stateToneFor(key, last);
 
-  // Personal-baseline framing
-  const vsBaseline =
-    last !== null && baseline !== null ? last - baseline : null;
+  const vsBaseline = last !== null && baseline !== null ? last - baseline : null;
 
-  // Data completeness — count of non-null points / total
   const dataCount = trend.points.filter((p) => p.value !== null).length;
   const totalDays = trend.points.length;
 
-  return (
-    <div className="mx-auto max-w-[1240px] px-1 py-2">
-      <div className="mb-4">
-        <BackLink onClick={() => ui.setView("biometrics")}>
-          {t("biometrics.back_to_catalog")}
-        </BackLink>
-      </div>
+  const pageSentence = `${meta.label} over the last ${rangeLabel(range).toLowerCase()}`;
 
-      <PageHeader
-        title={
-          <span className="flex items-center gap-1.5">
-            <span>{meta.label}</span>
-            <InfoButton title={meta.label}>
-              <MetricInfoContent {...getMetricExplanation(key)} />
-            </InfoButton>
-          </span>
-        }
-        subtitle={
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <SourcePill>{meta.source}</SourcePill>
-            <span className="eyebrow">{t(`biometrics.group_${meta.group}`)}</span>
+  return (
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ====== Header ====== */}
+      <div>
+        <BackLink onClick={() => ui.setView("biometrics")}>Back to body signals</BackLink>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="page-title flex items-center gap-2">
+              <span>{meta.label}</span>
+              <InfoButton title={meta.label}>
+                <MetricInfoContent {...getMetricExplanation(key)} />
+              </InfoButton>
+            </h1>
+            <PageSentence className="mt-2">{pageSentence}</PageSentence>
           </div>
-        }
-        actions={
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <ApexButton
               variant="ghost"
               size="sm"
               onClick={() => window.print()}
               icon={<Download size={13} />}
             >
-              <span className="hidden sm:inline">{t("activities.export")}</span>
+              <span className="hidden sm:inline">Print</span>
             </ApexButton>
             <ApexButton
               variant="ghost"
@@ -490,7 +237,7 @@ export function MetricPage() {
                 exportCsv(
                   `apex-metric-${meta.key}-${range}d`,
                   ["Date", `${meta.label} (${meta.unit})`],
-                  trend.points.map((p) => [p.date, p.value ?? ""])
+                  trend.points.map((p) => [p.date, p.value ?? ""]),
                 );
               }}
               icon={<Download size={13} />}
@@ -501,128 +248,130 @@ export function MetricPage() {
               value={range}
               onChange={(v) => setRange(v)}
               options={[
-                { value: "7", label: t("biometrics.range_7d") },
-                { value: "28", label: t("biometrics.range_28d") },
-                { value: "90", label: t("biometrics.range_90d") },
+                { value: "7", label: "7d" },
+                { value: "28", label: "28d" },
+                { value: "90", label: "90d" },
               ]}
             />
           </div>
-        }
-      />
-
-      {/* Hero block */}
-      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="flex flex-col justify-between">
-          <Eyebrow>{t("biometrics.last")}</Eyebrow>
-          <div className="mt-2 flex items-end gap-4">
-            <BigStat
-              size="xl"
-              value={fmtNum(last, dp)}
-              unit={meta.unit}
-              tone={heroTone}
-            />
-            <div className="mb-1.5 flex flex-col gap-1.5">
-              <DeltaChip
-                delta={trend.stats.delta_7d}
-                goodWhen={goodWhen}
-                suffix={t("overview.vs7d")}
-              />
-              <DeltaChip
-                delta={trend.stats.delta_28d}
-                goodWhen={goodWhen}
-                suffix={t("overview.vs28d")}
-              />
-            </div>
-          </div>
-          {vsBaseline !== null && (
-            <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-1.5">
-              <DeltaChip
-                delta={vsBaseline}
-                goodWhen={goodWhen}
-                compact
-                showSuffix={false}
-              />
-              <span className="num text-[11px] text-muted">
-                {t("overview.vs_baseline")}
-              </span>
-            </div>
-          )}
-        </Card>
-
-        {/* Stats grid — 4 pods */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-          <StatPod
-            label={t("biometrics.mean")}
-            value={fmtNum(trend.stats.mean, dp)}
-            unit={meta.unit}
-          />
-          <StatPod
-            label={t("biometrics.min")}
-            value={fmtNum(trend.stats.min, dp)}
-            unit={meta.unit}
-          />
-          <StatPod
-            label={t("biometrics.max")}
-            value={fmtNum(trend.stats.max, dp)}
-            unit={meta.unit}
-          />
-          <StatPod
-            label={t("biometrics.baseline")}
-            value={fmtNum(trend.stats.baseline, dp)}
-            unit={meta.unit}
-          />
         </div>
       </div>
 
-      {/* Main chart */}
-      <Card className="mt-4" pad={false}>
-        <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
-          <Eyebrow>
-            {t(`biometrics.range_${range}d`)} · {meta.label}
-          </Eyebrow>
-          <span className="num text-[11px] text-faint">
-            {fmtDate(trend.start_date)} → {fmtDate(trend.end_date)}
-          </span>
-        </div>
-        <div className="px-2 pb-2">
-          <MetricChart
-            trend={trend}
-            color={chartColor}
-            dp={dp}
-            baselineLabel={t("biometrics.baseline")}
-            emptyLabel={t("biometrics.no_data")}
-          />
-        </div>
-      </Card>
-
-      {/* Context panel */}
-      <Card className="mt-4">
-        <CardHeader eyebrow={t("biometrics.view_trend")} title={meta.label} />
-        <p className="text-[13px] leading-[20px] text-ink2">
-          {meta.description}
-        </p>
-        {vsBaseline !== null && (
-          <div className="mt-3 flex items-center gap-2 text-[12px] text-muted">
-            <span className="num font-semibold text-ink2">
-              {fmtDelta(vsBaseline, meta.unit, dp)}
-            </span>
-            <span>{t("overview.vs_baseline")}</span>
+      {/* ====== Hero — current value (40px text-ink) + StatusDot ====== */}
+      <Card>
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[14px] font-medium text-ink2">Latest reading</div>
+            <div className="num mt-2 flex items-baseline gap-2 text-ink">
+              <span className="text-[40px] font-semibold leading-none">{fmtNum(last, dp)}</span>
+              <span className="text-[16px] text-ink2">{meta.unit}</span>
+            </div>
+            <div className="mt-3">
+              <StatusDot tone={statusDot(heroTone)} label={statusWord(heroTone)} />
+            </div>
           </div>
-        )}
+          <div className="flex flex-col gap-2 sm:items-end">
+            <DeltaChip
+              delta={trend.stats.delta_7d}
+              goodWhen={goodWhen}
+              suffix="vs 7d"
+            />
+            <DeltaChip
+              delta={trend.stats.delta_28d}
+              goodWhen={goodWhen}
+              suffix="vs 28d"
+            />
+            {vsBaseline !== null && (
+              <div className="num text-[14px] text-ink3">
+                {fmtDelta(vsBaseline, meta.unit, dp)} vs baseline
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
 
-      {/* Footer — provenance + data completeness */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-3 text-[11px] text-muted">
+      {/* ====== Chart (principle 8: one line + baseline + latest point) ====== */}
+      <Card>
+        <Section label={`${rangeLabel(range)} · ${meta.label}`}>
+          <ChartFrame
+            info={
+              <ChartInfoBadge
+                text={
+                  <span>
+                    <strong className="text-ink2">{meta.label}</strong> over the last {rangeLabel(range).toLowerCase()}.
+                    {" "}The dashed line is your 28-day baseline; the latest point is marked.
+                  </span>
+                }
+              />
+            }
+          >
+            <InteractiveLineChart
+              categories={trend.points.map((p) => ({ label: fmtDate(p.date, ui.locale) }))}
+              series={[
+                {
+                  name: meta.label,
+                  color: chartColor,
+                  values: trend.points.map((p) => p.value),
+                },
+              ]}
+              baseline={baseline}
+              baselineLabel="28-day baseline"
+              height={220}
+              formatValue={(v) => (v === null ? "—" : `${fmtNum(v, dp)} ${meta.unit}`)}
+            />
+            <ChartLegend
+              className="mt-3"
+              items={[
+                { name: meta.label, color: chartColor },
+              ]}
+            />
+            <div className="num mt-2 text-[12px] text-ink3">
+              {fmtDate(trend.start_date, ui.locale)} → {fmtDate(trend.end_date, ui.locale)}
+            </div>
+          </ChartFrame>
+        </Section>
+      </Card>
+
+      {/* ====== Stats — rows, not bordered tiles ====== */}
+      <Card pad={false}>
+        <div className="px-7 pt-7 pb-3">
+          <div className="text-[14px] font-medium text-ink2">Summary</div>
+        </div>
+        <div className="px-7 pb-7 divide-y divide-[var(--c-divider)]">
+          <Row label="Mean" value={fmtNum(trend.stats.mean, dp)} unit={meta.unit} />
+          <Row label="Min" value={fmtNum(trend.stats.min, dp)} unit={meta.unit} />
+          <Row label="Max" value={fmtNum(trend.stats.max, dp)} unit={meta.unit} />
+          <Row label="Baseline" value={fmtNum(trend.stats.baseline, dp)} unit={meta.unit} />
+        </div>
+      </Card>
+
+      {/* ====== Context panel ====== */}
+      <Card>
+        <Section label="What this measures">
+          <p className="text-[14px] leading-[22px] text-ink2">
+            {meta.description}
+          </p>
+          {vsBaseline !== null && (
+            <div className="mt-3 flex items-center gap-2 text-[14px] text-ink2">
+              <span className="num font-semibold text-ink">
+                {fmtDelta(vsBaseline, meta.unit, dp)}
+              </span>
+              <span>vs your baseline</span>
+            </div>
+          )}
+        </Section>
+      </Card>
+
+      {/* ====== Footer — provenance + data completeness ====== */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4 text-[14px] text-ink3">
         <div className="flex items-center gap-2">
-          <SourcePill>{meta.source}</SourcePill>
-          <span className="eyebrow">{t("biometrics.source")}</span>
+          <span>Source</span>
+          <span className="num font-medium text-ink2">{meta.source}</span>
         </div>
         <div className="num flex items-center gap-2">
-          <span>
-            {dataCount} / {totalDays}
-          </span>
-          <span className="text-faint">·</span>
-          <span>{t(`biometrics.range_${range}d`)}</span>
+          <span>{dataCount} / {totalDays} days</span>
+          <span>·</span>
+          <span>{rangeLabel(range)}</span>
         </div>
       </div>
     </div>

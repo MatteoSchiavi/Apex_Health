@@ -1,68 +1,45 @@
 "use client";
 
 /**
- * Apex Health — Sleep list (strict redesign per plan §4).
+ * Apex Health — Sleep list (re-skin per ui-language/RULES.md).
+ *
+ * Reference: OverviewPage.tsx — sentence-case labels, status dots not
+ * coloured numbers, rows not cards, one chart per principle 8.
  *
  * Layout:
- *   Header: title + range Segmented (7 / 30 / 90 days)
- *   Row 1, Summary (col-12): four stats for the range —
- *     - avg duration with a DeltaChip against the sleep target (default 8h)
- *     - avg sleep score (scoreTone)
- *     - regularity: circular SD of bedtime + wake (minutes), with the two
- *       SDs broken out in the subtitle
- *     - sleep debt: cumulative shortfall vs target over the last 7 nights
- *   Row 2, Duration & timing (col-12 xl:col-8 + col-12 xl:col-4)
- *     - Left: nightly duration bars + target line (8h) + sleep-score line
- *       on a second axis. Toggle switches bars to stacked stage
- *       composition (deep / light / REM).
- *     - Right: timing card — bedtime → wake time per night as floating-bar
- *       (range) chart over the date axis, with median bedtime, median wake
- *       and spread in the header. Hidden under 5 nights.
- *   Row 3, Nights (col-12): compact TABLE — date, bed → wake, duration,
- *     score, stage bar, resting HR and HRV deviation per night.
- *     "Load more" button below.
- *
- * All numbers are server-computed (or shipped as part of the response):
- *   - /api/sleep?days=N           → items (each with resting_hr + hrv_deviation_ms)
- *                                  + baseline block (30-day stats)
- *   - /api/sleep/summary?days=N   → averages, regularity SDs, median bed/wake,
- *                                  sleep debt, target_s
- *
- * Coherence law: every visual element is composed from the shared kit
- * (Card, BigStat, DeltaChip, Segmented, Badge, Eyebrow, Empty, Loading,
- * ApexButton, Hairline, InfoButton, MetricInfoContent). Data tone comes
- * from scoreTone() / rangeTone() / hrvDevTone() / toneFor() — never bg-primary
- * on a data value or graph.
+ *   - Page title "Sleep" + a page sentence derived from the avg score.
+ *   - Summary row (no bordered tiles): avg duration · avg score · regularity
+ *     · sleep debt. Each is a 14px sentence-case label, a 40px text-ink
+ *     number, and a StatusDot.
+ *   - Sleep score trend: InteractiveLineChart wrapped in ChartFrame. The
+ *     "your normal" band is the 30-day mean; the latest point is marked.
+ *   - Nights list: compact rows. Each row = date · bed→wake · duration ·
+ *     score (with StatusDot) · stage mini-bar. No borders.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import {
   Card,
-  CardHeader,
-  PageHeader,
+  Section,
+  StatusDot,
+  PageSentence,
+  ChartFrame,
   BigStat,
-  DeltaChip,
-  Badge,
-  Eyebrow,
+  PageHeader,
   Empty,
   Loading,
   Segmented,
   ApexButton,
   scoreTone,
-  hrvDevTone,
-  toneFor,
   type DataTone,
 } from "@/components/apex/kit";
+import { InteractiveLineChart, ChartInfoBadge, ChartLegend } from "@/components/apex/charts";
 import { fmtHours, fmtNum, fmtClock, fmtDateLong } from "@/lib/apex/format";
 import {
   STAGE_VARS,
   DEFAULT_SLEEP_TARGET_S,
-  minutesOfDayUTC,
   timeAsleepS,
-  sleepWindowS,
-  fmtMinutes,
   type StageKey,
 } from "@/lib/apex/sleepHelpers";
 
@@ -153,7 +130,6 @@ interface SleepSummaryResponse {
 }
 
 export function SleepPage() {
-  const t = useT();
   const ui = useApexUi();
   const [range, setRange] = useState<RangeKey>("30d");
   const [items, setItems] = useState<SessionItem[]>([]);
@@ -196,9 +172,6 @@ export function SleepPage() {
 
   const loadMore = useCallback(() => {
     setLoadingMore(true);
-    // No additional fetch — the list is already fully loaded for the
-    // window. "Load more" just expands the rendered slice. This keeps
-    // the table compact while preserving every night in the window.
     setTimeout(() => {
       setShown((s) => Math.min(items.length, s + PAGE_SIZE));
       setLoadingMore(false);
@@ -206,23 +179,26 @@ export function SleepPage() {
   }, [items.length]);
 
   // ─────────────────────────────────────────────────────────────── derived
-  // Items are most-recent-first from the API; the chart wants oldest →
-  // newest (left → right) so reverse a copy.
-  const chartItems = useMemo(
-    () => [...items].reverse(),
-    [items],
-  );
+  const chartItems = useMemo(() => [...items].reverse(), [items]);
+  const visibleItems = useMemo(() => items.slice(0, shown), [items, shown]);
 
-  const visibleItems = useMemo(
-    () => items.slice(0, shown),
-    [items, shown],
-  );
+  // Page sentence (principle 1) — derived from the avg score.
+  const pageSentence = useMemo(() => {
+    const avg = summary?.avg_score ?? null;
+    const count = summary?.count ?? 0;
+    if (count === 0) return "No sleep data in this range yet. Sync a source to see your nights.";
+    if (avg === null) return `You have ${count} ${count === 1 ? "night" : "nights"} here, but none are scored yet.`;
+    const tone = scoreTone(avg);
+    if (tone === "positive") return `Your sleep is holding up — averaging ${fmtNum(avg, 0)}/100 across ${count} nights.`;
+    if (tone === "warning") return `Your sleep is fair — averaging ${fmtNum(avg, 0)}/100. A consistent bedtime would lift it.`;
+    return `Your sleep is below your norm — averaging ${fmtNum(avg, 0)}/100. Prioritise an earlier bedtime.`;
+  }, [summary]);
 
   // ─────────────────────────────────────────────────────────────────── render
   if (loading && !items.length) {
     return (
-      <div className="mx-auto max-w-[1240px]">
-        <HeaderShell range={range} setRange={setRange} />
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <PageHeader title="Sleep" />
         <div className="mt-6">
           <Loading label="Loading sleep…" />
         </div>
@@ -232,8 +208,8 @@ export function SleepPage() {
 
   if (error && !items.length) {
     return (
-      <div className="mx-auto max-w-[1240px]">
-        <HeaderShell range={range} setRange={setRange} />
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <PageHeader title="Sleep" />
         <div className="mt-6">
           <Empty title={error} body="Try reloading the page." />
         </div>
@@ -243,8 +219,9 @@ export function SleepPage() {
 
   if (!items.length) {
     return (
-      <div className="mx-auto max-w-[1240px]">
-        <HeaderShell range={range} setRange={setRange} />
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <PageHeader title="Sleep" />
+        <PageSentence className="mt-2">No sleep data in this range yet.</PageSentence>
         <div className="mt-6">
           <Empty
             title={"No sleep data in this range"}
@@ -256,52 +233,156 @@ export function SleepPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1240px]">
-      <HeaderShell range={range} setRange={setRange} />
-
-      {/* ───────────────────────────────────────── Row 1 — Summary stats */}
-      <div className="mt-6">
-        <SummaryRow
-          summary={summary}
-          baseline={baseline}
-        />
-      </div>
-
-      {/* ───────────────────────────────── Row 2 — Duration + Timing */}
-      <div className="mt-3 grid grid-cols-12 gap-3">
-        <div className="col-span-12 xl:col-span-8">
-          <DurationScoreCard
-            items={chartItems}
-            baseline={baseline}
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ====== Header (principle 1: page title + page sentence) ====== */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="page-title">Sleep</h1>
+          <PageSentence className="mt-2">{pageSentence}</PageSentence>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Segmented<RangeKey>
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: "7d", label: "7d" },
+              { value: "30d", label: "30d" },
+              { value: "90d", label: "90d" },
+            ]}
           />
         </div>
-        <div className="col-span-12 xl:col-span-4">
-          {chartItems.length >= 5 ? (
-            <TimingCard items={chartItems} summary={summary} />
-          ) : (
-            <Card className="h-full">
-              <CardHeader eyebrow={"Timing"} title={"Bedtime & wake"} />
-              <Empty
-                title={"Fewer than 5 nights"}
-                body={"Timing regularity needs at least 5 nights of data to render."}
-              />
-            </Card>
-          )}
-        </div>
       </div>
 
-      {/* ─────────────────────────────────────── Row 3 — Nights table */}
-      <div className="mt-3">
-        <NightsTable
-          items={visibleItems}
-          baseline={baseline}
-          onOpen={(date) => {
-            ui.selectSleepDate(date);
-            ui.setView("sleep-night");
-          }}
-        />
+      {/* ====== Summary row (principle 9: rows, not bordered tiles) ====== */}
+      <Card>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryStat
+            label="Avg duration"
+            value={fmtHours(summary?.avg_duration_s ?? null)}
+            status={
+              <StatusDot
+                tone={durationTone(summary?.avg_duration_s ?? null, summary?.target_s ?? DEFAULT_SLEEP_TARGET_S)}
+                label={durationWord(summary?.avg_duration_s ?? null, summary?.target_s ?? DEFAULT_SLEEP_TARGET_S)}
+              />
+            }
+            foot={`Target ${fmtHours(summary?.target_s ?? DEFAULT_SLEEP_TARGET_S)}`}
+          />
+          <SummaryStat
+            label="Avg sleep score"
+            value={fmtNum(summary?.avg_score ?? null, 0)}
+            status={
+              <StatusDot
+                tone={scoreToDot(scoreTone(summary?.avg_score ?? null))}
+                label={scoreWord(scoreTone(summary?.avg_score ?? null))}
+              />
+            }
+            foot={
+              baseline?.sleep_scores.count
+                ? `${baseline.sleep_scores.count} nights scored`
+                : "No scored nights"
+            }
+          />
+          <SummaryStat
+            label="Regularity"
+            value={`${fmtNum(combinedSD(summary), 0)}m`}
+            status={
+              <StatusDot
+                tone={regularityTone(combinedSD(summary))}
+                label={regularityWord(combinedSD(summary))}
+              />
+            }
+            foot={
+              <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span>
+                  <span className="text-ink3">Bed</span>{" "}
+                  <span className="num font-semibold text-ink2">±{fmtNum(summary?.regularity_bed_sd_min ?? null, 0)}m</span>
+                </span>
+                <span>
+                  <span className="text-ink3">Wake</span>{" "}
+                  <span className="num font-semibold text-ink2">±{fmtNum(summary?.regularity_wake_sd_min ?? null, 0)}m</span>
+                </span>
+              </span>
+            }
+          />
+          <SummaryStat
+            label="Sleep debt"
+            value={formatDebtHours(summary?.sleep_debt_s ?? 0)}
+            status={
+              <StatusDot
+                tone={debtTone(summary?.sleep_debt_s ?? 0)}
+                label={debtWord(summary?.sleep_debt_s ?? 0)}
+              />
+            }
+            foot={`Last 7 nights vs ${fmtHours(summary?.target_s ?? DEFAULT_SLEEP_TARGET_S)}`}
+          />
+        </div>
+      </Card>
+
+      {/* ====== Sleep score trend (principle 8: one line + baseline band) ====== */}
+      <Card>
+        <Section label="Sleep score trend">
+          {chartItems.length >= 2 ? (
+            <ChartFrame
+              title="Nightly score"
+              info={
+                <ChartInfoBadge
+                  text={
+                    <span>
+                      <strong className="text-ink2">Sleep score</strong> is a 0–100 synthesis of
+                      duration and deep+REM ratio. The dashed line is your 30-day mean.
+                    </span>
+                  }
+                />
+              }
+            >
+              <InteractiveLineChart
+                categories={chartItems.map((it) => ({ label: shortDate(it.local_date) }))}
+                series={[
+                  {
+                    name: "Sleep score",
+                    color: "var(--c-accent)",
+                    values: chartItems.map((it) => it.sleep_score),
+                  },
+                ]}
+                baseline={baseline?.sleep_scores.mean ?? null}
+                baselineLabel="30-day mean"
+                height={160}
+                formatValue={(v) => (v === null ? "—" : `${Math.round(v)} / 100`)}
+              />
+              <ChartLegend
+                className="mt-3"
+                items={[
+                  { name: "Sleep score", color: "var(--c-accent)" },
+                ]}
+              />
+            </ChartFrame>
+          ) : (
+            <div className="text-[14px] text-ink2">
+              Need at least 2 nights of scored sleep to draw the trend.
+            </div>
+          )}
+        </Section>
+      </Card>
+
+      {/* ====== Nights list (principle 9: rows, not cards) ====== */}
+      <Card pad={false}>
+        <div className="px-7 pt-7 pb-3">
+          <div className="text-[14px] font-medium text-ink2">Nights</div>
+        </div>
+        <div className="px-7">
+          {visibleItems.map((it) => (
+            <NightRow
+              key={it.local_date}
+              item={it}
+              onOpen={() => {
+                ui.selectSleepDate(it.local_date);
+                ui.setView("sleep-night");
+              }}
+            />
+          ))}
+        </div>
         {shown < items.length && (
-          <div className="mt-3 flex items-center justify-center">
+          <div className="flex items-center justify-center px-7 pb-7 pt-4">
             <ApexButton
               variant="secondary"
               size="sm"
@@ -312,868 +393,98 @@ export function SleepPage() {
             </ApexButton>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
 
-/* --------------------------------------------------------------- Header shell */
-function HeaderShell({
-  range,
-  setRange,
-}: {
-  range: RangeKey;
-  setRange: (r: RangeKey) => void;
-}) {
-  const t = useT();
-  return (
-    <PageHeader
-      title={t("sleep.title")}
-      subtitle={"Am I sleeping enough, and regularly?" /* TODO i18n */}
-      actions={
-        <Segmented<RangeKey>
-          value={range}
-          onChange={setRange}
-          options={[
-            { value: "7d", label: "7d" },
-            { value: "30d", label: "30d" },
-            { value: "90d", label: "90d" },
-          ]}
-        />
-      }
-    />
-  );
-}
-
-/* --------------------------------------------------------------- Row 1: Summary */
-function SummaryRow({
-  summary,
-  baseline,
-}: {
-  summary: SleepSummaryResponse | null;
-  baseline: BaselineBlock | null;
-}) {
-  const t = useT();
-  const targetS = summary?.target_s ?? DEFAULT_SLEEP_TARGET_S;
-
-  const avgDur = summary?.avg_duration_s ?? null;
-  const avgScore = summary?.avg_score ?? null;
-  const bedSD = summary?.regularity_bed_sd_min ?? null;
-  const wakeSD = summary?.regularity_wake_sd_min ?? null;
-
-  // Sleep debt: positive = owe sleep. Display with tone based on sign/magnitude.
-  const debtS = summary?.sleep_debt_s ?? 0;
-  const debtH = debtS / 3600;
-  const debtTone: DataTone =
-    debtS <= 0
-      ? "positive"
-      : debtS <= 2 * 3600
-      ? "warning"
-      : "alert";
-
-  // Avg-duration delta vs target (goodWhen="up").
-  const durDeltaMin =
-    avgDur !== null ? Math.round((avgDur - targetS) / 60) : null;
-
-  // Combined regularity headline — plan §4 says "spread of bedtime and
-  // wake time (standard deviation in minutes)". Headline = the larger SD,
-  // subtitle breaks both out.
-  const combinedSD =
-    bedSD !== null && wakeSD !== null
-      ? Math.sqrt(bedSD ** 2 + wakeSD ** 2)
-      : bedSD ?? wakeSD ?? null;
-
-  return (
-    <Card pad={false} className="px-5 py-4">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Avg duration */}
-        <SummaryStat
-          eyebrow={t("sleep.avg_total")}
-          value={
-            <BigStat
-              value={fmtHours(avgDur)}
-              size="lg"
-              tone={toneFor(rangeToneForDuration(avgDur, targetS))}
-            />
-          }
-          chip={
-            <DeltaChip
-              delta={durDeltaMin}
-              unit="min"
-              goodWhen="up"
-              suffix={"vs target"}
-            />
-          }
-          foot={`Target ${fmtHours(targetS)}`}
-        />
-
-        {/* Avg score */}
-        <SummaryStat
-          eyebrow={t("sleep.avg_score")}
-          value={
-            <BigStat
-              value={fmtNum(avgScore, 0)}
-              unit="/100"
-              size="lg"
-              tone={toneFor(scoreTone(avgScore))}
-            />
-          }
-          chip={null}
-          foot={
-            baseline && baseline.sleep_scores.count
-              ? `${baseline.sleep_scores.count} nights scored`
-              : "No scored nights"
-          }
-        />
-
-        {/* Regularity */}
-        <SummaryStat
-          eyebrow={"Regularity" /* TODO i18n */}
-          value={
-            <BigStat
-              value={fmtNum(combinedSD, 0)}
-              unit="min"
-              size="lg"
-              tone={toneFor(combinedSD === null ? "muted" : combinedSD <= 20 ? "positive" : combinedSD <= 45 ? "warning" : "alert")}
-            />
-          }
-          chip={null}
-          foot={
-            <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
-              <span>
-                <span className="text-faint">Bed</span>{" "}
-                <span className="num font-semibold text-ink2">
-                  ±{fmtNum(bedSD, 0)}m
-                </span>
-              </span>
-              <span>
-                <span className="text-faint">Wake</span>{" "}
-                <span className="num font-semibold text-ink2">
-                  ±{fmtNum(wakeSD, 0)}m
-                </span>
-              </span>
-            </span>
-          }
-        />
-
-        {/* Sleep debt */}
-        <SummaryStat
-          eyebrow={"Sleep debt" /* TODO i18n */}
-          value={
-            <BigStat
-              value={debtH > 0 ? `+${fmtNum(debtH, 1)}h` : fmtNum(debtH, 1) + "h"}
-              size="lg"
-              tone={toneFor(debtTone)}
-            />
-          }
-          chip={
-            <Badge tone={debtS <= 0 ? "positive" : debtS <= 2 * 3600 ? "warning" : "alert"} dot>
-              {debtS <= 0 ? "On track" : debtS <= 2 * 3600 ? "Slight" : "Owed"}
-              {/* TODO i18n */}
-            </Badge>
-          }
-          foot={`Last 7 nights vs ${fmtHours(targetS)}`}
-        />
-      </div>
-    </Card>
-  );
-}
-
-/** Tone for a sleep duration against the target (good/borderline/bad). */
-function rangeToneForDuration(
-  dur: number | null,
-  targetS: number,
-): DataTone {
-  if (dur === null || !Number.isFinite(dur)) return "muted";
-  // <70% of target = alert; 70–90% = warning; ≥90% = positive.
-  const ratio = dur / targetS;
-  if (ratio >= 0.9) return "positive";
-  if (ratio >= 0.7) return "warning";
-  return "alert";
-}
-
+/* --------------------------------------------------------------- Summary stat
+ * A bordered-tile-free stat: 14px sentence-case label, a 28px text-ink
+ * number (BigStat size md), and a StatusDot underneath. No borders. */
 function SummaryStat({
-  eyebrow,
+  label,
   value,
-  chip,
+  status,
   foot,
 }: {
-  eyebrow: React.ReactNode;
-  value: React.ReactNode;
-  chip: React.ReactNode;
-  foot: React.ReactNode;
+  label: string;
+  value: string;
+  status: React.ReactNode;
+  foot?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Eyebrow>{eyebrow}</Eyebrow>
-      <div className="flex items-end gap-2">{value}</div>
-      {chip && <div>{chip}</div>}
-      <div className="num text-[11px] text-faint">{foot}</div>
+    <div className="flex flex-col gap-2">
+      <div className="text-[14px] font-medium text-ink2">{label}</div>
+      <BigStat value={value} size="md" />
+      <div>{status}</div>
+      {foot && <div className="num text-[12px] text-ink3">{foot}</div>}
     </div>
   );
 }
 
-/* ------------------------------------------------ Row 2 left: Duration & score */
-function DurationScoreCard({
-  items,
-  baseline,
-}: {
-  items: SessionItem[];
-  baseline: BaselineBlock | null;
-}) {
-  const t = useT();
-  const [stacked, setStacked] = useState(false);
-  const targetS = baseline?.target_s ?? DEFAULT_SLEEP_TARGET_S;
-
-  // Chart geometry (SVG, viewBox-scaled).
-  const W = 1000;
-  const H = 280;
-  const padLeft = 44;
-  const padRight = 44;
-  const padTop = 16;
-  const padBottom = 28;
-  const plotW = W - padLeft - padRight;
-  const plotH = H - padTop - padBottom;
-
-  // Y-left: hours (0 to 10h). Y-right: score (0–100).
-  const yMaxHours = 10;
-  const yMaxScore = 100;
-  const xStep = items.length > 1 ? plotW / (items.length - 1) : 0;
-
-  // Target line Y on the hours axis.
-  const targetY =
-    padTop + plotH - (Math.min(targetS / 3600, yMaxHours) / yMaxHours) * plotH;
-
-  const hourToY = (h: number) =>
-    padTop + plotH - (Math.min(h, yMaxHours) / yMaxHours) * plotH;
-  const scoreToY = (s: number) => padTop + plotH - (s / yMaxScore) * plotH;
-
-  // Score line path (skips nulls).
-  const scorePath = items
-    .map((it, i) => {
-      if (it.sleep_score === null) return null;
-      const x = padLeft + i * xStep;
-      const y = scoreToY(it.sleep_score);
-      return `${i === 0 || items[i - 1].sleep_score === null ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .filter(Boolean)
-    .join(" ");
-
-  // X-axis ticks: ~5 evenly-spaced dates.
-  const xTickCount = Math.min(5, items.length);
-  const xTicks = Array.from({ length: xTickCount }, (_, i) => {
-    const idx = Math.round((i * (items.length - 1)) / (xTickCount - 1 || 1));
-    return { idx, date: items[idx]?.local_date ?? "" };
-  });
-
-  return (
-    <Card className="h-full">
-      <CardHeader
-        eyebrow={"Duration & score" /* TODO i18n */}
-        title={"Nightly trend"}
-        right={
-          <Segmented<"duration" | "stages">
-            value={stacked ? "stages" : "duration"}
-            onChange={(v) => setStacked(v === "stages")}
-            size="sm"
-            options={[
-              { value: "duration", label: "Duration" },
-              { value: "stages", label: "Stages" },
-            ]}
-          />
-        }
-      />
-
-      {/* Legend */}
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted">
-        {stacked ? (
-          <>
-            <LegendDot color={STAGE_VARS.deep} label={t("sleep.deep")} />
-            <LegendDot color={STAGE_VARS.light} label={t("sleep.light")} />
-            <LegendDot color={STAGE_VARS.rem} label={t("sleep.rem")} />
-          </>
-        ) : (
-          <LegendDot color="var(--c-text-muted)" label={"Duration"} />
-        )}
-        <LegendDot color="var(--c-primary)" label={t("sleep.score")} />
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block h-0 w-4 border-t border-dashed"
-            style={{ borderColor: "var(--c-text-faint)" }}
-          />
-          <span>Target {fmtHours(targetS)}</span>
-        </span>
-      </div>
-
-      <div className="overflow-x-auto">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full"
-          style={{ minWidth: 480 }}
-          preserveAspectRatio="xMidYMid meet"
-          role="img"
-          aria-label="Sleep duration and score"
-        >
-          {/* Y-left grid (hours) */}
-          {[0, 2, 4, 6, 8, 10].map((h) => {
-            const y = hourToY(h);
-            return (
-              <g key={h}>
-                <line
-                  x1={padLeft}
-                  y1={y}
-                  x2={padLeft + plotW}
-                  y2={y}
-                  stroke="var(--c-hairline)"
-                  strokeWidth={1}
-                />
-                <text
-                  x={padLeft - 6}
-                  y={y + 3}
-                  textAnchor="end"
-                  style={{
-                    fontSize: 10,
-                    fill: "var(--c-text-faint)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  {h}h
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Y-right axis (score) */}
-          {[0, 50, 100].map((s) => {
-            const y = scoreToY(s);
-            return (
-              <text
-                key={s}
-                x={padLeft + plotW + 6}
-                y={y + 3}
-                textAnchor="start"
-                style={{
-                  fontSize: 10,
-                  fill: "var(--c-text-faint)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {s}
-              </text>
-            );
-          })}
-
-          {/* Target line (8h) */}
-          <line
-            x1={padLeft}
-            y1={targetY}
-            x2={padLeft + plotW}
-            y2={targetY}
-            stroke="var(--c-text-faint)"
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-          />
-
-          {/* Bars (duration or stacked) */}
-          {items.map((it, i) => {
-            const x = padLeft + i * xStep;
-            const barW = Math.max(2, Math.min(14, xStep * 0.6));
-            if (stacked) {
-              const deepS = it.deep_s ?? 0;
-              const lightS = it.light_s ?? 0;
-              const remS = it.rem_s ?? 0;
-              const totalAsleepH = (deepS + lightS + remS) / 3600;
-              if (totalAsleepH <= 0) return null;
-              const baseY = padTop + plotH; // bottom of plot
-              let accH = 0;
-              const segs = [
-                { secs: deepS, color: STAGE_VARS.deep },
-                { secs: lightS, color: STAGE_VARS.light },
-                { secs: remS, color: STAGE_VARS.rem },
-              ];
-              return segs.map((seg, j) => {
-                const segH = (seg.secs / 3600 / yMaxHours) * plotH;
-                const y = baseY - segH - accH;
-                accH += segH;
-                return (
-                  <rect
-                    key={`${i}-${j}`}
-                    x={x - barW / 2}
-                    y={y}
-                    width={barW}
-                    height={segH}
-                    fill={seg.color}
-                  />
-                );
-              });
-            }
-            const durH = (it.total_sleep_s ?? 0) / 3600;
-            if (durH <= 0) return null;
-            const tone = scoreTone(it.sleep_score);
-            const barColor = toneToVar(tone);
-            const h = (durH / yMaxHours) * plotH;
-            return (
-              <rect
-                key={i}
-                x={x - barW / 2}
-                y={padTop + plotH - h}
-                width={barW}
-                height={h}
-                fill={barColor}
-                opacity={0.85}
-              />
-            );
-          })}
-
-          {/* Score line */}
-          {scorePath && (
-            <path
-              d={scorePath}
-              fill="none"
-              stroke="var(--c-primary)"
-              strokeWidth={1.5}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-          )}
-          {/* Score dots */}
-          {items.map((it, i) => {
-            if (it.sleep_score === null) return null;
-            const x = padLeft + i * xStep;
-            const y = scoreToY(it.sleep_score);
-            return (
-              <circle
-                key={`dot-${i}`}
-                cx={x}
-                cy={y}
-                r={2.2}
-                fill="var(--c-primary)"
-              />
-            );
-          })}
-
-          {/* X-axis baseline */}
-          <line
-            x1={padLeft}
-            y1={padTop + plotH}
-            x2={padLeft + plotW}
-            y2={padTop + plotH}
-            stroke="var(--c-hairline-strong)"
-            strokeWidth={1}
-          />
-
-          {/* X-axis date ticks */}
-          {xTicks.map(({ idx, date }, i) => {
-            const x = padLeft + idx * xStep;
-            return (
-              <text
-                key={i}
-                x={x}
-                y={padTop + plotH + 18}
-                textAnchor="middle"
-                style={{
-                  fontSize: 10,
-                  fill: "var(--c-text-muted)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {shortDate(date)}
-              </text>
-            );
-          })}
-        </svg>
-      </div>
-    </Card>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ background: color }}
-      />
-      <span>{label}</span>
-    </span>
-  );
-}
-
-/** Map a DataTone to a CSS color variable. */
-function toneToVar(tone: DataTone): string {
-  return {
-    positive: "var(--c-positive)",
-    warning: "var(--c-warning)",
-    alert: "var(--c-alert)",
-    muted: "var(--c-hairline2)",
-  }[tone];
-}
-
-/* ------------------------------------------------- Row 2 right: Timing card */
-function TimingCard({
-  items,
-  summary,
-}: {
-  items: SessionItem[];
-  summary: SleepSummaryResponse | null;
-}) {
-  // Y-axis: time-of-day from 18:00 (top) to 09:00 next day (bottom).
-  // Each night's bar starts at bedtime_offset_from_18 and ends at
-  // wake_offset_from_18 (modulo 24h) so bars never wrap.
-  const bedOffsets = items.map((it) => {
-    const m = minutesOfDayUTC(it.start_time);
-    if (!Number.isFinite(m)) return NaN;
-    return ((m - 18 * 60 + 1440) % 1440);
-  });
-  const wakeOffsets = items.map((it) => {
-    const m = minutesOfDayUTC(it.end_time);
-    if (!Number.isFinite(m)) return NaN;
-    return ((m - 18 * 60 + 1440) % 1440);
-  });
-
-  // Window = 15 hours (18:00 → 09:00). If a wake offset is smaller than a
-  // bed offset (which can happen when wake is before 18:00 — unusual but
-  // possible), add 1440 so the bar still renders continuously.
-  const WINDOW_MIN = 15 * 60;
-
-  const medianBed = summary?.median_bedtime ?? null;
-  const medianWake = summary?.median_wake ?? null;
-  const bedSD = summary?.regularity_bed_sd_min ?? null;
-  const wakeSD = summary?.regularity_wake_sd_min ?? null;
-
-  // Chart geometry
-  const W = 1000;
-  const H = 280;
-  const padLeft = 44;
-  const padRight = 16;
-  const padTop = 16;
-  const padBottom = 28;
-  const plotW = W - padLeft - padRight;
-  const plotH = H - padTop - padBottom;
-  const xStep = items.length > 1 ? plotW / (items.length - 1) : 0;
-
-  const minToY = (off: number) =>
-    padTop + (off / WINDOW_MIN) * plotH;
-
-  // Y-axis ticks every 3h from 18:00 → 09:00.
-  const yTicks = Array.from({ length: 6 }, (_, i) => {
-    const off = (i * 3 * 60) % (24 * 60);
-    const h24 = (18 + i * 3) % 24;
-    const label = `${String(h24).padStart(2, "0")}:00`;
-    return { off, label };
-  });
-
-  // Median lines (mapped through the same 18:00 offset).
-  const medianBedOff =
-    medianBed !== null
-      ? ((medianBed - 18 * 60 + 1440) % 1440)
-      : null;
-  const medianWakeOff =
-    medianWake !== null
-      ? ((medianWake - 18 * 60 + 1440) % 1440)
-      : null;
-
-  // X-axis date ticks.
-  const xTickCount = Math.min(5, items.length);
-  const xTicks = Array.from({ length: xTickCount }, (_, i) => {
-    const idx = Math.round((i * (items.length - 1)) / (xTickCount - 1 || 1));
-    return { idx, date: items[idx]?.local_date ?? "" };
-  });
-
-  return (
-    <Card className="h-full">
-      <CardHeader
-        eyebrow={"Timing" /* TODO i18n */}
-        title={"Bedtime & wake"}
-        right={
-          <div className="text-right">
-            <div className="num text-[11px] text-muted">
-              Bed {medianBed !== null ? fmtMinutes(medianBed) : "—"}{" "}
-              <span className="text-faint">±{fmtNum(bedSD, 0)}m</span>
-            </div>
-            <div className="num text-[11px] text-muted">
-              Wake {medianWake !== null ? fmtMinutes(medianWake) : "—"}{" "}
-              <span className="text-faint">±{fmtNum(wakeSD, 0)}m</span>
-            </div>
-          </div>
-        }
-      />
-
-      <div className="overflow-x-auto">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full"
-          style={{ minWidth: 320 }}
-          preserveAspectRatio="xMidYMid meet"
-          role="img"
-          aria-label="Bedtime and wake per night"
-        >
-          {/* Y-axis grid + labels */}
-          {yTicks.map((tk, i) => {
-            const y = minToY(tk.off);
-            return (
-              <g key={i}>
-                <line
-                  x1={padLeft}
-                  y1={y}
-                  x2={padLeft + plotW}
-                  y2={y}
-                  stroke="var(--c-hairline)"
-                  strokeWidth={1}
-                />
-                <text
-                  x={padLeft - 6}
-                  y={y + 3}
-                  textAnchor="end"
-                  style={{
-                    fontSize: 10,
-                    fill: "var(--c-text-faint)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  {tk.label}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Median bedtime line */}
-          {medianBedOff !== null && (
-            <line
-              x1={padLeft}
-              y1={minToY(medianBedOff)}
-              x2={padLeft + plotW}
-              y2={minToY(medianBedOff)}
-              stroke="var(--c-text-faint)"
-              strokeWidth={1.2}
-              strokeDasharray="3 3"
-            />
-          )}
-          {/* Median wake line */}
-          {medianWakeOff !== null && (
-            <line
-              x1={padLeft}
-              y1={minToY(medianWakeOff)}
-              x2={padLeft + plotW}
-              y2={minToY(medianWakeOff)}
-              stroke="var(--c-text-faint)"
-              strokeWidth={1.2}
-              strokeDasharray="3 3"
-            />
-          )}
-
-          {/* Floating bars: bedtime → wake */}
-          {items.map((it, i) => {
-            const x = padLeft + i * xStep;
-            const barW = Math.max(3, Math.min(12, xStep * 0.55));
-            const bOff = bedOffsets[i];
-            const wOff = wakeOffsets[i];
-            if (!Number.isFinite(bOff) || !Number.isFinite(wOff)) return null;
-            // Handle the rare case where wake is "before" bedtime on the
-            // 18:00-relative axis — push it +24h so the bar is continuous.
-            let top = bOff;
-            let bot = wOff;
-            if (bot < top) bot += 1440;
-            // Clamp to window for safety.
-            top = Math.min(top, WINDOW_MIN - 1);
-            bot = Math.min(bot, WINDOW_MIN);
-            const yTop = minToY(top);
-            const yBot = minToY(bot);
-            const tone = scoreTone(it.sleep_score);
-            return (
-              <rect
-                key={i}
-                x={x - barW / 2}
-                y={yTop}
-                width={barW}
-                height={Math.max(1, yBot - yTop)}
-                fill={toneToVar(tone)}
-                opacity={0.85}
-              />
-            );
-          })}
-
-          {/* X-axis baseline */}
-          <line
-            x1={padLeft}
-            y1={padTop + plotH}
-            x2={padLeft + plotW}
-            y2={padTop + plotH}
-            stroke="var(--c-hairline-strong)"
-            strokeWidth={1}
-          />
-
-          {/* X-axis date ticks */}
-          {xTicks.map(({ idx, date }, i) => {
-            const x = padLeft + idx * xStep;
-            return (
-              <text
-                key={i}
-                x={x}
-                y={padTop + plotH + 18}
-                textAnchor="middle"
-                style={{
-                  fontSize: 10,
-                  fill: "var(--c-text-muted)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {shortDate(date)}
-              </text>
-            );
-          })}
-        </svg>
-      </div>
-    </Card>
-  );
-}
-
-/* ----------------------------------------------------------- Row 3: Table */
-function NightsTable({
-  items,
-  baseline,
-  onOpen,
-}: {
-  items: SessionItem[];
-  baseline: BaselineBlock | null;
-  onOpen: (date: string) => void;
-}) {
-  const t = useT();
-  // 30-day HRV sd (for hrvDevTone).
-  const hrvSd = baseline?.vitals.hrv_ms.sd ?? null;
-
-  return (
-    <Card pad={false} className="overflow-hidden">
-      {/* Header row */}
-      <div className="hidden grid-cols-12 gap-3 border-b border-hairline bg-surface2/40 px-4 py-2 md:grid">
-        <Eyebrow className="col-span-2">{"Date" /* TODO i18n */}</Eyebrow>
-        <Eyebrow className="col-span-2">{"Bed → Wake" /* TODO i18n */}</Eyebrow>
-        <Eyebrow className="col-span-2">{t("sleep.total")}</Eyebrow>
-        <Eyebrow className="col-span-1">{t("sleep.score")}</Eyebrow>
-        <Eyebrow className="col-span-3">{"Stages" /* TODO i18n */}</Eyebrow>
-        <Eyebrow className="col-span-1">{t("sleep.resting_hr")}</Eyebrow>
-        <Eyebrow className="col-span-1">{"HRV Δ" /* TODO i18n */}</Eyebrow>
-      </div>
-      <div className="divide-y divide-hairline">
-        {items.map((it) => (
-          <NightRow
-            key={it.local_date}
-            item={it}
-            hrvSd={hrvSd}
-            onOpen={() => onOpen(it.local_date)}
-          />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
+/* --------------------------------------------------------------- Night row
+ * A flat row: date · bed→wake · duration · score (with StatusDot) · stage
+ * mini-bar. No borders — principle 3 + 9. */
 function NightRow({
   item,
-  hrvSd,
   onOpen,
 }: {
   item: SessionItem;
-  hrvSd: number | null;
   onOpen: () => void;
 }) {
-  const t = useT();
   const ui = useApexUi();
+  const asleepS = timeAsleepS(item);
+  const scoreT = scoreTone(item.sleep_score);
+  const dotTone = scoreT === "positive" ? "ok" : scoreT === "warning" ? "watch" : scoreT === "alert" ? "alert" : "neutral";
+  const word = scoreT === "positive" ? "Good" : scoreT === "warning" ? "Fair" : scoreT === "alert" ? "Low" : "—";
 
   const stages: { key: StageKey; secs: number; color: string }[] = [
     { key: "deep", secs: item.deep_s ?? 0, color: STAGE_VARS.deep },
     { key: "light", secs: item.light_s ?? 0, color: STAGE_VARS.light },
     { key: "rem", secs: item.rem_s ?? 0, color: STAGE_VARS.rem },
   ];
-  const asleepS = timeAsleepS(item);
-
-  // HRV deviation tone
-  const hrvTone = hrvDevTone(item.hrv_deviation_ms, hrvSd);
-  const hrvToneCls = toneTextClass(hrvTone);
-
-  // Resting HR — show as a flat value; tone via scoreTone isn't appropriate
-  // for HR. Leave as ink.
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="grid w-full grid-cols-1 items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface2/40 md:grid-cols-12"
+      className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-surface2 -mx-2 px-2 rounded-[var(--radius-control)]"
     >
       {/* Date */}
-      <div className="col-span-2">
-        <div className="num text-[12.5px] font-semibold text-ink">
+      <div className="w-[120px] shrink-0">
+        <div className="num text-[14px] font-semibold text-ink">
           {fmtDateLong(item.local_date, ui.locale)}
         </div>
+        <div className="num text-[12px] text-ink3">
+          {fmtClock(item.start_time, ui.locale)} → {fmtClock(item.end_time, ui.locale)}
+        </div>
       </div>
 
-      {/* Bed → Wake */}
-      <div className="col-span-2 num mono text-[12px] text-muted">
-        {fmtClock(item.start_time, ui.locale)} → {fmtClock(item.end_time, ui.locale)}
-      </div>
-
-      {/* Total sleep */}
-      <div className="col-span-2">
-        <div className="num text-[14px] font-semibold text-ink">
+      {/* Duration */}
+      <div className="w-[80px] shrink-0">
+        <div className="num text-[20px] font-semibold text-ink">
           {fmtHours(item.total_sleep_s)}
         </div>
-        <div className="num text-[10px] text-faint">
-          window {fmtHours(sleepWindowS(item))}
-        </div>
       </div>
 
-      {/* Sleep score */}
-      <div className="col-span-1">
-        <div
-          className={`num text-[16px] font-bold ${toneTextClass(scoreTone(item.sleep_score))}`}
-        >
+      {/* Score (white number + StatusDot) */}
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="num text-[20px] font-semibold text-ink">
           {fmtNum(item.sleep_score, 0)}
-        </div>
+        </span>
+        <StatusDot tone={dotTone} label={word} />
       </div>
 
-      {/* Stage bar */}
-      <div className="col-span-3">
-        <StageStackBar
-          stages={stages}
-          total={asleepS}
-        />
-        <div className="num mt-1 flex items-center gap-2 text-[10px] text-faint">
-          <span>
-            <span style={{ color: STAGE_VARS.deep }}>●</span> {fmtHours(item.deep_s)}
-          </span>
-          <span>
-            <span style={{ color: STAGE_VARS.light }}>●</span> {fmtHours(item.light_s)}
-          </span>
-          <span>
-            <span style={{ color: STAGE_VARS.rem }}>●</span> {fmtHours(item.rem_s)}
-          </span>
-        </div>
-      </div>
-
-      {/* Resting HR */}
-      <div className="col-span-1 num text-[13px] font-semibold text-ink2">
-        {item.resting_hr !== null ? `${item.resting_hr}` : "—"}
-        {item.resting_hr !== null && (
-          <span className="ml-0.5 text-[10px] font-medium text-faint">bpm</span>
-        )}
-      </div>
-
-      {/* HRV deviation */}
-      <div className={`col-span-1 num text-[13px] font-semibold ${hrvToneCls}`}>
-        {item.hrv_deviation_ms !== null
-          ? `${item.hrv_deviation_ms >= 0 ? "+" : "−"}${fmtNum(Math.abs(item.hrv_deviation_ms), 0)}`
-          : "—"}
-        {item.hrv_deviation_ms !== null && (
-          <span className="ml-0.5 text-[10px] font-medium text-faint">ms</span>
-        )}
+      {/* Stage mini-bar */}
+      <div className="ml-auto hidden min-w-0 flex-1 sm:block">
+        <StageStackBar stages={stages} total={asleepS} />
       </div>
     </button>
   );
 }
 
 /** Horizontal stacked stage bar (deep / light / rem) using time asleep as
- *  the denominator. Plan §4 fixes the unit bug — denominator is
- *  consistently seconds / time asleep. */
+ *  the denominator. */
 function StageStackBar({
   stages,
   total,
@@ -1193,7 +504,7 @@ function StageStackBar({
           <div
             key={s.key}
             style={{ width: `${pct}%`, background: s.color }}
-            title={`${t_label(s.key)}: ${fmtHours(s.secs)} (${Math.round(pct)}% of time asleep)`}
+            title={`${s.key}: ${fmtHours(s.secs)}`}
           />
         );
       })}
@@ -1201,25 +512,66 @@ function StageStackBar({
   );
 }
 
-function t_label(k: StageKey): string {
-  // The label is only used in the title tooltip — the visible label uses
-  // t("sleep.*") in the parent. Keeping a single English fallback here
-  // avoids prop-drilling t() into the bar component.
-  const en: Record<StageKey, string> = {
-    deep: "Deep",
-    light: "Light",
-    rem: "REM",
-    awake: "Awake",
-  };
-  return en[k];
+/* --------------------------------------------------------------- tone helpers */
+function durationTone(dur: number | null, targetS: number): "neutral" | "ok" | "watch" | "alert" {
+  if (dur === null || !Number.isFinite(dur)) return "neutral";
+  const ratio = dur / targetS;
+  if (ratio >= 0.9) return "ok";
+  if (ratio >= 0.7) return "watch";
+  return "alert";
 }
 
-/** Convert a DataTone to a tailwind text color class. */
-function toneTextClass(tone: DataTone): string {
-  return {
-    positive: "text-positiveText",
-    warning: "text-warningText",
-    alert: "text-alertText",
-    muted: "text-muted",
-  }[tone];
+function durationWord(dur: number | null, targetS: number): string {
+  if (dur === null || !Number.isFinite(dur)) return "—";
+  const ratio = dur / targetS;
+  if (ratio >= 0.9) return "On target";
+  if (ratio >= 0.7) return "Slightly short";
+  return "Short";
+}
+
+function scoreToDot(t: DataTone): "neutral" | "ok" | "watch" | "alert" {
+  return t === "positive" ? "ok" : t === "warning" ? "watch" : t === "alert" ? "alert" : "neutral";
+}
+
+function scoreWord(t: DataTone): string {
+  return t === "positive" ? "Good" : t === "warning" ? "Fair" : t === "alert" ? "Low" : "—";
+}
+
+function combinedSD(summary: SleepSummaryResponse | null): number | null {
+  const bed = summary?.regularity_bed_sd_min ?? null;
+  const wake = summary?.regularity_wake_sd_min ?? null;
+  if (bed !== null && wake !== null) return Math.sqrt(bed ** 2 + wake ** 2);
+  return bed ?? wake ?? null;
+}
+
+function regularityTone(sd: number | null): "neutral" | "ok" | "watch" | "alert" {
+  if (sd === null) return "neutral";
+  if (sd <= 20) return "ok";
+  if (sd <= 45) return "watch";
+  return "alert";
+}
+
+function regularityWord(sd: number | null): string {
+  if (sd === null) return "—";
+  if (sd <= 20) return "Consistent";
+  if (sd <= 45) return "Variable";
+  return "Irregular";
+}
+
+function debtTone(debtS: number): "neutral" | "ok" | "watch" | "alert" {
+  if (debtS <= 0) return "ok";
+  if (debtS <= 2 * 3600) return "watch";
+  return "alert";
+}
+
+function debtWord(debtS: number): string {
+  if (debtS <= 0) return "On track";
+  if (debtS <= 2 * 3600) return "Slight";
+  return "Owed";
+}
+
+function formatDebtHours(debtS: number): string {
+  const h = debtS / 3600;
+  if (h === 0) return "0h";
+  return h > 0 ? `+${fmtNum(h, 1)}h` : `${fmtNum(h, 1)}h`;
 }

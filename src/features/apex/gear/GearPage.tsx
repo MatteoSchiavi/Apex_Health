@@ -1,38 +1,41 @@
 "use client";
 
 /**
- * Apex Health — Gear page (plan §6).
+ * Apex Health — Gear page (re-skinned against ui-language/RULES.md).
  *
  * The page's job: answer "what needs servicing, and how much have I used it?"
  *
- * Layout:
- *   Header: title + subtitle + "Add gear" button (top-right, always visible —
- *     this is the user's specific complaint: "gear page has no button to add
- *     gear").
- *   Row 1, Summary (col-12): three counters — Due now / Due soon / OK. The
- *     first two are tappable filters (clicking "Due now" filters the list to
- *     those items).
- *   Row 2, Gear cards (col-12 md:col-6 xl:col-4): sorted by usage_pct desc,
- *     active items first. Each card shows the binding interval (hours OR km)
- *     as a RangeBar with the binding-tone, an ETA estimate (from
- *     last_service_at pace), last-service line, and three buttons: Log service,
- *     History, and a chevron that expands an inline detail expander with
- *     interval editors, default-for chips, deactivate switch, and Delete.
+ * Re-skin rules applied:
+ *   1. One answer per screen — "2 items due for service soon." (PageSentence)
+ *   2. One hero — the due-now count (largest number on the page).
+ *   3. No outlines on cards — surface contrast only. No card-in-card.
+ *   4. Sentence-case labels, 14px minimum. No uppercase eyebrows.
+ *   5. Numbers stay white. State is a StatusDot + word next to the number.
+ *   6. Accent (orange) reserved for actions, not status.
+ *   7. Plain words — "Gear" (not "EQUIPMENT & MAINTENANCE").
+ *   8. Charts: standard ChartFrame — no bespoke chart on this page.
+ *   9. Seven sections max: title · summary · filter banner · gear list ·
+ *      (sheets: add / log service / history).
+ *
+ * Layout (top → bottom):
+ *   Header: "Gear" + page sentence + "Add gear" button (top-right)
+ *   Summary: 3 compact numbers (Due now / Due soon / OK) with StatusDots —
+ *     no bordered tiles. Tappable filters.
+ *   Gear list: borderless Cards. Each card shows the binding interval as a
+ *     RangeBar (state-coloured), an ETA estimate, last-service line, and
+ *     three buttons: Log service, History, and a chevron that expands an
+ *     inline detail expander (surface-2 background, no border) with interval
+ *     editors, default-for chips, deactivate switch, and Delete.
  *   Empty state: dashed card with a prominent Add gear button.
  *
  * Modals (bottom sheets):
- *   - Add gear (Sheet) — name, type (Segmented), interval hours, interval km,
- *     default-for discipline chips.
- *   - Log service (Sheet) — preset chips + free-text service type, date
- *     (defaults to now), notes. On save → POST /api/gear/[id]/service →
- *     bar resets → toast.
- *   - History (Sheet) — service timeline from /api/gear/[id]/history.
+ *   - Add gear
+ *   - Log service (preset chips + free-text service type, date, notes)
+ *   - History (service timeline from /api/gear/[id]/history)
  *
  * All data fetched from /api/gear (GET list, POST create),
  * /api/gear/[id] (PATCH update, DELETE), /api/gear/[id]/service (POST),
- * /api/gear/[id]/history (GET). No new visual vocabulary — composes from the
- * shared kit (Card, PageHeader, StatPod, Badge, RangeBar, ApexButton, Segmented,
- * Empty, Loading, Hairline, Eyebrow, ConfirmPopover, InfoButton).
+ * /api/gear/[id]/history (GET).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -42,17 +45,15 @@ import { useApexUi } from "@/lib/apex";
 import { useToast } from "@/hooks/use-toast";
 import {
   ApexButton,
-  Badge,
   Card,
-  CardHeader,
   ConfirmPopover,
   Empty,
-  Eyebrow,
-  Hairline,
   InfoButton,
   Loading,
-  PageHeader,
   RangeBar,
+  Section,
+  PageSentence,
+  StatusDot,
 } from "@/components/apex/kit";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -87,11 +88,7 @@ type Filter = "all" | "due_now" | "due_soon" | "ok";
 
 /**
  * Estimate weeks to service from the user's own usage pace since the last
- * service. The plan said "from your usage over the last four weeks" but the
- * activity_gear_links table doesn't exist yet, so we derive the rate from
- * hours_since_service / weeks_since_last_service (or the km equivalent). If
- * `last_service_at` is null, the interval is null, the usage is 0, or the
- * computed rate is non-positive, return null (omit the ETA line).
+ * service. Returns null when the interval, usage, or rate can't be derived.
  */
 function etaWeeks(g: GearRow): number | null {
   if (!g.last_service_at) return null;
@@ -100,7 +97,6 @@ function etaWeeks(g: GearRow): number | null {
   const weeksSince = (Date.now() - last) / (7 * 24 * 3600 * 1000);
   if (weeksSince <= 0.1) return null;
 
-  // Pick the binding metric.
   const metric = bindingMetric(
     g.hours_since_service,
     g.km_since_service,
@@ -112,15 +108,14 @@ function etaWeeks(g: GearRow): number | null {
   if (metric === "hours") {
     if (!g.service_interval_hours) return null;
     if (g.hours_since_service <= 0) return null;
-    const rate = g.hours_since_service / weeksSince; // hours/week
+    const rate = g.hours_since_service / weeksSince;
     if (!(rate > 0)) return null;
     const remaining = g.service_interval_hours - g.hours_since_service;
     return remaining / rate;
   }
-  // metric === 'km'
   if (!g.service_interval_km) return null;
   if (g.km_since_service <= 0) return null;
-  const rate = g.km_since_service / weeksSince; // km/week
+  const rate = g.km_since_service / weeksSince;
   if (!(rate > 0)) return null;
   const remaining = g.service_interval_km - g.km_since_service;
   return remaining / rate;
@@ -135,14 +130,7 @@ function fmtEta(weeks: number | null): string | null {
   return `about ${rounded} weeks at your current pace`;
 }
 
-/* ----------------------------------------------------------- shared bits */
-
-const TONE_BADGE: Record<GearTone, "alert" | "warning" | "positive" | "neutral"> = {
-  alert: "alert",
-  warning: "warning",
-  positive: "positive",
-  muted: "neutral",
-};
+/* ----------------------------------------------------------- tone helpers */
 
 const TONE_RANGE: Record<GearTone, "alert" | "warning" | "positive" | "muted"> = {
   alert: "alert",
@@ -151,12 +139,27 @@ const TONE_RANGE: Record<GearTone, "alert" | "warning" | "positive" | "muted"> =
   muted: "muted",
 };
 
+function statusWord(tone: GearTone, it: "it" | "en"): string {
+  if (tone === "alert") return it === "it" ? "Due now" : "Due now";
+  if (tone === "warning") return it === "it" ? "Due soon" : "Due soon";
+  if (tone === "positive") return "OK";
+  return "—";
+}
+
+function statusDotTone(tone: GearTone): "alert" | "watch" | "ok" | "neutral" {
+  if (tone === "alert") return "alert";
+  if (tone === "warning") return "watch";
+  if (tone === "positive") return "ok";
+  return "neutral";
+}
+
 /* ----------------------------------------------------------- Page */
 
 export function GearPage() {
   const t = useT();
   const ui = useApexUi();
   const { toast } = useToast();
+  const it = ui.locale === "it" ? "it" : "en";
 
   const [gear, setGear] = useState<GearRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -207,12 +210,32 @@ export function GearPage() {
     return { dueNow, dueSoon, ok };
   }, [gear]);
 
+  const pageSentence = useMemo(() => {
+    if (counts.dueNow > 0) {
+      return it === "it"
+        ? `${counts.dueNow} ${counts.dueNow === 1 ? "pezzo richiede" : "pezzi richiedono"} manutenzione ora.`
+        : `${counts.dueNow} ${counts.dueNow === 1 ? "item needs service now." : "items need service now."}`;
+    }
+    if (counts.dueSoon > 0) {
+      return it === "it"
+        ? `${counts.dueSoon} ${counts.dueSoon === 1 ? "pezzo sarà pronto a breve." : "pezzi saranno pronti a breve."}`
+        : `${counts.dueSoon} ${counts.dueSoon === 1 ? "item is due for service soon." : "items are due for service soon."}`;
+    }
+    if (counts.ok > 0) {
+      return it === "it"
+        ? "Tutto l'equipaggiamento è in regola."
+        : "All your gear is OK.";
+    }
+    return it === "it"
+      ? "Nessuna attrezzatura aggiunta."
+      : "No gear added yet.";
+  }, [counts, it]);
+
   const visible = useMemo(() => {
     if (filter === "all") return gear;
     return gear.filter((g) => {
       if (filter === "due_now") return g.active && g.usage_pct >= 100;
       if (filter === "due_soon") return g.active && g.usage_pct >= 80 && g.usage_pct < 100;
-      // ok
       return g.active && g.usage_pct < 80;
     });
   }, [gear, filter]);
@@ -258,7 +281,6 @@ export function GearPage() {
       const updated: GearRow = data.gear;
       setGear((prev) => {
         const next = prev.map((x) => (x.id === updated.id ? updated : x));
-        // Keep active-first + usage_pct desc ordering stable.
         next.sort((a, b) => {
           if (a.active !== b.active) return a.active ? -1 : 1;
           return b.usage_pct - a.usage_pct;
@@ -293,11 +315,14 @@ export function GearPage() {
   // -- render -----------------------------------------------------------------
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title={t("nav.gear")}
-        subtitle={t("gear.subtitle")}
-        actions={
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* Header — page title + page sentence + Add gear action */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="page-title">{it === "it" ? "Attrezzatura" : "Gear"}</h1>
+          <PageSentence className="mt-2">{pageSentence}</PageSentence>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <ApexButton
             variant="primary"
             size="md"
@@ -306,39 +331,41 @@ export function GearPage() {
           >
             {t("gear.add_gear")}
           </ApexButton>
-        }
-      />
-
-      {/* Row 1 — summary counters (tappable filters for due_now / due_soon) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <SummaryCounter
-          label={t("gear.summary_due_now")}
-          value={counts.dueNow}
-          tone="alert"
-          active={filter === "due_now"}
-          onClick={() => setFilter(filter === "due_now" ? "all" : "due_now")}
-        />
-        <SummaryCounter
-          label={t("gear.summary_due_soon")}
-          value={counts.dueSoon}
-          tone="warning"
-          active={filter === "due_soon"}
-          onClick={() => setFilter(filter === "due_soon" ? "all" : "due_soon")}
-        />
-        <SummaryCounter
-          label={t("gear.summary_ok")}
-          value={counts.ok}
-          tone="positive"
-          active={filter === "ok"}
-          onClick={() => setFilter(filter === "ok" ? "all" : "ok")}
-        />
+        </div>
       </div>
 
-      {/* Active filter banner */}
+      {/* Summary — 3 compact numbers with StatusDots, no bordered tiles */}
+      <Section label={it === "it" ? "Riepilogo" : "Summary"}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <SummaryCounter
+            label={t("gear.summary_due_now")}
+            value={counts.dueNow}
+            tone="alert"
+            active={filter === "due_now"}
+            onClick={() => setFilter(filter === "due_now" ? "all" : "due_now")}
+          />
+          <SummaryCounter
+            label={t("gear.summary_due_soon")}
+            value={counts.dueSoon}
+            tone="warning"
+            active={filter === "due_soon"}
+            onClick={() => setFilter(filter === "due_soon" ? "all" : "due_soon")}
+          />
+          <SummaryCounter
+            label={t("gear.summary_ok")}
+            value={counts.ok}
+            tone="positive"
+            active={filter === "ok"}
+            onClick={() => setFilter(filter === "ok" ? "all" : "ok")}
+          />
+        </div>
+      </Section>
+
+      {/* Active filter banner — no borders, surface contrast only */}
       {filter !== "all" && (
-        <div className="flex items-center gap-2 text-[12px] text-muted">
+        <div className="flex items-center gap-2 text-[14px] text-muted">
           <span>
-            Filter:{" "}
+            {it === "it" ? "Filtro: " : "Filter: "}
             <span className="font-semibold text-ink2">
               {filter === "due_now"
                 ? t("gear.summary_due_now")
@@ -350,23 +377,23 @@ export function GearPage() {
           <button
             type="button"
             onClick={() => setFilter("all")}
-            className="rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-0.5 text-[11px] font-semibold text-muted transition-colors hover:text-ink"
+            className="num rounded-[var(--radius-control)] bg-surface2 px-2 py-0.5 text-[13px] font-semibold text-muted transition-colors hover:bg-surface3 hover:text-ink"
           >
-            Clear
+            {it === "it" ? "Cancella" : "Clear"}
           </button>
         </div>
       )}
 
-      {/* Row 2 — gear cards */}
+      {/* Gear list — borderless cards */}
       {loading ? (
         <Card>
-          <Loading label="Loading gear…" />
+          <Loading label={it === "it" ? "Carico attrezzatura…" : "Loading gear…"} />
         </Card>
       ) : error ? (
         <Card>
-          <div className="text-[13px] text-alertText">{error}</div>
+          <div className="text-[14px] text-alertText">{error}</div>
           <ApexButton variant="secondary" size="sm" className="mt-3" onClick={reload}>
-            Retry
+            {it === "it" ? "Riprova" : "Retry"}
           </ApexButton>
         </Card>
       ) : gear.length === 0 ? (
@@ -385,7 +412,10 @@ export function GearPage() {
           }
         />
       ) : visible.length === 0 ? (
-        <Empty title={t("gear.empty_title")} body="No gear matches this filter." />
+        <Empty
+          title={t("gear.empty_title")}
+          body={it === "it" ? "Nessuna attrezzatura corrisponde a questo filtro." : "No gear matches this filter."}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((g) => (
@@ -393,6 +423,7 @@ export function GearPage() {
               key={g.id}
               g={g}
               t={t}
+              it={it}
               expanded={expandedId === g.id}
               onToggleExpand={() =>
                 setExpandedId((prev) => (prev === g.id ? null : g.id))
@@ -412,6 +443,7 @@ export function GearPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         t={t}
+        it={it}
         onCreated={(g) => {
           setGear((prev) => {
             const next = [...prev, g];
@@ -422,7 +454,7 @@ export function GearPage() {
             return next;
           });
           setAddOpen(false);
-          toast({ title: "Gear added", description: g.name });
+          toast({ title: it === "it" ? "Attrezzatura aggiunta" : "Gear added", description: g.name });
         }}
       />
 
@@ -431,6 +463,7 @@ export function GearPage() {
         open={!!logFor}
         onOpenChange={(o) => !o && setLogFor(null)}
         t={t}
+        it={it}
         gear={logFor}
         onSave={onLogService}
       />
@@ -440,13 +473,16 @@ export function GearPage() {
         open={!!historyFor}
         onOpenChange={(o) => !o && setHistoryFor(null)}
         t={t}
+        it={it}
         gear={historyFor}
       />
     </div>
   );
 }
 
-/* ----------------------------------------------------------- Summary counter */
+/* ----------------------------------------------------------- Summary counter
+ * Compact number + StatusDot. NO bordered tile. Active state shown via
+ * surface-2 background (surface contrast only). */
 
 function SummaryCounter({
   label,
@@ -457,44 +493,40 @@ function SummaryCounter({
 }: {
   label: string;
   value: number;
-  tone: GearTone;
+  tone: Exclude<GearTone, "muted">;
   active: boolean;
   onClick: () => void;
 }) {
-  const toneCls: Record<GearTone, string> = {
-    alert: "text-alertText",
-    warning: "text-warningText",
-    positive: "text-positiveText",
-    muted: "text-muted",
-  };
-  const dotCls: Record<GearTone, string> = {
-    alert: "bg-alert",
-    warning: "bg-warning",
-    positive: "bg-positive",
-    muted: "bg-hairline2",
-  };
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`num flex items-center justify-between rounded-[var(--radius-card)] border bg-surface px-4 py-3 text-left transition-colors ${
-        active ? "border-primary" : "border-hairline hover:border-hairline2"
+      className={`num flex items-center justify-between rounded-[var(--radius-card)] bg-surface px-6 py-5 text-left transition-colors hover:bg-surface2 ${
+        active ? "bg-surface2" : ""
       }`}
     >
-      <div className="flex items-center gap-2">
-        <span className={`inline-block h-2 w-2 rounded-full ${dotCls[tone]}`} aria-hidden />
-        <span className="eyebrow">{label}</span>
+      <div className="flex flex-col gap-2">
+        <span className="text-[14px] text-ink2">{label}</span>
+        <StatusDot
+          tone={statusDotTone(tone)}
+          label={statusWord(tone, "en")}
+        />
       </div>
-      <div className={`text-[24px] font-bold tabular-nums ${toneCls[tone]}`}>{value}</div>
+      <div className="num text-[40px] font-semibold leading-none text-ink">
+        {value}
+      </div>
     </button>
   );
 }
 
-/* ----------------------------------------------------------- Gear card */
+/* ----------------------------------------------------------- Gear card
+ * Borderless Card. Compact number + StatusDot for usage. RangeBar uses the
+ * state colour (alert/watch). Inline detail expander is surface-2 (no border). */
 
 function GearCard({
   g,
   t,
+  it,
   expanded,
   onToggleExpand,
   onLog,
@@ -505,6 +537,7 @@ function GearCard({
 }: {
   g: GearRow;
   t: (p: string, vars?: Record<string, string | number>) => string;
+  it: "it" | "en";
   expanded: boolean;
   onToggleExpand: () => void;
   onLog: () => void;
@@ -547,7 +580,6 @@ function GearCard({
       pct: Math.round(g.usage_pct),
     });
   } else {
-    // No interval set — show a faint muted bar.
     barValue = null;
     usageLabel = `${g.usage_pct.toFixed(0)}%`;
   }
@@ -556,38 +588,41 @@ function GearCard({
 
   return (
     <Card pad className={`flex flex-col gap-3 ${g.active ? "" : "opacity-60"}`}>
-      {/* Header */}
+      {/* Header — icon, name, type/brand on the left; usage% + status dot on the right */}
       <div className="flex items-start justify-between gap-3">
         <button
           type="button"
           onClick={onSelect}
           className="flex min-w-0 items-center gap-2.5 text-left"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface2 text-ink2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface2 text-ink2">
             <TypeIcon size={16} />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[14px] font-semibold text-ink">{g.name}</div>
-            <div className="truncate text-[11px] text-muted">
+            <div className="truncate text-[16px] font-semibold text-ink">{g.name}</div>
+            <div className="truncate text-[13px] text-muted">
               {t(`gear.type_options.${g.gear_type}`) || g.gear_type}
               {g.brand ? ` · ${g.brand}` : ""}
             </div>
           </div>
         </button>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Badge tone={TONE_BADGE[tone]} dot>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="num text-[20px] font-semibold text-ink">
             {Math.round(g.usage_pct)}%
-          </Badge>
-          {!g.active && <Badge tone="neutral">Inactive</Badge>}
+          </div>
+          <StatusDot
+            tone={statusDotTone(tone)}
+            label={statusWord(tone, it)}
+          />
         </div>
       </div>
 
-      {/* Binding interval bar */}
+      {/* Binding interval bar — state-coloured (alert/watch) */}
       <div>
         <div className="flex items-baseline justify-between gap-2">
-          <div className="num text-[13px] font-semibold text-ink2">{usageLabel}</div>
-          <div className="eyebrow text-faint">
-            {metric === "hours" ? "Hours" : metric === "km" ? "Distance" : ""}
+          <div className="num text-[14px] font-medium text-ink2">{usageLabel}</div>
+          <div className="text-[13px] text-ink3">
+            {metric === "hours" ? (it === "it" ? "Ore" : "Hours") : metric === "km" ? (it === "it" ? "Distanza" : "Distance") : ""}
           </div>
         </div>
         <div className="mt-2">
@@ -601,15 +636,13 @@ function GearCard({
           />
         </div>
         {etaText && (
-          <div className="mt-2 text-[11px] text-muted">{etaText}</div>
+          <div className="mt-2 text-[13px] text-muted">{etaText}</div>
         )}
       </div>
 
-      <Hairline />
-
-      {/* Last service */}
-      <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="eyebrow">{t("gear.last_service")}</span>
+      {/* Last service line — flat, no border */}
+      <div className="flex items-center justify-between gap-2 text-[13px]">
+        <span className="text-ink2">{t("gear.last_service")}</span>
         <span className="num text-muted">
           {g.last_service_type ? (
             <>
@@ -647,31 +680,35 @@ function GearCard({
           variant="ghost"
           size="sm"
           onClick={onToggleExpand}
-          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-label={expanded ? (it === "it" ? "Comprimi" : "Collapse") : (it === "it" ? "Espandi" : "Expand")}
           icon={
             expanded ? <ChevronUp size={14} strokeWidth={2.4} /> : <ChevronDown size={14} strokeWidth={2.4} />
           }
         />
       </div>
 
-      {/* Inline detail expander */}
+      {/* Inline detail expander — surface-2 background, NO border */}
       {expanded && (
-        <GearDetailExpander g={g} t={t} onUpdate={onUpdate} onDelete={onDelete} />
+        <GearDetailExpander g={g} t={t} it={it} onUpdate={onUpdate} onDelete={onDelete} />
       )}
     </Card>
   );
 }
 
-/* ----------------------------------------------------------- Detail expander */
+/* ----------------------------------------------------------- Detail expander
+ * Flat surface-2 panel inside the card. No border. Inputs keep their borders
+ * (allowed: outlines only on inputs + focus). */
 
 function GearDetailExpander({
   g,
   t,
+  it,
   onUpdate,
   onDelete,
 }: {
   g: GearRow;
   t: (p: string, vars?: Record<string, string | number>) => string;
+  it: "it" | "en";
   onUpdate: (patch: Record<string, unknown>) => Promise<GearRow | null>;
   onDelete: () => void;
 }) {
@@ -707,13 +744,15 @@ function GearDetailExpander({
   };
 
   return (
-    <div className="mt-2 space-y-4 rounded-[var(--radius-card)] border border-hairline2 bg-surface2 p-4">
+    <div className="mt-2 space-y-4 rounded-[var(--radius-card)] bg-surface2 p-5">
       {/* Intervals */}
       <div>
-        <div className="eyebrow mb-2">Intervals</div>
+        <div className="mb-2 text-[14px] font-medium text-ink2">
+          {it === "it" ? "Intervalli" : "Intervals"}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="text-[11px] font-medium text-muted">{t("gear.interval_hours")}</span>
+            <span className="text-[14px] text-muted">{t("gear.interval_hours")}</span>
             <input
               type="number"
               inputMode="numeric"
@@ -722,11 +761,11 @@ function GearDetailExpander({
               value={hours}
               onChange={(e) => setHours(e.target.value)}
               placeholder="—"
-              className="num mt-1 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
+              className="num mt-1 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[14px] text-ink outline-none focus:border-primary"
             />
           </label>
           <label className="block">
-            <span className="text-[11px] font-medium text-muted">{t("gear.interval_km")}</span>
+            <span className="text-[14px] text-muted">{t("gear.interval_km")}</span>
             <input
               type="number"
               inputMode="numeric"
@@ -735,7 +774,7 @@ function GearDetailExpander({
               value={km}
               onChange={(e) => setKm(e.target.value)}
               placeholder="—"
-              className="num mt-1 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
+              className="num mt-1 w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[14px] text-ink outline-none focus:border-primary"
             />
           </label>
         </div>
@@ -743,7 +782,7 @@ function GearDetailExpander({
 
       {/* Default for disciplines */}
       <div>
-        <div className="eyebrow mb-2">{t("gear.default_for")}</div>
+        <div className="mb-2 text-[14px] font-medium text-ink2">{t("gear.default_for")}</div>
         <div className="flex flex-wrap gap-1.5">
           {DISCIPLINES.map((d) => {
             const on = defaults.includes(d);
@@ -752,10 +791,10 @@ function GearDetailExpander({
                 key={d}
                 type="button"
                 onClick={() => toggleDefault(d)}
-                className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2 py-1 text-[11px] font-medium transition-colors ${
+                className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-2 py-1 text-[13px] font-medium transition-colors ${
                   on
-                    ? "border-primary bg-primarySoft text-primaryText"
-                    : "border-hairline bg-surface text-muted hover:text-ink2"
+                    ? "bg-primarySoft text-primaryText"
+                    : "bg-surface text-muted hover:text-ink2"
                 }`}
               >
                 <span
@@ -773,9 +812,9 @@ function GearDetailExpander({
       {/* Active + delete */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] font-medium text-ink2">{t("gear.active")}</span>
+          <span className="text-[14px] font-medium text-ink2">{t("gear.active")}</span>
           <Switch checked={active} onCheckedChange={handleActiveToggle} aria-label={t("gear.active")} />
-          {!active && <span className="text-[11px] text-muted">({t("gear.deactivate")})</span>}
+          {!active && <span className="text-[13px] text-muted">({t("gear.deactivate")})</span>}
         </div>
         <div className="flex items-center gap-2">
           <ApexButton
@@ -784,17 +823,19 @@ function GearDetailExpander({
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? (it === "it" ? "Salvo…" : "Saving…") : (it === "it" ? "Salva" : "Save")}
           </ApexButton>
           <ConfirmPopover
-            message={`Delete ${g.name}? This also removes its service log.`}
+            message={it === "it"
+              ? `Eliminare ${g.name}? Anche il log dei servizi verrà rimosso.`
+              : `Delete ${g.name}? This also removes its service log.`}
             onConfirm={onDelete}
             onCancel={() => {}}
-            confirmLabel="Delete"
-            cancelLabel="Cancel"
+            confirmLabel={it === "it" ? "Elimina" : "Delete"}
+            cancelLabel={it === "it" ? "Annulla" : "Cancel"}
           >
             <ApexButton variant="ghost" size="sm" icon={<Trash2 size={12} strokeWidth={2.4} />}>
-              Delete
+              {it === "it" ? "Elimina" : "Delete"}
             </ApexButton>
           </ConfirmPopover>
         </div>
@@ -803,17 +844,20 @@ function GearDetailExpander({
   );
 }
 
-/* ----------------------------------------------------------- Add gear sheet */
+/* ----------------------------------------------------------- Add gear sheet
+ * Sheet body uses bg-surface, divider-only separators (no borders). */
 
 function AddGearSheet({
   open,
   onOpenChange,
   t,
+  it,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   t: (p: string, vars?: Record<string, string | number>) => string;
+  it: "it" | "en";
   onCreated: (g: GearRow) => void;
 }) {
   const [name, setName] = useState("");
@@ -866,29 +910,29 @@ function AddGearSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto p-0">
-        <SheetHeader className="border-b border-hairline">
-          <SheetTitle className="text-[15px] font-semibold text-ink">{t("gear.add_gear")}</SheetTitle>
-          <SheetDescription className="text-[12px] text-muted">
+      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto bg-surface p-0">
+        <SheetHeader className="border-b border-[var(--c-divider)]">
+          <SheetTitle className="text-[16px] font-semibold text-ink">{t("gear.add_gear")}</SheetTitle>
+          <SheetDescription className="text-[14px] text-muted">
             {t("gear.empty_body")}
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-4 p-4">
+        <div className="space-y-4 p-5">
           {/* Name */}
           <div>
-            <label className="eyebrow block">{t("gear.name")}</label>
+            <label className="block text-[14px] font-medium text-ink2">{t("gear.name")}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Specialized Turbo Kenevo"
+              placeholder={it === "it" ? "es. Specialized Turbo Kenevo" : "e.g. Specialized Turbo Kenevo"}
               className="num mt-1 w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[14px] text-ink outline-none focus:border-primary"
             />
           </div>
 
           {/* Type */}
           <div>
-            <label className="eyebrow block">{t("gear.gear_type")}</label>
+            <label className="block text-[14px] font-medium text-ink2">{t("gear.gear_type")}</label>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {GEAR_TYPES.map((gt) => {
                 const Icon = GEAR_TYPE_ICON[gt] ?? Waves;
@@ -898,10 +942,10 @@ function AddGearSheet({
                     key={gt}
                     type="button"
                     onClick={() => setGearType(gt)}
-                    className={`inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                    className={`inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
                       on
-                        ? "border-primary bg-primarySoft text-primaryText"
-                        : "border-hairline bg-surface2 text-muted hover:text-ink2"
+                        ? "bg-primarySoft text-primaryText"
+                        : "bg-surface2 text-muted hover:text-ink2"
                     }`}
                   >
                     <Icon size={14} />
@@ -915,7 +959,7 @@ function AddGearSheet({
           {/* Intervals */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="eyebrow block">{t("gear.interval_hours")}</label>
+              <label className="block text-[14px] font-medium text-ink2">{t("gear.interval_hours")}</label>
               <input
                 type="number"
                 inputMode="numeric"
@@ -927,7 +971,7 @@ function AddGearSheet({
               />
             </div>
             <div>
-              <label className="eyebrow block">{t("gear.interval_km")}</label>
+              <label className="block text-[14px] font-medium text-ink2">{t("gear.interval_km")}</label>
               <input
                 type="number"
                 inputMode="numeric"
@@ -943,10 +987,12 @@ function AddGearSheet({
           {/* Default for */}
           <div>
             <div className="flex items-center gap-1.5">
-              <label className="eyebrow">{t("gear.default_for")}</label>
+              <label className="text-[14px] font-medium text-ink2">{t("gear.default_for")}</label>
               <InfoButton title={t("gear.default_for")}>
                 <div>
-                  Pick the disciplines this gear is your default for. Used to estimate service pace.
+                  {it === "it"
+                    ? "Scegli per quali discipline questa attrezzatura è quella predefinita. Usato per stimare il ritmo di manutenzione."
+                    : "Pick the disciplines this gear is your default for. Used to estimate service pace."}
                 </div>
               </InfoButton>
             </div>
@@ -958,10 +1004,10 @@ function AddGearSheet({
                     key={d}
                     type="button"
                     onClick={() => toggleDefault(d)}
-                    className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2 py-1 text-[11px] font-medium transition-colors ${
+                    className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-2 py-1 text-[13px] font-medium transition-colors ${
                       on
-                        ? "border-primary bg-primarySoft text-primaryText"
-                        : "border-hairline bg-surface2 text-muted hover:text-ink2"
+                        ? "bg-primarySoft text-primaryText"
+                        : "bg-surface2 text-muted hover:text-ink2"
                     }`}
                   >
                     <span
@@ -976,11 +1022,11 @@ function AddGearSheet({
             </div>
           </div>
 
-          {err && <div className="text-[12px] text-alertText">{err}</div>}
+          {err && <div className="text-[14px] text-alertText">{err}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-hairline p-4">
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--c-divider)] p-4">
           <ApexButton variant="ghost" size="md" onClick={() => onOpenChange(false)}>
-            Cancel
+            {it === "it" ? "Annulla" : "Cancel"}
           </ApexButton>
           <ApexButton
             variant="primary"
@@ -988,7 +1034,7 @@ function AddGearSheet({
             onClick={handleSave}
             disabled={saving || !name.trim()}
           >
-            {saving ? "Adding…" : t("gear.add_gear")}
+            {saving ? (it === "it" ? "Aggiungo…" : "Adding…") : t("gear.add_gear")}
           </ApexButton>
         </div>
       </SheetContent>
@@ -1002,12 +1048,14 @@ function LogServiceSheet({
   open,
   onOpenChange,
   t,
+  it,
   gear,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   t: (p: string, vars?: Record<string, string | number>) => string;
+  it: "it" | "en";
   gear: GearRow | null;
   onSave: (
     g: GearRow,
@@ -1036,7 +1084,7 @@ function LogServiceSheet({
   const handleSave = async () => {
     if (!gear) return;
     if (!serviceType.trim()) {
-      setErr("Service type is required");
+      setErr(it === "it" ? "Il tipo di servizio è obbligatorio" : "Service type is required");
       return;
     }
     setSaving(true);
@@ -1059,27 +1107,29 @@ function LogServiceSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto p-0">
-        <SheetHeader className="border-b border-hairline">
-          <SheetTitle className="text-[15px] font-semibold text-ink">
+      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto bg-surface p-0">
+        <SheetHeader className="border-b border-[var(--c-divider)]">
+          <SheetTitle className="text-[16px] font-semibold text-ink">
             {t("gear.log_service")}
             {gear ? ` · ${gear.name}` : ""}
           </SheetTitle>
-          <SheetDescription className="text-[12px] text-muted">
-            Records a service and resets the usage counters to zero.
+          <SheetDescription className="text-[14px] text-muted">
+            {it === "it"
+              ? "Registra un servizio e azzera i contatori di utilizzo."
+              : "Records a service and resets the usage counters to zero."}
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-4 p-4">
+        <div className="space-y-4 p-5">
           {/* Service type presets */}
           <div>
-            <label className="eyebrow block">{t("gear.service_type")}</label>
+            <label className="block text-[14px] font-medium text-ink2">{t("gear.service_type")}</label>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {SERVICE_PRESETS.map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => pickPreset(p)}
-                  className="rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink2"
+                  className="rounded-[var(--radius-control)] bg-surface2 px-2.5 py-1.5 text-[13px] font-medium text-muted transition-colors hover:bg-surface3 hover:text-ink2"
                 >
                   {t(`gear.service_presets.${p}`)}
                 </button>
@@ -1089,14 +1139,14 @@ function LogServiceSheet({
               type="text"
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
-              placeholder="Or type your own…"
+              placeholder={it === "it" ? "Oppure scrivi il tuo…" : "Or type your own…"}
               className="num mt-2 w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[14px] text-ink outline-none focus:border-primary"
             />
           </div>
 
           {/* Date */}
           <div>
-            <label className="eyebrow block">{t("gear.service_date")}</label>
+            <label className="block text-[14px] font-medium text-ink2">{t("gear.service_date")}</label>
             <input
               type="date"
               value={performedAt}
@@ -1107,21 +1157,21 @@ function LogServiceSheet({
 
           {/* Notes */}
           <div>
-            <label className="eyebrow block">{t("gear.service_notes")}</label>
+            <label className="block text-[14px] font-medium text-ink2">{t("gear.service_notes")}</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Optional notes…"
-              className="mt-1 w-full resize-none rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+              placeholder={it === "it" ? "Note opzionali…" : "Optional notes…"}
+              className="mt-1 w-full resize-none rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[14px] text-ink outline-none focus:border-primary"
             />
           </div>
 
-          {err && <div className="text-[12px] text-alertText">{err}</div>}
+          {err && <div className="text-[14px] text-alertText">{err}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-hairline p-4">
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--c-divider)] p-4">
           <ApexButton variant="ghost" size="md" onClick={() => onOpenChange(false)}>
-            Cancel
+            {it === "it" ? "Annulla" : "Cancel"}
           </ApexButton>
           <ApexButton
             variant="primary"
@@ -1129,7 +1179,7 @@ function LogServiceSheet({
             onClick={handleSave}
             disabled={saving || !serviceType.trim()}
           >
-            {saving ? "Saving…" : t("gear.log_service")}
+            {saving ? (it === "it" ? "Salvo…" : "Saving…") : t("gear.log_service")}
           </ApexButton>
         </div>
       </SheetContent>
@@ -1143,11 +1193,13 @@ function HistorySheet({
   open,
   onOpenChange,
   t,
+  it,
   gear,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   t: (p: string, vars?: Record<string, string | number>) => string;
+  it: "it" | "en";
   gear: GearRow | null;
 }) {
   const [logs, setLogs] = useState<GearServiceLog[]>([]);
@@ -1179,21 +1231,21 @@ function HistorySheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto p-0">
-        <SheetHeader className="border-b border-hairline">
-          <SheetTitle className="text-[15px] font-semibold text-ink">
+      <SheetContent side="bottom" className="max-h-[88vh] gap-0 overflow-y-auto bg-surface p-0">
+        <SheetHeader className="border-b border-[var(--c-divider)]">
+          <SheetTitle className="text-[16px] font-semibold text-ink">
             {t("gear.history")}
             {gear ? ` · ${gear.name}` : ""}
           </SheetTitle>
-          <SheetDescription className="text-[12px] text-muted">
-            Service timeline for this gear.
+          <SheetDescription className="text-[14px] text-muted">
+            {it === "it" ? "Cronologia servizi per questa attrezzatura." : "Service timeline for this gear."}
           </SheetDescription>
         </SheetHeader>
-        <div className="p-4">
+        <div className="p-5">
           {loading ? (
-            <Loading label="Loading history…" />
+            <Loading label={it === "it" ? "Carico cronologia…" : "Loading history…"} />
           ) : err ? (
-            <div className="text-[12px] text-alertText">{err}</div>
+            <div className="text-[14px] text-alertText">{err}</div>
           ) : logs.length === 0 ? (
             <Empty title={t("gear.no_services")} />
           ) : (
@@ -1207,17 +1259,17 @@ function HistorySheet({
                   />
                   {/* vertical line */}
                   <span
-                    className="absolute left-[3px] top-3 h-full w-px bg-hairline"
+                    className="absolute left-[3px] top-3 h-full w-px bg-[var(--c-divider)]"
                     aria-hidden
                   />
-                  <div className="text-[13px] font-semibold text-ink">
+                  <div className="text-[14px] font-semibold text-ink">
                     {t(`gear.service_presets.${l.service_type}`) || l.service_type}
                   </div>
-                  <div className="num text-[11px] text-muted">
+                  <div className="num text-[13px] text-muted">
                     {fmtDate(l.performed_at)}
                   </div>
                   {l.notes && (
-                    <div className="mt-1 text-[12px] text-muted">{l.notes}</div>
+                    <div className="mt-1 text-[14px] text-muted">{l.notes}</div>
                   )}
                 </li>
               ))}
@@ -1225,18 +1277,20 @@ function HistorySheet({
           )}
           {logs.length > 0 && (
             <>
-              <Hairline className="my-4" />
+              <div className="my-5 h-px w-full bg-[var(--c-divider)]" />
               <div className="flex items-center gap-1.5">
-                <Eyebrow>Monthly usage</Eyebrow>
-                <InfoButton title="Monthly usage">
+                <span className="text-[14px] font-medium text-ink2">
+                  {it === "it" ? "Utilizzo mensile" : "Monthly usage"}
+                </span>
+                <InfoButton title={it === "it" ? "Utilizzo mensile" : "Monthly usage"}>
                   <div>
-                    Plan §6 calls for monthly hours/km bars derived from activity-gear
-                    links. That linkage table isn&apos;t built yet, so the bar chart is
-                    deferred.
+                    {it === "it"
+                      ? "Il piano §6 prevede barre di ore/km mensili derivate dai link attività-attrezzatura. Quella tabella non è ancora costruita, quindi il grafico è rimandato."
+                      : "Plan §6 calls for monthly hours/km bars derived from activity-gear links. That linkage table isn't built yet, so the bar chart is deferred."}
                   </div>
                 </InfoButton>
               </div>
-              <div className="mt-2 text-[12px] text-muted">{t("gear.no_linked_activities")}</div>
+              <div className="mt-2 text-[14px] text-muted">{t("gear.no_linked_activities")}</div>
             </>
           )}
         </div>

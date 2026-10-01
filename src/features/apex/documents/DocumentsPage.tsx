@@ -1,22 +1,29 @@
 "use client";
 
 /**
- * Apex Health — Documents page (plan: document upload + AI parsing).
+ * Apex Health — Documents page.
  *
- * The page's job: let the user upload any health/performance document (lab
- * tests, medical reports, training plans, dietary plans, prescriptions, blood
- * work) and have the AI extract structured data from it.
+ * The page's job: upload any health/performance document (lab tests, medical
+ * reports, training plans, dietary plans, prescriptions, blood work) and have
+ * the AI extract structured data from it.
  *
- * Layout:
- *   Row 1 — Upload dropzone (drag-drop + click) with category selector
- *   Row 2 — Document list: each row shows file info, status badge, parse/view
- *           buttons, and an expandable parsed-data viewer
+ * Re-skinned per ui-language/RULES.md (9 principles):
+ *   1. One answer: the upload dropzone is the hero.
+ *   2. Hero is 2× anything else.
+ *   3. No outlines on cards (the dashed dropzone border is an input affordance).
+ *   4. Sentence-case labels, 13px minimum.
+ *   5. Numbers stay white; status = dot + word (StatusDot).
+ *   6. Accent (orange) for the upload affordance + actions.
+ *   7. Plain words ("Documents", not "DOCUMENTS").
+ *   8. Charts: n/a on this page.
+ *   9. Document list is rows, not one card per doc. Parsed data is flat
+ *      sections, no nested bordered tiles.
  *
  * Supported file types: PDF, JPG, PNG, TXT, CSV (max 10MB).
  * PDFs are parsed via pdf-parse → text → LLM; images via VLM.
  */
 
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import {
   FileText,
   Image as ImageIcon,
@@ -26,8 +33,6 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  CheckCircle2,
-  Clock,
   Loader2,
   FlaskConical,
   Dumbbell,
@@ -40,17 +45,15 @@ import {
 import { useT } from "@/lib/apex/i18nContext";
 import {
   ApexButton,
-  Badge,
   Card,
   ConfirmPopover,
   Empty,
   ErrorNote,
-  Eyebrow,
-  Hairline,
   Loading,
-  PageHeader,
+  PageSentence,
+  Section,
+  StatusDot,
   rangeTone,
-  toneFor,
 } from "@/components/apex/kit";
 import { useToast } from "@/hooks/use-toast";
 import type { DocCategory, ParsedDocument, UploadedDocument } from "@/lib/apex/types";
@@ -71,18 +74,16 @@ function fileIcon(type: string) {
   return FileIcon;
 }
 
-function statusBadge(status: string, t: (p: string) => string) {
+function statusDotFor(
+  status: string,
+  t: (p: string) => string,
+): { tone: "neutral" | "ok" | "watch" | "alert"; label: string } {
   switch (status) {
-    case "pending":
-      return <Badge tone="neutral" dot>{t("documents.status_pending")}</Badge>;
-    case "parsing":
-      return <Badge tone="primary" dot>{t("documents.status_parsing")}</Badge>;
-    case "parsed":
-      return <Badge tone="positive" dot>{t("documents.status_parsed")}</Badge>;
-    case "error":
-      return <Badge tone="alert" dot>{t("documents.status_error")}</Badge>;
-    default:
-      return <Badge tone="neutral">{status}</Badge>;
+    case "pending": return { tone: "neutral", label: t("documents.status_pending") };
+    case "parsing": return { tone: "watch", label: t("documents.status_parsing") };
+    case "parsed":  return { tone: "ok", label: t("documents.status_parsed") };
+    case "error":   return { tone: "alert", label: t("documents.status_error") };
+    default:        return { tone: "neutral", label: status };
   }
 }
 
@@ -139,7 +140,6 @@ export function DocumentsPage() {
     refresh();
   }, [refresh]);
 
-  // Auto-collapse expand state if a doc is removed
   useEffect(() => {
     if (expandedId !== null && !docs.some((d) => d.id === expandedId)) {
       setExpandedId(null);
@@ -159,7 +159,6 @@ export function DocumentsPage() {
         if (j?.ok) {
           toast({ title: `Uploaded ${file.name}`, description: t("documents.status_pending") });
           await refresh();
-          // Auto-parse immediately for a smooth flow
           if (j.documentId) {
             parseDocument(j.documentId);
           }
@@ -232,39 +231,46 @@ export function DocumentsPage() {
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) uploadFile(file);
-    e.target.value = ""; // reset so the same file can be picked again
+    e.target.value = "";
   };
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-5">
-      <PageHeader title={t("nav.documents")} subtitle={t("documents.subtitle")} />
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ===== Title + page sentence ===== */}
+      <div>
+        <h1 className="page-title">Documents</h1>
+        <PageSentence className="mt-2">
+          Upload any health or performance document — the AI reads it and extracts the
+          markers, sessions, meals, or medications inside.
+        </PageSentence>
+      </div>
 
-      {/* Row 1 — Upload dropzone + category selector */}
-      <Card pad={false} className="overflow-hidden">
-        <div className="border-b border-hairline px-4 py-2.5">
-          <Eyebrow>{t("documents.select_category")}</Eyebrow>
-        </div>
-        <div className="flex flex-wrap gap-1.5 px-4 py-3">
-          {CATEGORIES.map((c) => {
-            const Icon = c.icon;
-            const active = category === c.value;
-            return (
-              <button
-                key={c.value}
-                type="button"
-                onClick={() => setCategory(c.value)}
-                className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
-                  active
-                    ? "border-primary/60 bg-primarySoft text-primaryText"
-                    : "border-hairline bg-surface text-muted hover:bg-surface2 hover:text-ink2"
-                }`}
-              >
-                <Icon size={13} />
-                {t(c.labelKey)}
-              </button>
-            );
-          })}
-        </div>
+      {/* ===== Hero — Upload dropzone + category selector (borderless card) ===== */}
+      <Card>
+        <Section label={t("documents.select_category")}>
+          <div className="flex flex-wrap gap-1.5">
+            {CATEGORIES.map((c) => {
+              const Icon = c.icon;
+              const active = category === c.value;
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setCategory(c.value)}
+                  className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+                    active
+                      ? "bg-surface2 text-ink"
+                      : "text-ink2 hover:bg-surface2 hover:text-ink"
+                  }`}
+                  aria-pressed={active}
+                >
+                  <Icon size={14} />
+                  {t(c.labelKey)}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
 
         <div
           onDragOver={(e) => {
@@ -274,7 +280,7 @@ export function DocumentsPage() {
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`m-4 cursor-pointer rounded-[var(--radius-card)] border-2 border-dashed px-6 py-10 text-center transition-colors ${
+          className={`mt-4 cursor-pointer rounded-[var(--radius-card)] border-2 border-dashed px-6 py-12 text-center transition-colors ${
             dragging
               ? "border-primary bg-primarySoft/30"
               : "border-hairline2 hover:border-hairline hover:bg-surface2"
@@ -296,17 +302,17 @@ export function DocumentsPage() {
             onChange={onFileChange}
           />
           {uploading ? (
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 size={28} className="animate-spin text-primaryText" />
-              <div className="text-[13px] font-semibold text-ink2">{t("documents.uploading")}</div>
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 size={32} className="animate-spin text-primaryText" />
+              <div className="text-[14px] font-semibold text-ink2">{t("documents.uploading")}</div>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primarySoft text-primaryText">
-                <Upload size={22} />
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primarySoft text-primaryText">
+                <Upload size={26} />
               </div>
-              <div className="text-[14px] font-semibold text-ink">{t("documents.drop_title")}</div>
-              <div className="max-w-md text-[12px] text-muted">{t("documents.drop_body")}</div>
+              <div className="text-[16px] font-semibold text-ink">{t("documents.drop_title")}</div>
+              <div className="max-w-md text-[14px] text-ink2">{t("documents.drop_body")}</div>
               <ApexButton
                 variant="secondary"
                 size="sm"
@@ -315,17 +321,17 @@ export function DocumentsPage() {
                   e.stopPropagation();
                   fileInputRef.current?.click();
                 }}
-                className="mt-2"
+                className="mt-1"
               >
                 {t("documents.browse")}
               </ApexButton>
-              <div className="num mt-1 text-[10px] text-faint">{t("documents.supported_types")}</div>
+              <div className="num text-[13px] text-ink2">{t("documents.supported_types")}</div>
             </div>
           )}
         </div>
       </Card>
 
-      {/* Row 2 — Document list */}
+      {/* ===== Document list — rows, not cards ===== */}
       {loading ? (
         <Card>
           <Loading label="Loading documents…" />
@@ -335,108 +341,114 @@ export function DocumentsPage() {
       ) : docs.length === 0 ? (
         <Empty title={t("documents.no_documents")} body={t("documents.no_documents_body")} />
       ) : (
-        <div className="space-y-3">
-          {docs.map((doc) => {
-            const Icon = fileIcon(doc.fileType);
-            const isParsing = parsingId === doc.id;
-            const isExpanded = expandedId === doc.id;
-            const cat = CATEGORIES.find((c) => c.value === doc.category);
-            const CatIcon = cat?.icon || FileText;
-            return (
-              <Card key={doc.id} pad={false} className="overflow-hidden">
-                {/* Row: icon + name + category + status + actions */}
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface2 text-muted">
-                    <Icon size={16} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-ink">{doc.fileName}</div>
-                    <div className="num mt-0.5 flex items-center gap-2 text-[10px] text-faint">
-                      <span className="inline-flex items-center gap-1">
-                        <CatIcon size={10} /> {cat ? t(cat.labelKey) : doc.category}
-                      </span>
-                      <span>·</span>
-                      <span>{doc.fileType.toUpperCase()}</span>
-                      <span>·</span>
-                      <span>{fmtSize(doc.fileSize)}</span>
-                      <span>·</span>
-                      <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+        <Card pad={false}>
+          <div className="p-7 pb-3">
+            <div className="text-[14px] font-medium text-ink2">Your documents</div>
+          </div>
+          <div className="px-7">
+            <div className="divide-y divide-[var(--c-divider)]">
+              {docs.map((doc) => {
+                const Icon = fileIcon(doc.fileType);
+                const isParsing = parsingId === doc.id;
+                const isExpanded = expandedId === doc.id;
+                const cat = CATEGORIES.find((c) => c.value === doc.category);
+                const CatIcon = cat?.icon || FileText;
+                const dot = statusDotFor(doc.status, t);
+                return (
+                  <Fragment key={doc.id}>
+                    {/* Row: icon · name · category · status · actions */}
+                    <div className="flex items-center gap-3 py-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface2 text-ink2">
+                        <Icon size={16} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14px] font-semibold text-ink">{doc.fileName}</div>
+                        <div className="num mt-0.5 flex items-center gap-2 text-[13px] text-ink2">
+                          <span className="inline-flex items-center gap-1">
+                            <CatIcon size={11} /> {cat ? t(cat.labelKey) : doc.category}
+                          </span>
+                          <span className="text-faint">·</span>
+                          <span>{doc.fileType.toUpperCase()}</span>
+                          <span className="text-faint">·</span>
+                          <span>{fmtSize(doc.fileSize)}</span>
+                          <span className="text-faint">·</span>
+                          <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        <StatusDot tone={dot.tone} label={dot.label} />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {doc.status === "pending" && (
+                          <ApexButton
+                            variant="secondary"
+                            size="sm"
+                            icon={isParsing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                            onClick={() => parseDocument(doc.id)}
+                            disabled={isParsing}
+                          >
+                            {t("documents.parse")}
+                          </ApexButton>
+                        )}
+                        {doc.status === "parsed" && (
+                          <ApexButton
+                            variant="ghost"
+                            size="sm"
+                            icon={isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            onClick={() => setExpandedId(isExpanded ? null : doc.id)}
+                          >
+                            {isExpanded ? t("documents.hide") : t("documents.view_parsed")}
+                          </ApexButton>
+                        )}
+                        {doc.status === "error" && (
+                          <ApexButton
+                            variant="ghost"
+                            size="sm"
+                            icon={<Sparkles size={12} />}
+                            onClick={() => parseDocument(doc.id)}
+                            disabled={isParsing}
+                          >
+                            {t("documents.re_parse")}
+                          </ApexButton>
+                        )}
+                        <ConfirmPopover
+                          message={t("documents.delete_confirm")}
+                          onConfirm={() => deleteDoc(doc.id)}
+                          onCancel={() => {}}
+                          confirmLabel={t("documents.delete")}
+                          cancelLabel="Cancel"
+                        >
+                          <button
+                            type="button"
+                            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-faint transition-colors hover:bg-alertSoft hover:text-alertText"
+                            aria-label={t("documents.delete")}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </ConfirmPopover>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {statusBadge(doc.status, t)}
-                    {doc.status === "pending" && (
-                      <ApexButton
-                        variant="secondary"
-                        size="sm"
-                        icon={isParsing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                        onClick={() => parseDocument(doc.id)}
-                        disabled={isParsing}
-                      >
-                        {t("documents.parse")}
-                      </ApexButton>
-                    )}
-                    {doc.status === "parsed" && (
-                      <ApexButton
-                        variant="ghost"
-                        size="sm"
-                        icon={isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        onClick={() => setExpandedId(isExpanded ? null : doc.id)}
-                      >
-                        {isExpanded ? t("documents.hide") : t("documents.view_parsed")}
-                      </ApexButton>
-                    )}
-                    {doc.status === "error" && (
-                      <ApexButton
-                        variant="ghost"
-                        size="sm"
-                        icon={<Sparkles size={12} />}
-                        onClick={() => parseDocument(doc.id)}
-                        disabled={isParsing}
-                      >
-                        {t("documents.re_parse")}
-                      </ApexButton>
-                    )}
-                    <ConfirmPopover
-                      message={t("documents.delete_confirm")}
-                      onConfirm={() => deleteDoc(doc.id)}
-                      onCancel={() => {}}
-                      confirmLabel={t("documents.delete")}
-                      cancelLabel="Cancel"
-                    >
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-faint transition-colors hover:bg-alertSoft hover:text-alertText"
-                        aria-label={t("documents.delete")}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </ConfirmPopover>
-                  </div>
-                </div>
 
-                {/* Parsed data viewer */}
-                {isExpanded && doc.status === "parsed" && (
-                  <>
-                    <Hairline />
-                    <ParsedDataView doc={doc} t={t} />
-                  </>
-                )}
+                    {/* Inline error message */}
+                    {doc.status === "error" && doc.parsedData?.error && (
+                      <div className="flex items-start gap-2 pb-3 text-[13px] text-alertText">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        <span>{doc.parsedData.error}</span>
+                      </div>
+                    )}
 
-                {/* Error message */}
-                {doc.status === "error" && doc.parsedData?.error && (
-                  <>
-                    <Hairline />
-                    <div className="flex items-start gap-2 px-4 py-2.5 text-[11px] text-alertText">
-                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                      <span>{doc.parsedData.error}</span>
-                    </div>
-                  </>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+                    {/* Inline parsed data viewer (flat sections, no nested bordered tiles) */}
+                    {isExpanded && doc.status === "parsed" && (
+                      <div className="pb-4">
+                        <ParsedDataView doc={doc} t={t} />
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -456,8 +468,8 @@ function ParsedDataView({
 
   if (data.error) {
     return (
-      <div className="px-4 py-3 text-[12px] text-alertText">
-        <AlertCircle size={13} className="mr-1.5 inline" />
+      <div className="text-[14px] text-alertText">
+        <AlertCircle size={14} className="mr-1.5 inline" />
         {data.error}
       </div>
     );
@@ -465,18 +477,18 @@ function ParsedDataView({
 
   if (data.raw_extraction && !data.document_type) {
     return (
-      <div className="px-4 py-3">
-        <div className="mb-1 text-[11px] text-muted">{t("documents.no_extractable_data")}</div>
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-faint">{data.raw_extraction}</pre>
+      <div>
+        <div className="mb-1 text-[13px] text-ink2">{t("documents.no_extractable_data")}</div>
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[13px] text-ink2">{data.raw_extraction}</pre>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 px-4 py-3">
+    <div className="space-y-4">
       {/* Document type + date */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
-        <Badge tone="neutral">{data.document_type?.replace(/_/g, " ")}</Badge>
+      <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink2">
+        <StatusDot tone="neutral" label={data.document_type?.replace(/_/g, " ") ?? "Document"} />
         {data.date && <span>· {data.date}</span>}
         {data.date_range && (
           <span>
@@ -487,11 +499,11 @@ function ParsedDataView({
 
       {/* Lab results / biometric report — markers table */}
       {data.markers && data.markers.length > 0 && (
-        <Section title={t("documents.parsed_markers")}>
+        <ParsedSection title={t("documents.parsed_markers")}>
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-hairline text-left text-faint">
+                <tr className="border-b border-hairline text-left text-ink2">
                   <th className="py-1.5 pr-3 font-medium">Marker</th>
                   <th className="py-1.5 pr-3 font-medium">Value</th>
                   <th className="py-1.5 pr-3 font-medium">Unit</th>
@@ -501,19 +513,21 @@ function ParsedDataView({
               </thead>
               <tbody>
                 {data.markers.map((m, i) => {
-                  const tone = toneFor(rangeTone(m.value, m.ref_low, m.ref_high));
+                  const tone = rangeTone(m.value, m.ref_low, m.ref_high);
+                  const dotTone =
+                    tone === "positive" ? "ok" : tone === "warning" ? "watch" : tone === "alert" ? "alert" : "neutral";
                   const statusLabel =
-                    m.status === "normal" ? "normal" : m.status === "low" ? "low" : m.status === "high" ? "high" : "—";
+                    m.status === "normal" ? "In range" : m.status === "low" ? "Low" : m.status === "high" ? "High" : "—";
                   return (
                     <tr key={i} className="border-b border-hairline/50">
                       <td className="py-1.5 pr-3 font-medium text-ink">{m.name}</td>
-                      <td className="num py-1.5 pr-3 text-ink2">{m.value ?? "—"}</td>
-                      <td className="num py-1.5 pr-3 text-muted">{m.unit || "—"}</td>
-                      <td className="num py-1.5 pr-3 text-muted">
+                      <td className="num py-1.5 pr-3 text-ink">{m.value ?? "—"}</td>
+                      <td className="num py-1.5 pr-3 text-ink2">{m.unit || "—"}</td>
+                      <td className="num py-1.5 pr-3 text-ink2">
                         {m.ref_low ?? "—"}–{m.ref_high ?? "—"}
                       </td>
                       <td className="py-1.5">
-                        <Badge tone={tone === "muted" ? "neutral" : tone}>{statusLabel}</Badge>
+                        <StatusDot tone={dotTone} label={statusLabel} />
                       </td>
                     </tr>
                   );
@@ -521,130 +535,134 @@ function ParsedDataView({
               </tbody>
             </table>
           </div>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Medical report — findings */}
       {data.findings && data.findings.length > 0 && (
-        <Section title={t("documents.parsed_findings")}>
+        <ParsedSection title={t("documents.parsed_findings")}>
           <ul className="space-y-1.5">
             {data.findings.map((f, i) => {
-              const tone = f.severity === "alert" ? "alert" : f.severity === "warning" ? "warning" : "positive";
+              const dotTone =
+                f.severity === "alert" ? "alert" : f.severity === "warning" ? "watch" : "ok";
               return (
                 <li key={i} className="flex items-start gap-2">
-                  <Badge tone={tone === "alert" ? "alert" : tone === "warning" ? "warning" : "positive"}>{f.category}</Badge>
-                  <span className="text-[11px] text-ink2">{f.detail}</span>
+                  <StatusDot tone={dotTone} label={f.category} />
+                  <span className="text-[14px] text-ink2">{f.detail}</span>
                 </li>
               );
             })}
           </ul>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Training plan — sessions */}
       {data.sessions && data.sessions.length > 0 && (
-        <Section title={t("documents.parsed_sessions")}>
+        <ParsedSection title={t("documents.parsed_sessions")}>
           <ul className="space-y-1">
             {data.sessions.map((s, i) => (
-              <li key={i} className="flex items-center gap-2 text-[11px]">
-                <span className="num w-20 shrink-0 text-faint">{s.day}</span>
+              <li key={i} className="flex items-center gap-2 text-[13px]">
+                <span className="num w-20 shrink-0 text-ink2">{s.day}</span>
                 <span className="w-20 shrink-0 font-medium text-ink">{s.discipline}</span>
-                <span className="num w-16 shrink-0 text-muted">{s.duration_min ? `${s.duration_min}m` : "—"}</span>
-                <span className="w-20 shrink-0 text-muted">{s.intensity || "—"}</span>
-                <span className="min-w-0 flex-1 truncate text-muted">{s.title || s.notes}</span>
+                <span className="num w-16 shrink-0 text-ink2">{s.duration_min ? `${s.duration_min}m` : "—"}</span>
+                <span className="w-20 shrink-0 text-ink2">{s.intensity || "—"}</span>
+                <span className="min-w-0 flex-1 truncate text-ink2">{s.title || s.notes}</span>
               </li>
             ))}
           </ul>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Dietary plan — targets + meals */}
       {data.daily_targets && (
-        <Section title={t("documents.parsed_targets")}>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Stat label="Calories" value={data.daily_targets.calories} unit="kcal" />
-            <Stat label="Protein" value={data.daily_targets.protein_g} unit="g" />
-            <Stat label="Carbs" value={data.daily_targets.carbs_g} unit="g" />
-            <Stat label="Fat" value={data.daily_targets.fat_g} unit="g" />
-            <Stat label="Water" value={data.daily_targets.water_ml} unit="ml" />
+        <ParsedSection title={t("documents.parsed_targets")}>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+            <TargetStat label="Calories" value={data.daily_targets.calories} unit="kcal" />
+            <TargetStat label="Protein" value={data.daily_targets.protein_g} unit="g" />
+            <TargetStat label="Carbs" value={data.daily_targets.carbs_g} unit="g" />
+            <TargetStat label="Fat" value={data.daily_targets.fat_g} unit="g" />
+            <TargetStat label="Water" value={data.daily_targets.water_ml} unit="ml" />
           </div>
-        </Section>
+        </ParsedSection>
       )}
       {data.meals && data.meals.length > 0 && (
-        <Section title={t("documents.parsed_meals")}>
+        <ParsedSection title={t("documents.parsed_meals")}>
           <ul className="space-y-1">
             {data.meals.map((m, i) => (
-              <li key={i} className="text-[11px]">
+              <li key={i} className="text-[13px]">
                 <span className="font-medium text-ink">{m.name}</span>
                 <span className="mx-1.5 text-faint">·</span>
-                <span className="num text-muted">{m.calories ? `${m.calories} kcal` : "—"}</span>
-                {m.foods.length > 0 && <span className="ml-1.5 text-muted">— {m.foods.join(", ")}</span>}
+                <span className="num text-ink2">{m.calories ? `${m.calories} kcal` : "—"}</span>
+                {m.foods.length > 0 && <span className="ml-1.5 text-ink2">— {m.foods.join(", ")}</span>}
               </li>
             ))}
           </ul>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Prescription — medications */}
       {data.medications && data.medications.length > 0 && (
-        <Section title={t("documents.parsed_medications")}>
+        <ParsedSection title={t("documents.parsed_medications")}>
           <ul className="space-y-1">
             {data.medications.map((m, i) => (
-              <li key={i} className="text-[11px]">
+              <li key={i} className="text-[13px]">
                 <span className="font-medium text-ink">{m.name}</span>
                 <span className="mx-1.5 text-faint">·</span>
-                <span className="text-muted">{m.dosage}</span>
+                <span className="text-ink2">{m.dosage}</span>
                 <span className="mx-1.5 text-faint">·</span>
-                <span className="text-muted">{m.frequency}</span>
+                <span className="text-ink2">{m.frequency}</span>
                 {m.duration && (
                   <>
                     <span className="mx-1.5 text-faint">·</span>
-                    <span className="text-muted">{m.duration}</span>
+                    <span className="text-ink2">{m.duration}</span>
                   </>
                 )}
               </li>
             ))}
           </ul>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Recommendations */}
       {data.recommendations && data.recommendations.length > 0 && (
-        <Section title="Recommendations">
-          <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-ink2">
+        <ParsedSection title="Recommendations">
+          <ul className="list-disc space-y-1 pl-5 text-[14px] text-ink2">
             {data.recommendations.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
           </ul>
-        </Section>
+        </ParsedSection>
       )}
 
       {/* Notes */}
       {data.notes && (
-        <Section title={t("documents.parsed_notes")}>
-          <p className="text-[11px] text-ink2">{data.notes}</p>
-        </Section>
+        <ParsedSection title={t("documents.parsed_notes")}>
+          <p className="text-[14px] text-ink2">{data.notes}</p>
+        </ParsedSection>
       )}
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A local section used inside the parsed-data viewer. Sentence-case 14px
+ *  label, no border, no eyebrow. (The kit's Section would work too, but this
+ *  keeps the parsed-data block self-contained.) */
+function ParsedSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="eyebrow mb-1.5 !text-[9px] text-faint">{title}</div>
+      <div className="mb-2 text-[14px] font-medium text-ink2">{title}</div>
       {children}
     </div>
   );
 }
 
-function Stat({ label, value, unit }: { label: string; value: number | null; unit: string }) {
+function TargetStat({ label, value, unit }: { label: string; value: number | null; unit: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5">
-      <div className="eyebrow !text-[9px] text-faint">{label}</div>
-      <div className="num mt-0.5 text-[13px] font-semibold text-ink">
+    <div>
+      <div className="text-[13px] text-ink2">{label}</div>
+      <div className="num mt-0.5 text-[18px] font-semibold text-ink">
         {value ?? "—"}
-        {value !== null && <span className="ml-0.5 text-[9px] font-medium text-muted">{unit}</span>}
+        {value !== null && <span className="ml-1 text-[12px] font-medium text-ink2">{unit}</span>}
       </div>
     </div>
   );

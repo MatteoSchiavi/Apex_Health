@@ -1,80 +1,47 @@
 "use client";
 
 /**
- * Apex Health — Sleep night (strict redesign per plan §4).
+ * Apex Health — Sleep night (re-skin per ui-language/RULES.md).
+ *
+ * Reference: OverviewPage.tsx — one hero, status dots, rows not cards,
+ * sentence-case labels, no borders.
  *
  * Layout:
- *   Header: BackLink, date title, prev / next night arrows.
- *   Row 1 (xl:col-4 + xl:col-8):
- *     - Score card: BigStat with scoreTone + badge computed against the
- *       30-day score distribution (top third / typical / low) — not a
- *       constant. Efficiency with an "Asleep ÷ sleep window" tooltip.
- *       Latency tile is REMOVED (no source provides it).
- *     - Duration analysis: 4 compact MiniStats — Total sleep (with real
- *       DeltaChip vs target, goodWhen="up"), Sleep window + efficiency
- *       footnote, Deep + REM with % of sleep, Awake with % of window.
- *       NO stage composition bar — the composition lives only in the
- *       Stages card below (the user's duplicate-composition complaint).
- *   Row 2 (col-12): Stages — estimated hypnogram + composition bar + table.
- *     - Hypnogram (estimated): the DB stores only 4 stage TOTALS per
- *       night (deep_s / light_s / rem_s / awake_s — NO real timeline).
- *       We synthesise a plausible sleep architecture from those totals:
- *       3–5 cycles of ~90 min, deep sleep front-loaded (most in cycle 1),
- *       REM back-loaded (most in the last cycle), light spread evenly
- *       throughout, awake time scattered as short wake episodes BETWEEN
- *       cycles (biased toward later in the night — early-morning
- *       awakening is common). Step-line SVG, Y-axis stages (Awake top /
- *       REM / Light / Deep bottom — the standard sleep chart order),
- *       X-axis time from bedtime to wake. Awake periods highlighted with
- *       faint red bands so the user can see "when I woke up". Hover a
- *       segment to see stage + time range + duration. Caption: "Estimated
- *       from stage totals — no real timeline data."
- *     - Composition: ONE horizontal stacked bar (deep / light / REM,
- *       denominator = time asleep) + a table with stage, duration, % of
- *       sleep, 30-day average, typical range.
- *   Row 3 (col-12 xl:col-6 + col-12 xl:col-6):
- *     - Left: vitals against baseline — Resting HR, SpO₂, Respiration,
- *       Skin Temp (if available) as RangeBar against your 30-day band
- *       (mean ± 1 SD) with a DeltaChip and rangeTone. InfoButton next to
- *       each label with content from metricInfo.ts.
- *     - Right: overnight HRV curve with the rolling baseline band, and the
- *       30-day deviation trend below with a zero line. hrvDevTone for the
- *       deviation color.
- *   Row 4 (col-12): previous 7 nights as mini bars with this night
- *     highlighted, and a "What this meant for today" strip: today's
- *     readiness and recovery with a link to the Overview.
- *
- * Coherence law: kit-only. Data tone from scoreTone / rangeTone / hrvDevTone.
- * The hypnogram is clearly labelled as an ESTIMATE so the user knows it's a
- * synthesis from the 4 stage totals, not a measurement.
+ *   - BackLink + date title + a page sentence ("You slept 7h29 — 31 min
+ *     under your target.") + prev/next arrows.
+ *   - ONE hero: the sleep score as a ring (like the Overview) + a
+ *     StatusDot below.
+ *   - Duration analysis: 4 compact stats (no bordered tiles, no duplicate
+ *     composition bar).
+ *   - Stages: estimated hypnogram + ONE composition bar + table.
+ *   - Vitals: `Row` primitives, not bordered tiles.
+ *   - HRV: InteractiveLineChart with baseline band.
+ *   - In context: previous 7 nights + today's readiness/recovery.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
-import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import {
   Card,
-  CardHeader,
-  PageHeader,
+  Section,
+  StatusDot,
+  PageSentence,
+  ChartFrame,
   BigStat,
-  DeltaChip,
-  Badge,
-  Eyebrow,
-  Empty,
-  Loading,
-  Hairline,
   BackLink,
   RangeBar,
   InfoButton,
   MetricInfoContent,
   ApexButton,
+  Hairline,
   scoreTone,
   rangeTone,
   hrvDevTone,
   toneFor,
   type DataTone,
 } from "@/components/apex/kit";
+import { InteractiveLineChart, ChartInfoBadge } from "@/components/apex/charts";
 import { getMetricExplanation } from "@/lib/apex/metricInfo";
 import { fmtHours, fmtNum, fmtClock, fmtDateLong } from "@/lib/apex/format";
 import {
@@ -183,7 +150,6 @@ interface DashboardResponse {
 const LIST_DAYS_FOR_NAV = 365;
 
 export function SleepNightPage() {
-  const t = useT();
   const ui = useApexUi();
   const sessionDate = ui.selectedSleepDate;
 
@@ -197,9 +163,6 @@ export function SleepNightPage() {
     setLoading(true);
     setError(null);
     try {
-      // Always fetch the list in parallel — used for prev/next navigation
-      // and the "last 7 nights" mini bars. If no date is selected yet,
-      // the list also tells us what the most recent night is.
       const [listReq, dashReq] = await Promise.all([
         fetch(`/api/sleep?days=${LIST_DAYS_FOR_NAV}`),
         fetch("/api/dashboard").then((r) => r.json() as Promise<DashboardResponse>).catch(() => null),
@@ -213,8 +176,6 @@ export function SleepNightPage() {
         setLoading(false);
         return;
       }
-      // If we auto-selected the most recent night, persist it in the UI
-      // store so prev/next arrows work on the next render.
       if (!sessionDate) ui.selectSleepDate(initialDate);
 
       const detailReq = await fetch(`/api/sleep?date=${encodeURIComponent(initialDate)}`);
@@ -239,10 +200,7 @@ export function SleepNightPage() {
   }, [sessionDate, fetchAll]);
 
   // ──────────────────────────────────────────────────────────── prev / next
-  const allDates = useMemo(
-    () => list?.all_dates ?? [],
-    [list],
-  );
+  const allDates = useMemo(() => list?.all_dates ?? [], [list]);
   const currentIndex = useMemo(
     () => (sessionDate ? allDates.indexOf(sessionDate) : -1),
     [allDates, sessionDate],
@@ -253,24 +211,21 @@ export function SleepNightPage() {
       ? allDates[currentIndex + 1]
       : null;
 
-  // ─────────────────────────────────────────────────────────────── render
   if (loading && !detail) {
     return (
-      <div className="mx-auto max-w-[1240px]">
-        <BackLink onClick={() => ui.setView("sleep")}>{t("sleep.back_to_list")}</BackLink>
-        <div className="mt-6">
-          <Loading label="Loading night…" />
-        </div>
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <BackLink onClick={() => ui.setView("sleep")}>Back to sleep</BackLink>
+        <div className="mt-6 text-[14px] text-ink2">Loading night…</div>
       </div>
     );
   }
 
   if (error || !detail || !detail.session) {
     return (
-      <div className="mx-auto max-w-[1240px]">
-        <BackLink onClick={() => ui.setView("sleep")}>{t("sleep.back_to_list")}</BackLink>
-        <div className="mt-6">
-          <Empty title={t("sleep.empty")} body={error ?? undefined} />
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <BackLink onClick={() => ui.setView("sleep")}>Back to sleep</BackLink>
+        <div className="mt-6 text-[14px] text-ink2">
+          {error ?? "No sleep data for this date."}
         </div>
       </div>
     );
@@ -286,317 +241,814 @@ export function SleepNightPage() {
   const winS = sleepWindowS(session);
   const effPct = sleepEfficiencyPct(session);
 
-  return (
-    <div className="mx-auto max-w-[1240px]">
-      <BackLink onClick={() => ui.setView("sleep")}>{t("sleep.back_to_list")}</BackLink>
+  // Page sentence: duration vs target.
+  const deltaVsTargetMin = Math.round((asleepS - targetS) / 60);
+  const pageSentence = deltaVsTargetMin === 0
+    ? `You slept ${fmtHours(asleepS)} — exactly on your target.`
+    : deltaVsTargetMin > 0
+    ? `You slept ${fmtHours(asleepS)} — ${Math.abs(deltaVsTargetMin)} min over your target.`
+    : `You slept ${fmtHours(asleepS)} — ${Math.abs(deltaVsTargetMin)} min under your target.`;
 
-      <PageHeader
-        className="mt-3"
-        title={fmtDateLong(session.local_date, ui.locale)}
-        subtitle={t("sleep.night")}
-        actions={
-          <div className="flex items-center gap-1.5">
-            <PrevNextArrow
-              dir="prev"
-              disabled={!prevDate}
+  return (
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ====== Header ====== */}
+      <div>
+        <BackLink onClick={() => ui.setView("sleep")}>Back to sleep</BackLink>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="page-title">{fmtDateLong(session.local_date, ui.locale)}</h1>
+            <PageSentence className="mt-2">{pageSentence}</PageSentence>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ApexButton
+              variant="ghost"
+              size="sm"
               onClick={() => prevDate && ui.selectSleepDate(prevDate)}
-            />
-            <PrevNextArrow
-              dir="next"
-              disabled={!nextDate}
+              disabled={!prevDate}
+              aria-label="Previous night"
+            >
+              <ChevronLeft size={14} />
+            </ApexButton>
+            <ApexButton
+              variant="ghost"
+              size="sm"
               onClick={() => nextDate && ui.selectSleepDate(nextDate)}
+              disabled={!nextDate}
+              aria-label="Next night"
+            >
+              <ChevronRight size={14} />
+            </ApexButton>
+          </div>
+        </div>
+      </div>
+
+      {/* ====== Hero — the sleep score (principle 2: one hero) ====== */}
+      <Card>
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-8">
+            <ScoreRing value={score} tone={scoreTone(score)} />
+            <div>
+              <div className="text-[14px] font-medium text-ink2">Sleep score</div>
+              <div className="mt-2">
+                <StatusDot
+                  tone={scoreToDot(scoreTone(score))}
+                  label={scoreBandWord(score, baseline)}
+                />
+              </div>
+              <div className="mt-2 text-[14px] text-ink2">
+                {scoreTone(score) === "positive" && "A good night — your stages and duration are in your range."}
+                {scoreTone(score) === "warning" && "A fair night — a bit short on the most restorative stages."}
+                {scoreTone(score) === "alert" && "Below your norm — short or light on deep+REM."}
+                {scoreTone(score) === "muted" && "Sync a source to see your sleep score."}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-6 sm:gap-8">
+            <MiniFact label="Efficiency" value={`${fmtNum(effPct, 0)}%`} />
+            <MiniFact label="Sleep window" value={fmtHours(winS)} />
+          </div>
+        </div>
+      </Card>
+
+      {/* ====== Duration analysis (4 compact stats, no borders) ====== */}
+      <Card>
+        <Section label="Duration analysis">
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+            <DurationStat
+              label="Total sleep"
+              value={fmtHours(asleepS)}
+              foot={`Target ${fmtHours(targetS)}`}
+              status={
+                <StatusDot
+                  tone={durationTone(asleepS, targetS)}
+                  label={durationWord(asleepS, targetS)}
+                />
+              }
+            />
+            <DurationStat
+              label="Deep + REM"
+              value={fmtHours((session.deep_s ?? 0) + (session.rem_s ?? 0))}
+              foot={`${fmtNum(((session.deep_s ?? 0) + (session.rem_s ?? 0)) / (asleepS || 1) * 100, 0)}% of sleep`}
+              status={<StatusDot tone="neutral" label="Restorative" />}
+            />
+            <DurationStat
+              label="Awake"
+              value={fmtHours(session.awake_s ?? 0)}
+              foot={`${fmtNum((session.awake_s ?? 0) / (winS || 1) * 100, 0)}% of window`}
+              status={
+                <StatusDot
+                  tone={(session.awake_s ?? 0) / (winS || 1) < 0.1 ? "ok" : (session.awake_s ?? 0) / (winS || 1) < 0.2 ? "watch" : "alert"}
+                  label={(session.awake_s ?? 0) / (winS || 1) < 0.1 ? "Low" : (session.awake_s ?? 0) / (winS || 1) < 0.2 ? "Some" : "High"}
+                />
+              }
+            />
+            <DurationStat
+              label="Bedtime"
+              value={fmtClock(session.start_time, ui.locale)}
+              foot={`Wake ${fmtClock(session.end_time, ui.locale)}`}
+              status={<StatusDot tone="neutral" label={fmtMinutes(minutesOfDayUTC(session.start_time))} />}
             />
           </div>
-        }
-      />
+        </Section>
+      </Card>
 
-      {/* ───────────────────────────────────────────── Row 1 — score + duration */}
-      <div className="mt-6 grid grid-cols-12 gap-3">
-        <div className="col-span-12 xl:col-span-4">
-          <ScoreCard
-            score={score}
-            efficiency={effPct}
-            baseline={baseline}
-          />
-        </div>
-        <div className="col-span-12 xl:col-span-8">
-          <DurationAnalysisCard
-            session={session}
-            targetS={targetS}
-            asleepS={asleepS}
-            winS={winS}
-          />
-        </div>
+      {/* ====== Stages — hypnogram + ONE composition bar + table ====== */}
+      <Card>
+        <Section label="Stages">
+          {/* Hypnogram (estimated) */}
+          <Hypnogram session={session} />
+
+          <Hairline className="my-6" />
+
+          {/* ONE horizontal stacked bar — deep / light / REM. Denominator =
+              time asleep so the three stages sum to 100%. */}
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface3">
+            {([
+              { key: "deep", secs: session.deep_s ?? 0, color: STAGE_VARS.deep },
+              { key: "light", secs: session.light_s ?? 0, color: STAGE_VARS.light },
+              { key: "rem", secs: session.rem_s ?? 0, color: STAGE_VARS.rem },
+            ] as const).map((s) => {
+              const pct = asleepS > 0 ? (s.secs / asleepS) * 100 : 0;
+              if (pct <= 0) return null;
+              return (
+                <div
+                  key={s.key}
+                  style={{ width: `${pct}%`, background: s.color }}
+                  title={`${s.key}: ${fmtHours(s.secs)}`}
+                />
+              );
+            })}
+          </div>
+
+          {/* Stage legend underneath the bar */}
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[13px]">
+            <StageLegendItem color={STAGE_VARS.deep} label="Deep" value={session.deep_s ?? 0} total={asleepS} />
+            <StageLegendItem color={STAGE_VARS.light} label="Light" value={session.light_s ?? 0} total={asleepS} />
+            <StageLegendItem color={STAGE_VARS.rem} label="REM" value={session.rem_s ?? 0} total={asleepS} />
+            <StageLegendItem color={STAGE_VARS.awake} label="Awake" value={session.awake_s ?? 0} total={winS} />
+          </div>
+
+          {/* Composition table: stage, duration, % of sleep, 30-day average,
+              typical range. */}
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr className="border-b border-hairline text-left">
+                  <th className="py-2 pr-3 text-[14px] font-medium text-ink2">Stage</th>
+                  <th className="py-2 pr-3 text-[14px] font-medium text-ink2">Duration</th>
+                  <th className="py-2 pr-3 text-[14px] font-medium text-ink2">% of sleep</th>
+                  <th className="py-2 pr-3 text-[14px] font-medium text-ink2">30-day avg</th>
+                  <th className="py-2 text-[14px] font-medium text-ink2">Typical range</th>
+                </tr>
+              </thead>
+              <tbody>
+                {([
+                  { key: "deep", label: "Deep", secs: session.deep_s ?? 0, color: STAGE_VARS.deep },
+                  { key: "light", label: "Light", secs: session.light_s ?? 0, color: STAGE_VARS.light },
+                  { key: "rem", label: "REM", secs: session.rem_s ?? 0, color: STAGE_VARS.rem },
+                  { key: "awake", label: "Awake", secs: session.awake_s ?? 0, color: STAGE_VARS.awake },
+                ] as const).map((s) => {
+                  const pctOfSleep = (s.secs / (asleepS || 1)) * 100;
+                  const avgS = baseline?.stages[s.key]?.mean_s ?? null;
+                  const avgPct = baseline?.stages[s.key]?.mean_pct ?? null;
+                  const typical = TYPICAL_STAGE_RANGE[s.key];
+                  return (
+                    <tr key={s.key} className="border-b border-hairline last:border-0">
+                      <td className="py-2 pr-3">
+                        <span className="inline-flex items-center gap-2 text-[14px] font-medium text-ink">
+                          <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                          {s.label}
+                        </span>
+                      </td>
+                      <td className="num py-2 pr-3 text-[14px] text-ink2">{fmtHours(s.secs)}</td>
+                      <td className="num py-2 pr-3 text-[14px] text-ink2">{fmtNum(pctOfSleep, 0)}%</td>
+                      <td className="num py-2 pr-3 text-[14px] text-ink3">
+                        {avgS !== null ? `${fmtHours(avgS)} (${fmtNum(avgPct ?? 0, 0)}%)` : "—"}
+                      </td>
+                      <td className="num py-2 text-[14px] text-ink3">
+                        {s.key === "awake" ? "—" : `${typical.low}–${typical.high}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      </Card>
+
+      {/* ====== Vitals (rows, not bordered tiles) + HRV chart ====== */}
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+        <Card>
+          <Section label="Vitals against baseline">
+            <div className="divide-y divide-[var(--c-divider)]">
+              <VitalRow
+                k="resting_hr"
+                label="Resting heart rate"
+                value={bio?.resting_hr ?? null}
+                unit="bpm"
+                stats={baseline?.vitals.resting_hr ?? null}
+              />
+              <VitalRow
+                k="spo2_avg"
+                label="SpO₂"
+                value={bio?.spo2_avg ?? session.spo2_avg ?? null}
+                unit="%"
+                stats={baseline?.vitals.spo2_avg ?? null}
+              />
+              <VitalRow
+                k="respiration_avg"
+                label="Respiration"
+                value={bio?.respiration_avg ?? session.respiration_avg ?? null}
+                unit="brpm"
+                stats={baseline?.vitals.respiration_avg ?? null}
+              />
+              <VitalRow
+                k="skin_temp"
+                label="Skin temperature"
+                value={bio?.skin_temp_c ?? null}
+                unit="°C"
+                stats={null}
+              />
+            </div>
+          </Section>
+        </Card>
+
+        <Card>
+          <Section label="HRV">
+            <HrvBlock
+              readings={hrvReadings}
+              hrvMs={bio?.hrv_ms ?? null}
+              hrvStats={baseline?.vitals.hrv_ms ?? null}
+              listItems={list?.items ?? []}
+              selectedDate={session.local_date}
+            />
+          </Section>
+        </Card>
       </div>
 
-      {/* ───────────────────────────────────────────── Row 2 — Stages */}
-      <div className="mt-3">
-        <StageCompositionCard
-          session={session}
-          baseline={baseline}
-        />
-      </div>
-
-      {/* ───────────────────────────────────────── Row 3 — Vitals + HRV */}
-      <div className="mt-3 grid grid-cols-12 gap-3">
-        <div className="col-span-12 xl:col-span-6">
-          <VitalsAgainstBaselineCard
-            bio={bio}
-            session={session}
-            baseline={baseline}
-          />
-        </div>
-        <div className="col-span-12 xl:col-span-6">
-          <HrvCard
-            readings={hrvReadings}
-            hrvMs={bio?.hrv_ms ?? null}
-            hrvStats={baseline?.vitals.hrv_ms ?? null}
+      {/* ====== In context (last 7 nights + today) ====== */}
+      <Card>
+        <Section label="In context">
+          <InContextBlock
             listItems={list?.items ?? []}
             selectedDate={session.local_date}
+            dashboard={dashboard}
+            onOverview={() => ui.setView("overview")}
           />
-        </div>
-      </div>
+        </Section>
+      </Card>
+    </div>
+  );
+}
 
-      {/* ───────────────────────────────────────────── Row 4 — In context */}
-      <div className="mt-3">
-        <InContextCard
-          listItems={list?.items ?? []}
-          selectedDate={session.local_date}
-          dashboard={dashboard}
-          onOverview={() => ui.setView("overview")}
+/* --------------------------------------------------------------- Score ring
+ * The hero — a 120px ring with the score number inside, like the Overview's
+ * readiness ring. Color = state. Number stays text-ink (RULES principle 5). */
+function ScoreRing({
+  value,
+  tone,
+}: {
+  value: number | null;
+  tone: "positive" | "warning" | "alert" | "muted";
+}) {
+  const v = value ?? 0;
+  const r = 54;
+  const c = 2 * Math.PI * r;
+  const color =
+    tone === "positive"
+      ? "var(--c-ok)"
+      : tone === "warning"
+      ? "var(--c-watch)"
+      : tone === "alert"
+      ? "var(--c-alert)"
+      : "var(--c-text-3)";
+  return (
+    <div className="relative h-[120px] w-[120px] shrink-0">
+      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--c-surface-2)" strokeWidth="8" />
+        <circle
+          cx="60"
+          cy="60"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - v / 100)}
+          style={{ transition: "stroke-dashoffset 600ms cubic-bezier(0.16,1,0.3,1)" }}
         />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="num text-[40px] font-semibold leading-none text-ink">
+          {value !== null ? Math.round(value) : "—"}
+        </span>
+        <span className="text-[12px] text-ink2">/ 100</span>
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------- Header: prev / next arrows */
-function PrevNextArrow({
-  dir,
-  disabled,
-  onClick,
-}: {
-  dir: "prev" | "next";
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const Icon = dir === "prev" ? ChevronLeft : ChevronRight;
+function MiniFact({ label, value }: { label: string; value: string }) {
   return (
-    <ApexButton
-      variant="ghost"
-      size="sm"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={dir === "prev" ? "Previous night" : "Next night"}
-    >
-      <Icon size={14} />
-    </ApexButton>
+    <div>
+      <div className="text-[14px] text-ink2">{label}</div>
+      <div className="num mt-1 text-[20px] font-semibold text-ink">{value}</div>
+    </div>
   );
 }
 
-/* ----------------------------------------------------------- Row 1: Score card */
-function ScoreCard({
-  score,
-  efficiency,
-  baseline,
-}: {
-  score: number | null;
-  efficiency: number;
-  baseline: BaselineBlock | null;
-}) {
-  const t = useT();
-  // Plan §4: badge computed against 30-day distribution (top third /
-  // typical / low), not a constant threshold.
-  const scoreBand = useMemo<{
-    label: string;
-    tone: "positive" | "primary" | "warning";
-  } | null>(() => {
-    if (score === null || !baseline) return null;
-    const p33 = baseline.sleep_scores.p33;
-    const p66 = baseline.sleep_scores.p66;
-    if (p33 === null || p66 === null) return null;
-    if (baseline.sleep_scores.count < 5) return null;
-    if (score >= p66) return { label: "Top third", tone: "positive" };
-    if (score <= p33) return { label: "Low", tone: "warning" };
-    return { label: "Typical", tone: "primary" };
-  }, [score, baseline]);
-
-  // Efficiency DeltaChip vs 30-day average (we don't have a 30-day eff
-  // directly, so we use score's mean as a proxy baseline of 75% default).
-  // Plan §4 says the score badge is computed; the efficiency just needs
-  // its tooltip — no delta chip required here.
-  const effTone: DataTone =
-    efficiency >= 90 ? "positive" : efficiency >= 80 ? "warning" : "alert";
-
-  return (
-    <Card className="h-full">
-      <CardHeader eyebrow={t("sleep.score")} title={t("sleep.night")} />
-      <div className="flex items-end gap-2.5">
-        <BigStat
-          value={fmtNum(score, 0)}
-          unit="/100"
-          size="xl"
-          tone={toneFor(scoreTone(score))}
-        />
-        {scoreBand && (
-          <Badge tone={scoreBand.tone} dot className="mb-2.5">
-            {scoreBand.label}
-            {/* TODO i18n */}
-          </Badge>
-        )}
-      </div>
-      <Hairline className="my-4" />
-
-      {/* Efficiency with tooltip — plan §4 "Asleep ÷ sleep window". */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1">
-          <Eyebrow>{t("sleep.efficiency")}</Eyebrow>
-          <InfoButton title={"Sleep efficiency"}>
-            <MetricInfoContent
-              whatItMeasures={"Asleep ÷ sleep window — the share of the time you were in bed that you actually slept."}
-              whyItMatters={"Even with 8h in bed, low efficiency (lots of tossing or wake-ups) means less restorative sleep."}
-              whatInfluencesIt={"Stress, caffeine late in the day, alcohol, irregular schedule, screen time, room temperature, sleep disorders."}
-              howToReadIt={"≥85% good · 75–84% fair · <75% poor. Track the trend — one bad night is normal."}
-            />
-          </InfoButton>
-        </div>
-        <BigStat
-          value={fmtNum(efficiency, 0)}
-          unit="%"
-          size="lg"
-          tone={toneFor(effTone)}
-        />
-      </div>
-    </Card>
-  );
-}
-
-/* --------------------------------------------------- Row 1: Duration analysis */
-function DurationAnalysisCard({
-  session,
-  targetS,
-  asleepS,
-  winS,
-}: {
-  session: SessionItem;
-  targetS: number;
-  asleepS: number;
-  winS: number;
-}) {
-  const t = useT();
-  // Real delta vs target (plan §4) — goodWhen="up" (sleeping more than
-  // target is good).
-  const deltaVsTargetMin = Math.round((asleepS - targetS) / 60);
-
-  const deepS = session.deep_s ?? 0;
-  const remS = session.rem_s ?? 0;
-  const awakeS = session.awake_s ?? 0;
-  // Total asleep is the denominator for the "Deep + REM" % footnote. The
-  // composition BAR is NOT here — it lives in the Stages card below so the
-  // composition is no longer shown twice on the night page.
-  const totalAsleep = deepS + (session.light_s ?? 0) + remS;
-
-  return (
-    <Card className="h-full">
-      <CardHeader eyebrow={"Duration analysis" /* TODO i18n */} title={"Did I sleep enough?" /* TODO i18n */} />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MiniStat
-          label={t("sleep.total")}
-          value={fmtHours(asleepS)}
-          chip={
-            <DeltaChip
-              delta={deltaVsTargetMin}
-              unit="min"
-              goodWhen="up"
-              suffix={"vs target"}
-            />
-          }
-          foot={`Target ${fmtHours(targetS)}`}
-        />
-        <MiniStat
-          label={"Sleep window" /* TODO i18n */}
-          value={fmtHours(winS)}
-          foot={`Efficiency ${fmtNum(sleepEfficiencyPct(session), 0)}%`}
-        />
-        <MiniStat
-          label={"Deep + REM" /* TODO i18n */}
-          value={fmtHours(deepS + remS)}
-          foot={`${fmtNum((deepS + remS) / (totalAsleep || 1) * 100, 0)}% of sleep`}
-        />
-        <MiniStat
-          label={t("sleep.awake")}
-          value={fmtHours(awakeS)}
-          foot={`${fmtNum(awakeS / (winS || 1) * 100, 0)}% of window`}
-        />
-      </div>
-
-      {/* Composition is NOT here — it lives only in the Stages card (Row 2)
-          so the user no longer sees the same composition twice. */}
-    </Card>
-  );
-}
-
-function MiniStat({
+function DurationStat({
   label,
   value,
-  chip,
   foot,
+  status,
 }: {
-  label: React.ReactNode;
-  value: React.ReactNode;
-  chip?: React.ReactNode;
-  foot?: React.ReactNode;
+  label: string;
+  value: string;
+  foot?: string;
+  status: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-hairline bg-surface2/50 px-3 py-2">
-      <Eyebrow>{label}</Eyebrow>
-      <div className="num mt-0.5 text-[20px] font-bold leading-6 text-ink">
-        {value}
-      </div>
-      {chip && <div className="mt-1">{chip}</div>}
-      {foot && <div className="num mt-0.5 text-[10px] text-faint">{foot}</div>}
+    <div className="flex flex-col gap-2">
+      <div className="text-[14px] font-medium text-ink2">{label}</div>
+      <BigStat value={value} size="md" />
+      <div>{status}</div>
+      {foot && <div className="num text-[12px] text-ink3">{foot}</div>}
     </div>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function StageLegendItem({
+  color,
+  label,
+  value,
+  total,
+}: {
+  color: string;
+  label: string;
+  value: number;
+  total: number;
+}) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: color }}
-      />
-      <span>{label}</span>
+    <span className="inline-flex items-center gap-1.5 text-ink2">
+      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+      {label} {fmtHours(value)} · {pct}%
     </span>
   );
 }
 
-/* ----------------------------------------------------- Row 2: Hypnogram
- * The DB stores only 4 stage TOTALS per night (deep_s / light_s / rem_s /
- * awake_s — NO real stage timeline). The user wants a hypnogram showing
- * when they woke up, their phases, and whether phases are regular. Since
- * there's no real timeline, we synthesise a plausible sleep architecture
- * from the 4 totals — clearly labelled as an ESTIMATE so the user knows
- * it's a synthesis, not a measurement.
- *
- * Algorithm: choose 3–5 cycles of ~90 min based on the asleep duration.
- * Within each cycle: Light (descent) → Deep → Light (ascent) → REM. Deep
- * sleep is front-loaded (most in cycle 1), REM is back-loaded (most in the
- * last cycle), Light is spread evenly across cycles. Awake time is
- * scattered as short wake episodes BETWEEN cycles, biased toward later
- * in the night (early-morning awakening is common). The four stage
- * totals are scaled proportionally so the synthesised timeline spans the
- * full sleep window (end_time − start_time) exactly.
- *
- * Rendering: an SVG step-line. Y-axis has 4 levels in the standard
- * hypnogram order (Awake top → REM → Light → Deep bottom) so the user can
- * see when they woke up at the top and their phases dropping down. X-axis
- * is time from bedtime to wake. Awake periods get a faint red background
- * band so they're visible at a glance. Hovering a segment shows a tooltip
- * with the stage label, the time range, and the duration.
- */
+/* --------------------------------------------------------------- Vitals row
+ * A `Row` primitive with a RangeBar sparkline. No borders. */
+function VitalRow({
+  k,
+  label,
+  value,
+  unit,
+  stats,
+}: {
+  k: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  stats: VitalStats | null;
+}) {
+  const expl = getMetricExplanation(k);
+  const mean = stats?.mean ?? null;
+  const low = stats?.low ?? null;
+  const high = stats?.high ?? null;
+  const tone = rangeTone(value, low, high);
+  const dotTone =
+    tone === "positive" ? "ok" : tone === "warning" ? "watch" : tone === "alert" ? "alert" : "neutral";
+  const word = tone === "positive" ? "In range" : tone === "warning" ? "Borderline" : tone === "alert" ? "Out of range" : "—";
+  const decimals = unit === "%" || unit === "°C" ? 1 : 0;
 
+  return (
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1">
+          <span className="text-[14px] font-medium text-ink2">{label}</span>
+          <InfoButton title={label}>
+            <MetricInfoContent
+              whatItMeasures={expl.whatItMeasures}
+              whyItMatters={expl.whyItMatters}
+              whatInfluencesIt={expl.whatInfluencesIt}
+              howToReadIt={expl.howToReadIt}
+            />
+          </InfoButton>
+        </div>
+        <div className="flex items-center gap-3">
+          <StatusDot tone={dotTone} label={word} />
+          <div className="num flex items-baseline gap-1 text-ink">
+            <span className="text-[20px] font-semibold">
+              {value !== null ? fmtNum(value, decimals) : "—"}
+            </span>
+            {value !== null && <span className="text-[13px] text-ink2">{unit}</span>}
+          </div>
+        </div>
+      </div>
+      {low !== null && high !== null && value !== null ? (
+        <div className="mt-3">
+          <RangeBar
+            value={value}
+            low={low}
+            high={high}
+            tone={toneFor(tone)}
+            unit={unit}
+            height={4}
+          />
+          <div className="num mt-1 flex items-center justify-between text-[12px] text-ink3">
+            <span>Low {fmtNum(low, decimals)}</span>
+            <span>30-day band</span>
+            <span>High {fmtNum(high, decimals)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="num mt-2 text-[12px] text-ink3">
+          {mean !== null ? `30-day mean ${fmtNum(mean, decimals)}` : "No 30-day baseline yet"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- HRV block
+ * Overnight HRV InteractiveLineChart with baseline band + 30-day
+ * deviation trend below. */
+function HrvBlock({
+  readings,
+  hrvMs,
+  hrvStats,
+  listItems,
+  selectedDate,
+}: {
+  readings: HrvReadingOut[];
+  hrvMs: number | null;
+  hrvStats: VitalStats | null;
+  listItems: SessionItem[];
+  selectedDate: string;
+}) {
+  const hrvMean = hrvStats?.mean ?? null;
+  const hrvSd = hrvStats?.sd ?? null;
+  const hrvDev = hrvMs !== null && hrvMean !== null ? hrvMs - hrvMean : null;
+  const hrvT = hrvDevTone(hrvDev, hrvSd);
+  const dotTone =
+    hrvT === "positive" ? "ok" : hrvT === "warning" ? "watch" : hrvT === "alert" ? "alert" : "neutral";
+  const word = hrvT === "positive" ? "On baseline" : hrvT === "warning" ? "Slightly off" : hrvT === "alert" ? "Below baseline" : "—";
+
+  // 30-day deviation trend: list of hrv_deviation_ms values from the
+  // last 30 sleep sessions, oldest → newest.
+  const trendItems = useMemo(() => {
+    return [...listItems]
+      .slice(0, 30)
+      .reverse()
+      .map((it) => ({
+        date: it.local_date,
+        dev: it.hrv_deviation_ms,
+        isCurrent: it.local_date === selectedDate,
+      }));
+  }, [listItems, selectedDate]);
+
+  return (
+    <div>
+      {/* HRV value + StatusDot */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <div className="num flex items-baseline gap-1 text-ink">
+            <span className="text-[40px] font-semibold leading-none">{fmtNum(hrvMs, 0)}</span>
+            <span className="text-[16px] text-ink2">ms</span>
+          </div>
+          <div className="mt-2">
+            <StatusDot tone={dotTone} label={word} />
+          </div>
+        </div>
+        {hrvMean !== null && (
+          <div className="num text-[14px] text-ink3">
+            30d mean {fmtNum(hrvMean, 0)} ms · ±{fmtNum(hrvSd, 0)} sd
+          </div>
+        )}
+      </div>
+
+      {readings.length > 0 ? (
+        <div className="mt-6">
+          <ChartFrame
+            title="Overnight HRV"
+            info={<ChartInfoBadge text={<span>HRV sampled overnight. The dashed line is your rolling baseline; the shaded band is mean ± 1 SD.</span>} />}
+          >
+            <OvernightHrvChart readings={readings} hrvStats={hrvStats} />
+          </ChartFrame>
+        </div>
+      ) : (
+        <div className="mt-6 text-[14px] text-ink2">
+          Your source didn't push overnight HRV readings for this night.
+        </div>
+      )}
+
+      <Hairline className="my-6" />
+
+      {/* 30-day deviation trend */}
+      <div className="text-[14px] font-medium text-ink2">30-day deviation</div>
+      {trendItems.some((it) => it.dev !== null) ? (
+        <HrvDeviationTrend items={trendItems} hrvSd={hrvSd} />
+      ) : (
+        <div className="num mt-2 text-[14px] text-ink3">
+          No HRV history yet — the deviation trend fills in once you have overnight HRV data.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Overnight HRV chart — InteractiveLineChart with the rolling baseline
+ *  as the dashed reference line. The chart's own `baseline` prop gives us
+ *  the dashed line + baseline label. */
+function OvernightHrvChart({
+  readings,
+  hrvStats,
+}: {
+  readings: HrvReadingOut[];
+  hrvStats: VitalStats | null;
+}) {
+  const baseline = hrvStats?.mean ?? null;
+  return (
+    <InteractiveLineChart
+      categories={readings.map((r) => ({
+        label: new Date(r.timestamp).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }),
+      }))}
+      series={[
+        {
+          name: "HRV",
+          color: "var(--c-accent)",
+          values: readings.map((r) => r.hrv_ms),
+        },
+      ]}
+      baseline={baseline}
+      baselineLabel="30d baseline"
+      height={180}
+      formatValue={(v) => (v === null ? "—" : `${Math.round(v)} ms`)}
+    />
+  );
+}
+
+/** 30-day HRV deviation trend — a small SVG bar chart with a zero line.
+ *  Each bar is one night's hrv_deviation_ms; positive (above baseline)
+ *  renders above the zero line, negative below. Color via hrvDevTone. */
+function HrvDeviationTrend({
+  items,
+  hrvSd,
+}: {
+  items: { date: string; dev: number | null; isCurrent: boolean }[];
+  hrvSd: number | null;
+}) {
+  const W = 1000;
+  const H = 120;
+  const padLeft = 8;
+  const padRight = 8;
+  const padTop = 8;
+  const padBottom = 16;
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
+  const midY = padTop + plotH / 2;
+
+  const valid = items
+    .map((it) => it.dev)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  if (!valid.length) {
+    return <div className="num mt-2 text-[14px] text-ink3">No HRV history yet.</div>;
+  }
+  const maxAbs = Math.max(...valid.map((v) => Math.abs(v)), 1);
+  const xStep = items.length > 1 ? plotW / (items.length - 1) : 0;
+  const barW = Math.max(2, Math.min(10, xStep * 0.5));
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ minWidth: 480 }}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label="30-day HRV deviation trend"
+      >
+        {/* Zero line */}
+        <line
+          x1={padLeft}
+          y1={midY}
+          x2={padLeft + plotW}
+          y2={midY}
+          stroke="var(--c-divider-strong)"
+          strokeWidth={1}
+        />
+        {/* ±1 SD reference band (optional, only when we have SD). */}
+        {hrvSd !== null && hrvSd > 0 && (
+          <>
+            <line
+              x1={padLeft}
+              y1={midY - (hrvSd / maxAbs) * (plotH / 2)}
+              x2={padLeft + plotW}
+              y2={midY - (hrvSd / maxAbs) * (plotH / 2)}
+              stroke="var(--c-text-3)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+            <line
+              x1={padLeft}
+              y1={midY + (hrvSd / maxAbs) * (plotH / 2)}
+              x2={padLeft + plotW}
+              y2={midY + (hrvSd / maxAbs) * (plotH / 2)}
+              stroke="var(--c-text-3)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+          </>
+        )}
+
+        {/* Bars — color by hrvDevTone(dev, hrvSd). */}
+        {items.map((it, i) => {
+          if (it.dev === null || !Number.isFinite(it.dev)) {
+            const x = padLeft + i * xStep;
+            return (
+              <line
+                key={i}
+                x1={x}
+                y1={midY - 2}
+                x2={x}
+                y2={midY + 2}
+                stroke="var(--c-divider-strong)"
+                strokeWidth={1}
+              />
+            );
+          }
+          const x = padLeft + i * xStep;
+          const h = (Math.abs(it.dev) / maxAbs) * (plotH / 2);
+          const y = it.dev >= 0 ? midY - h : midY;
+          const tone = hrvDevTone(it.dev, hrvSd);
+          const color =
+            tone === "positive"
+              ? "var(--c-ok)"
+              : tone === "warning"
+              ? "var(--c-watch)"
+              : tone === "alert"
+              ? "var(--c-alert)"
+              : "var(--c-divider-strong)";
+          return (
+            <rect
+              key={i}
+              x={x - barW / 2}
+              y={y}
+              width={barW}
+              height={h}
+              fill={color}
+              opacity={it.isCurrent ? 1 : 0.7}
+              stroke={it.isCurrent ? "var(--c-text)" : "none"}
+              strokeWidth={it.isCurrent ? 1 : 0}
+            />
+          );
+        })}
+      </svg>
+      <div className="num mt-1 flex items-center justify-between text-[12px] text-ink3">
+        <span>−{fmtNum(maxAbs, 0)} ms</span>
+        <span>0 · baseline</span>
+        <span>+{fmtNum(maxAbs, 0)} ms</span>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- In context */
+function InContextBlock({
+  listItems,
+  selectedDate,
+  dashboard,
+  onOverview,
+}: {
+  listItems: SessionItem[];
+  selectedDate: string;
+  dashboard: DashboardResponse | null;
+  onOverview: () => void;
+}) {
+  // Most recent 7 nights (newest-first from API), reverse for left → right.
+  const recent = useMemo(() => listItems.slice(0, 7).reverse(), [listItems]);
+
+  const isMostRecent = listItems.length > 0 && listItems[0].local_date === selectedDate;
+  const readiness = dashboard?.overview?.readiness?.value ?? null;
+  const recovery = dashboard?.overview?.recovery?.value ?? null;
+  const showTodayStrip = isMostRecent && (readiness !== null || recovery !== null);
+
+  if (!recent.length) return null;
+
+  const maxDur = Math.max(
+    ...recent.map((it) => it.total_sleep_s ?? 0).filter((v) => Number.isFinite(v)),
+    1,
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Mini bars: previous 7 nights with this night highlighted. */}
+      <div className="lg:col-span-2">
+        <div className="flex items-end gap-2">
+          {recent.map((it) => {
+            const dur = it.total_sleep_s ?? 0;
+            const hPct = (dur / maxDur) * 100;
+            const isCurrent = it.local_date === selectedDate;
+            const tone = scoreTone(it.sleep_score);
+            const color =
+              tone === "positive"
+                ? "var(--c-ok)"
+                : tone === "warning"
+                ? "var(--c-watch)"
+                : tone === "alert"
+                ? "var(--c-alert)"
+                : "var(--c-divider-strong)";
+            return (
+              <div key={it.local_date} className="flex flex-1 flex-col items-center gap-1">
+                <div className="num text-[12px] text-ink3">{fmtHours(dur)}</div>
+                <div className="flex h-20 w-full items-end justify-center">
+                  <div
+                    className={`w-full max-w-[28px] rounded-[var(--radius-control)] ${isCurrent ? "ring-1 ring-ink" : ""}`}
+                    style={{
+                      height: `${Math.max(4, hPct)}%`,
+                      background: color,
+                      opacity: isCurrent ? 1 : 0.7,
+                    }}
+                    title={`${it.local_date}: ${fmtHours(dur)} · score ${fmtNum(it.sleep_score, 0)}`}
+                  />
+                </div>
+                <div className="num text-[12px] text-ink3">{shortDate(it.local_date)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* "What this meant for today" */}
+      <div className="lg:border-l lg:border-hairline lg:pl-6">
+        <div className="text-[14px] font-medium text-ink2">What this meant for today</div>
+        {showTodayStrip ? (
+          <div className="mt-3 space-y-3">
+            <TodayStat label="Readiness" value={readiness} tone={scoreTone(readiness)} />
+            <TodayStat label="Recovery" value={recovery} tone={scoreTone(recovery)} />
+            <ApexButton
+              variant="secondary"
+              size="sm"
+              onClick={onOverview}
+              iconRight={<ArrowRight size={12} />}
+            >
+              Open Overview
+            </ApexButton>
+          </div>
+        ) : (
+          <div className="num mt-2 text-[14px] text-ink3">
+            {isMostRecent
+              ? "Today's readiness and recovery aren't available yet — connect a source or sync to see how last night affected today."
+              : "This strip shows today's readiness and recovery only for the most recent night."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TodayStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | null;
+  tone: DataTone;
+}) {
+  const dotTone = tone === "positive" ? "ok" : tone === "warning" ? "watch" : tone === "alert" ? "alert" : "neutral";
+  const word = tone === "positive" ? "Good" : tone === "warning" ? "Moderate" : tone === "alert" ? "Low" : "—";
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[14px] text-ink2">{label}</span>
+      <div className="flex items-center gap-2">
+        <StatusDot tone={dotTone} label={word} />
+        <span className="num text-[20px] font-semibold text-ink">
+          {value !== null ? fmtNum(value, 0) : "—"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------- Hypnogram (estimated) —
+ * The DB stores only 4 stage TOTALS per night (deep_s / light_s / rem_s /
+ * awake_s — NO real stage timeline). We synthesise a plausible sleep
+ * architecture from the 4 totals — clearly labelled as an ESTIMATE.
+ *
+ * Algorithm: 3–5 cycles of ~90 min. Within each cycle: Light (descent) →
+ * Deep → Light (ascent) → REM. Deep is front-loaded, REM back-loaded,
+ * Light spread evenly. Awake time is scattered as short wake episodes
+ * BETWEEN cycles, biased toward later in the night.
+ */
 type HypnogramSeg = {
   stage: StageKey;
   startMs: number;
@@ -614,18 +1066,10 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
 
   const startMs = new Date(session.start_time).getTime();
   const endMs = new Date(session.end_time).getTime();
-  if (
-    !Number.isFinite(startMs) ||
-    !Number.isFinite(endMs) ||
-    endMs <= startMs
-  ) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
     return [];
   }
 
-  // The stored totals may not exactly sum to the sleep window (some
-  // sources round total_sleep_s vs the per-stage totals). Scale the four
-  // stage totals proportionally so the synthesised timeline spans the
-  // window exactly.
   const windowS = (endMs - startMs) / 1000;
   const rawTotal = deep + light + rem + awake;
   const scale = rawTotal > 0 ? windowS / rawTotal : 1;
@@ -634,14 +1078,10 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
   const R = rem * scale;
   const A = awake * scale;
 
-  // Number of cycles: 3–5 based on the asleep duration (each ~90 min).
-  // Plan §4 calls for ~4–5 cycles; we use 3 for short nights, 5 for long.
   let numCycles = Math.max(3, Math.min(5, Math.round((D + L + R) / (90 * 60))));
   if (D + L + R < 3 * 3600) numCycles = 3;
   if (D + L + R > 9 * 3600) numCycles = 5;
 
-  // Deep front-loaded (weights ∝ numCycles − i); REM back-loaded (∝ i + 1);
-  // light spread evenly.
   const deepW: number[] = [];
   const remW: number[] = [];
   const lightW: number[] = [];
@@ -657,17 +1097,12 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
   const remPer = remW.map((w) => (R * w) / rSum);
   const lightPer = lightW.map((w) => (L * w) / lSum);
 
-  // Awake: scatter between cycles (numCycles − 1 between-cycle awakenings),
-  // biased toward later in the night (early-morning awakening is common).
   const awakeSlots = Math.max(0, numCycles - 1);
   const awakeW: number[] = [];
   for (let i = 0; i < awakeSlots; i++) awakeW.push(i + 1.5);
   const aSum = awakeW.reduce((s, v) => s + v, 0) || 1;
   const awakePer = awakeW.map((w) => (A * w) / aSum);
 
-  // Build segments: each cycle is Light (descent) → Deep → Light (ascent)
-  // → REM. Between cycles, a short awake block (WASO episode). Slivers
-  // (< 1 s) are skipped to keep the chart legible.
   const raw: HypnogramSeg[] = [];
   let t = startMs;
   const push = (stage: StageKey, durS: number) => {
@@ -683,8 +1118,6 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
     if (i < numCycles - 1) push("awake", awakePer[i]);
   }
 
-  // Merge consecutive same-stage segments (e.g. when deep is 0 in a
-  // cycle, the two light halves merge into one light block).
   const merged: HypnogramSeg[] = [];
   for (const seg of raw) {
     const last = merged[merged.length - 1];
@@ -696,9 +1129,6 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
     }
   }
 
-  // Clip the final segment to endMs (handles rounding over/undershoot
-  // from skipping sub-second slivers — the difference is at most a few
-  // seconds).
   if (merged.length) {
     const last = merged[merged.length - 1];
     if (last.endMs !== endMs) {
@@ -710,15 +1140,9 @@ function buildHypnogramSegments(session: SessionItem): HypnogramSeg[] {
 }
 
 function Hypnogram({ session }: { session: SessionItem }) {
-  const t = useT();
-  const segments = useMemo(
-    () => buildHypnogramSegments(session),
-    [session],
-  );
+  const segments = useMemo(() => buildHypnogramSegments(session), [session]);
   const [hover, setHover] = useState<number | null>(null);
 
-  // Geometry (viewBox coordinates). The SVG is responsive — `w-full` +
-  // `preserveAspectRatio` scales the viewBox to the container width.
   const W = 1000;
   const H = 300;
   const padLeft = 60;
@@ -728,15 +1152,13 @@ function Hypnogram({ session }: { session: SessionItem }) {
   const plotW = W - padLeft - padRight;
   const plotH = H - padTop - padBottom;
 
-  // Standard hypnogram Y-axis order: Awake (top) → REM → Light → Deep
-  // (bottom). The user asked to see "when I woke up" — those are the high
-  // points — and their phases dropping down through REM / Light / Deep.
+  // Standard hypnogram Y-axis order: Awake (top) → REM → Light → Deep (bottom).
   const stageOrder: StageKey[] = ["awake", "rem", "light", "deep"];
   const stageLabel: Record<StageKey, string> = {
-    awake: t("sleep.awake"),
-    rem: t("sleep.rem"),
-    light: t("sleep.light"),
-    deep: t("sleep.deep"),
+    awake: "Awake",
+    rem: "REM",
+    light: "Light",
+    deep: "Deep",
   };
   const stageY: Record<StageKey, number> = {
     awake: padTop + 0.07 * plotH,
@@ -748,10 +1170,8 @@ function Hypnogram({ session }: { session: SessionItem }) {
   const startMs = new Date(session.start_time).getTime();
   const endMs = new Date(session.end_time).getTime();
   const totalMs = Math.max(endMs - startMs, 1);
-  const xFor = (ms: number) =>
-    padLeft + ((ms - startMs) / totalMs) * plotW;
+  const xFor = (ms: number) => padLeft + ((ms - startMs) / totalMs) * plotW;
 
-  // X-axis ticks: every 2 h for long nights, every 1 h for short ones.
   const tickStepMs = totalMs > 8 * 3600 * 1000 ? 2 * 3600 * 1000 : 3600 * 1000;
   const ticks: { x: number; label: string }[] = [];
   for (let ms = 0; ms <= totalMs + 1; ms += tickStepMs) {
@@ -765,7 +1185,6 @@ function Hypnogram({ session }: { session: SessionItem }) {
       }),
     });
   }
-  // Always include the final tick (wake time) so the chart ends cleanly.
   const lastLabel = new Date(endMs).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -778,11 +1197,9 @@ function Hypnogram({ session }: { session: SessionItem }) {
   if (!segments.length) {
     return (
       <div className="rounded-[var(--radius-control)] border border-dashed border-hairline2 px-4 py-6 text-center">
-        <div className="text-[12px] font-semibold text-ink2">
-          {"No stage data" /* TODO i18n */}
-        </div>
-        <div className="num mt-0.5 text-[11px] text-faint">
-          {"This night has no recorded deep / light / REM totals, so an estimated hypnogram can't be built." /* TODO i18n */}
+        <div className="text-[14px] font-semibold text-ink2">No stage data</div>
+        <div className="num mt-1 text-[13px] text-ink3">
+          This night has no recorded deep / light / REM totals, so an estimated hypnogram can't be built.
         </div>
       </div>
     );
@@ -803,10 +1220,10 @@ function Hypnogram({ session }: { session: SessionItem }) {
           style={{ minWidth: 480 }}
           preserveAspectRatio="xMidYMid meet"
           role="img"
-          aria-label={"Estimated hypnogram" /* TODO i18n */}
+          aria-label="Estimated hypnogram"
           onMouseLeave={() => setHover(null)}
         >
-          {/* Plot background — faint so the step-line reads cleanly. */}
+          {/* Plot background — faint. */}
           <rect
             x={padLeft}
             y={padTop}
@@ -824,14 +1241,13 @@ function Hypnogram({ session }: { session: SessionItem }) {
               y1={stageY[s]}
               x2={padLeft + plotW}
               y2={stageY[s]}
-              stroke="var(--c-hairline)"
+              stroke="var(--c-divider)"
               strokeWidth={1}
               strokeDasharray="2 4"
             />
           ))}
 
-          {/* Awake highlight bands (full plot height, faint red) so the
-              user can see "when I woke up" at a glance. */}
+          {/* Awake highlight bands (full plot height, faint red). */}
           {segments.map((seg, i) =>
             seg.stage === "awake" ? (
               <rect
@@ -846,8 +1262,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
             ) : null,
           )}
 
-          {/* Vertical transitions between consecutive segments (drawn
-              BEFORE the horizontals so the horizontals sit on top). */}
+          {/* Vertical transitions between consecutive segments. */}
           {segments.slice(1).map((seg, i) => {
             const prev = segments[i];
             return (
@@ -857,7 +1272,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
                 y1={stageY[prev.stage]}
                 x2={xFor(seg.startMs)}
                 y2={stageY[seg.stage]}
-                stroke="var(--c-text-faint)"
+                stroke="var(--c-text-3)"
                 strokeWidth={1.2}
                 opacity={0.7}
               />
@@ -893,8 +1308,8 @@ function Hypnogram({ session }: { session: SessionItem }) {
               y={stageY[s] + 3.5}
               textAnchor="end"
               style={{
-                fontSize: 10,
-                fill: "var(--c-text-muted)",
+                fontSize: 13,
+                fill: "var(--c-text-2)",
                 fontFamily: "var(--font-mono)",
               }}
             >
@@ -908,7 +1323,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
             y1={padTop + plotH}
             x2={padLeft + plotW}
             y2={padTop + plotH}
-            stroke="var(--c-hairline-strong)"
+            stroke="var(--c-divider-strong)"
             strokeWidth={1}
           />
           {ticks.map((tick, i) => (
@@ -918,7 +1333,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
                 y1={padTop + plotH}
                 x2={tick.x}
                 y2={padTop + plotH + 4}
-                stroke="var(--c-hairline-strong)"
+                stroke="var(--c-divider-strong)"
                 strokeWidth={1}
               />
               <text
@@ -926,8 +1341,8 @@ function Hypnogram({ session }: { session: SessionItem }) {
                 y={padTop + plotH + 18}
                 textAnchor="middle"
                 style={{
-                  fontSize: 10,
-                  fill: "var(--c-text-muted)",
+                  fontSize: 11,
+                  fill: "var(--c-text-3)",
                   fontFamily: "var(--font-mono)",
                 }}
               >
@@ -936,9 +1351,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
             </g>
           ))}
 
-          {/* Hover hit-rects — one transparent rect per segment, full
-              plot height so the user can hover anywhere within the
-              segment's time range. */}
+          {/* Hover hit-rects */}
           {segments.map((seg, i) => {
             const x1 = xFor(seg.startMs);
             const x2 = xFor(seg.endMs);
@@ -958,9 +1371,7 @@ function Hypnogram({ session }: { session: SessionItem }) {
         </svg>
       </div>
 
-      {/* Hover tooltip — positioned at the segment's centre x, near the
-          top of the chart. Flips to the left side when the segment is in
-          the right quarter of the chart so the tooltip doesn't overflow. */}
+      {/* Hover tooltip */}
       {hover !== null && hoveredSeg && (
         <div
           style={{
@@ -979,11 +1390,11 @@ function Hypnogram({ session }: { session: SessionItem }) {
               className="inline-block h-2 w-2 rounded-full"
               style={{ background: STAGE_VARS[hoveredSeg.stage] }}
             />
-            <span className="text-[11px] font-semibold text-ink">
+            <span className="text-[14px] font-semibold text-ink">
               {stageLabel[hoveredSeg.stage]}
             </span>
           </div>
-          <div className="text-[10px] text-muted">
+          <div className="text-[12px] text-ink2">
             {new Date(hoveredSeg.startMs).toLocaleTimeString("en-GB", {
               hour: "2-digit",
               minute: "2-digit",
@@ -996,26 +1407,22 @@ function Hypnogram({ session }: { session: SessionItem }) {
               hour12: false,
             })}
           </div>
-          <div className="num mt-0.5 text-[10px] text-faint">
+          <div className="num mt-0.5 text-[12px] text-ink3">
             {fmtDurShort(hoveredSeg.durS)}
             {" · "}
-            {hoveredSeg.stage === "awake"
-              ? "wake episode" /* TODO i18n */
-              : "cycle phase" /* TODO i18n */}
+            {hoveredSeg.stage === "awake" ? "wake episode" : "cycle phase"}
           </div>
         </div>
       )}
 
-      {/* Caption — explicit that this is a synthesis from stage totals. */}
-      <div className="num mt-2 text-[10px] text-faint">
-        {"Estimated from stage totals — no real timeline data" /* TODO i18n */}
+      {/* Caption */}
+      <div className="num mt-2 text-[12px] text-ink3">
+        Estimated from stage totals — no real timeline data
       </div>
     </div>
   );
 }
 
-/** Short duration format for the hypnogram tooltip: "5m", "30m", "1h 23m",
- *  "2h 5m". */
 function fmtDurShort(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "—";
   const total = Math.round(s);
@@ -1025,887 +1432,47 @@ function fmtDurShort(s: number): string {
   return `${m}m`;
 }
 
-/* --------------------------------------------------------- Row 2: Stages */
-function StageCompositionCard({
-  session,
-  baseline,
-}: {
-  session: SessionItem;
-  baseline: BaselineBlock | null;
-}) {
-  const t = useT();
-
-  const stageRows: {
-    key: StageKey;
-    label: string;
-    secs: number;
-    color: string;
-  }[] = [
-    { key: "deep", label: t("sleep.deep"), secs: session.deep_s ?? 0, color: STAGE_VARS.deep },
-    { key: "light", label: t("sleep.light"), secs: session.light_s ?? 0, color: STAGE_VARS.light },
-    { key: "rem", label: t("sleep.rem"), secs: session.rem_s ?? 0, color: STAGE_VARS.rem },
-    { key: "awake", label: t("sleep.awake"), secs: session.awake_s ?? 0, color: STAGE_VARS.awake },
-  ];
-
-  const totalAsleep =
-    (session.deep_s ?? 0) + (session.light_s ?? 0) + (session.rem_s ?? 0) || 1;
-
-  // Bar uses the three asleep stages (plan §4 denominator = time asleep).
-  const barStages = stageRows.filter((s) => s.key !== "awake");
-
-  return (
-    <Card>
-      <CardHeader
-        eyebrow={"Stages" /* TODO i18n */}
-        title={"Composition" /* TODO i18n */}
-        right={
-          <span className="num text-[10px] text-faint">
-            {"of time asleep" /* TODO i18n */}
-          </span>
-        }
-      />
-
-      {/* Hypnogram (estimated). Sits ABOVE the composition bar so the
-          user sees the night's phase structure first, then the totals. */}
-      <Hypnogram session={session} />
-
-      <Hairline className="my-4" />
-
-      {/* ONE horizontal stacked bar — deep / light / REM. Denominator =
-          time asleep so the three stages sum to 100%. Plan §4 fixes the
-          unit bug: the old awake block was rendered in seconds on a ms
-          axis; here everything is seconds. */}
-      <div className="flex h-7 w-full overflow-hidden rounded-[var(--radius-control)] bg-surface3">
-        {barStages.map((s) => {
-          const pct = totalAsleep > 0 ? (s.secs / totalAsleep) * 100 : 0;
-          if (pct <= 0) return null;
-          return (
-            <div
-              key={s.key}
-              className="flex items-center justify-center text-[10px] font-semibold text-white/80"
-              style={{ width: `${pct}%`, background: s.color }}
-              title={`${s.label}: ${fmtHours(s.secs)} (${Math.round(pct)}% of time asleep)`}
-            >
-              {pct > 10 && <span>{Math.round(pct)}%</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Composition table: stage, duration, % of sleep, 30-day average,
-          typical range. */}
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse">
-          <thead>
-            <tr className="border-b border-hairline text-left">
-              <th className="eyebrow py-1.5 pr-3 font-medium">{"Stage" /* TODO i18n */}</th>
-              <th className="eyebrow py-1.5 pr-3 font-medium">{"Duration" /* TODO i18n */}</th>
-              <th className="eyebrow py-1.5 pr-3 font-medium">{"% of sleep" /* TODO i18n */}</th>
-              <th className="eyebrow py-1.5 pr-3 font-medium">{"30-day avg" /* TODO i18n */}</th>
-              <th className="eyebrow py-1.5 font-medium">{"Typical range" /* TODO i18n */}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stageRows.map((s) => {
-              const pctOfSleep =
-                s.key === "awake"
-                  ? (s.secs / totalAsleep) * 100
-                  : (s.secs / totalAsleep) * 100;
-              const avgS = baseline?.stages[s.key]?.mean_s ?? null;
-              const avgPct = baseline?.stages[s.key]?.mean_pct ?? null;
-              const typical = TYPICAL_STAGE_RANGE[s.key];
-              return (
-                <tr
-                  key={s.key}
-                  className="border-b border-hairline last:border-0"
-                >
-                  <td className="py-2 pr-3">
-                    <span className="inline-flex items-center gap-2 text-[12px] font-medium text-ink">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ background: s.color }}
-                      />
-                      {s.label}
-                    </span>
-                  </td>
-                  <td className="num py-2 pr-3 text-[12px] text-ink2">
-                    {fmtHours(s.secs)}
-                  </td>
-                  <td className="num py-2 pr-3 text-[12px] text-ink2">
-                    {fmtNum(pctOfSleep, 0)}%
-                  </td>
-                  <td className="num py-2 pr-3 text-[12px] text-muted">
-                    {avgS !== null
-                      ? `${fmtHours(avgS)} (${fmtNum(avgPct ?? 0, 0)}%)`
-                      : "—"}
-                  </td>
-                  <td className="num py-2 text-[12px] text-faint">
-                    {s.key === "awake"
-                      ? "—"
-                      : `${typical.low}–${typical.high}%`}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-    </Card>
-  );
-}
-
-/* ----------------------------------------------- Row 3 left: Vitals vs baseline */
-function VitalsAgainstBaselineCard({
-  bio,
-  session,
-  baseline,
-}: {
-  bio: BiometricsOut | null;
-  session: SessionItem;
-  baseline: BaselineBlock | null;
-}) {
-  const t = useT();
-
-  // The SleepSession itself carries respiration_avg / spo2_avg in some
-  // sources; the DailyBiometric (bio) is the more reliable per-date vital
-  // record. Plan §4 says to use biometrics + 30-day bands.
-  const restingHr = bio?.resting_hr ?? null;
-  const spo2 = bio?.spo2_avg ?? session.spo2_avg ?? null;
-  const respiration = bio?.respiration_avg ?? session.respiration_avg ?? null;
-  const skinTemp = bio?.skin_temp_c ?? null; // schema doesn't surface this yet
-
-  const tiles: {
-    key: string;
-    label: string;
-    value: number | null;
-    unit: string;
-    stats: VitalStats | null;
-  }[] = [
-    {
-      key: "resting_hr",
-      label: t("sleep.resting_hr"),
-      value: restingHr,
-      unit: "bpm",
-      stats: baseline?.vitals.resting_hr ?? null,
-    },
-    {
-      key: "spo2_avg",
-      label: t("sleep.spo2"),
-      value: spo2,
-      unit: "%",
-      stats: baseline?.vitals.spo2_avg ?? null,
-    },
-    {
-      key: "respiration_avg",
-      label: t("sleep.respiration"),
-      value: respiration,
-      unit: "brpm",
-      stats: baseline?.vitals.respiration_avg ?? null,
-    },
-    {
-      key: "skin_temp",
-      label: t("sleep.skin_temp"),
-      value: skinTemp,
-      unit: "°C",
-      stats: null, // no 30-day baseline for skin temp yet
-    },
-  ];
-
-  return (
-    <Card className="h-full">
-      <CardHeader
-        eyebrow={"Vitals vs baseline" /* TODO i18n */}
-        title={"Was your body calm overnight?" /* TODO i18n */}
-      />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {tiles.map((tile) => (
-          <VitalTile key={tile.key} tile={tile} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function VitalTile({
-  tile,
-}: {
-  tile: {
-    key: string;
-    label: string;
-    value: number | null;
-    unit: string;
-    stats: VitalStats | null;
-  };
-}) {
-  const expl = getMetricExplanation(tile.key);
-  // Plan §4: DeltaChip against your 30-day mean.
-  const mean = tile.stats?.mean ?? null;
-  const low = tile.stats?.low ?? null;
-  const high = tile.stats?.high ?? null;
-  const delta =
-    tile.value !== null && mean !== null ? tile.value - mean : null;
-  // rangeTone for the value against the 30-day band.
-  const tone = rangeTone(tile.value, low, high);
-  const toneCls = toneTextClass(tone);
-  const showRange = low !== null && high !== null && tile.value !== null;
-
-  return (
-    <div className="rounded-[var(--radius-control)] border border-hairline bg-surface2/50 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <Eyebrow>{tile.label}</Eyebrow>
-          <InfoButton title={tile.label}>
-            <MetricInfoContent
-              whatItMeasures={expl.whatItMeasures}
-              whyItMatters={expl.whyItMatters}
-              whatInfluencesIt={expl.whatInfluencesIt}
-              howToReadIt={expl.howToReadIt}
-            />
-          </InfoButton>
-        </div>
-        {delta !== null && (
-          <DeltaChip
-            delta={Math.round(delta * 10) / 10}
-            unit={tile.unit}
-            goodWhen={
-              // For resting HR / respiration, lower is generally better.
-              // For SpO₂ / skin temp, higher (or stable) is fine.
-              tile.key === "resting_hr" || tile.key === "respiration_avg"
-                ? "down"
-                : "up"
-            }
-          />
-        )}
-      </div>
-
-      <div className="num mt-1 flex items-baseline gap-1">
-        <span className={`text-[22px] font-bold leading-7 ${toneCls}`}>
-          {tile.value !== null ? fmtNum(tile.value, tile.unit === "%" || tile.unit === "°C" ? 1 : 0) : "—"}
-        </span>
-        {tile.value !== null && (
-          <span className="text-[10px] font-medium text-muted">{tile.unit}</span>
-        )}
-      </div>
-
-      {showRange ? (
-        <div className="mt-2">
-          <RangeBar
-            value={tile.value}
-            low={low}
-            high={high}
-            tone={toneFor(tone)}
-            unit={tile.unit}
-            height={4}
-          />
-          <div className="num mt-1 flex items-center justify-between text-[10px] text-faint">
-            <span>Low {fmtNum(low, tile.unit === "%" || tile.unit === "°C" ? 1 : 0)}</span>
-            <span>30-day band</span>
-            <span>High {fmtNum(high, tile.unit === "%" || tile.unit === "°C" ? 1 : 0)}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="num mt-2 text-[10px] text-faint">
-          {mean !== null
-            ? `30-day mean ${fmtNum(mean, tile.unit === "%" || tile.unit === "°C" ? 1 : 0)}`
-            : "No 30-day baseline yet"}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* --------------------------------------------------------- Row 3 right: HRV */
-function HrvCard({
-  readings,
-  hrvMs,
-  hrvStats,
-  listItems,
-  selectedDate,
-}: {
-  readings: HrvReadingOut[];
-  hrvMs: number | null;
-  hrvStats: VitalStats | null;
-  listItems: SessionItem[];
-  selectedDate: string;
-}) {
-  const t = useT();
-  const hrvMean = hrvStats?.mean ?? null;
-  const hrvSd = hrvStats?.sd ?? null;
-  const hrvDev = hrvMs !== null && hrvMean !== null ? hrvMs - hrvMean : null;
-  const hrvTone = hrvDevTone(hrvDev, hrvSd);
-
-  // 30-day deviation trend: list of hrv_deviation_ms values from the
-  // last 30 sleep sessions, oldest → newest. Zero line + the deviation
-  // color (hrvDevTone).
-  const trendItems = useMemo(() => {
-    return [...listItems]
-      .slice(0, 30)
-      .reverse()
-      .map((it) => ({
-        date: it.local_date,
-        dev: it.hrv_deviation_ms,
-        isCurrent: it.local_date === selectedDate,
-      }));
-  }, [listItems, selectedDate]);
-
-  return (
-    <Card className="h-full">
-      <CardHeader
-        eyebrow={t("sleep.hrv")}
-        title={"Recovery signal" /* TODO i18n */}
-        right={
-          hrvDev !== null ? (
-            <Badge tone={toneToBadgeTone(hrvTone)} dot>
-              {hrvDev >= 0 ? "+" : "−"}
-              {fmtNum(Math.abs(hrvDev), 0)} ms vs 30d
-            </Badge>
-          ) : null
-        }
-      />
-
-      {/* HRV value */}
-      <div className="mb-3 flex items-baseline gap-2">
-        <BigStat
-          value={fmtNum(hrvMs, 0)}
-          unit="ms"
-          size="md"
-          tone={toneFor(hrvTone)}
-        />
-        {hrvMean !== null && (
-          <span className="num text-[11px] text-faint">
-            30d mean {fmtNum(hrvMean, 0)} ms · ±{fmtNum(hrvSd, 0)} sd
-          </span>
-        )}
-      </div>
-
-      {readings.length > 0 ? (
-        <HrvCurve readings={readings} />
-      ) : (
-        <div className="rounded-[var(--radius-control)] border border-dashed border-hairline2 px-4 py-6 text-center">
-          <div className="text-[12px] font-semibold text-ink2">No HRV data</div>
-          <div className="num mt-0.5 text-[11px] text-faint">
-            Your source didn't push overnight HRV readings for this night.
-          </div>
-        </div>
-      )}
-
-      <Hairline className="my-4" />
-
-      {/* 30-day deviation trend with zero line. */}
-      <div>
-        <Eyebrow>{"30-day deviation" /* TODO i18n */}</Eyebrow>
-        {trendItems.some((it) => it.dev !== null) ? (
-          <HrvDeviationTrend items={trendItems} hrvSd={hrvSd} />
-        ) : (
-          <div className="num mt-1 text-[11px] text-faint">
-            No HRV history yet — the deviation trend fills in once you have
-            overnight HRV data.
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-function toneToBadgeTone(tone: DataTone): "positive" | "warning" | "alert" | "neutral" {
-  if (tone === "positive") return "positive";
-  if (tone === "warning") return "warning";
-  if (tone === "alert") return "alert";
-  return "neutral";
-}
-
-function toneTextClass(tone: DataTone): string {
-  return {
-    positive: "text-positiveText",
-    warning: "text-warningText",
-    alert: "text-alertText",
-    muted: "text-muted",
-  }[tone];
-}
-
-/** Overnight HRV curve with rolling baseline band. */
-function HrvCurve({ readings }: { readings: HrvReadingOut[] }) {
-  const W = 1000;
-  const H = 200;
-  const padLeft = 44;
-  const padRight = 16;
-  const padTop = 12;
-  const padBottom = 28;
-  const plotW = W - padLeft - padRight;
-  const plotH = H - padTop - padBottom;
-
-  const values = readings.map((r) => r.hrv_ms);
-  const baselines = readings
-    .map((r) => r.rolling_baseline_ms)
-    .filter((v): v is number => v !== null && Number.isFinite(v));
-  const all = [...values, ...baselines];
-  const rawMin = Math.min(...all);
-  const rawMax = Math.max(...all);
-  const pad = (rawMax - rawMin) * 0.12 || 4;
-  const yMin = rawMin - pad;
-  const yMax = rawMax + pad;
-  const yRange = yMax - yMin || 1;
-
-  const baselineMs =
-    baselines.length > 0
-      ? baselines.reduce((s, v) => s + v, 0) / baselines.length
-      : null;
-
-  const startMs = new Date(readings[0].timestamp).getTime();
-  const endMs = new Date(readings[readings.length - 1].timestamp).getTime();
-  const totalMs = Math.max(endMs - startMs, 1);
-
-  const linePath = readings
-    .map((r, i) => {
-      const ts = new Date(r.timestamp).getTime();
-      const x = padLeft + ((ts - startMs) / totalMs) * plotW;
-      const y = padTop + plotH - ((r.hrv_ms - yMin) / yRange) * plotH;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  // Baseline band: ±1 SD of rolling_baseline_ms around the mean. If
-  // rolling_baseline_ms is sparse, just draw the mean line.
-  const baselineBand = (() => {
-    if (baselines.length < 2) return null;
-    const m = baselines.reduce((s, v) => s + v, 0) / baselines.length;
-    const variance =
-      baselines.reduce((s, v) => s + (v - m) ** 2, 0) /
-      (baselines.length - 1);
-    const sd = Math.sqrt(variance);
-    return { mean: m, sd };
-  })();
-
-  const yToPx = (v: number) =>
-    padTop + plotH - ((v - yMin) / yRange) * plotH;
-
-  const yTicks = [yMin, yMin + yRange / 2, yMax];
-  const twoH = 2 * 3600 * 1000;
-  const xMarks: { x: number; label: string }[] = [];
-  for (let ms = 0; ms <= totalMs + 1; ms += twoH) {
-    const ts = startMs + Math.min(ms, totalMs);
-    const x = padLeft + (Math.min(ms, totalMs) / totalMs) * plotW;
-    const label = new Date(ts).toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    xMarks.push({ x, label });
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ minWidth: 480 }}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label="Overnight HRV curve"
-      >
-        {/* Y-axis grid + ticks */}
-        {yTicks.map((v, i) => {
-          const y = yToPx(v);
-          return (
-            <g key={i}>
-              <line
-                x1={padLeft}
-                y1={y}
-                x2={padLeft + plotW}
-                y2={y}
-                stroke="var(--c-hairline)"
-                strokeWidth={1}
-              />
-              <text
-                x={padLeft - 6}
-                y={y + 3}
-                textAnchor="end"
-                style={{
-                  fontSize: 10,
-                  fill: "var(--c-text-faint)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {fmtNum(v, 0)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Baseline band — mean ± 1 SD (faint fill). Plan §4: "rolling
-            baseline band (the series already returned with
-            rolling_baseline_ms)". */}
-        {baselineBand && (
-          <rect
-            x={padLeft}
-            y={yToPx(baselineBand.mean + baselineBand.sd)}
-            width={plotW}
-            height={
-              yToPx(baselineBand.mean - baselineBand.sd) -
-              yToPx(baselineBand.mean + baselineBand.sd)
-            }
-            fill="var(--c-text-faint)"
-            opacity={0.1}
-          />
-        )}
-
-        {/* Rolling baseline dashed line (mean of the rolling series). */}
-        {baselineMs !== null && (
-          <line
-            x1={padLeft}
-            y1={yToPx(baselineMs)}
-            x2={padLeft + plotW}
-            y2={yToPx(baselineMs)}
-            stroke="var(--c-text-faint)"
-            strokeWidth={1.4}
-            strokeDasharray="4 3"
-          />
-        )}
-
-        {/* Area fill under line */}
-        <path
-          d={`M${linePath} L${padLeft + plotW},${padTop + plotH} L${padLeft},${padTop + plotH} Z`}
-          fill="var(--c-positive)"
-          fillOpacity={0.08}
-          stroke="none"
-        />
-
-        {/* HRV line — color via hrvDevTone of the latest value relative to
-            the baseline mean. Plan §4 says hrvDevTone for the deviation
-            color; here we apply it to the curve so the line reads STATE. */}
-        <path
-          d={`M${linePath}`}
-          fill="none"
-          stroke={toneToVar(toneForHrvCurve(values, baselineMs))}
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* X-axis baseline */}
-        <line
-          x1={padLeft}
-          y1={padTop + plotH}
-          x2={padLeft + plotW}
-          y2={padTop + plotH}
-          stroke="var(--c-hairline-strong)"
-          strokeWidth={1}
-        />
-
-        {/* X-axis time marks */}
-        {xMarks.map((m, i) => (
-          <text
-            key={i}
-            x={m.x}
-            y={padTop + plotH + 18}
-            textAnchor="middle"
-            style={{
-              fontSize: 10,
-              fill: "var(--c-text-muted)",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {m.label}
-          </text>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
-function toneForHrvCurve(values: number[], baselineMs: number | null): DataTone {
-  if (!values.length || baselineMs === null) return "muted";
-  const last = values[values.length - 1];
-  const dev = last - baselineMs;
-  // Use a flat 8ms threshold when no SD is available.
-  return hrvDevTone(dev, 8);
-}
-
-/** Map a DataTone to a CSS color variable. */
-function toneToVar(tone: DataTone): string {
-  return {
-    positive: "var(--c-positive)",
-    warning: "var(--c-warning)",
-    alert: "var(--c-alert)",
-    muted: "var(--c-hairline2)",
-  }[tone];
-}
-
-/** 30-day HRV deviation trend — a small SVG bar chart with a zero line.
- *  Each bar is one night's hrv_deviation_ms; positive (above baseline)
- *  renders above the zero line, negative below. Plan §4: zero line +
- *  hrvDevTone for the color. */
-function HrvDeviationTrend({
-  items,
-  hrvSd,
-}: {
-  items: { date: string; dev: number | null; isCurrent: boolean }[];
-  hrvSd: number | null;
-}) {
-  const W = 1000;
-  const H = 120;
-  const padLeft = 8;
-  const padRight = 8;
-  const padTop = 8;
-  const padBottom = 16;
-  const plotW = W - padLeft - padRight;
-  const plotH = H - padTop - padBottom;
-  const midY = padTop + plotH / 2;
-
-  const valid = items.map((it) => it.dev).filter((v): v is number => v !== null && Number.isFinite(v));
-  if (!valid.length) {
-    return (
-      <div className="num mt-1 text-[11px] text-faint">
-        No HRV history yet.
-      </div>
-    );
-  }
-  const maxAbs = Math.max(...valid.map((v) => Math.abs(v)), 1);
-  const xStep = items.length > 1 ? plotW / (items.length - 1) : 0;
-  const barW = Math.max(2, Math.min(10, xStep * 0.5));
-
-  return (
-    <div className="overflow-x-auto">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ minWidth: 480 }}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label="30-day HRV deviation trend"
-      >
-        {/* Zero line (plan §4 explicit). */}
-        <line
-          x1={padLeft}
-          y1={midY}
-          x2={padLeft + plotW}
-          y2={midY}
-          stroke="var(--c-hairline-strong)"
-          strokeWidth={1}
-        />
-        {/* ±1 SD reference band (optional, only when we have SD). */}
-        {hrvSd !== null && hrvSd > 0 && (
-          <>
-            <line
-              x1={padLeft}
-              y1={midY - (hrvSd / maxAbs) * (plotH / 2)}
-              x2={padLeft + plotW}
-              y2={midY - (hrvSd / maxAbs) * (plotH / 2)}
-              stroke="var(--c-text-faint)"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-            <line
-              x1={padLeft}
-              y1={midY + (hrvSd / maxAbs) * (plotH / 2)}
-              x2={padLeft + plotW}
-              y2={midY + (hrvSd / maxAbs) * (plotH / 2)}
-              stroke="var(--c-text-faint)"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-          </>
-        )}
-
-        {/* Bars — color by hrvDevTone(dev, hrvSd). */}
-        {items.map((it, i) => {
-          if (it.dev === null || !Number.isFinite(it.dev)) {
-            // Missing night — small tick at the zero line.
-            const x = padLeft + i * xStep;
-            return (
-              <line
-                key={i}
-                x1={x}
-                y1={midY - 2}
-                x2={x}
-                y2={midY + 2}
-                stroke="var(--c-hairline2)"
-                strokeWidth={1}
-              />
-            );
-          }
-          const x = padLeft + i * xStep;
-          const h = (Math.abs(it.dev) / maxAbs) * (plotH / 2);
-          const y = it.dev >= 0 ? midY - h : midY;
-          const tone = hrvDevTone(it.dev, hrvSd);
-          return (
-            <rect
-              key={i}
-              x={x - barW / 2}
-              y={y}
-              width={barW}
-              height={h}
-              fill={toneToVar(tone)}
-              opacity={it.isCurrent ? 1 : 0.7}
-              stroke={it.isCurrent ? "var(--c-ink)" : "none"}
-              strokeWidth={it.isCurrent ? 1 : 0}
-            />
-          );
-        })}
-      </svg>
-      <div className="num mt-1 flex items-center justify-between text-[10px] text-faint">
-        <span>−{fmtNum(maxAbs, 0)} ms</span>
-        <span>0 · baseline</span>
-        <span>+{fmtNum(maxAbs, 0)} ms</span>
-      </div>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------- Row 4: In context */
-function InContextCard({
-  listItems,
-  selectedDate,
-  dashboard,
-  onOverview,
-}: {
-  listItems: SessionItem[];
-  selectedDate: string;
-  dashboard: DashboardResponse | null;
-  onOverview: () => void;
-}) {
-  const t = useT();
-  // Most recent 7 nights (newest-first from API), reverse for left → right.
-  const recent = useMemo(() => {
-    const arr = listItems.slice(0, 7).reverse();
-    return arr;
-  }, [listItems]);
-
-  // "What this meant for today" — only render if the selected night is the
-  // most recent night AND we have today's readiness/recovery.
-  const isMostRecent =
-    listItems.length > 0 && listItems[0].local_date === selectedDate;
-  const readiness = dashboard?.overview?.readiness?.value ?? null;
-  const recovery = dashboard?.overview?.recovery?.value ?? null;
-  const showTodayStrip = isMostRecent && (readiness !== null || recovery !== null);
-
-  if (!recent.length) return null;
-
-  // Bar geometry for "previous 7 nights as mini bars with this night
-  // highlighted".
-  const maxDur = Math.max(
-    ...recent
-      .map((it) => it.total_sleep_s ?? 0)
-      .filter((v) => Number.isFinite(v)),
-    1,
-  );
-
-  return (
-    <Card>
-      <CardHeader
-        eyebrow={"In context" /* TODO i18n */}
-        title={"Last 7 nights" /* TODO i18n */}
-      />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Mini bars: previous 7 nights with this night highlighted. */}
-        <div className="lg:col-span-2">
-          <div className="flex items-end gap-2">
-            {recent.map((it) => {
-              const dur = it.total_sleep_s ?? 0;
-              const hPct = (dur / maxDur) * 100;
-              const isCurrent = it.local_date === selectedDate;
-              const tone = scoreTone(it.sleep_score);
-              return (
-                <div
-                  key={it.local_date}
-                  className="flex flex-1 flex-col items-center gap-1"
-                >
-                  <div className="num text-[10px] text-faint">
-                    {fmtHours(dur)}
-                  </div>
-                  <div className="flex h-20 w-full items-end justify-center">
-                    <div
-                      className={`w-full max-w-[28px] rounded-[var(--radius-control)] ${isCurrent ? "ring-1 ring-ink" : ""}`}
-                      style={{
-                        height: `${Math.max(4, hPct)}%`,
-                        background: toneToVar(tone),
-                        opacity: isCurrent ? 1 : 0.7,
-                      }}
-                      title={`${it.local_date}: ${fmtHours(dur)} · score ${fmtNum(it.sleep_score, 0)}`}
-                    />
-                  </div>
-                  <div className="num text-[9px] text-faint">
-                    {shortDate(it.local_date)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* "What this meant for today" — today's readiness + recovery with
-            link to Overview. */}
-        <div className="lg:border-l lg:border-hairline lg:pl-4">
-          <Eyebrow>{"What this meant for today" /* TODO i18n */}</Eyebrow>
-          {showTodayStrip ? (
-            <div className="mt-2 space-y-2">
-              <TodayStat
-                label={"Readiness" /* TODO i18n */}
-                value={readiness}
-                tone={scoreTone(readiness)}
-              />
-              <TodayStat
-                label={"Recovery" /* TODO i18n */}
-                value={recovery}
-                tone={scoreTone(recovery)}
-              />
-              <ApexButton
-                variant="secondary"
-                size="sm"
-                onClick={onOverview}
-                iconRight={<ArrowRight size={12} />}
-              >
-                Open Overview
-              </ApexButton>
-            </div>
-          ) : (
-            <div className="num mt-1 text-[11px] text-faint">
-              {isMostRecent
-                ? "Today's readiness and recovery aren't available yet — connect a source or sync to see how last night affected today."
-                : "This strip shows today's readiness and recovery only for the most recent night."}
-            </div>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function TodayStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number | null;
-  tone: DataTone;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[12px] text-muted">{label}</span>
-      <span className={`num text-[18px] font-bold ${toneTextClass(tone)}`}>
-        {value !== null ? fmtNum(value, 0) : "—"}
-      </span>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------- small helpers */
-function t_label(k: StageKey): string {
-  const en: Record<StageKey, string> = {
-    deep: "Deep",
-    light: "Light",
-    rem: "REM",
-    awake: "Awake",
-  };
-  return en[k];
-}
-
 function shortDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00Z");
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+/* --------------------------------------------------------------- tone helpers */
+function scoreToDot(t: DataTone): "neutral" | "ok" | "watch" | "alert" {
+  return t === "positive" ? "ok" : t === "warning" ? "watch" : t === "alert" ? "alert" : "neutral";
+}
+
+function scoreBandWord(score: number | null, baseline: BaselineBlock | null): string {
+  if (score === null) return "—";
+  if (!baseline) {
+    const t = scoreTone(score);
+    return t === "positive" ? "Good" : t === "warning" ? "Fair" : t === "alert" ? "Low" : "—";
+  }
+  const p33 = baseline.sleep_scores.p33;
+  const p66 = baseline.sleep_scores.p66;
+  if (p33 === null || p66 === null || baseline.sleep_scores.count < 5) {
+    const t = scoreTone(score);
+    return t === "positive" ? "Good" : t === "warning" ? "Fair" : t === "alert" ? "Low" : "—";
+  }
+  if (score >= p66) return "Top third";
+  if (score <= p33) return "Low";
+  return "Typical";
+}
+
+function durationTone(dur: number, targetS: number): "neutral" | "ok" | "watch" | "alert" {
+  if (!Number.isFinite(dur)) return "neutral";
+  const ratio = dur / targetS;
+  if (ratio >= 0.9) return "ok";
+  if (ratio >= 0.7) return "watch";
+  return "alert";
+}
+
+function durationWord(dur: number, targetS: number): string {
+  if (!Number.isFinite(dur)) return "—";
+  const ratio = dur / targetS;
+  if (ratio >= 0.9) return "On target";
+  if (ratio >= 0.7) return "Slightly short";
+  return "Short";
 }
