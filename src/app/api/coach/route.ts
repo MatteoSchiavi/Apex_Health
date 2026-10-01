@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
         try {
           const zai = await ZAI.create();
           const completion = await zai.chat.completions.create({
+            model: process.env.LLM_PROVIDER_CHEAP || "deepseek-flash",
             messages: chatMessages,
             thinking: { type: "disabled" },
             // Note: the z-ai-web-dev-sdk may or may not return a stream — we

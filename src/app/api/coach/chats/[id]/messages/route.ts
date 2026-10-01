@@ -208,6 +208,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     try {
       const zai = await ZAI.create();
       const completion = await zai.chat.completions.create({
+        model: process.env.LLM_PROVIDER_CHEAP || "deepseek-flash",
         messages: chatMessages as SimpleMessage[],
         thinking: { type: "disabled" },
       });

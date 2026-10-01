@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       const textContent = await readFile(filePath, "utf-8");
 
       const response = await zai.chat.completions.create({
+        model: process.env.LLM_PROVIDER_CHEAP || "deepseek-flash",
         messages: [
           { role: "assistant", content: EXTRACTION_PROMPT },
           { role: "user", content: textContent.slice(0, 8000) },
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest) {
         };
       } else {
         const response = await zai.chat.completions.create({
+          model: process.env.LLM_PROVIDER_CHEAP || "deepseek-flash",
           messages: [
             { role: "assistant", content: EXTRACTION_PROMPT },
             { role: "user", content: pdfText.slice(0, 8000) },
