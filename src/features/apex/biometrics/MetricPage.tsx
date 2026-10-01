@@ -29,8 +29,16 @@ import {
   Segmented,
   Eyebrow,
   ApexButton,
+  InfoButton,
+  MetricInfoContent,
+  scoreTone,
+  rangeTone,
+  acwrTone,
+  toneFor,
+  type DataTone,
 } from "@/components/apex/kit";
 import { fmtNum, fmtDate, fmtDelta } from "@/lib/apex/format";
+import { getMetricExplanation } from "@/lib/apex/metricInfo";
 import type { MetricTrend } from "@/lib/apex/types";
 import { exportCsv } from "@/lib/apex/csv";
 
@@ -39,6 +47,7 @@ import { exportCsv } from "@/lib/apex/csv";
 /** Per-metric semantic direction — what counts as "good". */
 const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   hrv: "up",
+  hrv_norm: "up",
   spo2: "up",
   vo2max: "up",
   readiness: "up",
@@ -47,7 +56,6 @@ const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   deep_sleep: "up",
   rem_sleep: "up",
   total_sleep: "up",
-  hrv_norm: "up",
   resting_hr: "down",
   acwr: "down",
   respiration: "down",
@@ -72,6 +80,67 @@ function decimalsFor(key: string): number {
   if (["weight", "acwr", "skin_temp", "respiration"].includes(key)) return 2;
   if (["spo2", "sleep_efficiency"].includes(key)) return 1;
   return 0;
+}
+
+/**
+ * State-based chart color — per the user's reform, DATA color reflects STATE
+ * (in-range / abnormal / out-of-range), not the accent. The accent is reserved
+ * for non-data UI (active nav, buttons, focus rings, brand).
+ *
+ * Returns a CSS `var(--c-…)` token. Falls back to a neutral muted line when
+ * the metric has no clean state interpretation.
+ */
+function stateColorFor(
+  key: string,
+  value: number | null,
+  meta: { group: string },
+): string {
+  if (value === null || !Number.isFinite(value)) return "var(--c-text-faint)";
+  let tone: DataTone;
+  switch (key) {
+    case "readiness":
+    case "recovery":
+    case "sleep_score":
+      tone = scoreTone(value);
+      break;
+    case "acwr":
+      tone = acwrTone(value);
+      break;
+    case "spo2":
+      tone = rangeTone(value, 95, 100);
+      break;
+    case "respiration":
+      // 12–20 brpm is the normal adult range.
+      tone = rangeTone(value, 12, 20);
+      break;
+    case "sleep_efficiency":
+      tone = rangeTone(value, 85, 100);
+      break;
+    case "vo2max":
+      // Population bands are sex/age dependent; treat as positive (any
+      // value is fine for an otherwise-trained adult).
+      tone = "positive";
+      break;
+    case "skin_temp":
+      // No direction; the variance itself is the signal.
+      tone = "muted";
+      break;
+    default:
+      // For metrics where "good" depends on direction (hrv up, resting_hr
+      // down, weight down), there's no universal reference range — use a
+      // neutral muted line. The DeltaChip already encodes the direction.
+      tone = "muted";
+  }
+  switch (tone) {
+    case "positive":
+      return "var(--c-positive)";
+    case "warning":
+      return "var(--c-warning)";
+    case "alert":
+      return "var(--c-alert)";
+    default:
+      return "var(--c-text-muted)";
+  }
 }
 
 function colorForGroup(group: string): string {
@@ -338,10 +407,40 @@ export function MetricPage() {
   const trend = useMemo(() => getMetricTrend(key, days), [key, days]);
 
   const goodWhen = GOOD_WHEN[key] ?? "up";
-  const color = colorForGroup(meta.group);
   const last = trend.stats.last;
   const baseline = trend.stats.baseline;
   const dp = decimalsFor(key);
+
+  // Plan: data color reflects STATE (not the accent). The chart line uses a
+  // state-derived color; the hero BigStat uses the same tone where it maps
+  // cleanly (score / range / ACWR), and falls back to neutral ink otherwise.
+  const chartColor = stateColorFor(key, last, meta);
+  const heroTone = (() => {
+    if (last === null || !Number.isFinite(last)) return "ink";
+    let tone: DataTone;
+    switch (key) {
+      case "readiness":
+      case "recovery":
+      case "sleep_score":
+        tone = scoreTone(last);
+        break;
+      case "acwr":
+        tone = acwrTone(last);
+        break;
+      case "spo2":
+        tone = rangeTone(last, 95, 100);
+        break;
+      case "respiration":
+        tone = rangeTone(last, 12, 20);
+        break;
+      case "sleep_efficiency":
+        tone = rangeTone(last, 85, 100);
+        break;
+      default:
+        return "ink";
+    }
+    return toneFor(tone);
+  })();
 
   // Personal-baseline framing
   const vsBaseline =
@@ -360,7 +459,14 @@ export function MetricPage() {
       </div>
 
       <PageHeader
-        title={meta.label}
+        title={
+          <span className="flex items-center gap-1.5">
+            <span>{meta.label}</span>
+            <InfoButton title={meta.label}>
+              <MetricInfoContent {...getMetricExplanation(key)} />
+            </InfoButton>
+          </span>
+        }
         subtitle={
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <SourcePill>{meta.source}</SourcePill>
@@ -413,7 +519,7 @@ export function MetricPage() {
               size="xl"
               value={fmtNum(last, dp)}
               unit={meta.unit}
-              tone="ink"
+              tone={heroTone}
             />
             <div className="mb-1.5 flex flex-col gap-1.5">
               <DeltaChip
@@ -481,7 +587,7 @@ export function MetricPage() {
         <div className="px-2 pb-2">
           <MetricChart
             trend={trend}
-            color={color}
+            color={chartColor}
             dp={dp}
             baselineLabel={t("biometrics.baseline")}
             emptyLabel={t("biometrics.no_data")}

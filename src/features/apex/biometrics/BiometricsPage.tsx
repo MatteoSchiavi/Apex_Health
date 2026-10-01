@@ -33,8 +33,11 @@ import {
   SourcePill,
   Sparkline,
   Hairline,
+  InfoButton,
+  MetricInfoContent,
 } from "@/components/apex/kit";
 import { fmtNum, fmtDate } from "@/lib/apex/format";
+import { getMetricExplanation } from "@/lib/apex/metricInfo";
 import type { LabMarker, MetricCatalogItem } from "@/lib/apex/types";
 
 /* ----------------------------------------------------- metric meta helpers */
@@ -82,6 +85,19 @@ function colorForGroup(group: string): string {
       return "var(--c-text-faint)";
     default:
       return "var(--c-primary)";
+  }
+}
+
+/** Sparkline color by computed status tone — per the user's reform, DATA
+ *  color reflects STATE (in-range / abnormal / no-baseline), not the accent. */
+function sparkColorForStatus(tone: "neutral" | "positive" | "alert"): string {
+  switch (tone) {
+    case "positive":
+      return "var(--c-positive)";
+    case "alert":
+      return "var(--c-alert)";
+    default:
+      return "var(--c-text-muted)";
   }
 }
 
@@ -347,7 +363,6 @@ function MetricCard({
   const delta7 = trend.stats.delta_7d;
   const sparkData = trend.points.slice(-14).map((p) => p.value);
   const goodWhen = GOOD_WHEN[m.key] ?? "up";
-  const color = colorForGroup(m.group);
 
   // Plan §5: computed status from latest vs personal band (mean ± 1 SD).
   const validVals = trend.points
@@ -361,14 +376,38 @@ function MetricCard({
       : null;
   const status = computeMetricStatus(last, mean, sd, t);
 
+  // Plan: data color reflects STATE. The sparkline uses the same tone as the
+  // status badge (positive / alert / neutral) so the card reads state at a glance.
+  const sparkColor = sparkColorForStatus(status.tone);
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(m.key)}
-      className="group flex w-full flex-col gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-4 text-left transition-all hover:border-hairline2 hover:bg-surface2"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(m.key);
+        }
+      }}
+      className="group flex w-full cursor-pointer flex-col gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-4 text-left transition-all hover:border-hairline2 hover:bg-surface2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[13px] font-semibold text-ink">{m.label}</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-[13px] font-semibold text-ink">{m.label}</span>
+          {/* Wrapper stops click-propagation so opening the info popover does
+              not also fire the card's onClick (which navigates to the metric
+              detail page). InfoButton itself is from the shared kit. */}
+          <span
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex"
+          >
+            <InfoButton title={m.label}>
+              <MetricInfoContent {...getMetricExplanation(m.key)} />
+            </InfoButton>
+          </span>
+        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Badge tone={status.tone} dot>
             {status.label}
@@ -386,8 +425,8 @@ function MetricCard({
             <DeltaChip delta={delta7} goodWhen={goodWhen} suffix={t("overview.vs7d")} compact />
           </div>
         </div>
-        <Sparkline data={sparkData} color={color} width={100} height={36} />
+        <Sparkline data={sparkData} color={sparkColor} width={100} height={36} />
       </div>
-    </button>
+    </div>
   );
 }

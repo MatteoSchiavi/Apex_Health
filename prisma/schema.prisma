@@ -185,6 +185,10 @@ model Gear {
   usagePct            Float    @default(0)
   lastServiceType     String?
   lastServiceAt       String?
+  // JSON-encoded array of discipline strings this gear is the default for.
+  // (plan §6 — discipline_gear_defaults table is collapsed into this column
+  // for the sandbox; a separate table would be the production shape.)
+  defaultFor          String   @default("[]")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

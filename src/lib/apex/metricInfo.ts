@@ -102,6 +102,76 @@ export const METRIC_EXPLANATIONS: Record<string, MetricExplanation> = {
     whatInfluencesIt: "Workouts, walking, occupation, transport choices, weather, motivation.",
     howToReadIt: "8,000–10,000/day is a good general target. On rest days, light walking (3,000–5,000) aids recovery better than total inactivity.",
   },
+
+  /* --- Catalog-key aliases. The `metricCatalog` in lib/apex/data.ts uses
+   *     short keys (hrv, spo2, respiration, weight) while the legacy
+   *     explanations above used the suffixed backend keys (hrv_ms, spo2_avg,
+   *     respiration_avg, weight_kg). Add aliases so getMetricExplanation()
+   *     resolves either form. Existing entries are NOT overwritten. */
+
+  hrv: {
+    whatItMeasures: "Heart Rate Variability (RMSSD) — the millisecond variation between heartbeats, measured overnight. Higher generally means a more recovered autonomic nervous system.",
+    whyItMatters: "HRV is an early-warning signal: it often drops a day or two before you feel overtired or get sick.",
+    whatInfluencesIt: "Sleep, stress, alcohol, training intensity, illness, heat, dehydration, genetics (your baseline is personal).",
+    howToReadIt: "Compare to YOUR baseline, not population norms. A drop of more than ~1 SD (≈8ms for most) is meaningful; small daily noise is normal.",
+  },
+  spo2: {
+    whatItMeasures: "Average blood oxygen saturation (SpO₂) overnight, as a percentage. Normal is 95–100%.",
+    whyItMatters: "Low SpO₂ during sleep can indicate breathing issues (apnea, altitude, respiratory illness) that hurt recovery without you noticing.",
+    whatInfluencesIt: "Altitude, respiratory conditions, sleep position, asthma, smoking, alcohol.",
+    howToReadIt: "≥95% normal · 90–94% mild desaturation, worth watching · <90% talk to a doctor, especially if recurring.",
+  },
+  respiration: {
+    whatItMeasures: "Average breathing rate overnight, in breaths per minute. Normal adult range is 12–20.",
+    whyItMatters: "Elevated overnight breathing can signal stress, illness onset, or poor sleep quality; very low rates can occur in deep sleep.",
+    whatInfluencesIt: "Stress, illness, fever, anxiety, sleep stage, alcohol, fitness level.",
+    howToReadIt: "Compare to your baseline. A sustained rise of more than ~2 breaths/min can be an early fatigue or illness marker.",
+  },
+  weight: {
+    whatItMeasures: "Body weight, in kilograms. Best taken in the morning after waking, before eating or drinking.",
+    whyItMatters: "Useful for tracking body composition trends (muscle gain, fat loss, hydration). Daily fluctuations are mostly water.",
+    whatInfluencesIt: "Hydration, glycogen, sodium intake, time of day, menstrual cycle, bowel contents, recent training.",
+    howToReadIt: "Ignore day-to-day noise. Look at the 7-day and 28-day averages — a trend over weeks is real signal, a 1kg jump in a day is water.",
+  },
+
+  /* --- New metrics present in the catalog but not in the original list. */
+
+  skin_temp: {
+    whatItMeasures: "Skin temperature variance — the deviation of overnight skin temperature from your personal baseline, in °C.",
+    whyItMatters: "Skin temp deviations can flag illness onset (a rise often precedes a fever by 1–2 days), menstrual cycle phase, or a too-warm bedroom degrading sleep.",
+    whatInfluencesIt: "Room temperature, bedding, menstrual cycle, illness, alcohol, hot showers before bed, fever.",
+    howToReadIt: "Small nightly swings (±0.3 °C) are normal. A sustained rise of >0.5 °C for several nights, especially with HRV dropping, can be an early illness signal.",
+  },
+  sleep_efficiency: {
+    whatItMeasures: "Sleep efficiency — time asleep divided by time in bed, as a percentage.",
+    whyItMatters: "Even with 8h in bed, low efficiency (lots of tossing or wake-ups) means less restorative sleep. It's a quick quality signal beyond raw duration.",
+    whatInfluencesIt: "Stress, caffeine late in the day, alcohol, irregular schedule, screen time, room temperature, sleep disorders.",
+    howToReadIt: "≥85% good · 75–84% fair · <75% poor. Track the trend — one bad night is normal, a week below 80% means look at sleep hygiene.",
+  },
+  deep_sleep: {
+    whatItMeasures: "Total time spent in deep (N3 / slow-wave) sleep per night, in hours. Deep sleep is the most physically restorative stage.",
+    whyItMatters: "Deep sleep is when growth hormone peaks and the body repairs muscle and clears metabolic waste. Low deep sleep impairs physical recovery.",
+    whatInfluencesIt: "Total sleep duration, intense training (increases deep sleep demand), alcohol (suppresses it), age (declines with age), heat exposure.",
+    howToReadIt: "Adults typically get 1–2h. There's no single 'good' number — track against YOUR baseline. A sustained drop after heavy training can mean under-recovery.",
+  },
+  rem_sleep: {
+    whatItMeasures: "Total time spent in REM (rapid eye movement) sleep per night, in hours. REM is the mentally restorative stage tied to memory and emotion.",
+    whyItMatters: "REM consolidates memory, learning and emotional regulation. Chronic low REM affects cognition and mood.",
+    whatInfluencesIt: "Total sleep duration (REM dominates the second half of the night), alcohol, antidepressants, stress, irregular wake times.",
+    howToReadIt: "Adults typically get 1.5–2h. If you're cutting sleep short you're cutting REM disproportionately. Watch the trend, not single nights.",
+  },
+  total_sleep: {
+    whatItMeasures: "Total sleep per night — the sum of all sleep stages (deep, REM, light), in hours.",
+    whyItMatters: "Sleep is the single biggest recovery lever. Chronic short sleep degrades HRV, raises resting HR, lowers readiness, and increases injury risk.",
+    whatInfluencesIt: "Bedtime consistency, screen time before bed, caffeine timing, room environment, schedule, stress, training load.",
+    howToReadIt: "Most adults need 7–9h. The trend matters more than any single night — if 7-day average drops below ~7h, prioritise an earlier bedtime.",
+  },
+  hrv_norm: {
+    whatItMeasures: "HRV 30-day norm — your rolling 30-day average HRV (ms). It's your personal autonomic baseline, not today's reading.",
+    whyItMatters: "Single-night HRV is noisy. The 30-day norm is the reference point against which today's HRV deviation makes sense.",
+    whatInfluencesIt: "Consistent sleep, training habits, stress baseline, age, genetics. Changes slowly (weeks) with sustained lifestyle shifts.",
+    howToReadIt: "Use it as YOUR baseline — compare today's HRV (or hrv_deviation) against this. A rising 30-day norm over months reflects improving fitness/recovery capacity.",
+  },
 };
 
 /** Get an explanation for a metric key, with a graceful fallback. */
