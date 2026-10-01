@@ -2586,3 +2586,28 @@ Stage Summary:
   - The 12px minimum on calendar weekday header cells (Mon/Tue/…) and the "+N" overflow on month cells: per RULES "Nothing below 12px, ever", 12px is the floor. These are deliberately at 12px (not 14px) because they're short grid labels — the 14px min is the *label* min, not the absolute floor.
   - `i18n.ts` is off-limits so no new keys were added. New copy strings use inline English/Italian ternaries (`ui.locale === "it" ? … : …`), consistent with the existing pattern in the file.
   - The `Legend` helper (top of `LoadChart`) is now unused (the chart uses `ChartLegend` from `@/components/apex/charts`); kept in place as a small top-level function declaration — passes lint (top-level functions don't trigger `no-unused-vars`), safe to remove in a future cleanup.
+
+---
+Task ID: RE-FOUNDATION (design language rebuild per the review)
+Agent: main (Z.ai Code) + 3 parallel subagents (RS1, RS2, RS3)
+Task: The user provided a comprehensive design review identifying the root cause: the problem isn't individual pages but the foundation layer (tokens, kit primitives, hierarchy rules). Execute the re-foundation per the review's recommendations.
+
+Work Log:
+- Read the full review (7 sections: how reviewed, why it looks bad, recommended language, concept, how to execute, concerns, next steps).
+- Wrote ui-language/RULES.md — the 9 frozen principles + tokens + guardrails. This is the single source of truth every future edit checks against.
+- Rebuilt globals.css: new tokens (bg #0B0C0F, surface #191C22 at 1.16:1 contrast, accent #FF7A1A warm orange, ok/watch/alert distinct from accent, WCAG AA text colours). Removed the uppercase .eyebrow style (now sentence-case 13px). Added .page-title (40px), .page-sentence (20px), .hero-num (72px). Card radius 20px, padding 28px.
+- Rebuilt kit.tsx: Card borderless (surface contrast only, no border class). BigStat number always text-ink (tone only on unit). New primitives: StatusDot (dot + word), Hero (72px hero number), Row (flat metric row), Section (label + content), PageSentence (20px answer), ChartFrame (standard chart wrapper).
+- Rewrote OverviewPage as the reference screen: greeting + page sentence, one readiness ring hero (120px SVG, 72px number), Recovery + Strain as small rings, "What's driving it" (Sleep/HRV/RHR/Load with StatusDots), 3 facts (Today's plan / Next event / Gear due), Training load InteractiveComboChart + ChartInfoBadge, Body signals as Rows (not cards), Last night compact (one bar + 5 numbers), Today's activities as list rows.
+- Changed default accent from emerald #10b981 (same as "good") to warm orange #FF7A1A. Reduced accent picker from 10 to 3 options (Orange, Ice blue, Lime) — all distinct from status colours.
+- Delegated 3 parallel subagents:
+  - RS1: Sleep (list + night) + Biometrics (hub + metric) — all re-skinned to rows, StatusDots, InteractiveLineCharts, page sentences, no borders.
+  - RS2: Training + Gear + Welcome — page sentences, hero hierarchy, no borders, plain words.
+  - RS3: Labs + Documents + Challenges + Settings — page sentences, rows not cards, no borders, StatusDots.
+- Fixed the last tsc error (MiniRing tone="neutral" → "muted").
+- Agent-browser QA: all 11 pages render with 0 errors. 0 bordered cards on Overview. 0 uppercase jargon. tsc: 0 errors in src/. Lint: clean.
+
+Stage Summary:
+- The design foundation is rebuilt: RULES.md (9 principles), globals.css (new tokens), kit.tsx (new primitives + borderless Card + white numbers + StatusDot), all 11 pages re-skinned.
+- The "vibecoded" look is gone: no more wall of equal cards, no boxes-in-boxes, no uppercase micro-labels, no coloured big numbers, no "telemetry" jargon.
+- The Overview is now the reference screen: one hero ring, page sentence, rows not cards, StatusDots, InteractiveCharts with hover tooltips.
+- Committed + pushed (commits 5e8023b + 89e6661).
