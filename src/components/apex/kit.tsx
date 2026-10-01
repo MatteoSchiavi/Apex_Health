@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { type CSSProperties, type ReactNode, forwardRef } from "react";
+import { type CSSProperties, type ReactNode, forwardRef, useState } from "react";
 import {
   TrendingDown,
   TrendingUp,
@@ -700,4 +700,293 @@ export function Sparkline({
 
 export function Hairline({ className = "" }: { className?: string }) {
   return <div className={`h-px w-full bg-hairline ${className}`} />;
+}
+
+/* ------------------------------------------------------------- Stepper (plan §2 live session) */
+
+export function Stepper({
+  value,
+  onChange,
+  step = 1,
+  min = 0,
+  max = 9999,
+  suffix,
+  className = "",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
+  suffix?: string;
+  className?: string;
+}) {
+  const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  return (
+    <div className={`inline-flex items-center rounded-[var(--radius-control)] border border-hairline bg-surface ${className}`}>
+      <button
+        type="button"
+        onClick={() => onChange(clamp(value - step))}
+        className="flex h-9 w-9 items-center justify-center text-[18px] font-bold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+        aria-label="decrement"
+      >
+        −
+      </button>
+      <div className="num flex min-w-[3rem] items-baseline justify-center gap-0.5 px-1 text-[18px] font-bold tabular-nums text-ink">
+        {value}
+        {suffix && <span className="text-[10px] font-medium text-muted">{suffix}</span>}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(clamp(value + step))}
+        className="flex h-9 w-9 items-center justify-center text-[18px] font-bold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+        aria-label="increment"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- Rest timer ring (plan §2) */
+
+export function RestTimerRing({
+  secondsLeft,
+  total,
+  onAdjust,
+  onSkip,
+  className = "",
+}: {
+  secondsLeft: number;
+  total: number;
+  onAdjust: (delta: number) => void;
+  onSkip: () => void;
+  className?: string;
+}) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const pct = total > 0 ? secondsLeft / total : 0;
+  return (
+    <div className={`flex flex-col items-center gap-3 ${className}`}>
+      <div className="relative">
+        <svg width="128" height="128" viewBox="0 0 128 128" aria-hidden>
+          <circle cx="64" cy="64" r={r} fill="none" stroke="var(--c-surface3)" strokeWidth="6" />
+          <circle
+            cx="64"
+            cy="64"
+            r={r}
+            fill="none"
+            stroke="var(--c-primary)"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - pct)}
+            transform="rotate(-90 64 64)"
+            style={{ transition: "stroke-dashoffset 1s linear" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="num text-[32px] font-bold tabular-nums text-ink">
+            {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
+          </div>
+          <div className="eyebrow !text-[9px] text-faint">rest</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onAdjust(-15)}
+          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+        >
+          −15s
+        </button>
+        <button
+          type="button"
+          onClick={() => onAdjust(15)}
+          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+        >
+          +15s
+        </button>
+        <button
+          type="button"
+          onClick={onSkip}
+          className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+        >
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- Confirm popover (plan §1 delete chat) */
+
+export function ConfirmPopover({
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Delete",
+  cancelLabel = "Cancel",
+  children,
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <div onClick={() => setOpen((o) => !o)}>{children}</div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); onCancel(); }} aria-hidden />
+          <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-[var(--radius-card)] border border-hairline bg-surface p-3 shadow-lg">
+            <div className="mb-3 text-[12px] text-ink2">{message}</div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setOpen(false); onCancel(); }}
+                className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+              >
+                {cancelLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setOpen(false); onConfirm(); }}
+                className="h-7 rounded-[var(--radius-control)] bg-alert px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-alert/90"
+              >
+                {confirmLabel}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- Markdown (plan §1 coach replies) */
+
+/** Minimal, safe markdown renderer: bold, italic, lists, headings, tables, paragraphs.
+ *  No raw HTML is allowed (everything is text-escaped). Good enough for coach replies. */
+export function Markdown({ content, className = "" }: { content: string; className?: string }) {
+  const blocks = useMemoMarkdown(content);
+  return <div className={`space-y-2 text-[13px] leading-relaxed text-ink2 ${className}`}>{blocks}</div>;
+}
+
+function useMemoMarkdown(content: string) {
+  // simple line-by-line parser — headings, lists, tables, paragraphs, bold/italic
+  const lines = content.split("\n");
+  const out: ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  let para: string[] = [];
+  const flushPara = () => {
+    if (para.length) {
+      out.push(<p key={key++} className="whitespace-pre-wrap">{renderInline(para.join(" "))}</p>);
+      para = [];
+    }
+  };
+  while (i < lines.length) {
+    const line = lines[i];
+    // table: a line with pipes, followed by a separator row
+    if (line.includes("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+      flushPara();
+      const headers = line.split("|").map((s) => s.trim()).filter(Boolean);
+      i += 2; // skip header + separator
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
+        rows.push(lines[i].split("|").map((s) => s.trim()).filter(Boolean));
+        i++;
+      }
+      out.push(
+        <div key={key++} className="overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr>
+                {headers.map((h, hi) => (
+                  <th key={hi} className="border-b border-hairline2 px-2 py-1 text-left font-semibold text-ink">{renderInline(h)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri}>
+                  {headers.map((_, ci) => (
+                    <td key={ci} className="border-b border-hairline px-2 py-1 text-muted">{renderInline(r[ci] ?? "")}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+    // headings
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) {
+      flushPara();
+      const level = h[1].length;
+      const cls = level === 1 ? "text-[18px] font-bold text-ink" : level === 2 ? "text-[16px] font-bold text-ink" : "text-[14px] font-semibold text-ink";
+      out.push(<div key={key++} className={cls}>{renderInline(h[2])}</div>);
+      i++;
+      continue;
+    }
+    // bullet list
+    if (/^\s*[-*]\s+/.test(line)) {
+      flushPara();
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+        i++;
+      }
+      out.push(
+        <ul key={key++} className="list-disc space-y-0.5 pl-5">
+          {items.map((it, ii) => <li key={ii}>{renderInline(it)}</li>)}
+        </ul>
+      );
+      continue;
+    }
+    // numbered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      flushPara();
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, ""));
+        i++;
+      }
+      out.push(
+        <ol key={key++} className="list-decimal space-y-0.5 pl-5">
+          {items.map((it, ii) => <li key={ii}>{renderInline(it)}</li>)}
+        </ol>
+      );
+      continue;
+    }
+    // blank line → flush
+    if (line.trim() === "") {
+      flushPara();
+      i++;
+      continue;
+    }
+    para.push(line);
+    i++;
+  }
+  flushPara();
+  return out;
+}
+
+/** Render inline bold/italic/code. Escapes HTML by treating text as React children. */
+function renderInline(text: string): ReactNode[] {
+  // split on **bold**, *italic*, `code`
+  const tokens = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+  return tokens.map((tok, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(tok)) return <strong key={i} className="font-semibold text-ink">{tok.slice(2, -2)}</strong>;
+    if (/^\*[^*]+\*$/.test(tok)) return <em key={i}>{tok.slice(1, -1)}</em>;
+    if (/^`[^`]+`$/.test(tok)) return <code key={i} className="num rounded-[3px] bg-surface3 px-1 py-0.5 text-[12px] text-ink">{tok.slice(1, -1)}</code>;
+    return <span key={i}>{tok}</span>;
+  });
 }

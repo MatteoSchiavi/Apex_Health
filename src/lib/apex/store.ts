@@ -53,6 +53,12 @@ interface ApexUiState {
   selectChat: (id: number | null) => void;
   activeGymSessionId: number | null;
   setActiveGymSession: (id: number | null) => void;
+
+  // gear + labs selections
+  selectedGearId: number | null;
+  selectGear: (id: number | null) => void;
+  selectedLabId: number | null;
+  selectLab: (id: number | null) => void;
 }
 
 export const useApexUi = create<ApexUiState>()(
@@ -93,6 +99,11 @@ export const useApexUi = create<ApexUiState>()(
       selectChat: (id) => set({ selectedChatId: id }),
       activeGymSessionId: null,
       setActiveGymSession: (id) => set({ activeGymSessionId: id }),
+
+      selectedGearId: null,
+      selectGear: (id) => set({ selectedGearId: id }),
+      selectedLabId: null,
+      selectLab: (id) => set({ selectedLabId: id }),
     }),
     {
       name: "apex-ui",

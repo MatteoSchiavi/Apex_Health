@@ -1626,3 +1626,32 @@ Stage Summary:
      - Optionally contact GitHub Support to request immediate GC/purge of unreachable objects in the repo
   3. The local `.env-backup-LOCAL-ONLY/` should be deleted once the owner has rotated credentials and no longer needs the old values.
 - Dev server / app still runs unchanged — `.env` is on disk and is read by the app at runtime; only git tracking + history were affected.
+
+---
+Task ID: INFRA-1 (page-plan shared infrastructure)
+Agent: main (Z.ai Code)
+Task: User provided Apex_Health_Pages_Plan.md — a 12-page redesign plan (Coach, Training, Activities, Sleep, Biometrics, Gear, Labs, Settings, Social, Login/Join, Landing, Nutrition) across 5 build phases. Build shared infrastructure first so page-level work can parallelize.
+
+Work Log:
+- Read full plan (673 lines): ranked pages, cross-page findings (no sign-out, static labels, UTC today, unscoped localStorage, two metric catalogs, nav grouping), per-page layout specs, card data dictionaries, backend changes, 5-phase build order.
+- Assessed current state: single `/` route SPA, Zustand UI store, 14 existing feature pages, Node.js API layer + Prisma/SQLite, kit.tsx primitives, i18n (en/it).
+- types.ts: added ViewKeys (onboarding, gear, labs, nutrition) + domain types (Gear, GearServiceLog, LabPanel, ContextDoc, GymSetLog, CoachDraft, CoachEvidence, WeeklyVolume, ContextDocKind).
+- store.ts: added selectedGearId/selectedLabId selectors.
+- storage.ts (NEW): per-user browser storage helpers (userKey/getUserItem/setUserItem/removeUserItem/clearUserStorage) — addresses plan finding 4 (unscoped localStorage).
+- prisma/schema.prisma: added physiology fields on User (hrMaxOverride, lthr, ftpOverride, sleepTargetH, weatherLat/Lon) + 7 new models (Gear, GearServiceLog, LabPanel, ContextDoc, GymPlan, GymSetLog, ChatSession, ChatMessage). Pushed to DB (db:push OK, client regenerated).
+- AppShell.tsx: restructured nav into 4 groups (Today: Overview+Coach; Train: Training+Activities+Gear; Recover: Sleep+Biometrics+Labs; Community: Social) + Settings pinned at bottom. Added Gear (Wrench) + Labs (TestTube) icons. AccountChip now a dropdown with Settings + Sign out (finding 1). BottomNav updated to new group structure (Overview/Coach/Training/Activities/Settings).
+- page.tsx: wired gear/labs/nutrition into renderView + breadcrumbFor.
+- Created placeholder pages: GearPage, LabsPage, NutritionPage (clean empty states, will be filled by subagents).
+- i18n.ts: added ~250 new keys across both en + it (gear.*, labs.*, nutrition.*, coach_*, train_*, act_*, sleep_* additions, bio_* additions, set_* additions, social_* additions, auth_*/onb_* additions). Nav object extended with gear/labs/nutrition/today/train/recover/community.
+- kit.tsx: added Stepper, RestTimerRing, ConfirmPopover, Markdown (safe inline parser — bold/italic/lists/headings/tables, no raw HTML).
+- Lint: clean (0 errors). Dev server: healthy (200 on /).
+
+Stage Summary:
+- All shared infrastructure for the 12-page plan is in place: types, store, nav (grouped + sign-out), router, Prisma models (DB synced), i18n (en+it), kit primitives (Stepper/RestTimerRing/ConfirmPopover/Markdown), per-user storage helpers.
+- Placeholder Gear/Labs/Nutrition pages render so nav is testable.
+- Ready to delegate page-level redesigns to parallel subagents:
+  - 2-a: Phase 0 cross-cutting fixes (sleep night honesty, metric title bug, biometrics badge, login lockout + deep link)
+  - 2-b: Coach full redesign (plan §1)
+  - 2-c: Training full redesign (plan §2)
+  - 2-d: Activities list full redesign (plan §3)
+- Subagents must read this worklog, build new API routes + use new Prisma models, and append their own worklog entries. Shared files (store/types/kit/i18n/AppShell) are now stable; subagents should NOT edit them.

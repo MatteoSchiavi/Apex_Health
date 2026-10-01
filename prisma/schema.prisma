@@ -23,6 +23,13 @@ model User {
   units     String   @default("metric")
   role      String   @default("owner")
   aiTier    String   @default("pro")
+  // physiology + targets (plan §8)
+  hrMaxOverride Int?
+  lthr          Int?
+  ftpOverride   Int?
+  sleepTargetH  Float?  @default(8.0)
+  weatherLat    Float?
+  weatherLon   Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -32,6 +39,11 @@ model User {
   hrvReadings    HrvReading[]
   calendarEvents CalendarEvent[]
   uploadedDocuments UploadedDocument[]
+  gear           Gear[]
+  labPanels      LabPanel[]
+  contextDocs    ContextDoc[]
+  gymPlans       GymPlan[]
+  chatSessions   ChatSession[]
 }
 
 model Activity {
@@ -155,4 +167,149 @@ model UploadedDocument {
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId, uploadedAt])
+}
+
+/* ----------------------------------------------------------- Gear (plan §6) */
+
+model Gear {
+  id                  Int      @id @default(autoincrement())
+  userId              Int
+  name                String
+  gearType            String
+  brand               String?
+  active              Boolean  @default(true)
+  serviceIntervalHours Int?
+  serviceIntervalKm   Int?
+  hoursSinceService   Float    @default(0)
+  kmSinceService      Float    @default(0)
+  usagePct            Float    @default(0)
+  lastServiceType     String?
+  lastServiceAt       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user                User     @relation(fields: [userId], references: [id])
+  serviceLogs         GearServiceLog[]
+
+  @@index([userId, active])
+}
+
+model GearServiceLog {
+  id          Int      @id @default(autoincrement())
+  gearId      Int
+  serviceType String
+  performedAt String
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  gear        Gear     @relation(fields: [gearId], references: [id])
+
+  @@index([gearId, performedAt])
+}
+
+/* ----------------------------------------------------------- Labs (plan §7) */
+
+model LabPanel {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  panelDate          String
+  panelType          String   @default("blood_test")
+  donationType       String?
+  hemoglobin         Float?
+  hematocrit         Float?
+  ferritin           Float?
+  iron               Float?
+  wbc                Float?
+  plt                Float?
+  nextEligibleDate   String?
+  source             String   @default("manual")
+  notes              String?
+  extraMarkers       String?
+  referenceRanges    String?
+  createdAt          DateTime @default(now())
+
+  user               User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, panelDate])
+}
+
+/* ----------------------------------------------------------- Context docs (plan §8) */
+
+model ContextDoc {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  kind      String
+  content   String   @default("")
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, kind])
+}
+
+/* ----------------------------------------------------------- Gym plans + set logs (plan §2) */
+
+model GymPlan {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  date      String
+  title     String
+  status    String   @default("planned")
+  adjustmentNote String?
+  exercises String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  setLogs   GymSetLog[]
+
+  @@index([userId, date])
+}
+
+model GymSetLog {
+  id          Int      @id @default(autoincrement())
+  planId      Int
+  exerciseId  Int
+  exerciseName String
+  setIndex    Int
+  weightKg    Float
+  reps        Int
+  rpe         Float?
+  loggedAt    DateTime @default(now())
+
+  plan        GymPlan  @relation(fields: [planId], references: [id])
+
+  @@index([planId, exerciseId, setIndex])
+}
+
+/* ----------------------------------------------------------- Coach chats (plan §1) */
+
+model ChatSession {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  title           String?
+  startedAt       DateTime @default(now())
+  lastActivityAt  DateTime @default(now())
+  modelTier       String   @default("cheap")
+
+  user            User     @relation(fields: [userId], references: [id])
+  messages        ChatMessage[]
+
+  @@index([userId, lastActivityAt])
+}
+
+model ChatMessage {
+  id             Int      @id @default(autoincrement())
+  sessionId      Int
+  role           String
+  content        String
+  referencedData String?
+  drafts         String?
+  modelTier      String?
+  kind           String   @default("data")
+  createdAt      DateTime @default(now())
+
+  session        ChatSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, createdAt])
 }

@@ -27,6 +27,9 @@ import {
   Sun,
   Trophy,
   Dumbbell,
+  Wrench,
+  TestTube,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -49,16 +52,47 @@ interface NavItem {
   labelKey: string;
 }
 
-const NAV: NavItem[] = [
-  { view: "overview", icon: Activity, labelKey: "nav.overview" },
-  { view: "activities", icon: BarChart3, labelKey: "nav.activities" },
-  { view: "sleep", icon: Moon, labelKey: "nav.sleep" },
-  { view: "biometrics", icon: HeartPulse, labelKey: "nav.biometrics" },
-  { view: "training", icon: Dumbbell, labelKey: "nav.training" },
-  { view: "coach", icon: Bot, labelKey: "nav.coach" },
-  { view: "social", icon: Trophy, labelKey: "nav.social" },
-  { view: "settings", icon: Settings, labelKey: "nav.settings" },
+interface NavGroup {
+  groupKey: string;
+  items: NavItem[];
+}
+
+// Plan finding 6: grouped nav — Today / Train / Recover / Community; Settings pinned at bottom.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    groupKey: "nav.today",
+    items: [
+      { view: "overview", icon: Activity, labelKey: "nav.overview" },
+      { view: "coach", icon: Bot, labelKey: "nav.coach" },
+    ],
+  },
+  {
+    groupKey: "nav.train",
+    items: [
+      { view: "training", icon: Dumbbell, labelKey: "nav.training" },
+      { view: "activities", icon: BarChart3, labelKey: "nav.activities" },
+      { view: "gear", icon: Wrench, labelKey: "nav.gear" },
+    ],
+  },
+  {
+    groupKey: "nav.recover",
+    items: [
+      { view: "sleep", icon: Moon, labelKey: "nav.sleep" },
+      { view: "biometrics", icon: HeartPulse, labelKey: "nav.biometrics" },
+      { view: "labs", icon: TestTube, labelKey: "nav.labs" },
+    ],
+  },
+  {
+    groupKey: "nav.community",
+    items: [
+      { view: "social", icon: Trophy, labelKey: "nav.social" },
+    ],
+  },
 ];
+
+// Flat list for the mobile bottom bar + command palette lookups.
+const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+const SETTINGS_ITEM: NavItem = { view: "settings", icon: Settings, labelKey: "nav.settings" };
 
 /** Logo — monogram + wordmark, used in sidebar (full) and topbar (compact). */
 function Logo({ compact = false }: { compact?: boolean }) {
@@ -212,34 +246,68 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
       )}
 
       <nav className="flex-1 scroll-area overflow-y-auto px-2">
-        <ul className="space-y-0.5">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            const active = current === item.view;
-            return (
-              <li key={item.view}>
-                <button
-                  type="button"
-                  onClick={() => onNav(item.view)}
-                  className={`group flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[13px] font-medium transition-colors ${
-                    active
-                      ? "bg-surface2 text-ink"
-                      : "text-muted hover:bg-surface hover:text-ink2"
-                  } ${collapsed ? "justify-center" : ""}`}
-                  title={collapsed ? t(item.labelKey) : undefined}
-                >
-                  <Icon
-                    size={18}
-                    className={active ? "text-primaryText" : "text-muted group-hover:text-ink2"}
-                    strokeWidth={2}
-                  />
-                  {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
-                  {!collapsed && active && <ChevronRight size={12} className="ml-auto text-muted" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.groupKey} className={gi > 0 ? "mt-3" : ""}>
+            {!collapsed && (
+              <div className="px-2.5 pb-1 pt-1">
+                <div className="eyebrow !text-[9px] text-faint">{t(group.groupKey)}</div>
+              </div>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = current === item.view;
+                return (
+                  <li key={item.view}>
+                    <button
+                      type="button"
+                      onClick={() => onNav(item.view)}
+                      className={`group flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[13px] font-medium transition-colors ${
+                        active
+                          ? "bg-surface2 text-ink"
+                          : "text-muted hover:bg-surface hover:text-ink2"
+                      } ${collapsed ? "justify-center" : ""}`}
+                      title={collapsed ? t(item.labelKey) : undefined}
+                    >
+                      <Icon
+                        size={18}
+                        className={active ? "text-primaryText" : "text-muted group-hover:text-ink2"}
+                        strokeWidth={2}
+                      />
+                      {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
+                      {!collapsed && active && <ChevronRight size={12} className="ml-auto text-muted" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+
+        {/* Settings pinned at the bottom of the nav, separate from groups */}
+        <div className="mt-3 border-t border-hairline pt-2">
+          <ul className="space-y-0.5">
+            <li>
+              <button
+                type="button"
+                onClick={() => onNav(SETTINGS_ITEM.view)}
+                className={`group flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[13px] font-medium transition-colors ${
+                  current === SETTINGS_ITEM.view
+                    ? "bg-surface2 text-ink"
+                    : "text-muted hover:bg-surface hover:text-ink2"
+                } ${collapsed ? "justify-center" : ""}`}
+                title={collapsed ? t(SETTINGS_ITEM.labelKey) : undefined}
+              >
+                <Settings
+                  size={18}
+                  className={current === SETTINGS_ITEM.view ? "text-primaryText" : "text-muted group-hover:text-ink2"}
+                  strokeWidth={2}
+                />
+                {!collapsed && <span className="truncate">{t(SETTINGS_ITEM.labelKey)}</span>}
+              </button>
+            </li>
+          </ul>
+        </div>
       </nav>
 
       <div className="px-2 pb-3 pt-2">
@@ -302,13 +370,13 @@ function ThemeSegmentedCompact() {
 /** Bottom navigation (mobile). */
 function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => void }) {
   const t = useT();
-  // 5 visible primary + 3 hidden in "more"
+  // Mobile bottom bar: Overview, Coach, Training, Activities, More (settings)
   const PRIMARY: NavItem[] = [
-    NAV[0], // overview
-    NAV[1], // activities
-    NAV[2], // sleep
-    NAV[4], // training
-    NAV[7], // settings
+    NAV_GROUPS[0].items[0], // overview
+    NAV_GROUPS[0].items[1], // coach
+    NAV_GROUPS[1].items[0], // training
+    NAV_GROUPS[1].items[1], // activities
+    SETTINGS_ITEM,          // settings
   ];
   return (
     <nav
@@ -349,28 +417,62 @@ function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) =
   );
 }
 
-/** Account chip in the desktop topbar. */
+/** Account chip in the desktop topbar — opens Settings; includes Sign out. */
 function AccountChip() {
   const t = useT();
   const ui = useApexUi();
+  const [open, setOpen] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={() => ui.setView("settings")}
-      className="flex items-center gap-2.5 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 transition-colors hover:bg-surface2"
-    >
-      <div className="num flex h-7 w-7 items-center justify-center rounded-full bg-primarySoft text-[12px] font-bold text-primaryText">
-        {me.name
-          .split(" ")
-          .map((s) => s[0])
-          .join("")
-          .slice(0, 2)}
-      </div>
-      <div className="hidden text-left xl:block">
-        <div className="num text-[12px] font-semibold leading-tight text-ink">{me.name}</div>
-        <div className="num text-[10px] text-muted">{me.email}</div>
-      </div>
-    </button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2.5 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 transition-colors hover:bg-surface2"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <div className="num flex h-7 w-7 items-center justify-center rounded-full bg-primarySoft text-[12px] font-bold text-primaryText">
+          {me.name
+            .split(" ")
+            .map((s) => s[0])
+            .join("")
+            .slice(0, 2)}
+        </div>
+        <div className="hidden text-left xl:block">
+          <div className="num text-[12px] font-semibold leading-tight text-ink">{me.name}</div>
+          <div className="num text-[10px] text-muted">{me.email}</div>
+        </div>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-[var(--radius-card)] border border-hairline bg-surface p-1 shadow-lg">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                ui.setView("settings");
+              }}
+              className="flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[12px] font-medium text-ink2 transition-colors hover:bg-surface2"
+            >
+              <Settings size={14} className="text-muted" />
+              {t("nav.settings")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                ui.signOut();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[12px] font-medium text-alertText transition-colors hover:bg-alertSoft"
+            >
+              <LogOut size={14} />
+              {t("app.sign_out")}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

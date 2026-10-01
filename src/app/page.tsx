@@ -25,6 +25,9 @@ import { TrainingPage } from "@/features/apex/training/TrainingPage";
 import { CoachPage } from "@/features/apex/coach/CoachPage";
 import { SocialPage } from "@/features/apex/social/SocialPage";
 import { SettingsPage } from "@/features/apex/settings/SettingsPage";
+import { GearPage } from "@/features/apex/gear/GearPage";
+import { LabsPage } from "@/features/apex/labs/LabsPage";
+import { NutritionPage } from "@/features/apex/nutrition/NutritionPage";
 
 export default function Home() {
   const ui = useApexUi();
@@ -107,6 +110,12 @@ function breadcrumbFor(view: string, t: (p: string) => string, setView: (v: View
       return [home, { label: t("nav.coach"), onClick: () => setView("coach") }];
     case "social":
       return [home, { label: t("nav.social"), onClick: () => setView("social") }];
+    case "gear":
+      return [home, { label: t("nav.gear"), onClick: () => setView("gear") }];
+    case "labs":
+      return [home, { label: t("nav.labs"), onClick: () => setView("labs") }];
+    case "nutrition":
+      return [home, { label: t("nav.nutrition"), onClick: () => setView("nutrition") }];
     case "settings":
       return [home, { label: t("nav.settings"), onClick: () => setView("settings") }];
     default:
@@ -136,6 +145,12 @@ function renderView(view: string): React.ReactNode {
       return <CoachPage />;
     case "social":
       return <SocialPage />;
+    case "gear":
+      return <GearPage />;
+    case "labs":
+      return <LabsPage />;
+    case "nutrition":
+      return <NutritionPage />;
     case "settings":
       return <SettingsPage />;
     default:

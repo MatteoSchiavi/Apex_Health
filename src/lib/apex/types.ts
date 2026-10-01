@@ -268,6 +268,7 @@ export type ViewKey =
   | "welcome"
   | "login"
   | "join"
+  | "onboarding"
   | "overview"
   | "activities"
   | "activity-detail"
@@ -277,5 +278,107 @@ export type ViewKey =
   | "metric"
   | "training"
   | "coach"
+  | "gear"
+  | "labs"
   | "social"
-  | "settings";
+  | "settings"
+  | "nutrition";
+
+/* ------------------------------------------------------------- Gear */
+
+export interface Gear {
+  id: number;
+  name: string;
+  gear_type: string;
+  brand: string | null;
+  active: boolean;
+  service_interval_hours: number | null;
+  service_interval_km: number | null;
+  hours_since_service: number;
+  km_since_service: number;
+  usage_pct: number;
+  last_service_type: string | null;
+  last_service_at: string | null;
+  default_for: string[];
+}
+
+export interface GearServiceLog {
+  id: number;
+  gear_id: number;
+  service_type: string;
+  performed_at: string;
+  notes: string | null;
+}
+
+/* ------------------------------------------------------------- Labs */
+
+export interface LabPanel {
+  id: number;
+  panel_date: string;
+  panel_type: "blood_test" | "donation";
+  donation_type: string | null;
+  hemoglobin: number | null;
+  hematocrit: number | null;
+  ferritin: number | null;
+  iron: number | null;
+  wbc: number | null;
+  plt: number | null;
+  next_eligible_date: string | null;
+  source: string;
+  notes: string | null;
+  extra_markers: { key: string; label: string; value: number | null; unit: string; ref_low: number | null; ref_high: number | null }[];
+  reference_ranges: Record<string, { low: number | null; high: number | null; unit: string }>;
+}
+
+/* ------------------------------------------------------------- Context docs */
+
+export type ContextDocKind = "profile" | "goals" | "injuries" | "equipment" | "preferences" | "season_plan";
+
+export interface ContextDoc {
+  kind: ContextDocKind;
+  content: string;
+  updated_at: string;
+  char_count: number;
+  char_cap: number;
+}
+
+/* ------------------------------------------------------------- Gym set log */
+
+export interface GymSetLog {
+  id: number;
+  plan_id: number;
+  exercise_id: number;
+  exercise_name: string;
+  set_index: number;
+  weight_kg: number;
+  reps: number;
+  rpe: number | null;
+  logged_at: string;
+}
+
+/* ------------------------------------------------------------- Chat draft */
+
+export interface CoachDraft {
+  id: string;
+  kind: "training_plan" | "supplement_protocol" | "context_doc";
+  title: string;
+  summary: string;
+  details: string;
+  status: "pending" | "confirmed" | "discarded";
+}
+
+export interface CoachEvidence {
+  tool_calls: { tool: string; arg_summary: string; ok: boolean }[];
+  context_keys: string[];
+}
+
+/* ------------------------------------------------------------- Weekly volume */
+
+export interface WeeklyVolume {
+  week_start: string;
+  total_hours: number;
+  total_load: number;
+  total_distance_m: number;
+  sessions: number;
+  by_discipline: Record<string, { hours: number; load: number; distance_m: number; sessions: number }>;
+}
