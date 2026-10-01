@@ -118,13 +118,18 @@ model HrvReading {
 }
 
 model Integration {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  provider     String
-  status       String   @default("active")
-  lastSyncedAt String?
-  isMain       Boolean  @default(false)
-  connectedAt  DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  provider      String
+  status        String   @default("active")
+  lastSyncedAt  String?
+  isMain        Boolean  @default(false)
+  connectedAt   DateTime @default(now())
+  // Garmin credentials (stored in plaintext for the sandbox — in production
+  // these would be encrypted with Fernet per SECURITY.md). Only set for the
+  // Garmin integration; null for others.
+  garminEmail    String?
+  garminPassword String?
 }
 
 model CalendarEvent {

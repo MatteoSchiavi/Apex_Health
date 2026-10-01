@@ -23,6 +23,7 @@ import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
 import { devices, me } from "@/lib/apex/data";
 import { fmtDate, timeAgo } from "@/lib/apex/format";
+import { GarminConnectForm } from "./GarminConnectForm";
 import { useToast } from "@/hooks/use-toast";
 import {
   ApexButton,
@@ -464,6 +465,10 @@ export function SettingsPage() {
               </tbody>
             </table>
           </div>
+          {/* Garmin Connect form — lets the user enter their Garmin credentials
+              from the web UI (instead of editing .env). Validates by logging
+              in, then stores in the Integration table for future syncs. */}
+          <GarminConnectForm onConnected={() => { setSyncing(false); }} />
         </Card>
 
         {/* 5. Owner Settings (half — owner-only) */}

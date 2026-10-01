@@ -3,27 +3,51 @@
  *
  * Fetches real data from Garmin Connect using the garmin-connect npm package,
  * stores it in the Prisma database, and returns a summary of what was synced.
+ *
+ * Credentials are read at CALL TIME (not import time) from either:
+ *   1. The Integration table (set via the Settings > Connect Garmin flow), or
+ *   2. The GARMIN_EMAIL / GARMIN_PASSWORD env vars (fallback).
  */
 
 import { GarminConnect } from "garmin-connect";
 import { db } from "@/lib/db";
 
-const GARMIN_EMAIL = process.env.GARMIN_EMAIL || "";
-const GARMIN_PASSWORD = process.env.GARMIN_PASSWORD || "";
-
 let garminClient: GarminConnect | null = null;
+let cachedCredsHash: string | null = null;
 
-async function getGarminClient(): Promise<GarminConnect> {
-  if (garminClient) return garminClient;
-  if (!GARMIN_EMAIL || !GARMIN_PASSWORD) {
-    throw new Error("GARMIN_EMAIL or GARMIN_PASSWORD not set in environment");
+/** Read Garmin credentials — prefers the Integration table, falls back to env. */
+async function getGarminCredentials(userId: number): Promise<{ email: string; password: string } | null> {
+  // 1. Check the Integration table for stored Garmin credentials
+  const integration = await db.integration.findFirst({
+    where: { userId, provider: "Garmin" },
+  });
+  if (integration?.garminEmail && integration?.garminPassword) {
+    return { email: integration.garminEmail, password: integration.garminPassword };
   }
+  // 2. Fall back to env vars
+  const envEmail = process.env.GARMIN_EMAIL || "";
+  const envPass = process.env.GARMIN_PASSWORD || "";
+  if (envEmail && envPass) {
+    return { email: envEmail, password: envPass };
+  }
+  return null;
+}
+
+async function getGarminClient(userId: number): Promise<GarminConnect> {
+  const creds = await getGarminCredentials(userId);
+  if (!creds || !creds.email || !creds.password) {
+    throw new Error("No Garmin credentials connected. Use Settings > Connect Garmin to add them, or set GARMIN_EMAIL/GARMIN_PASSWORD in .env.");
+  }
+  // Re-login if credentials changed (compare a simple hash)
+  const hash = `${creds.email}:${creds.password.slice(0, 2)}`;
+  if (garminClient && cachedCredsHash === hash) return garminClient;
   const client = new GarminConnect({
-    username: GARMIN_EMAIL,
-    password: GARMIN_PASSWORD,
+    username: creds.email,
+    password: creds.password,
   });
   await client.login();
   garminClient = client;
+  cachedCredsHash = hash;
   return client;
 }
 
@@ -39,7 +63,7 @@ export async function syncGarminData(userId: number): Promise<SyncReport> {
   const report: SyncReport = { activities: 0, sleepSessions: 0, dailyStats: 0, hrvReadings: 0, errors: [] };
 
   try {
-    const client = await getGarminClient();
+    const client = await getGarminClient(userId);
 
     // 1. Sync activities (last 50)
     try {

@@ -35,6 +35,14 @@ export async function POST(req: NextRequest) {
     // Run the sync
     const report = await syncGarminData(user.id);
 
+    // Update the integration's lastSyncedAt on success
+    if (report.errors.length === 0) {
+      await db.integration.updateMany({
+        where: { userId: user.id, provider: "Garmin" },
+        data: { lastSyncedAt: new Date().toISOString(), status: "active" },
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ ok: true, userId: user.id, report });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
