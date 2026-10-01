@@ -1,5 +1,3 @@
-// Apex Health — Prisma schema (SQLite, mirrors the Python backend's models)
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,129 +8,123 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String
-  password  String
-  dob       String?
-  sex       String?
-  heightCm  Float?
-  timezone  String   @default("Europe/Rome")
-  locale    String   @default("en")
-  theme     String   @default("dark")
-  units     String   @default("metric")
-  role      String   @default("owner")
-  aiTier    String   @default("pro")
-  // physiology + targets (plan §8)
-  hrMaxOverride Int?
-  lthr          Int?
-  ftpOverride   Int?
-  sleepTargetH  Float?  @default(8.0)
-  weatherLat    Float?
-  weatherLon   Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  activities     Activity[]
-  sleepSessions  SleepSession[]
-  dailyBiometrics DailyBiometric[]
-  hrvReadings    HrvReading[]
-  calendarEvents CalendarEvent[]
+  id                Int                @id @default(autoincrement())
+  email             String             @unique
+  name              String
+  password          String
+  dob               String?
+  sex               String?
+  heightCm          Float?
+  timezone          String             @default("Europe/Rome")
+  locale            String             @default("en")
+  theme             String             @default("dark")
+  units             String             @default("metric")
+  role              String             @default("owner")
+  aiTier            String             @default("pro")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  ftpOverride       Int?
+  hrMaxOverride     Int?
+  lthr              Int?
+  sleepTargetH      Float?             @default(8.0)
+  weatherLat        Float?
+  weatherLon        Float?
+  activities        Activity[]
+  calendarEvents    CalendarEvent[]
+  chatSessions      ChatSession[]
+  contextDocs       ContextDoc[]
+  dailyBiometrics   DailyBiometric[]
+  gear              Gear[]
+  gymPlans          GymPlan[]
+  hrvReadings       HrvReading[]
+  labPanels         LabPanel[]
+  sleepSessions     SleepSession[]
   uploadedDocuments UploadedDocument[]
-  gear           Gear[]
-  labPanels      LabPanel[]
-  contextDocs    ContextDoc[]
-  gymPlans       GymPlan[]
-  chatSessions   ChatSession[]
 }
 
 model Activity {
-  id            String   @id
-  userId        Int
-  startTime     String
-  localDate     String
-  discipline    String
-  title         String
-  durationS     Int
-  distanceM     Float?
-  elevationGainM Float?
-  avgHr         Int?
-  maxHr         Int?
-  avgPower      Int?
-  npPower       Int?
-  avgSpeedMps   Float?
-  calories      Int?
-  trainingLoad  Float?
+  id               String @id
+  userId           Int
+  startTime        String
+  localDate        String
+  discipline       String
+  title            String
+  durationS        Int
+  distanceM        Float?
+  elevationGainM   Float?
+  avgHr            Int?
+  maxHr            Int?
+  avgPower         Int?
+  npPower          Int?
+  avgSpeedMps      Float?
+  calories         Int?
+  trainingLoad     Float?
   dataCompleteness String @default("complete")
-  sources       String   @default("Garmin")
-
-  user          User     @relation(fields: [userId], references: [id])
+  sources          String @default("Garmin")
+  user             User   @relation(fields: [userId], references: [id])
 
   @@index([userId, localDate])
 }
 
 model SleepSession {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  localDate     String
-  startTime     String
-  endTime       String
-  totalSleepS   Int?
-  deepS         Int?
-  lightS        Int?
-  remS          Int?
-  awakeS        Int?
-  sleepScore    Float?
+  id             Int    @id @default(autoincrement())
+  userId         Int
+  localDate      String
+  startTime      String
+  endTime        String
+  totalSleepS    Int?
+  deepS          Int?
+  lightS         Int?
+  remS           Int?
+  awakeS         Int?
+  sleepScore     Float?
   respirationAvg Float?
-  spo2Avg       Float?
-  restlessness  Float?
-  sources       String   @default("Garmin")
-
-  user          User     @relation(fields: [userId], references: [id])
+  spo2Avg        Float?
+  restlessness   Float?
+  sources        String @default("Garmin")
+  user           User   @relation(fields: [userId], references: [id])
 
   @@index([userId, localDate])
 }
 
 model DailyBiometric {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  date          String
-  restingHr     Int?
-  hrvMs         Float?
-  spo2Avg       Float?
+  id             Int    @id @default(autoincrement())
+  userId         Int
+  date           String
+  restingHr      Int?
+  hrvMs          Float?
+  spo2Avg        Float?
   respirationAvg Float?
-  stressAvg     Int?
-  steps         Int?
-  calories      Int?
-  weightKg      Float?
-  vo2max        Float?
-
-  user          User     @relation(fields: [userId], references: [id])
+  stressAvg      Int?
+  steps          Int?
+  calories       Int?
+  weightKg       Float?
+  vo2max         Float?
+  user           User   @relation(fields: [userId], references: [id])
 
   @@unique([userId, date])
 }
 
 model HrvReading {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  timestamp     String
-  hrvMs         Float
-  readingType   String   @default("overnight")
+  id                Int    @id @default(autoincrement())
+  userId            Int
+  timestamp         String
+  hrvMs             Float
+  readingType       String @default("overnight")
   rollingBaselineMs Float?
-
-  user          User     @relation(fields: [userId], references: [id])
+  user              User   @relation(fields: [userId], references: [id])
 
   @@index([userId, timestamp])
 }
 
 model Integration {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  provider      String
-  status        String   @default("active")
-  lastSyncedAt  String?
-  isMain        Boolean  @default(false)
-  connectedAt   DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  provider     String
+  status       String   @default("active")
+  lastSyncedAt String?
+  isMain       Boolean  @default(false)
+  connectedAt  DateTime @default(now())
 }
 
 model CalendarEvent {
@@ -147,7 +139,6 @@ model CalendarEvent {
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId, date])
@@ -160,40 +151,35 @@ model UploadedDocument {
   fileType   String
   fileSize   Int
   filePath   String
+  category   String   @default("other")
+  source     String   @default("manual")
   status     String   @default("pending")
   parsedData String?
   uploadedAt DateTime @default(now())
-
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId, uploadedAt])
 }
 
-/* ----------------------------------------------------------- Gear (plan §6) */
-
 model Gear {
-  id                  Int      @id @default(autoincrement())
-  userId              Int
-  name                String
-  gearType            String
-  brand               String?
-  active              Boolean  @default(true)
+  id                   Int              @id @default(autoincrement())
+  userId               Int
+  name                 String
+  gearType             String
+  brand                String?
+  active               Boolean          @default(true)
   serviceIntervalHours Int?
-  serviceIntervalKm   Int?
-  hoursSinceService   Float    @default(0)
-  kmSinceService      Float    @default(0)
-  usagePct            Float    @default(0)
-  lastServiceType     String?
-  lastServiceAt       String?
-  // JSON-encoded array of discipline strings this gear is the default for.
-  // (plan §6 — discipline_gear_defaults table is collapsed into this column
-  // for the sandbox; a separate table would be the production shape.)
-  defaultFor          String   @default("[]")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  user                User     @relation(fields: [userId], references: [id])
-  serviceLogs         GearServiceLog[]
+  serviceIntervalKm    Int?
+  hoursSinceService    Float            @default(0)
+  kmSinceService       Float            @default(0)
+  usagePct             Float            @default(0)
+  lastServiceType      String?
+  lastServiceAt        String?
+  defaultFor           String           @default("[]")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  user                 User             @relation(fields: [userId], references: [id])
+  serviceLogs          GearServiceLog[]
 
   @@index([userId, active])
 }
@@ -205,39 +191,33 @@ model GearServiceLog {
   performedAt String
   notes       String?
   createdAt   DateTime @default(now())
-
   gear        Gear     @relation(fields: [gearId], references: [id])
 
   @@index([gearId, performedAt])
 }
 
-/* ----------------------------------------------------------- Labs (plan §7) */
-
 model LabPanel {
-  id                 Int      @id @default(autoincrement())
-  userId             Int
-  panelDate          String
-  panelType          String   @default("blood_test")
-  donationType       String?
-  hemoglobin         Float?
-  hematocrit         Float?
-  ferritin           Float?
-  iron               Float?
-  wbc                Float?
-  plt                Float?
-  nextEligibleDate   String?
-  source             String   @default("manual")
-  notes              String?
-  extraMarkers       String?
-  referenceRanges    String?
-  createdAt          DateTime @default(now())
-
-  user               User     @relation(fields: [userId], references: [id])
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  panelDate        String
+  panelType        String   @default("blood_test")
+  donationType     String?
+  hemoglobin       Float?
+  hematocrit       Float?
+  ferritin         Float?
+  iron             Float?
+  wbc              Float?
+  plt              Float?
+  nextEligibleDate String?
+  source           String   @default("manual")
+  notes            String?
+  extraMarkers     String?
+  referenceRanges  String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id])
 
   @@index([userId, panelDate])
 }
-
-/* ----------------------------------------------------------- Context docs (plan §8) */
 
 model ContextDoc {
   id        Int      @id @default(autoincrement())
@@ -245,74 +225,65 @@ model ContextDoc {
   kind      String
   content   String   @default("")
   updatedAt DateTime @updatedAt
-
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, kind])
 }
 
-/* ----------------------------------------------------------- Gym plans + set logs (plan §2) */
-
 model GymPlan {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  date      String
-  title     String
-  status    String   @default("planned")
+  id             Int         @id @default(autoincrement())
+  userId         Int
+  date           String
+  title          String
+  status         String      @default("planned")
   adjustmentNote String?
-  exercises String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id])
-  setLogs   GymSetLog[]
+  exercises      String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id])
+  setLogs        GymSetLog[]
 
   @@index([userId, date])
 }
 
 model GymSetLog {
-  id          Int      @id @default(autoincrement())
-  planId      Int
-  exerciseId  Int
+  id           Int      @id @default(autoincrement())
+  planId       Int
+  exerciseId   Int
   exerciseName String
-  setIndex    Int
-  weightKg    Float
-  reps        Int
-  rpe         Float?
-  loggedAt    DateTime @default(now())
-
-  plan        GymPlan  @relation(fields: [planId], references: [id])
+  setIndex     Int
+  weightKg     Float
+  reps         Int
+  rpe          Float?
+  loggedAt     DateTime @default(now())
+  plan         GymPlan  @relation(fields: [planId], references: [id])
 
   @@index([planId, exerciseId, setIndex])
 }
 
-/* ----------------------------------------------------------- Coach chats (plan §1) */
-
 model ChatSession {
-  id              Int      @id @default(autoincrement())
-  userId          Int
-  title           String?
-  startedAt       DateTime @default(now())
-  lastActivityAt  DateTime @default(now())
-  modelTier       String   @default("cheap")
-
-  user            User     @relation(fields: [userId], references: [id])
-  messages        ChatMessage[]
+  id             Int           @id @default(autoincrement())
+  userId         Int
+  title          String?
+  startedAt      DateTime      @default(now())
+  lastActivityAt DateTime      @default(now())
+  modelTier      String        @default("cheap")
+  messages       ChatMessage[]
+  user           User          @relation(fields: [userId], references: [id])
 
   @@index([userId, lastActivityAt])
 }
 
 model ChatMessage {
-  id             Int      @id @default(autoincrement())
+  id             Int         @id @default(autoincrement())
   sessionId      Int
   role           String
   content        String
   referencedData String?
   drafts         String?
   modelTier      String?
-  kind           String   @default("data")
-  createdAt      DateTime @default(now())
-
+  kind           String      @default("data")
+  createdAt      DateTime    @default(now())
   session        ChatSession @relation(fields: [sessionId], references: [id])
 
   @@index([sessionId, createdAt])

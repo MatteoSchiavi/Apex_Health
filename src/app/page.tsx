@@ -28,6 +28,7 @@ import { SettingsPage } from "@/features/apex/settings/SettingsPage";
 import { GearPage } from "@/features/apex/gear/GearPage";
 import { LabsPage } from "@/features/apex/labs/LabsPage";
 import { NutritionPage } from "@/features/apex/nutrition/NutritionPage";
+import { DocumentsPage } from "@/features/apex/documents/DocumentsPage";
 
 export default function Home() {
   const ui = useApexUi();
@@ -157,6 +158,8 @@ function breadcrumbFor(view: string, t: (p: string) => string, setView: (v: View
       return [home, { label: t("nav.gear"), onClick: () => setView("gear") }];
     case "labs":
       return [home, { label: t("nav.labs"), onClick: () => setView("labs") }];
+    case "documents":
+      return [home, { label: t("nav.documents"), onClick: () => setView("documents") }];
     case "nutrition":
       return [home, { label: t("nav.nutrition"), onClick: () => setView("nutrition") }];
     case "settings":
@@ -192,6 +195,8 @@ function renderView(view: string): React.ReactNode {
       return <GearPage />;
     case "labs":
       return <LabsPage />;
+    case "documents":
+      return <DocumentsPage />;
     case "nutrition":
       return <NutritionPage />;
     case "settings":

@@ -280,6 +280,7 @@ export type ViewKey =
   | "coach"
   | "gear"
   | "labs"
+  | "documents"
   | "social"
   | "settings"
   | "nutrition";
@@ -381,4 +382,48 @@ export interface WeeklyVolume {
   total_distance_m: number;
   sessions: number;
   by_discipline: Record<string, { hours: number; load: number; distance_m: number; sessions: number }>;
+}
+
+/* ------------------------------------------------------------- Documents */
+
+export type DocCategory =
+  | "lab_test"
+  | "medical_report"
+  | "training_plan"
+  | "dietary_plan"
+  | "prescription"
+  | "blood_work"
+  | "other";
+
+export interface UploadedDocument {
+  id: number;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  category: DocCategory;
+  source: string;
+  status: "pending" | "parsing" | "parsed" | "error";
+  parsedData: ParsedDocument | null;
+  uploadedAt: string;
+}
+
+export interface ParsedDocument {
+  document_type: string;
+  date?: string | null;
+  date_range?: { start: string; end: string } | null;
+  error?: string;
+  raw_extraction?: string;
+  // lab_results / biometric_report
+  markers?: { name: string; value: number | null; unit: string; ref_low: number | null; ref_high: number | null; status: string }[];
+  // medical_report
+  findings?: { category: string; detail: string; severity: string }[];
+  recommendations?: string[];
+  // training_plan
+  sessions?: { day: string; discipline: string; duration_min: number | null; intensity: string; title: string; notes: string }[];
+  // dietary_plan
+  daily_targets?: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; water_ml: number | null };
+  meals?: { name: string; foods: string[]; calories: number | null }[];
+  // prescription
+  medications?: { name: string; dosage: string; frequency: string; duration: string }[];
+  notes?: string;
 }

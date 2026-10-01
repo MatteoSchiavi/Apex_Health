@@ -18,6 +18,7 @@ import {
   BarChart3,
   Bot,
   ChevronRight,
+  FileText,
   HeartPulse,
   Menu,
   Moon,
@@ -82,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
       { view: "sleep", icon: Moon, labelKey: "nav.sleep" },
       { view: "biometrics", icon: HeartPulse, labelKey: "nav.biometrics" },
       { view: "labs", icon: TestTube, labelKey: "nav.labs" },
+      { view: "documents", icon: FileText, labelKey: "nav.documents" },
     ],
   },
   {
