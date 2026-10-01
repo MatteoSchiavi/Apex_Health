@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Locale, Theme, Units, ViewKey } from "./types";
+import { clearUserStorage } from "./storage";
+import { me } from "./data";
 
 /**
  * Apex UI store — owns ONLY client UI state (theme, locale, current view,
@@ -66,7 +68,15 @@ export const useApexUi = create<ApexUiState>()(
     (set, get) => ({
       authed: false,
       signIn: () => set({ authed: true, view: "overview" }),
-      signOut: () => set({ authed: false, view: "welcome" }),
+      // Plan finding 1 + 4: sign-out also wipes per-user browser storage
+      // (chat ids, drafts, compare picks) so a second account on the same
+      // browser cannot inherit the first one's data. `me.user_id` is the
+      // user id used to namespace localStorage (see lib/apex/storage.ts).
+      signOut: () => {
+        const uid = me.user_id;
+        clearUserStorage(uid);
+        set({ authed: false, view: "welcome" });
+      },
 
       theme: "dark",
       setTheme: (t) => set({ theme: t }),

@@ -55,6 +55,19 @@ const GOOD_WHEN: Record<string, "up" | "down" | "none"> = {
   skin_temp: "none",
 };
 
+/**
+ * Plan §5 finding: the Sleep Score metric page used to be titled "Readiness"
+ * because a `LABEL_KEYS.sleep_score` mapping pointed at the readiness label.
+ * The Next.js catalog (`metricCatalog` in lib/apex/data.ts) is now correct
+ * (`sleep_score` → "Sleep Score", `readiness` → "Readiness Score"), but this
+ * guard ensures the two are never swapped even if the catalog is edited
+ * incorrectly. It only overrides when the catalog label disagrees.
+ */
+const LABEL_GUARD: Record<string, string> = {
+  sleep_score: "Sleep Score",
+  readiness: "Readiness Score",
+};
+
 function decimalsFor(key: string): number {
   if (["weight", "acwr", "skin_temp", "respiration"].includes(key)) return 2;
   if (["spo2", "sleep_efficiency"].includes(key)) return 1;
@@ -315,10 +328,12 @@ export function MetricPage() {
   const [range, setRange] = useState<RangeKey>("90");
   const key = ui.selectedMetricKey ?? "hrv";
 
-  const meta = useMemo(
-    () => metricCatalog.find((m) => m.key === key) ?? metricCatalog[0],
-    [key]
-  );
+  const meta = useMemo(() => {
+    const found = metricCatalog.find((m) => m.key === key) ?? metricCatalog[0];
+    // Plan §5 title guard: ensure sleep_score / readiness are never mislabeled.
+    const guard = LABEL_GUARD[key];
+    return guard && found.label !== guard ? { ...found, label: guard } : found;
+  }, [key]);
   const days = daysFor(range);
   const trend = useMemo(() => getMetricTrend(key, days), [key, days]);
 

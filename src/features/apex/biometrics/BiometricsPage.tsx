@@ -310,6 +310,28 @@ export function BiometricsPage() {
 
 /* ----------------------------------------------------- Metric card (cell) */
 
+/**
+ * Plan §5 finding: the hub's "Low / High / Fair" badge used to come from the
+ * catalog's `direction` field (which says whether lower-or-higher is better),
+ * NOT whether the current value is low or high. This helper COMPUTES a status
+ * from the latest value vs a personal band (30-day mean ± 1 SD). When there is
+ * no usable baseline (no data, or zero variance) it returns a neutral "—"
+ * instead of a misleading Low/High.
+ */
+function computeMetricStatus(
+  last: number | null,
+  mean: number | null,
+  sd: number | null,
+  t: (p: string) => string,
+): { label: string; tone: "neutral" | "positive" | "alert" } {
+  if (last === null || mean === null) return { label: "—", tone: "neutral" };
+  if (sd === null || sd === 0) return { label: "—", tone: "neutral" };
+  if (last < mean - sd) return { label: t("biometrics.status_low"), tone: "alert" };
+  if (last > mean + sd) return { label: t("biometrics.status_high"), tone: "alert" };
+  // TODO i18n — main agent will add a biometrics.in_range key
+  return { label: "In range", tone: "positive" };
+}
+
 function MetricCard({
   m,
   t,
@@ -321,10 +343,23 @@ function MetricCard({
 }) {
   const trend = getMetricTrend(m.key, 30);
   const last = trend.stats.last;
+  const mean = trend.stats.mean;
   const delta7 = trend.stats.delta_7d;
   const sparkData = trend.points.slice(-14).map((p) => p.value);
   const goodWhen = GOOD_WHEN[m.key] ?? "up";
   const color = colorForGroup(m.group);
+
+  // Plan §5: computed status from latest vs personal band (mean ± 1 SD).
+  const validVals = trend.points
+    .map((p) => p.value)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  const sd =
+    validVals.length > 1 && mean !== null
+      ? Math.sqrt(
+          validVals.reduce((s, v) => s + (v - mean) ** 2, 0) / validVals.length,
+        )
+      : null;
+  const status = computeMetricStatus(last, mean, sd, t);
 
   return (
     <button
@@ -332,9 +367,14 @@ function MetricCard({
       onClick={() => onSelect(m.key)}
       className="group flex w-full flex-col gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-4 text-left transition-all hover:border-hairline2 hover:bg-surface2"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="truncate text-[13px] font-semibold text-ink">{m.label}</span>
-        <SourcePill>{m.source}</SourcePill>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Badge tone={status.tone} dot>
+            {status.label}
+          </Badge>
+          <SourcePill>{m.source}</SourcePill>
+        </div>
       </div>
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">

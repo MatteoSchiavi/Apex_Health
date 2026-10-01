@@ -1,22 +1,27 @@
 "use client";
 
 /**
- * Apex Health — Sleep night detail page (hypnogram + overnight HRV).
+ * Apex Health — Sleep night detail page (honest stage composition + vitals).
  *
  * Route purpose: "What happened during this night?"
  *
- * Composition:
+ * Composition (plan §4):
  *   BackLink → "Back to sleep"
  *   PageHeader — date (fmtDateLong) + sleep score BigStat (tone colour)
- *   Hero row — Sleep Score | Total Sleep | Efficiency (BigStat + DeltaChip vs 28d avg)
- *   Hypnogram — full-width SVG; segments at the right stage level (Deep=bottom,
- *     REM, Light, Awake=top), Y-axis labels on the left, X-axis time scale at
- *     the bottom (bedtime → wake, mono labels every ~2h).
- *   Stage totals — 4 StatPods (Deep / REM / Light / Awake) with stage colour dot
- *     and hours.
- *   Overnight HRV Trajectory — full-width SVG line chart of hrv_readings[].hrv_ms
- *     with rolling_baseline_ms as a dashed reference line. Legend: Peak (max),
- *     Baseline (rolling).
+ *   Hero row — Sleep Score | Total Sleep | Efficiency
+ *     · Score card: BigStat + Badge computed against the 30-day score
+ *       distribution (top third / typical / low) — NOT a constant threshold.
+ *     · Total Sleep: DeltaChip vs the 8h sleep target (real delta, not a
+ *       fixed green string).
+ *     · Efficiency: DeltaChip vs 28d average.
+ *   Stage totals — 4 StatPods (Deep / REM / Light / Awake) with stage colour
+ *     dot + hours. (The Latency tile from the old design is removed — no
+ *     source provides it.)
+ *   Stage composition bar — horizontal stacked bar of the THREE asleep
+ *     stages (deep / light / REM) so they sum to 100% of TIME ASLEEP
+ *     (deep + light + REM, excludes awake). Caption states the source
+ *     provides stage totals only — no timeline. The synthetic hypnogram
+ *     that invented a timeline from the four stage totals has been removed.
  *   Biometrics row — 4 StatPods: Resting HR / SpO₂ / Respiration / Skin Temp.
  *   Source pills + "Source" label.
  */
@@ -33,18 +38,17 @@ import {
   BigStat,
   StatPod,
   DeltaChip,
+  Badge,
   Eyebrow,
-  SectionHeader,
   Empty,
   SourcePill,
   BackLink,
   ApexButton,
 } from "@/components/apex/kit";
-import { fmtDateLong, fmtHours, fmtClock, fmtNum } from "@/lib/apex/format";
+import { fmtDateLong, fmtHours, fmtNum } from "@/lib/apex/format";
 
 type SleepDay = ReturnType<typeof getSleepDay>;
 type HrvReading = SleepDay["hrv_readings"][number];
-type StageSeg = NonNullable<SleepDay["stages"]>["segments"][number];
 
 const STAGE_VARS = {
   deep: "var(--c-stage-deep)",
@@ -68,6 +72,14 @@ export function SleepNightPage() {
   const sessionDate = ui.selectedSleepDate ?? sleepSessions[0].local_date;
   const sleepDay = useMemo(() => getSleepDay(sessionDate), [sessionDate]);
   const session = sleepDay.session;
+  // Extracted before the early return so the scoreBand memo (below) can read it
+  // without crossing the temporal dead zone. `session` may be null here, so the
+  // optional chain yields `null` when there is no session.
+  const score = session?.sleep_score ?? null;
+
+  // Plan §4: sleep target lives on the Prisma User (`sleepTargetH`) but is not
+  // exposed on the mock `me` object yet. Default to 8 hours until /me ships it.
+  const SLEEP_TARGET_S = 8 * 3600;
 
   // 28-day averages for delta chips
   const baseline = useMemo(() => {
@@ -83,6 +95,24 @@ export function SleepNightPage() {
     return { avgScore, avgTotal, avgEff };
   }, []);
 
+  // Plan §4: score badge computed against the 30-day score distribution
+  // (top third / typical / low) — not a hardcoded constant threshold.
+  const scoreBand = useMemo<null | { label: string; tone: "positive" | "primary" | "warning" }>(() => {
+    if (score === null) return null;
+    const scores = sleepSessions
+      .slice(0, 30)
+      .map((s) => s.sleep_score)
+      .filter((s): s is number => s !== null);
+    if (scores.length < 5) return null; // not enough history for a meaningful band
+    const sorted = [...scores].sort((a, b) => a - b);
+    const p33 = sorted[Math.floor(sorted.length * 0.33)];
+    const p66 = sorted[Math.floor(sorted.length * 0.66)];
+    if (score >= p66) return { label: "Top third", tone: "positive" };
+    if (score <= p33) return { label: "Low", tone: "warning" };
+    return { label: "Typical", tone: "primary" };
+    // TODO i18n — main agent will add sleep.score_band_top / typical / low keys
+  }, [score]);
+
   if (!session) {
     return (
       <div className="mx-auto max-w-[1240px]">
@@ -92,14 +122,24 @@ export function SleepNightPage() {
     );
   }
 
-  const score = session.sleep_score;
   const totalSleep = session.total_sleep_s ?? 0;
   const durationS =
     (new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 1000;
   const efficiency = durationS > 0 ? (totalSleep / durationS) * 100 : 0;
 
+  // Plan §4: REAL delta against the sleep target (default 8h). Replaces the
+  // old fixed green "vs target" string. Negative = slept less than target.
+  const deltaVsTargetMin = Math.round((totalSleep - SLEEP_TARGET_S) / 60);
+
+  // Plan §4: honest stage denominator. "Time asleep" = deep + light + REM
+  // (excludes awake). The bar uses this so the three asleep stages sum to
+  // 100% and labels read "of time asleep". Awake is shown separately above.
+  const deepS = session.deep_s ?? 0;
+  const lightS = session.light_s ?? 0;
+  const remS = session.rem_s ?? 0;
+  const timeAsleep = deepS + lightS + remS;
+
   const deltaScore = score !== null ? score - baseline.avgScore : null;
-  const deltaTotalMin = Math.round((totalSleep - baseline.avgTotal) / 60);
   const deltaEff = efficiency - baseline.avgEff;
 
   const stages = [
@@ -145,12 +185,19 @@ export function SleepNightPage() {
       <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
         <Card>
           <Eyebrow>{t("sleep.score")}</Eyebrow>
-          <BigStat
-            value={fmtNum(score, 0)}
-            size="lg"
-            tone={scoreTone(score)}
-            className="mt-1"
-          />
+          <div className="mt-1 flex items-end gap-2">
+            <BigStat
+              value={fmtNum(score, 0)}
+              size="lg"
+              tone={scoreTone(score)}
+            />
+            {/* Computed against 30-day distribution (plan §4) — not a constant. */}
+            {scoreBand && (
+              <Badge tone={scoreBand.tone} dot className="mb-1.5">
+                {scoreBand.label}
+              </Badge>
+            )}
+          </div>
           <div className="mt-2 flex items-center gap-2">
             <DeltaChip delta={deltaScore} goodWhen="up" suffix={t("sleep.vs_28d")} />
             <span className="num text-[11px] text-faint">
@@ -162,11 +209,12 @@ export function SleepNightPage() {
           <Eyebrow>{t("sleep.total")}</Eyebrow>
           <BigStat value={fmtHours(totalSleep)} size="lg" className="mt-1" />
           <div className="mt-2 flex items-center gap-2">
+            {/* Real delta vs the 8h sleep target (plan §4). */}
             <DeltaChip
-              delta={deltaTotalMin}
+              delta={deltaVsTargetMin}
               unit="min"
               goodWhen="up"
-              suffix={t("sleep.vs_28d")}
+              suffix={"vs target"}
             />
             <span className="num text-[11px] text-faint">
               {t("sleep.vs_28d")}: {fmtHours(baseline.avgTotal)}
@@ -208,31 +256,44 @@ export function SleepNightPage() {
         ))}
       </div>
 
-      {/* Stage distribution bar — simple horizontal stacked bar (replaces hypnogram) */}
+      {/* Stage distribution bar — honest composition (replaces the synthetic
+          hypnogram). The bar shows the three asleep stages only (deep / light /
+          REM) so they sum to 100% of time asleep. Awake is shown in the StatPod
+          row above and is NOT part of the bar's denominator (plan §4). */}
       <Card className="mt-4">
-        <CardHeader eyebrow="Sleep stages" title="Distribution" />
+        <CardHeader eyebrow={"Sleep stages"} title={"Distribution"} />
         <div className="mt-3 flex h-8 w-full overflow-hidden rounded-[var(--radius-control)]">
-          {stages.map((st) => {
-            const pct = totalSleep > 0 ? (st.seconds / totalSleep) * 100 : 0;
-            return (
-              <div
-                key={st.key}
-                className="flex items-center justify-center text-[9px] font-semibold text-white/80 transition-all"
-                style={{ width: `${pct}%`, background: st.color }}
-                title={`${st.label}: ${fmtHours(st.seconds)}`}
-              >
-                {pct > 10 && <span>{Math.round(pct)}%</span>}
-              </div>
-            );
-          })}
+          {stages
+            .filter((st) => st.key !== "awake")
+            .map((st) => {
+              const secs = st.seconds ?? 0;
+              const pct = timeAsleep > 0 ? (secs / timeAsleep) * 100 : 0;
+              return (
+                <div
+                  key={st.key}
+                  className="flex items-center justify-center text-[9px] font-semibold text-white/80 transition-all"
+                  style={{ width: `${pct}%`, background: st.color }}
+                  title={`${st.label}: ${fmtHours(secs)} (${Math.round(pct)}% of time asleep)`}
+                >
+                  {pct > 10 && <span>{Math.round(pct)}%</span>}
+                </div>
+              );
+            })}
         </div>
         <div className="num mt-2 flex items-center justify-between text-[10px] text-muted">
-          {stages.map((st) => (
-            <span key={st.key} className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
-              {st.label}
-            </span>
-          ))}
+          {stages
+            .filter((st) => st.key !== "awake")
+            .map((st) => (
+              <span key={st.key} className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
+                {st.label}
+              </span>
+            ))}
+        </div>
+        {/* Caption: explicit about denominator + source limitation (plan §4). */}
+        <div className="num mt-2 text-[10px] text-faint">
+          {"Percentages are of time asleep (deep + light + REM). Source provides stage totals only — no timeline."}
+          {/* TODO i18n — main agent will add a sleep.stages_caption key */}
         </div>
       </Card>
 
@@ -267,156 +328,6 @@ export function SleepNightPage() {
           <SourcePill key={src}>{src}</SourcePill>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* --------------------------------------------------------------- Hypnogram */
-
-const STAGE_ORDER = ["awake", "light", "rem", "deep"] as const;
-
-function Hypnogram({
-  segments,
-  start,
-  end,
-  locale,
-}: {
-  segments: StageSeg[];
-  start: string;
-  end: string;
-  locale: "en" | "it";
-}) {
-  const t = useT();
-  const stageLabels: Record<(typeof STAGE_ORDER)[number], string> = {
-    awake: t("sleep.awake"),
-    light: t("sleep.light"),
-    rem: t("sleep.rem"),
-    deep: t("sleep.deep"),
-  };
-
-  const W = 1000;
-  const H = 240;
-  const padLeft = 56;
-  const padRight = 18;
-  const padTop = 14;
-  const padBottom = 28;
-  const plotW = W - padLeft - padRight;
-  const plotH = H - padTop - padBottom;
-  const rowH = plotH / 4;
-
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
-  const totalMs = Math.max(endMs - startMs, 1);
-
-  // X-axis time marks every ~2h
-  const twoH = 2 * 3600 * 1000;
-  const xMarks: { x: number; label: string; align: "start" | "middle" | "end" }[] = [];
-  for (let ms = 0; ms <= totalMs + 1; ms += twoH) {
-    const ts = startMs + Math.min(ms, totalMs);
-    const x = padLeft + (Math.min(ms, totalMs) / totalMs) * plotW;
-    const label = new Date(ts).toLocaleTimeString(
-      locale === "it" ? "it-IT" : "en-GB",
-      { hour: "2-digit", minute: "2-digit", hour12: false },
-    );
-    const align =
-      ms === 0 ? "start" : ms >= totalMs ? "end" : "middle";
-    xMarks.push({ x, label, align });
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ minWidth: 600 }}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label={t("sleep.stages_chart")}
-      >
-        {/* Y-axis: row separators + stage labels */}
-        {STAGE_ORDER.map((stg, i) => {
-          const yMid = padTop + i * rowH + rowH / 2;
-          return (
-            <g key={stg}>
-              <line
-                x1={padLeft}
-                y1={yMid}
-                x2={padLeft + plotW}
-                y2={yMid}
-                stroke="var(--c-hairline)"
-                strokeDasharray="2 4"
-                strokeWidth={1}
-              />
-              <text
-                x={padLeft - 10}
-                y={yMid + 4}
-                textAnchor="end"
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.06em",
-                  fill: "var(--c-text-muted)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {stageLabels[stg].toUpperCase()}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Stage segment bars */}
-        {segments.map((seg, i) => {
-          const segStart = new Date(seg.t_start).getTime();
-          const segEnd = new Date(seg.t_end).getTime();
-          const x = padLeft + ((segStart - startMs) / totalMs) * plotW;
-          const w = Math.max(((segEnd - segStart) / totalMs) * plotW - 1, 2);
-          const rowIdx = STAGE_ORDER.indexOf(seg.stage as (typeof STAGE_ORDER)[number]);
-          if (rowIdx < 0) return null;
-          const yTop = padTop + rowIdx * rowH;
-          const barH = rowH - 8;
-          const fill =
-            STAGE_VARS[seg.stage as keyof typeof STAGE_VARS] ?? "var(--c-text-faint)";
-          return (
-            <rect
-              key={i}
-              x={x}
-              y={yTop + 4}
-              width={w}
-              height={barH}
-              rx={2}
-              fill={fill}
-            />
-          );
-        })}
-
-        {/* X-axis baseline */}
-        <line
-          x1={padLeft}
-          y1={padTop + plotH}
-          x2={padLeft + plotW}
-          y2={padTop + plotH}
-          stroke="var(--c-hairline-strong)"
-          strokeWidth={1}
-        />
-
-        {/* X-axis time labels */}
-        {xMarks.map((m, i) => (
-          <text
-            key={i}
-            x={m.x}
-            y={padTop + plotH + 18}
-            textAnchor={m.align}
-            style={{
-              fontSize: 10,
-              fill: "var(--c-text-muted)",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {m.label}
-          </text>
-        ))}
-      </svg>
     </div>
   );
 }

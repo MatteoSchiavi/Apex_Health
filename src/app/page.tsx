@@ -6,7 +6,7 @@
  * sandbox constraints; all Apex "pages" are components rendered by this file.
  */
 
-import { useEffect } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 import { useApexUi } from "@/lib/apex";
 import { I18nProvider, useT } from "@/lib/apex/i18nContext";
 import { AppShell, Breadcrumb } from "@/components/apex/layout/AppShell";
@@ -70,9 +70,52 @@ function AuthenticatedShell({ view, setView }: { view: ViewKey; setView: (v: Vie
       breadcrumb={<Breadcrumb items={breadcrumbFor(view, t, setView)} />}
       onNav={setView}
     >
-      {renderView(view)}
+      <ViewErrorBoundary view={view}>
+        {renderView(view)}
+      </ViewErrorBoundary>
     </AppShell>
   );
+}
+
+/** Catches render errors in a single view so one broken page doesn't kill the
+ *  whole app. In dev, surfaces the error inline so it can be diagnosed. */
+class ViewErrorBoundary extends Component<
+  { view: string; children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    console.error("[ViewErrorBoundary]", this.props.view, error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      const e = this.state.error;
+      return (
+        <div className="rounded-[var(--radius-card)] border border-alert/40 bg-alertSoft/40 p-6">
+          <div className="text-[14px] font-bold text-alertText">
+            Render error in view "{this.props.view}"
+          </div>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[12px] text-ink2">
+            {e.name}: {e.message}
+          </pre>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] text-muted">
+            {e.stack ?? ""}
+          </pre>
+          <button
+            type="button"
+            onClick={() => this.setState({ error: null })}
+            className="mt-3 rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold hover:bg-surface2"
+          >
+            Dismiss
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function breadcrumbFor(view: string, t: (p: string) => string, setView: (v: ViewKey) => void) {

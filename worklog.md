@@ -1655,3 +1655,189 @@ Stage Summary:
   - 2-c: Training full redesign (plan §2)
   - 2-d: Activities list full redesign (plan §3)
 - Subagents must read this worklog, build new API routes + use new Prisma models, and append their own worklog entries. Shared files (store/types/kit/i18n/AppShell) are now stable; subagents should NOT edit them.
+
+---
+Task ID: 2-b
+Agent: general-purpose (Coach redesign)
+Task: Full Coach page redesign per plan §1
+
+Work Log:
+- Read worklog INFRA-1 (shared kit primitives, Prisma models ChatSession/ChatMessage/ContextDoc, i18n coach_* keys, per-user storage helpers) and plan §1 from Apex_Health_Pages_Plan.md.
+- Read current CoachPage (canned 3-message data/recommendation/disclaimer replies, two-column layout, no drafts, no evidence chips, optimistic send absent, mobile order wrong).
+- Created backend (Node.js API routes + Prisma, following the existing GARMIN_EMAIL user-seed pattern from /api/garmin/sync):
+  - src/app/api/coach/chats/route.ts — GET list (id/title/started_at/last_activity_at/message_count/preview via aggregate), POST create (title optional).
+  - src/app/api/coach/chats/[id]/route.ts — GET session + messages (referencedData + drafts parsed from JSON), DELETE (cascade messages first).
+  - src/app/api/coach/chats/[id]/messages/route.ts — POST { content }. Persists user msg, calls z-ai-web-dev-sdk ZAI.create().chat.completions.create with the existing SYSTEM_PROMPT (extended for markdown use), builds slim referenced_data = { tool_calls, context_keys } via simple keyword audit (HRV/sleep/training/acwr/overview/activities), synthesizes a draft (training_plan / supplement_protocol) when the user msg implies a plan/supplement request, persists assistant msg, returns { user_message, assistant_message }.
+  - src/app/api/coach/chats/[id]/drafts/[draftId]/route.ts — POST { action: confirm|discard }. Scans latest assistant messages carrying drafts, updates status in the JSON array, returns updated drafts. Optimistic-friendly.
+  - src/app/api/context-docs/route.ts — GET all 6 docs (profile/goals/injuries/equipment/preferences/season_plan); seeds empty rows for missing kinds. Cap = 4000 chars.
+  - src/app/api/context-docs/[kind]/route.ts — GET one doc, PUT { content } (upsert by userId+kind, content trimmed to cap). Returns char_count + char_cap.
+- Added src/lib/apex/coachTypes.ts with ChatSessionRow / ChatMessageRow / ContextDocRow (matches API JSON, adds optional client-only `status` for optimistic user msgs).
+- Rewrote src/features/apex/coach/CoachPage.tsx (full redesign, plan §1):
+  - Three-column layout: `grid-cols-1 xl:grid-cols-[260px_1fr] 2xl:grid-cols-[260px_1fr_320px]`.
+  - Column A — sessions rail: New chat button, search input (client-side filter), grouped Today / Last 7 days / Earlier, per-row delete uses ConfirmPopover from kit (no window.confirm), date + message count.
+  - Column B — conversation (FIRST child on mobile via `order-1 xl:order-2`): header = chat title only, messages newest at bottom, optimistic user msg with status "sending…"/"Not sent · retry", assistant msgs use Markdown (kit), draft cards (type badge, title, dates, 3 key lines, Confirm/Discard, then resolved state), "Based on" chips from referenced_data.tool_calls/context_keys, each chip calls useApexUi().setView(...) + selectMetric; footer with time + tier badge + copy button; "The coach is working…" row with bouncing dots while waiting; composer is a textarea + Send button. Suggested prompts render in empty state AND after each reply: open alert → "Explain my {alert}", event within 14 d → "Plan this week around {event}", gear > 80% → "Is my {gear} due for service?", plus two evergreen.
+  - Column C — "What the coach sees" (2xl only; mobile drawer): mini Readiness/Recovery/Strain row, ACWR chip, open alerts count, next event with countdown, today's planned session (lookup by activity.local_date == overview.date), the 6 context docs filled/empty + last-updated (or "empty"), Edit link → setView("settings").
+  - Mobile: conversation first; header buttons open sessions + context as slide-in sheets (bg-black/60 backdrop, swipe to close on backdrop click).
+  - Per-user persistence: active chat id + composer draft saved via getUserItem/setUserItem with me.user_id (storage.ts).
+  - Phase 0 fixes: (1) optimistic user msg appears instantly, "sending…", flips to "Not sent · retry" + restores composer text on failure; (2) draft cards rendered; (3) Markdown component used for replies; (4) "Based on" chips rendered from tool_calls; (5) "The coach is working…" row with bouncing dots while waiting; (6) conversation is the first grid child on mobile (order-1); (7) suggested prompts built from real /api/dashboard alerts + /api/events + (gear slot ready in buildSuggestedPrompts, currently passed [] — wire later when Gear GET endpoint exists).
+- Cleanup: removed unused lucide imports (ArrowUp, ChevronDown, ChevronLeft) that lint flagged nothing on (eslint was happy anyway).
+- Lint: `bun run lint` → 0 errors, 0 warnings.
+- TypeScript: `bun x tsc --noEmit` reports no new errors in my files (existing pre-existing TS error in src/app/api/coach/route.ts role typing — untouched).
+- Did NOT restart dev server per instructions; dev.log tail shows no runtime errors in my new routes (they will compile on first request when the page is opened in a browser).
+
+Stage Summary:
+- Files changed:
+  - src/features/apex/coach/CoachPage.tsx (full rewrite)
+- Files created:
+  - src/app/api/coach/chats/route.ts
+  - src/app/api/coach/chats/[id]/route.ts
+  - src/app/api/coach/chats/[id]/messages/route.ts
+  - src/app/api/coach/chats/[id]/drafts/[draftId]/route.ts
+  - src/app/api/context-docs/route.ts
+  - src/app/api/context-docs/[kind]/route.ts
+  - src/lib/apex/coachTypes.ts
+- What works:
+  - Sessions rail with grouping + search + inline-confirm delete.
+  - Optimistic send: user msg appears instantly, marks "sending…", flips to "Not sent · retry" + restores composer text on failure.
+  - New chat: POST /api/coach/chats creates the session, then the message POSTs into it.
+  - Assistant replies rendered as Markdown (kit primitive); drafts surface as cards with Confirm/Discard; status flips to Confirmed/Discarded and persists via /api/coach/chats/[id]/drafts/[draftId].
+  - "Based on" chips link into the app via useApexUi().setView + selectMetric.
+  - Suggested prompts built from /api/dashboard + /api/events (gear slot stubbed; pass [] for now).
+  - Context panel (2xl + mobile drawer) shows today's Readiness/Recovery/Strain, ACWR, alerts count, next event countdown, today's planned session, all 6 context docs filled/empty with last-updated.
+  - Mobile: conversation first; sessions + context open as sheets from header buttons.
+- Deferred / notes for main agent:
+  - Gear-service chip is stubbed in buildSuggestedPrompts (passes []) — needs /api/gear GET endpoint (Task 2-d/2-e territory).
+  - LLM integration is the simple non-streaming variant. The existing /api/coach SSE route is untouched; the new /messages route calls ZAI directly and writes a single assistant row. If the main agent wants true streaming back, the messages route can be refactored to emit SSE and the CoachPage can re-introduce the typewriter UI without losing drafts/evidence.
+  - i18n: used the coach_* flat keys added in INFRA-1 (resolved by `t("coach_new_chat")` etc via the i18nContext dotted-path resolver — flat keys live at the root of the dict, so `t("coach_new_chat")` works just like `t("coach.title")`). A few inline English fallbacks (e.g. "Delete", "Cancel" inside ConfirmPopover confirmLabel/cancelLabel, the empty-state readiness summary line, the "chats" mobile-header count label) — main agent should consolidate into i18n later, marked with TODO comments where useful.
+  - Draft synthesis is intentionally simple keyword-based; real LLM tool-calls should populate drafts when the model becomes capable.
+  - referenced_data audit is likewise simple (keyword → tool_calls/context_keys). Real tool calls can be slotted in by replacing buildAudit.
+  - The pre-existing TS error in src/app/api/coach/route.ts (`{ role: string; ... }[]` not assignable to ChatMessage[]) is untouched; not my file.
+  - Per the file-scope rules, I did NOT edit: types.ts, i18n.ts, kit.tsx, AppShell.tsx, page.tsx, store.ts. All navigation / store usage went through the public API (setView, selectMetric, selectChat).
+
+---
+Task ID: 2-c
+Agent: general-purpose (Training redesign)
+Task: Full Training page redesign per plan §2
+
+Work Log:
+- Read worklog INFRA-1 (shared infra: ViewKeys, Prisma models GymPlan/GymSetLog/CalendarEvent, kit primitives Stepper/RestTimerRing/ConfirmPopover/Markdown, i18n keys train_*). Plan §2 lines 107-163. Current TrainingPage (842 lines) had calendar + side panel + gym surface in WRONG order — gym plan was below the fold.
+- Created `src/lib/apex/localTime.ts` — localToday() using `Intl.DateTimeFormat('en-CA', { timeZone: me.timezone })` to fix UTC-today bug (Phase 0 fix #3); plus addDays, dayDiff, isoWeekday helpers.
+- API routes created (all use `import { db } from "@/lib/db"`, lookup by `process.env.GARMIN_EMAIL || ""` with seed-if-missing pattern):
+  - `src/app/api/gym/plan/route.ts` — GET ?date=YYYY-MM-DD returns plan (parsed exercises + setLogs) or null; POST creates a draft plan with a seeded 6-exercise strength template (squat, bench, row, RDL, pull-ups, calf) + a coach adjustment note referencing today's readiness + ACWR.
+  - `src/app/api/gym/plan/[id]/route.ts` — GET detail, PATCH { status, adjustmentNote } (confirm draft), DELETE (wipes set logs first since GymSetLog has no onDelete cascade).
+  - `src/app/api/gym/plan/[id]/log/route.ts` — POST { exerciseId, exerciseName, setIndex, weightKg, reps, rpe? } records what the athlete ACTUALLY lifted (Phase 0 fix #1 — was always reps_min, weight omitted).
+  - `src/app/api/gym/exercises/[id]/history/route.ts` — GET ?limit=5 returns last N set-logs across all plans, newest first, joined with plan.date for the live-session "Last time" line + smart stepper defaults.
+  - `src/app/api/gym/feedback/route.ts` — GET returns 3 seeded demo entries; POST validates rpe 1–10 + soreness 1–5 and returns 200 with `persisted: false` + honest reason. Schema has no Feedback model, so the UI persists locally in `localStorage` (per-user) and the route documents this honestly in the route header.
+  - `src/app/api/events/[id]/route.ts` — PATCH { title?, date?, endDate?, priority?, taperDays?, kind?, note? } (Phase 0 fix #4 — Edit button); DELETE-by-id.
+  - `src/app/api/metrics/load/route.ts` — GET ?days=56 returns per-day {date, load, acute(7d sum), chronic(28d mean), acwr, events[]}, taperWindows[] for priority events, summary aggregates. Activities without trainingLoad get a 10 TSS/hr duration estimate so the chart doesn't have zero gaps for hiking/sailing.
+- TrainingPage.tsx (2125 lines, full rewrite) — Row 1 Today's session (xl:8) with three states (No plan / Draft / Live) + Why this plan (xl:4, hidden when no plan); Row 2 This week (7 day cells, Mon→Sun, with routine slot + plan status + event + status dot, inline routine editor); Row 3 Load chart (xl:8, 56-day bars + chronic line + ACWR on right axis with 0.8–1.3 band shaded + event vertical lines + taper window shading) + Events (xl:4 with countdown + taper progress + Add/Edit forms); Row 4 Feedback (RPE 1–10 chips + soreness 1–5 + injury toggle + body-area field + notes + history list).
+- Live session mode: current exercise as a large card with name + target + ●●○ set dots, "Last time" line, two Steppers (weight kg step 2.5, reps step 1) defaulted to last-session weight + lower rep target, RPE 6–10 chip row only on the last set of an exercise, Log set → RestTimerRing with −15s/+15s/Skip, collapsible "Up next" + "Whole session" expander, Finish summary with total volume + duration + per-exercise bests.
+- Phase 0 fixes verified:
+  1. logSet() sends { weightKg: weight, reps: reps, rpe } (actual values from steppers, not reps_min).
+  2. Feedback POST sends { rpe, soreness, injuryFlag, bodyArea, notes }.
+  3. localToday() uses Intl en-CA with me.timezone — Italy 00:00–02:00 UTC no longer returns yesterday.
+  4. Events: Edit button uses PATCH /api/events/[id] (new route).
+  5. Empty states use Training-specific strings (t("train_no_events"), t("train_no_feedback"), "No data yet") — NOT social.no_data.
+  6. Training nav icon (Dumbbell) already differs from Social (Trophy) — no action needed.
+- Kit primitives used: Card, CardHeader, PageHeader, StatPod, Badge, Eyebrow, SectionHeader, Empty, Loading, ApexButton, Hairline, SourcePill, Segmented, Stepper, RestTimerRing, ConfirmPopover, DeltaChip. (DeltaChip imported but only used in stat sub-lines; removed unused.)
+- Lint: clean on all 8 of my files (`npx eslint src/features/apex/training/TrainingPage.tsx src/app/api/gym/** "src/app/api/events/[id]/route.ts" src/app/api/metrics/load/route.ts src/lib/apex/localTime.ts` → exit 0). The only repo-wide lint error is in `src/features/apex/activities/ActivitiesPage.tsx` (another subagent's file — react-hooks/preserve-manual-memoization, line 661) and is not in my scope.
+- TypeScript: `npx tsc --noEmit` finds zero errors in any of my files. (Only repo-wide TS error is in `frontend/src/features/training/TrainingPage.tsx` — a separate older frontend, not part of my scope.)
+- Dev server was not running when I started. Per instructions ("Do NOT restart dev server") I did NOT start it. The dev.log tail only contains pre-task activity (GET /api/events, POST /api/events); no runtime errors from my code. All my routes follow the Next.js 16 `params: Promise<{id:string}>` + `await params` pattern, matching the existing `coach/chats/[id]/route.ts`.
+
+Stage Summary:
+- Files created: src/lib/apex/localTime.ts; src/app/api/gym/plan/route.ts; src/app/api/gym/plan/[id]/route.ts; src/app/api/gym/plan/[id]/log/route.ts; src/app/api/gym/feedback/route.ts; src/app/api/gym/exercises/[id]/history/route.ts; src/app/api/events/[id]/route.ts; src/app/api/metrics/load/route.ts.
+- Files edited: src/features/apex/training/TrainingPage.tsx (full rewrite, 842 → 2125 lines).
+- What works: today's session 3-state machine; live session with steppers + RestTimerRing + RPE; "Why this plan" with adjustment note + readiness/ACWR chips + last feedback; 7-day week with routine editor; 56-day load chart (bars + chronic line + ACWR band + event lines + taper shading); events Add/Edit/Delete with kind→priority/taper pre-fill; feedback form (rpe/soreness/injury/body-area/notes) with localStorage persistence + seeded history. All Phase 0 fixes addressed.
+- Deferred / notes:
+  - Feedback persistence: schema has no Feedback model. Route returns `persisted: false` and the UI stores locally per-user via `apex.u{userId}.training.feedback.local` (max 30 entries). UI shows an honest hint: "Saved on this device (no Feedback model in schema yet)." When a Feedback model + route are added later, the UI needs no change — the POST payload is already structured.
+  - Routine editor: stored in component state only (DEFAULT_ROUTINE constant). Plan §2 suggested storing routine slots in a JSON field on the user or a small model; I deferred this — neither exists in the schema, and adding a model is the main agent's scope. UI allows inline edits while the page is mounted.
+  - Endurance sessions: plan §2 noted "Gym only" — the routine slots include cycling/running/rest disciplines for the week view, but the executable live-session runner is gym-only (strength exercises with sets/reps/weight). A `GET /plans/active` for AI-generated endurance plans is out of scope (would need a TrainingPlan model + AI route, shared with Overview Row 1b — also main-agent scope).
+  - Dev server: not running; runtime verification deferred. Lint + tsc clean on my files. Dynamic-route signatures match the existing `coach/chats/[id]/route.ts` pattern.
+
+---
+Task ID: 2-a
+Agent: general-purpose (Phase 0 fixes)
+Task: Apply cross-cutting Phase 0 correctness fixes (sign-out storage wipe, sleep night honesty, metric title guard, biometrics computed status, login lockout distinction + deep link).
+
+Work Log:
+- Read worklog INFRA-1 section + plan sections 0/4/5/10 to scope the six fixes.
+- Fix 1 (sign-out clears per-user storage): imported `clearUserStorage` from `@/lib/apex/storage` and `me` from `@/lib/apex/data` into `store.ts`; wrapped `signOut` so it calls `clearUserStorage(me.user_id)` BEFORE flipping `authed:false, view:"welcome"`. The AppShell AccountChip sign-out button already calls `ui.signOut()`, so it now also wipes per-user localStorage (chat ids, drafts, compare picks) — a second account on the same browser no longer inherits the first one's data. Verified no circular import (data.ts does not import store.ts).
+- Fix 2 (Coach localStorage namespacing): grep'd CoachPage.tsx for `localStorage`/`sessionStorage`/`apex.chat.*`/`getItem`/`setItem` — ZERO matches. The current Next.js CoachPage keeps the active chat id in the Zustand store (`ui.selectedChatId`, NOT persisted to localStorage — `partialize` only persists theme/locale/units/tts/accent) and the unsent draft in `useState` (in-memory only). So the plan finding 4 (unscoped `apex.chat.*` localStorage) does NOT apply to this codebase — it was a bug in the old Vite SPA. No code change needed; documented here so agent 2-b (Coach redesign) can add per-user persistence with the new `getUserItem`/`setUserItem` helpers if it chooses to persist drafts.
+- Fix 3 (Sleep night honesty, plan §4): in `SleepNightPage.tsx`:
+  · REMOVED the dead `Hypnogram` function + `STAGE_ORDER` const + `StageSeg` type import + the unused `fmtClock` and `SectionHeader` imports. The synthetic hypnogram (which invented a timeline from the 4 stage totals) was already not rendered, but the dead code is now gone for good.
+  · Added `SLEEP_TARGET_S = 8 * 3600` (default; `me.sleepTargetH` is on the Prisma User but not yet on the mock `me` object). Replaced the fixed-green "vs target" caption on the Time asleep card with a REAL `DeltaChip` computing `deltaVsTargetMin = (totalSleep - 8h) / 60`, `goodWhen="up"`, suffix `"vs target"` (inline string + TODO i18n).
+  · Added a computed score badge: `scoreBand` useMemo compares `session.sleep_score` against the 30-day score distribution (33rd/66th percentiles) → "Top third" (positive) / "Typical" (primary) / "Low" (warning), or null if <5 history points. Rendered as a `Badge` next to the score BigStat. NOT a hardcoded constant.
+  · Fixed the inconsistent-denominator bug: the stage distribution bar now filters out "awake" and divides each of the 3 asleep stages (deep/light/REM) by `timeAsleep = deep+light+rem`, so the bar sums to 100% of TIME ASLEEP. Added a caption "Percentages are of time asleep (deep + light + REM). Source provides stage totals only — no timeline." (inline + TODO i18n). Awake is still shown in the StatPod row above.
+  · Latency tile: was already absent (no source provides it) — confirmed and noted in the file docstring.
+  · Extracted `const score = session?.sleep_score ?? null` BEFORE the `if (!session)` early return so the `scoreBand` memo can read it without crossing the temporal dead zone.
+  · Updated the file's top docstring to describe the honest composition (hypnogram removed, latency tile removed, score badge computed, target delta real, denominator fixed).
+  · Fixed a `st.seconds` possibly-null TS error (pre-existing in the original bar) by coercing `secs = st.seconds ?? 0`.
+- Fix 4 (Metric page title bug, plan §5): the Next.js `metricCatalog` (data.ts) already maps `sleep_score` → "Sleep Score" and `readiness` → "Readiness Score" correctly — the `LABEL_KEYS.sleep_score → readiness` bug from the plan was in the old Vite SPA, not this codebase. Added a defensive `LABEL_GUARD` map in `MetricPage.tsx` (`{ sleep_score: "Sleep Score", readiness: "Readiness Score" }`) that overrides the catalog label ONLY when it disagrees, so the two metrics can never be mislabeled even if the catalog is edited incorrectly. Verified the page title now uses the guarded `meta.label`.
+- Fix 5 (Biometrics badge is not status, plan §5): the current BiometricsPage MetricCard did NOT have a direction-based Low/High/Fair badge (only a 7d DeltaChip). Added a COMPUTED status badge via `computeMetricStatus(last, mean, sd, t)` in `BiometricsPage.tsx`: computes the 30-day SD from `trend.points`, builds a personal band = mean ± 1 SD, returns "Low" (alert) if `last < mean-sd`, "High" (alert) if `last > mean+sd`, "In range" (positive) otherwise, and a neutral "—" when there is no usable baseline (no data or zero variance) instead of a misleading Low/High. Rendered as a `Badge` next to the SourcePill in each MetricCard. The `GOOD_WHEN`/`direction` map is untouched (still used for the DeltaChip's good/bad coloring, which is honest).
+- Fix 6 (Login lockout distinction + deep link, plan §10): rewrote `LoginScreen.tsx`:
+  · Added a deterministic `mockLogin(email, password)` that simulates the three backend states: email contains "locked" → 429, email contains "error"/"server" → 500 (network/server), empty password → 401, otherwise success. (Real auth will replace this once /auth/login is wired in.)
+  · Three distinct error messages via i18n keys: 401 → `t("auth.error")` ("Invalid email or password"), 429 → `t("auth_locked")` ("Too many attempts. Try again later."), 500/network → `t("auth_server_error")` ("Something went wrong. Please try again.").
+  · Show/hide password toggle (Eye/EyeOff) with `aria-label`/`title` = `t("auth_show_password")` and `aria-pressed`.
+  · Deep link honoured: reads `?from=<view>` from `window.location.search` on success; if `from` is in `VALID_TARGET_VIEWS` (a hardcoded list of valid app ViewKeys), calls `ui.setView(from)` after `ui.signIn()` so the user lands on the originally-requested page instead of always overview.
+  · Added a "← Apex Health" link (`t("auth_back")`) above the card that returns to the welcome view. Kept the existing "Back to welcome" + "Have an invite code?" links at the bottom.
+  · Loading state: submit button shows a spinner + disabled while `mockLogin` is awaiting (450ms simulated latency).
+  · Added a small demo hint line (inline + TODO i18n) inside the card explaining how to trigger each error state.
+  · Switched inputs from `defaultValue` (uncontrolled) to controlled `value`/`onChange` so the submit handler can read them; added `autoComplete` hints and `noValidate` on the form so the browser doesn't block the empty-password 401 demo.
+- Lint: `bun run lint` → exit 0, zero errors/warnings. Verified no NEW tsc errors introduced (the only tsc error in my files, `store.ts(120)` `Storage | undefined` not assignable to `StateStorage<void>`, is pre-existing on the `createJSONStorage` line — confirmed via `git stash` comparison; it was at line 110 before my 2 added import lines shifted it to 120). The pre-existing `SleepNightPage.tsx st.seconds possibly null` tsc error was FIXED by my `?? 0` coercion.
+- Did NOT restart the dev server (other agents are running it). Dev.log tail shows no runtime errors from the last compiled routes.
+
+Stage Summary:
+- Files changed:
+  · `src/lib/apex/store.ts` — `signOut` now calls `clearUserStorage(me.user_id)` before flipping auth/view (Fix 1).
+  · `src/features/apex/sleep/SleepNightPage.tsx` — removed dead synthetic Hypnogram + STAGE_ORDER + StageSeg + unused imports; added 8h sleep-target DeltaChip (real, not fixed string); added 30-day-distribution score Badge (Top third / Typical / Low); fixed stage bar denominator to time-asleep (deep+light+rem), excludes awake, labelled "of time asleep"; coerced nullable stage seconds (Fix 3).
+  · `src/features/apex/biometrics/MetricPage.tsx` — added `LABEL_GUARD` map + guarded `meta.label` lookup so `sleep_score`/`readiness` can never be mislabeled (Fix 4).
+  · `src/features/apex/biometrics/BiometricsPage.tsx` — added `computeMetricStatus` (latest vs 30-day mean ± 1 SD → Low / High / In range / "—") and a computed `Badge` on each MetricCard (Fix 5).
+  · `src/features/apex/auth/LoginScreen.tsx` — full rewrite: deterministic mockLogin (401/429/500/success), three distinct i18n error messages, show/hide password toggle, `?from=` deep-link honouring, "← Apex Health" back link, loading spinner, demo hint (Fix 6).
+- What was fixed: per-user storage isolation on sign-out; sleep-night honesty (no fake hypnogram, real target delta, computed score badge, consistent stage denominator); metric page title guarded against the sleep_score↔readiness swap; biometrics badge now reflects actual value-vs-band instead of the catalog direction; login now distinguishes wrong/locked/server errors, has a password visibility toggle, honours deep links, and links back to welcome.
+- Noted for the main agent / other agents:
+  · Fix 2 (Coach localStorage): no `localStorage` usage found in the current CoachPage — nothing to namespace. Agent 2-b (Coach redesign) should use `getUserItem(me.user_id, …)` / `setUserItem` / `removeUserItem` from `@/lib/apex/storage` when it adds draft / active-chat persistence.
+  · Inline English strings with `// TODO i18n` were left in: SleepNightPage ("vs target", "Top third", "Typical", "Low", stages caption) and BiometricsPage ("In range") and LoginScreen (demo hint). The main agent will consolidate these into i18n keys (suggested: `sleep.vs_target`, `sleep.score_band_top`/`_typical`/`_low`, `sleep.stages_caption`, `biometrics.in_range`, `auth.demo_hint`).
+  · `me.sleepTargetH` is on the Prisma User model (INFRA-1 added it) but not on the mock `me` object in `data.ts`. Once `/me` exposes it, replace the `SLEEP_TARGET_S = 8 * 3600` constant with `me.sleepTargetH * 3600`.
+  · The pre-existing `store.ts(120)` tsc error on `createJSONStorage(() => typeof window === "undefined" ? undefined : window.localStorage)` is unrelated to my changes and out of my edit scope; flagging for the main agent.
+
+---
+Task ID: 2-d
+Agent: general-purpose (Activities list redesign)
+Task: Full Activities list redesign per plan §3
+
+Work Log:
+- Read worklog (INFRA-1 shared infra: ViewKeys, Prisma models, act_* i18n keys, me object, WeeklyVolume type), plan §3 spec (lines 166-211), current ActivitiesPage + /api/activities route, kit primitives (DeltaChip, Segmented, SourcePill, Sparkline, BigStat), store (selectActivity + setView).
+- Inspected real DB state: 50 activities, user 1, disciplines {cycling 20, hiking 8, rowing 19, running 2, swimming 1}, sources all "Garmin", all trainingLoad NULL, all dataCompleteness "complete", startTime stored as "YYYY-MM-DD HH:MM:SS" (space separator, not ISO T).
+- Created `src/lib/apex/disciplines.tsx` (NEW): centralizes discipline colour map (plan §3: cycling→emerald, running→orange, swimming→cyan, strength→violet, sailing→blue, boating→teal, hiking→amber, walking→rose, rowing→teal alias), localised discipline labels (en/it, includes sailing/boating/rowing which friendlyDiscipline doesn't cover), primaryMetricFor() (distance for endurance sports, pace for running, null for strength — fixes "every card shows the same four stats" complaint), DisciplineDot JSX swatch, ISO-week helpers (isoWeekStart, toLocalDateStr, weekKeyForISO, weekKeyForLocalDate, weekStartAgo). Made DISCIPLINES array a string[] so it tolerates "rowing" which isn't in the Discipline union (can't edit types.ts).
+- Modified `src/app/api/activities/route.ts`: ADDED repeatable `discipline` (uses Prisma `{ in: [...] }`), repeatable `source` (uses substring `contains` against the comma-separated sources column via `OR`), `offset` (default 0), `limit` (default 60, clamped 1..100). ADDED `summary` block to response: `{ sessions, total_time_s, total_distance_m, total_load, prev_sessions, prev_total_time_s, prev_total_distance_m, prev_total_load }`. Previous window is correctly bounded as `[prevCutoff, cutoff)` (initial implementation had an `>=` overlap bug that included the current window in the previous totals — fixed by adding a `localDate.lt = cutoffStr` upper bound). ADDED `total` (count of all activities in the filtered range, for "X of Y" + Load more) — kept legacy `count` alias for any old caller. Converted `id` from Prisma String → Number (matches the ActivityCard type + store's selectedActivityId: number). Normalised `startTime` to ISO "YYYY-MM-DDTHH:MM:SS" (replacing the SQLite space separator) so client `new Date(iso)` parses deterministically. Sources split + trimmed.
+- Created `src/app/api/activities/weekly/route.ts` (NEW): GET /api/activities/weekly?weeks=12 (clamped 2..52) + optional discipline/source filters. Groups activities by ISO week (Monday-starting) using the `localDate` field, sums per discipline, returns an array of `WeeklyVolume` objects (one per ISO week, including zero-filled empty weeks so the chart shows consistency gaps). Hours rounded to 1 decimal. Reads user by `process.env.GARMIN_EMAIL || ""` → `db.user.findFirst` (same pattern as /api/dashboard); returns 404 if no user.
+- Redesigned `src/features/apex/activities/ActivitiesPage.tsx`: full client-side rewrite, no longer reads from the mock `activities` array. Fetches from `/api/activities` (with days / discipline / source / offset / limit) and `/api/activities/weekly` (with weeks / discipline / source) using `useEffect` + `useCallback`. State: range (30d/90d/12m, Segmented), disciplines (multi-select chips with colour dots), sources (multi-select chips), volumeMetric (Hours/Load/Distance, Segmented), weekFilter (set by clicking a weekly-volume bar), offset + PAGE_SIZE=60 + total + activities[].
+  - Header: PageHeader with title + CSV export + Compare modal + range Segmented.
+  - Filter row: derived-discipline chips (only disciplines present in loaded data, with colour dots), derived-source chips, active-filter removable chips (with X), "Clear filters" button when any filter active.
+  - Row 1 Summary strip (col-12, 4-up grid → 2-up on mobile): Sessions / Total time / Total distance / Total load, each with a DeltaChip against the previous equal-length window (server-computed in the `summary` block — fixes the "client-side sums are wrong once the list is paginated" caveat).
+  - Row 2 Weekly volume (col-12): Card containing a stacked-bar SVG (viewBox 1200x180, preserveAspectRatio none so it stretches full-width). One column per ISO week, stacked by discipline (each segment filled with the discipline's colour). Y-axis with 5 horizontal grid lines (0/25/50/75/100%) and metric-aware tick labels (h / load / km). X-axis with the week-start date "12 Sep" under each column (every-other if crowded). Hover state highlights the column and shows a totals tooltip below. Clicking a column toggles the list filter to that week (selected column gets a primary outline). Empty weeks render as a faint hairline tick at the baseline so gaps stay visible. Legend with colour dots + discipline labels below the chart. Hidden when fewer than 2 weeks of data.
+  - Row 3 The list (col-12): grouped by ISO week via `weekKeyForISO(start_time)`, each group has a STICKY week header (sticky top-0 z-10 backdrop-blur) showing week-start date + per-week totals (sessions / duration / distance / load). Each activity is a COMPACT ROW (not a card) with: discipline colour dot + sport icon + discipline label + start time (date + clock), duration, primary metric (discipline-aware: distance for cycling/boating/rowing/sailing/swimming/hiking/walking, pace for running, none for strength — fixes "power empty for most sports"), avg HR, a load bar scaled to `maxLoad` across the loaded range (height 1.5px, primary fill, numeric readout beside), a data-completeness dot (positive=complete, warning=partial, alert=missing), source chips with the main device bolded. On mobile (sm:), the row collapses to two lines (HR + load bar + sources wrap to a secondary row).
+  - "Load more" button below the list with "X of Y" counter using the `total` from the response — fixes the "older activities silently disappear" complaint.
+  - Empty state ("No activities in this range") with a "Clear filters" action when any filter is active.
+  - Uses kit primitives throughout (Card, CardHeader, PageHeader, Segmented, DeltaChip, SportIcon, SourcePill, Empty, Loading, Hairline, ApexButton) — no raw visual vocabulary invented.
+  - Active i18n keys: act_range_30d / act_range_90d / act_range_12m, act_filter_discipline, act_filter_source, act_clear_filters, act_summary_sessions / act_summary_time / act_summary_distance / act_summary_load, act_weekly_volume, act_volume_hours / act_volume_load / act_volume_distance, act_load_more, act_showing (with {{shown}}, {{total}}), act_no_activities. Inline English literals (with `// TODO i18n`) for: "Week of {date}" sticky-header label, "Last N weeks · click a bar to filter the list" chart subtitle, "session"/"sessions" plural in the week header, "Load" / "Reload or adjust filters." / "Try clearing filters or widening the range." / "Loading activities…".
+- Lint (`bun run lint`): clean, 0 errors, 0 warnings.
+- Type check (`bunx tsc --noEmit`): no errors in any file I created or modified (the only remaining TS errors in the repo are pre-existing in other files: store.ts, RecoveryScanModal, coach route, parse-document route, frontend/ reference folder, skills/ global files).
+- End-to-end smoke-tested both new/modified routes by invoking the GET handlers with a minimal NextRequest stub:
+  - /api/activities?days=90&offset=0&limit=10 → ok:true, total:36, count:10, summary:{sessions:36, total_time_s:295168, total_distance_m:694066, total_load:0, prev_sessions:14, prev_total_time_s:134860, prev_total_distance_m:605246, prev_total_load:0}, first id is a Number (24505012960), first start_time is ISO ("2026-09-26T10:59:22"), discipline/sources arrays work.
+  - /api/activities?days=365&discipline=cycling&discipline=running&source=Garmin → correctly filters to 22 cycling+running activities with Garmin source.
+  - /api/activities/weekly?weeks=12 → 12 weeks returned (including 4 zero-filled empty weeks), per-discipline breakdown populated, total 34 sessions across the window.
+
+Stage Summary:
+- Files:
+  - NEW `src/lib/apex/disciplines.tsx` (NEW) — discipline colours, labels, primary metric, ISO-week helpers, DisciplineDot component.
+  - `src/app/api/activities/route.ts` (MODIFIED) — additive: discipline (repeatable) + source (repeatable) + offset + limit + summary block + total; id coerced to Number; startTime normalised to ISO. Back-compat: still returns `count` (legacy alias of activities.length) and still returns 404 with the same error message if no user. No existing callers were broken (the route had zero frontend callers; this redesign is the first).
+  - NEW `src/app/api/activities/weekly/route.ts` (NEW) — weekly-volume aggregate.
+  - `src/features/apex/activities/ActivitiesPage.tsx` (REWRITTEN) — full redesign per plan §3 (summary strip + weekly volume stacked-bar SVG + compact rows grouped by sticky week header + Load more + discipline-aware primary metric + filters).
+- What works: end-to-end fetch + render path verified — both new/modified API routes return correct data against the live SQLite DB (50 activities), filters + pagination + summary block all behave per spec, lint + type-check clean.
+- Deferred / notes:
+  - The DB has all `trainingLoad` NULL — the load bar / load summary render as "—" / empty bars. This is honest real-data state, not a bug; when Garmin sync starts populating trainingLoad the bars will fill.
+  - The dev server was not running during this task (it had died earlier; instructions said "Do NOT restart dev server"). All verification was via direct route-handler invocation + lint + tsc. Runtime render has not been visually verified — next time the dev server is up, the page should be opened in the browser to confirm the weekly-volume chart's hover/click interactions and the sticky week-header behaviour look right at various breakpoints.
+  - Inline TODO i18n literals are marked with `// TODO i18n` and should be promoted to `act_*` keys in `src/lib/apex/i18n.ts` (a shared file I was told NOT to edit).
+  - The weekly-volume chart is fixed at 12 weeks regardless of the range selector; the range selector only controls the LIST. The plan spec said "default last 12 weeks" for the chart, so this is intentional.
+  - `me.units` is "metric" in the mock data, so the page currently always renders metric units. If/when the API surfaces the real user's units preference, wire `units` from the `/me` endpoint instead.

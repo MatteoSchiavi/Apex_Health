@@ -1,100 +1,148 @@
 "use client";
 
 /**
- * Apex Health — Training Plan & Load page.
+ * Apex Health — Training page (redesign per plan §2).
  *
- * Route purpose: "What am I planning and how am I progressing?"
+ * Layout (top → bottom):
+ *   Row 1: Today's session (xl:8)   +   Why this plan (xl:4)
+ *   Row 2: This week (7 day cells)
+ *   Row 3: Load chart (xl:8)        +   Events list (xl:4)
+ *   Row 4: Feedback form + history
  *
- * Composition:
- *  - PageHeader with a 14-day forward range subtitle.
- *  - Load summary row (3 StatPods): ACWR / Freshness / 7d Load.
- *  - 21-day calendar (last 7 days + next 14 days) — distinguishes RECURRING
- *    ROUTINE templates (status="planned") from DATE-SPECIFIC CONFIRMED PLANS
- *    (status="confirmed"), and from done/skipped history.
- *  - Side panel: next upcoming session + status legend.
- *  - Gym session surface: a fast, phone-friendly workout runner with a
- *    live rest-timer state machine (idle → active → rest → active… → done).
+ * Phase 0 fixes verified here:
+ *   1. Live-session Steppers send ACTUAL weight + ACTUAL reps (not reps_min).
+ *   2. Feedback form sends rpe + soreness + injuryFlag + bodyArea + notes.
+ *   3. local_today computed in user's timezone (Europe/Rome) via Intl en-CA.
+ *   4. Events have a PATCH route (Edit button works).
+ *   5. Empty states use Training-specific strings (not social.no_data).
+ *   6. Training nav icon was already swapped to Dumbbell (no action).
  *
  * Coherence law: every visual primitive comes from `@/components/apex/kit`.
- * No new card/badge variants are invented here.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Edit2,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
-import { getTrainingSchedule, gymSessions, overview } from "@/lib/apex/data";
+import { me, overview } from "@/lib/apex/data";
+import { localToday, addDays, dayDiff, isoWeekday } from "@/lib/apex/localTime";
+import { fmtDate, fmtNum } from "@/lib/apex/format";
 import {
   Card,
   CardHeader,
   PageHeader,
   StatPod,
   Badge,
-  SportIcon,
+  Eyebrow,
   SectionHeader,
   Empty,
+  Loading,
   ApexButton,
   Hairline,
   SourcePill,
+  Segmented,
+  Stepper,
+  RestTimerRing,
+  ConfirmPopover,
+  DeltaChip,
 } from "@/components/apex/kit";
-import { fmtDate, fmtNum, friendlyDiscipline } from "@/lib/apex/format";
-import type { GymSession, TrainingPlanItem } from "@/lib/apex/types";
 
-/* --------------------------------------------------------------- tones */
+/* --------------------------------------------------------------- types */
 
-const INTENSITY_TONE: Record<
-  NonNullable<TrainingPlanItem["intensity"]>,
-  string
-> = {
-  easy: "text-muted",
-  moderate: "text-primaryText",
-  hard: "text-alertText",
-  threshold: "text-warningText",
-  recovery: "text-positiveText",
-};
+type PlanStatus = "draft" | "confirmed" | "done";
 
-const STATUS_DOT: Record<TrainingPlanItem["status"], string> = {
-  planned: "bg-surface3",
-  confirmed: "bg-primary",
-  done: "bg-positive",
-  skipped: "bg-alert",
-};
+interface PlanExercise {
+  id: number;
+  name: string;
+  muscle_group: string;
+  sets: number;
+  reps: string;
+  reps_min?: number;
+  reps_max?: number;
+  weight_kg: number | null;
+  rest_s: number;
+  notes: string | null;
+}
+
+interface SetLog {
+  id: number;
+  exerciseId: number;
+  exerciseName: string;
+  setIndex: number;
+  weightKg: number;
+  reps: number;
+  rpe: number | null;
+  loggedAt: string;
+}
+
+interface Plan {
+  id: number;
+  date: string;
+  title: string;
+  status: PlanStatus;
+  adjustmentNote: string | null;
+  exercises: PlanExercise[];
+  setLogs: SetLog[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ExerciseHistoryEntry {
+  date: string;
+  weightKg: number;
+  reps: number;
+  rpe: number | null;
+  setIndex: number;
+  loggedAt: string;
+}
+
+interface ApexEvent {
+  id: number;
+  title: string;
+  kind: string;
+  date: string;
+  endDate?: string | null;
+  priority: string;
+  taperDays: number | null;
+  note?: string | null;
+}
+
+interface FeedbackEntry {
+  id: number;
+  date: string;
+  rpe: number;
+  soreness: number;
+  injuryFlag: boolean;
+  bodyArea: string | null;
+  notes: string | null;
+}
+
+interface DayLoad {
+  date: string;
+  load: number;
+  acute: number | null;
+  chronic: number | null;
+  acwr: number | null;
+  events: { id: number; title: string; kind: string; priority: string; taperDays: number | null }[];
+}
+
+interface TaperWindow {
+  eventId: number;
+  start: string;
+  end: string;
+}
 
 /* ----------------------------------------------------------- helpers */
 
-function startOfDay(iso: string): Date {
-  const d = new Date(iso);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function isToday(iso: string): boolean {
-  const d = startOfDay(iso);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return d.getTime() === now.getTime();
-}
-
-function isPast(iso: string): boolean {
-  const d = startOfDay(iso);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return d.getTime() < now.getTime();
-}
-
-function weekdayShort(iso: string, locale: "en" | "it"): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(locale === "it" ? "it-IT" : "en-GB", {
-    weekday: "short",
-  });
-}
-
-function dayNum(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return String(d.getDate()).padStart(2, "0");
-}
+const WEEKDAY_KEYS = ["train_mon", "train_tue", "train_wed", "train_thu", "train_fri", "train_sat", "train_sun"] as const;
 
 function fmtMSS(totalSec: number): string {
   const s = Math.max(0, Math.round(totalSec));
@@ -103,740 +151,1974 @@ function fmtMSS(totalSec: number): string {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
+/** parse a "8" or "8–10" reps string into { min, max }. */
+function parseReps(reps: string): { min: number; max: number } {
+  const cleaned = reps.replace(/\s+/g, "");
+  const m = cleaned.match(/^(\d+)[–-](\d+)$/);
+  if (m) return { min: parseInt(m[1]), max: parseInt(m[2]) };
+  const n = parseInt(cleaned);
+  if (!Number.isNaN(n)) return { min: n, max: n };
+  return { min: 8, max: 12 };
+}
+
+/** Default routine slots per weekday (1=Mon … 7=Sun). Rest day = empty. */
+const DEFAULT_ROUTINE: Record<number, { title: string; start: string; discipline: string }> = {
+  1: { title: "Lower Body · Squat Focus", start: "17:30", discipline: "strength" },
+  2: { title: "Endurance Ride · Zone 2", start: "12:00", discipline: "cycling" },
+  3: { title: "Upper Body · Push Pull", start: "17:30", discipline: "strength" },
+  4: { title: "Rest / Mobility", start: "", discipline: "rest" },
+  5: { title: "Threshold Intervals · 4×8", start: "12:00", discipline: "cycling" },
+  6: { title: "Long Run · Aerobic", start: "08:00", discipline: "running" },
+  7: { title: "Recovery Day", start: "", discipline: "rest" },
+};
+
 /* ----------------------------------------------------------- main page */
 
 export function TrainingPage() {
   const t = useT();
   const ui = useApexUi();
+  const today = useMemo(() => localToday(me.timezone), []);
 
-  const schedule = useMemo(() => getTrainingSchedule(14, 7), []);
-  const todayIso = new Date();
-  todayIso.setHours(0, 0, 0, 0);
-  const startRangeIso = new Date(todayIso);
-  const endRangeIso = new Date(todayIso);
-  endRangeIso.setDate(endRangeIso.getDate() + 14);
-  const subtitle = `${fmtDate(startRangeIso.toISOString(), ui.locale)} – ${fmtDate(
-    endRangeIso.toISOString(),
-    ui.locale
-  )} · ${ui.locale === "it" ? "prossimi 14 giorni" : "next 14 days"}`;
+  // ----- plan -----
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [planLoading, setPlanLoading] = useState(true);
+  const [planError, setPlanError] = useState<string | null>(null);
 
-  // next planned gym session
-  const plannedGym = useMemo(
-    () => gymSessions.find((s) => s.status === "planned") ?? null,
-    []
-  );
+  const loadPlan = useCallback(async () => {
+    setPlanLoading(true);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/gym/plan?date=${today}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to load plan");
+      setPlan(json.plan);
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : "Unknown");
+    } finally {
+      setPlanLoading(false);
+    }
+  }, [today]);
+
+  useEffect(() => {
+    loadPlan();
+  }, [loadPlan]);
+
+  // ----- events -----
+  const [events, setEvents] = useState<ApexEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const res = await fetch("/api/events", { cache: "no-store" });
+      const json = await res.json();
+      if (json.ok) setEvents(json.events);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  // ----- load metrics -----
+  const [load, setLoad] = useState<{
+    series: DayLoad[];
+    taperWindows: TaperWindow[];
+    summary: { acute_load: number | null; chronic_load: number | null; acwr: number | null };
+  } | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/metrics/load?days=56", { cache: "no-store" });
+        const json = await res.json();
+        if (json.ok) setLoad(json);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  // ----- feedback (server seeded + local additions) -----
+  const [feedbackHistory, setFeedbackHistory] = useState<FeedbackEntry[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const loadFeedback = useCallback(async () => {
+    setFeedbackLoading(true);
+    try {
+      const res = await fetch("/api/gym/feedback", { cache: "no-store" });
+      const json = await res.json();
+      const seeded: FeedbackEntry[] = json.ok ? json.feedback : [];
+      // merge with locally-stored additions (per-user)
+      const local = readLocalFeedback(me.user_id);
+      setFeedbackHistory([...local, ...seeded]);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    loadFeedback();
+  }, [loadFeedback]);
+
+  const subtitle = `${fmtDate(today, ui.locale)} · ${ui.locale === "it" ? "zona allenamento" : "training zone"}`;
 
   return (
     <div className="mx-auto max-w-[1240px] pb-16">
       <PageHeader title={t("training.title")} subtitle={subtitle} />
 
-      {/* load summary row */}
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatPod
-          label={t("training.acwr_title")}
-          value={fmtNum(overview.acwr, 2)}
-          unit="ratio"
-          tone={
-            overview.acwr === null
-              ? "ink"
-              : overview.acwr >= 0.8 && overview.acwr <= 1.3
-              ? "ink"
-              : overview.acwr > 1.3
-              ? "alert"
-              : "primary"
-          }
-          sub={`${t("overview.optimal_window")} 0.80 – 1.30`}
-        />
-        <StatPod
-          label={t("training.freshness_title")}
-          value={
-            overview.chronic_load !== null && overview.acute_load !== null
-              ? fmtNum(overview.chronic_load - overview.acute_load, 0)
-              : "—"
-          }
-          unit="load"
-          tone={
-            overview.chronic_load !== null && overview.acute_load !== null
-              ? overview.chronic_load - overview.acute_load >= 0
-                ? "ink"
-                : "alert"
-              : "ink"
-          }
-          sub={`${fmtNum(overview.chronic_load, 0)} chronic · ${fmtNum(
-            overview.acute_load,
-            0
-          )} acute`}
-        />
-        <StatPod
-          label={t("overview.acute_load")}
-          value={fmtNum(overview.training_load_7d, 0)}
-          unit="load"
-          tone="ink"
-          sub={`${fmtNum(overview.chronic_load, 0)} chronic`}
-        />
-      </div>
-
-      {/* calendar + side panel */}
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-8">
-          <Calendar schedule={schedule} />
+      {/* Row 1: Today's session + Why this plan */}
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          <TodaySessionCard
+            today={today}
+            plan={plan}
+            planLoading={planLoading}
+            planError={planError}
+            onReload={loadPlan}
+          />
         </div>
-        <div className="lg:col-span-4">
-          <SidePanel schedule={schedule} plannedGymId={plannedGym?.id ?? null} />
+        <div className="xl:col-span-4">
+          <WhyThisPlanCard plan={plan} today={today} />
         </div>
       </div>
 
-      {/* gym session surface */}
+      {/* Row 2: This week */}
       <div className="mt-6">
-        <GymSessionSurface session={plannedGym} />
+        <ThisWeekCard today={today} plan={plan} events={events} />
+      </div>
+
+      {/* Row 3: Load + Events */}
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          <LoadCard load={load} events={events} />
+        </div>
+        <div className="xl:col-span-4">
+          <EventsCard
+            events={events}
+            loading={eventsLoading}
+            today={today}
+            onChange={loadEvents}
+          />
+        </div>
+      </div>
+
+      {/* Row 4: Feedback */}
+      <div className="mt-6">
+        <FeedbackCard
+          today={today}
+          history={feedbackHistory}
+          loading={feedbackLoading}
+          onSubmitted={loadFeedback}
+        />
       </div>
     </div>
   );
 }
 
-/* ----------------------------------------------------------- calendar */
+/* =========================================================== ROW 1A: Today's session */
 
-function Calendar({ schedule }: { schedule: TrainingPlanItem[] }) {
+function TodaySessionCard({
+  today,
+  plan,
+  planLoading,
+  planError,
+  onReload,
+}: {
+  today: string;
+  plan: Plan | null;
+  planLoading: boolean;
+  planError: string | null;
+  onReload: () => void;
+}) {
   const t = useT();
   const ui = useApexUi();
 
+  if (planLoading) {
+    return (
+      <Card>
+        <CardHeader eyebrow={t("train_today_session")} />
+        <Loading label={ui.locale === "it" ? "Carico il piano…" : "Loading plan…"} />
+      </Card>
+    );
+  }
+  if (planError) {
+    return (
+      <Card>
+        <CardHeader eyebrow={t("train_today_session")} />
+        <div className="text-[13px] text-alertText">{planError}</div>
+        <div className="mt-3">
+          <ApexButton variant="secondary" size="sm" onClick={onReload}>
+            {ui.locale === "it" ? "Riprova" : "Retry"}
+          </ApexButton>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!plan) {
+    return <NoPlanCard today={today} onGenerated={onReload} />;
+  }
+  if (plan.status === "draft") {
+    return <DraftPlanCard plan={plan} onReload={onReload} />;
+  }
+  // confirmed or done → live session mode
+  return <LiveSessionCard plan={plan} onReload={onReload} />;
+}
+
+/* ---- No plan state ---- */
+function NoPlanCard({ today, onGenerated }: { today: string; onGenerated: () => void }) {
+  const t = useT();
+  const ui = useApexUi();
+  const weekday = isoWeekday(today);
+  const routine = DEFAULT_ROUTINE[weekday];
+  const isRest = routine?.discipline === "rest";
+  const [creating, setCreating] = useState(false);
+
+  async function generate() {
+    setCreating(true);
+    try {
+      await fetch("/api/gym/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: today }),
+      });
+      onGenerated();
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
-    <Card pad={false} className="overflow-hidden">
-      <div className="p-4 pb-0">
-        <SectionHeader
-          eyebrow={
-            ui.locale === "it"
-              ? "Ultimi 7 · Prossimi 14"
-              : "Last 7 · Next 14"
-          }
-          title={t("training.calendar_title")}
-          right={
-            <span className="num text-[11px] text-faint">
-              {schedule.length}
-              {ui.locale === "it" ? " giorni" : " days"}
-            </span>
-          }
-        />
+    <Card>
+      <CardHeader
+        eyebrow={t("train_today_session")}
+        title={
+          isRest
+            ? ui.locale === "it"
+              ? "Giorno di riposo"
+              : "Rest day"
+            : routine?.title || (ui.locale === "it" ? "Nessun piano" : t("train_no_plan"))
+        }
+        right={<SourcePill>{fmtDate(today, ui.locale)}</SourcePill>}
+      />
+      <div className="text-[13px] text-muted">
+        {isRest
+          ? ui.locale === "it"
+            ? "Recupero attivo — camminata leggera, mobilità, sonno prioritizzato."
+            : "Active recovery — light walk, mobility, sleep prioritised."
+          : ui.locale === "it"
+          ? `Slot di routine: ${routine?.start || "—"} · ${routine?.discipline}`
+          : `Routine slot: ${routine?.start || "—"} · ${routine?.discipline}`}
       </div>
-      <div className="grid grid-cols-1 gap-px border-t border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-7">
-        {schedule.map((item) => (
-          <DayCell key={item.id} item={item} />
-        ))}
+
+      <div className="mt-5 flex items-center gap-3">
+        <ApexButton onClick={generate} disabled={creating} icon={<Plus size={14} />}>
+          {creating
+            ? ui.locale === "it"
+              ? "Genero…"
+              : "Generating…"
+            : t("train_generate")}
+        </ApexButton>
+        {!isRest && (
+          <span className="text-[12px] text-faint">
+            {ui.locale === "it"
+              ? "Il coach creerà un piano da confermare."
+              : "The coach will draft a plan you can confirm."}
+          </span>
+        )}
       </div>
     </Card>
   );
 }
 
-function DayCell({ item }: { item: TrainingPlanItem }) {
+/* ---- Draft state ---- */
+function DraftPlanCard({ plan, onReload }: { plan: Plan; onReload: () => void }) {
   const t = useT();
   const ui = useApexUi();
-  const today = isToday(item.date);
-  const past = isPast(item.date);
+  const [confirming, setConfirming] = useState(false);
 
-  const intensity = item.intensity;
-  const intensityTone = intensity ? INTENSITY_TONE[intensity] : "text-muted";
-  const intensityLabel = intensity ? t(`training.intensity_${intensity}`) : "";
-
-  // status badge
-  let statusBadge: React.ReactNode = null;
-  if (item.status === "confirmed") {
-    statusBadge = (
-      <Badge tone="primary" dot>
-        {t("training.confirmed_plan")}
-      </Badge>
-    );
-  } else if (item.status === "planned") {
-    statusBadge = (
-      <Badge tone="neutral" dot>
-        {t("training.routine_template")}
-      </Badge>
-    );
-  } else if (item.status === "done") {
-    statusBadge = (
-      <Badge tone="positive" dot>
-        {t("training.done")}
-      </Badge>
-    );
-  }
-
-  // status indicator (dot or check/x)
-  let statusIndicator: React.ReactNode = (
-    <span
-      className={`inline-block h-1.5 w-1.5 rounded-full ${STATUS_DOT[item.status]}`}
-    />
-  );
-  if (item.status === "done") {
-    statusIndicator = (
-      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-positiveSoft text-positive">
-        <Check size={9} strokeWidth={3} />
-      </span>
-    );
-  } else if (item.status === "skipped") {
-    statusIndicator = (
-      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-alertSoft text-alert">
-        <X size={9} strokeWidth={3} />
-      </span>
-    );
+  async function confirm() {
+    setConfirming(true);
+    try {
+      const res = await fetch(`/api/gym/plan/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmed" }),
+      });
+      const json = await res.json();
+      if (json.ok) onReload();
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (
-    <div
-      className={`group relative flex min-h-[112px] flex-col gap-2 bg-surface p-3 transition-colors ${
-        today ? "bg-surface2" : ""
-      } ${past ? "opacity-70" : ""} hover:bg-surface2`}
-    >
-      {/* top row: weekday + status */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-baseline gap-1.5">
-          <span className="mono eyebrow !text-[10px] !tracking-[0.08em]">
-            {weekdayShort(item.date, ui.locale)}
+    <Card>
+      <CardHeader
+        eyebrow={t("train_today_session")}
+        title={plan.title}
+        right={
+          <span className="flex items-center gap-2">
+            <Badge tone="neutral" dot>
+              {t("train_draft")}
+            </Badge>
+            <SourcePill>{fmtDate(plan.date, ui.locale)}</SourcePill>
           </span>
-          <span
-            className={`num mono text-[20px] font-semibold leading-none ${
-              today ? "text-primaryText" : "text-ink"
-            }`}
-            style={{ fontFeatureSettings: '"tnum" 1' }}
-          >
-            {dayNum(item.date)}
-          </span>
-          {today && (
-            <span className="eyebrow !text-[9px] !tracking-[0.08em] text-primaryText">
-              {ui.locale === "it" ? "oggi" : "today"}
-            </span>
-          )}
-        </div>
-        {statusIndicator}
-      </div>
+        }
+      />
 
-      <Hairline className="!bg-hairline/60" />
-
-      {/* title + sport icon */}
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0 text-muted">
-          <SportIcon discipline={item.discipline} size={14} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-semibold leading-tight text-ink2">
-            {item.title}
+      {plan.adjustmentNote && (
+        <div className="mb-4 rounded-[var(--radius-control)] border border-hairline bg-surface2 p-3">
+          <Eyebrow className="!text-[10px]">{t("train_adjustment_note")}</Eyebrow>
+          <div className="mt-1 text-[12px] leading-relaxed text-ink2">
+            {plan.adjustmentNote}
           </div>
-          <div className="num mt-0.5 flex items-center gap-1.5 text-[10px] text-faint">
-            {item.duration_min != null && (
-              <span>{fmtNum(item.duration_min, 0)} min</span>
-            )}
-            {intensityLabel && (
-              <>
-                <span>·</span>
-                <span className={intensityTone}>{intensityLabel}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* badge row */}
-      {statusBadge && (
-        <div className="mt-auto pt-1">
-          {statusBadge}
-          {item.note && item.status === "confirmed" && (
-            <div className="num mt-1 text-[10px] italic leading-tight text-faint">
-              {item.note}
-            </div>
-          )}
         </div>
       )}
-    </div>
+
+      <div className="overflow-hidden rounded-[var(--radius-control)] border border-hairline">
+        <table className="w-full text-left text-[12px]">
+          <thead className="bg-surface2 text-faint">
+            <tr>
+              <th className="px-3 py-2 font-medium">#</th>
+              <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Esercizio" : "Exercise"}</th>
+              <th className="px-3 py-2 font-medium">{ui.locale === "it" ? "Gruppo" : "Group"}</th>
+              <th className="px-3 py-2 text-right font-medium">Sets</th>
+              <th className="px-3 py-2 text-right font-medium">Reps</th>
+              <th className="px-3 py-2 text-right font-medium">kg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.exercises.map((ex, i) => (
+              <tr key={ex.id} className="border-t border-hairline">
+                <td className="px-3 py-2 text-faint">{i + 1}</td>
+                <td className="px-3 py-2 font-semibold text-ink">{ex.name}</td>
+                <td className="px-3 py-2 text-muted">{ex.muscle_group}</td>
+                <td className="num px-3 py-2 text-right">{ex.sets}</td>
+                <td className="num px-3 py-2 text-right">{ex.reps}</td>
+                <td className="num px-3 py-2 text-right">{ex.weight_kg ?? 0}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5 flex items-center gap-3">
+        <ApexButton onClick={confirm} disabled={confirming} icon={<Check size={14} />}>
+          {confirming
+            ? ui.locale === "it"
+              ? "Confermo…"
+              : "Confirming…"
+            : t("train_confirm")}
+        </ApexButton>
+        <span className="text-[12px] text-faint">
+          {ui.locale === "it"
+            ? "La conferma avvia la modalità sessione live."
+            : "Confirming starts live session mode."}
+        </span>
+      </div>
+    </Card>
   );
 }
 
-/* ----------------------------------------------------------- side panel */
+/* ---- Live session (confirmed) ---- */
 
-function SidePanel({
-  schedule,
-  plannedGymId,
-}: {
-  schedule: TrainingPlanItem[];
-  plannedGymId: number | null;
-}) {
+type LiveMode = "active" | "rest" | "complete";
+
+function LiveSessionCard({ plan, onReload }: { plan: Plan; onReload: () => void }) {
   const t = useT();
   const ui = useApexUi();
 
-  // next upcoming confirmed or planned session (prefer non-rest)
-  const nextSession = useMemo(() => {
-    const todayIso = new Date();
-    todayIso.setHours(0, 0, 0, 0);
-    const upcoming = schedule
-      .filter(
-        (i) =>
-          !isPast(i.date) &&
-          (i.status === "planned" || i.status === "confirmed")
-      )
-      .sort((a, b) => a.date.localeCompare(b.date));
-    return (
-      upcoming.find((i) => i.type !== "rest") ?? upcoming[0] ?? null
-    );
-  }, [schedule]);
+  // start at first set of first exercise with no logged sets yet
+  const initialIdx = useMemo(() => {
+    const logged = new Set(plan.setLogs.map((l) => `${l.exerciseId}:${l.setIndex}`));
+    for (let ei = 0; ei < plan.exercises.length; ei++) {
+      const ex = plan.exercises[ei];
+      for (let s = 0; s < ex.sets; s++) {
+        if (!logged.has(`${ex.id}:${s}`)) return { exIdx: ei, setIdx: s };
+      }
+    }
+    return { exIdx: 0, setIdx: 0 };
+  }, [plan]);
 
-  const intensity = nextSession?.intensity;
-  const intensityTone = intensity ? INTENSITY_TONE[intensity] : "text-muted";
-  const intensityLabel = intensity ? t(`training.intensity_${intensity}`) : "";
+  const [mode, setMode] = useState<LiveMode>("active");
+  const [exIdx, setExIdx] = useState(initialIdx.exIdx);
+  const [setIdx, setSetIdx] = useState(initialIdx.setIdx);
+  const [restLeft, setRestLeft] = useState(0);
+  const [restTotal, setRestTotal] = useState(0);
+  const [collapsedUpNext, setCollapsedUpNext] = useState(false);
+  const [showWhole, setShowWhole] = useState(false);
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* next session */}
-      <Card>
-        <CardHeader eyebrow={t("training.next_session_title")} />
-        {nextSession ? (
-          <div>
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-primarySoft text-primaryText">
-                <SportIcon discipline={nextSession.discipline} size={16} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold leading-tight text-ink">
-                  {nextSession.title}
-                </div>
-                <div className="num mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-                  <span>{fmtDate(nextSession.date, ui.locale)}</span>
-                  <span>·</span>
-                  <span>
-                    {friendlyDiscipline(nextSession.discipline, ui.locale)}
-                  </span>
-                  {nextSession.duration_min != null && (
-                    <>
-                      <span>·</span>
-                      <span>{fmtNum(nextSession.duration_min, 0)} min</span>
-                    </>
-                  )}
-                  {intensityLabel && (
-                    <>
-                      <span>·</span>
-                      <span className={intensityTone}>{intensityLabel}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+  // session timer (for finish summary)
+  const startedAtRef = useRef<number>(Date.now());
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {nextSession.status === "confirmed" ? (
-                <Badge tone="primary" dot>
-                  {t("training.confirmed_plan")}
-                </Badge>
-              ) : (
-                <Badge tone="neutral" dot>
-                  {t("training.routine_template")}
-                </Badge>
-              )}
-            </div>
+  const ex = plan.exercises[exIdx];
+  const logsForEx = plan.setLogs.filter((l) => l.exerciseId === ex?.id);
 
-            {nextSession.note && (
-              <div className="num mt-3 rounded-[var(--radius-control)] bg-surface2 px-2.5 py-2 text-[11px] italic leading-snug text-muted">
-                {nextSession.note}
-              </div>
-            )}
+  // local stepper state — defaults to last-session weight + lower rep target
+  const [weight, setWeight] = useState(0);
+  const [reps, setReps] = useState(8);
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [history, setHistory] = useState<ExerciseHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-            {nextSession.discipline === "strength" && plannedGymId != null && (
-              <div className="mt-3">
-                <ApexButton
-                  variant="secondary"
-                  size="md"
-                  className="w-full"
-                  onClick={() => {
-                    ui.setActiveGymSession(plannedGymId);
-                    // scroll to gym section
-                    setTimeout(() => {
-                      const el = document.getElementById("apex-gym-session");
-                      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }, 0);
-                  }}
-                >
-                  {t("training.open_gym")}
-                </ApexButton>
-              </div>
-            )}
-          </div>
-        ) : (
-          <Empty title={t("training.no_active_session")} />
-        )}
-      </Card>
-
-      {/* legend */}
-      <Card>
-        <CardHeader eyebrow={t("training.plan_legend")} />
-        <div className="grid grid-cols-2 gap-2.5">
-          <LegendRow tone="muted" label={t("training.planned")} />
-          <LegendRow tone="primary" label={t("training.confirmed")} />
-          <LegendRow tone="positive" label={t("training.done")} />
-          <LegendRow tone="rest" label={t("training.rest")} />
-          <LegendRow tone="alert" label={ui.locale === "it" ? "Saltato" : "Skipped"} />
-          <LegendRow tone="warning" label={t("training.race")} />
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function LegendRow({
-  tone,
-  label,
-}: {
-  tone: "muted" | "primary" | "positive" | "alert" | "warning" | "rest";
-  label: string;
-}) {
-  const dotCls =
-    tone === "muted"
-      ? "bg-surface3"
-      : tone === "primary"
-      ? "bg-primary"
-      : tone === "positive"
-      ? "bg-positive"
-      : tone === "alert"
-      ? "bg-alert"
-      : tone === "warning"
-      ? "bg-warning"
-      : "bg-transparent border border-hairline2";
-  return (
-    <div className="flex items-center gap-2 text-[11px] text-muted">
-      <span className={`inline-block h-2 w-2 rounded-full ${dotCls}`} />
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------- gym session */
-
-type GymMode = "idle" | "active" | "rest" | "complete";
-
-function GymSessionSurface({ session }: { session: GymSession | null }) {
-  const t = useT();
-  const ui = useApexUi();
-
-  // session runner state
-  const [mode, setMode] = useState<GymMode>("idle");
-  const [exerciseIdx, setExerciseIdx] = useState(0);
-  const [setIdx, setSetIdx] = useState(0); // 0-based current set index
-  const [restRemaining, setRestRemaining] = useState(0);
-
-  function startSession() {
-    setMode("active");
-    setExerciseIdx(0);
-    setSetIdx(0);
-    setRestRemaining(0);
-  }
-
-  function startRest() {
-    const ex = session?.exercises[exerciseIdx];
+  // when exercise changes, load its history + reset steppers to the smart default
+  useEffect(() => {
     if (!ex) return;
-    setRestRemaining(ex.rest_s);
-    setMode("rest");
-  }
+    setHistoryLoading(true);
+    setRpe(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/gym/exercises/${ex.id}/history?limit=5`, { cache: "no-store" });
+        const json = await res.json();
+        setHistory(json.ok ? json.history : []);
+        // pre-fill weight + reps from last time, else template
+        const last = json.history?.[0];
+        const parsed = parseReps(ex.reps);
+        setWeight(last ? Math.round(last.weightKg) : ex.weight_kg ?? 0);
+        setReps(last ? last.reps : parsed.min);
+      } catch {
+        const parsed = parseReps(ex.reps);
+        setWeight(ex.weight_kg ?? 0);
+        setReps(parsed.min);
+      } finally {
+        setHistoryLoading(false);
+      }
+    })();
+  }, [ex]);
 
-  function skipRest() {
-    setRestRemaining(0);
-    advanceAfterRest();
-  }
+  // rest timer effect
+  useEffect(() => {
+    if (mode !== "rest") return;
+    if (restLeft <= 0) {
+      advanceAfterRest();
+      return;
+    }
+    const id = window.setInterval(() => setRestLeft((s) => s - 1), 1000);
+    return () => window.clearInterval(id);
+  }, [mode, restLeft]);
 
   function advanceAfterRest() {
-    if (!session) return;
-    const ex = session.exercises[exerciseIdx];
     if (!ex) return;
-    // advance set, then exercise
     if (setIdx + 1 < ex.sets) {
       setSetIdx((s) => s + 1);
       setMode("active");
       return;
     }
-    // last set of this exercise done → next exercise
-    if (exerciseIdx + 1 < session.exercises.length) {
-      setExerciseIdx((i) => i + 1);
+    if (exIdx + 1 < plan.exercises.length) {
+      setExIdx((i) => i + 1);
       setSetIdx(0);
       setMode("active");
     } else {
-      // session complete
       setMode("complete");
     }
   }
 
-  // timer effect
-  useEffect(() => {
-    if (mode !== "rest") return;
-    if (restRemaining <= 0) {
-      // advance to next set / exercise
-      advanceAfterRest();
-      return;
-    }
-    const id = window.setInterval(() => {
-      setRestRemaining((s) => s - 1);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [mode, restRemaining]);
+  function adjustRest(delta: number) {
+    setRestLeft((s) => Math.max(0, s + delta));
+    setRestTotal((t) => Math.max(1, t + delta));
+  }
 
-  if (!session) {
+  async function logSet() {
+    if (!ex) return;
+    // Phase 0 fix #1 — send ACTUAL weight + ACTUAL reps (not reps_min), plus optional RPE.
+    await fetch(`/api/gym/plan/${plan.id}/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exerciseId: ex.id,
+        exerciseName: ex.name,
+        setIndex: setIdx,
+        weightKg: weight,
+        reps,
+        rpe: rpe,
+      }),
+    });
+    // start rest timer
+    setRestTotal(ex.rest_s);
+    setRestLeft(ex.rest_s);
+    setMode("rest");
+    onReload();
+  }
+
+  if (!ex) {
     return (
       <Card>
-        <SectionHeader eyebrow={t("training.gym_session_title")} />
-        <Empty title={t("training.no_active_session")} />
+        <CardHeader eyebrow={t("train_today_session")} title={plan.title} />
+        <Empty title={ui.locale === "it" ? "Nessun esercizio nel piano." : "No exercises in plan."} />
       </Card>
     );
   }
 
-  const totalSets = session.exercises.reduce((acc, e) => acc + e.sets, 0);
-  const completedSets =
-    mode === "idle"
-      ? 0
-      : session.exercises
-          .slice(0, exerciseIdx)
-          .reduce((acc, e) => acc + e.sets, 0) + setIdx;
+  const totalSets = plan.exercises.reduce((acc, e) => acc + e.sets, 0);
+  const completedSets = plan.setLogs.length;
+  const isLastSetOfEx = setIdx + 1 >= ex.sets;
+  const upNext = plan.exercises.slice(exIdx + 1);
 
   return (
-    <Card pad={false} className="overflow-hidden">
-      <div id="apex-gym-session" />
-      <div className="p-4">
-        <SectionHeader
-          eyebrow={t("training.gym_session_title")}
-          title={session.title}
-          right={
-            <div className="flex items-center gap-2">
-              <SourcePill>{fmtDate(session.date)}</SourcePill>
-              {mode === "idle" && (
-                <ApexButton size="sm" onClick={startSession}>
-                  {t("training.start_session")}
-                </ApexButton>
-              )}
-              {mode === "complete" && (
-                <Badge tone="positive" dot>
-                  {t("training.done")}
-                </Badge>
-              )}
-            </div>
-          }
-        />
+    <Card>
+      <CardHeader
+        eyebrow={t("train_live_mode")}
+        title={plan.title}
+        right={
+          <span className="flex items-center gap-2">
+            <Badge tone={mode === "complete" ? "positive" : "primary"} dot>
+              {mode === "complete"
+                ? t("training.done")
+                : ui.locale === "it"
+                ? `Serie ${completedSets}/${totalSets}`
+                : `Set ${completedSets}/${totalSets}`}
+            </Badge>
+            <SourcePill>{fmtDate(plan.date, ui.locale)}</SourcePill>
+          </span>
+        }
+      />
 
-        {/* active runner progress bar */}
-        {mode !== "idle" && (
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="eyebrow">
-                {mode === "complete"
-                  ? t("training.done")
-                  : ui.locale === "it"
-                  ? "Avanzamento"
-                  : "Progress"}
-              </span>
-              <span className="num text-[11px] text-faint">
-                {mode === "complete"
-                  ? t("training.done")
-                  : `${completedSets} / ${totalSets}`}
-              </span>
-            </div>
-            <div className="num h-1.5 w-full overflow-hidden rounded-full bg-surface3">
-              <div
-                className="bg-primary transition-all"
-                style={{
-                  width: `${
-                    mode === "complete"
-                      ? 100
-                      : (completedSets / Math.max(totalSets, 1)) * 100
-                  }%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* completion banner */}
-        {mode === "complete" && (
-          <div className="mb-4 rounded-[var(--radius-control)] border border-positive/40 bg-positiveSoft px-3 py-2.5 text-[12px] font-medium text-positiveText">
-            {ui.locale === "it"
-              ? "Sessione completata. Recupero attivo consigliato."
-              : "Session complete. Active recovery recommended."}
-          </div>
-        )}
-
-        {/* rest timer big display */}
-        {mode === "rest" && (
-          <RestTimer
-            remaining={restRemaining}
-            onSkip={skipRest}
-          />
-        )}
-      </div>
-
-      {/* exercise list */}
-      <div className="border-t border-hairline">
-        {session.exercises.map((ex, idx) => {
-          const isActive =
-            mode === "active" && idx === exerciseIdx;
-          const isComplete =
-            mode === "complete" || idx < exerciseIdx;
-          return (
-            <ExerciseRow
-              key={ex.id}
-              num={idx + 1}
-              name={ex.name}
-              muscleGroup={ex.muscle_group}
-              sets={ex.sets}
-              reps={ex.reps}
-              weightKg={ex.weight_kg}
-              restS={ex.rest_s}
-              notes={ex.notes}
-              active={isActive}
-              complete={isComplete}
-              currentSet={isActive ? setIdx + 1 : null}
+      {/* progress bar */}
+      {mode !== "complete" && (
+        <div className="mb-4">
+          <div className="num h-1.5 w-full overflow-hidden rounded-full bg-surface3">
+            <div
+              className="bg-primary transition-all"
+              style={{ width: `${(completedSets / Math.max(totalSets, 1)) * 100}%` }}
             />
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
 
-      {/* footer actions during active session */}
-      {mode === "active" && (
-        <div className="border-t border-hairline bg-surface2 p-3">
-          <ApexButton
-            size="lg"
-            className="w-full"
-            onClick={startRest}
-          >
-            {t("training.start_rest")}
-          </ApexButton>
+      {mode === "complete" ? (
+        <FinishSummary plan={plan} startedAt={startedAtRef.current} />
+      ) : mode === "rest" ? (
+        <div className="flex flex-col items-center gap-4 py-4">
+          <RestTimerRing
+            secondsLeft={restLeft}
+            total={restTotal || ex.rest_s}
+            onAdjust={adjustRest}
+            onSkip={() => {
+              setRestLeft(0);
+            }}
+          />
+          <div className="text-[12px] text-faint">
+            {ui.locale === "it" ? "Prossimo" : "Up next"}:{" "}
+            <span className="text-ink2">
+              {isLastSetOfEx
+                ? upNext[0]?.name ?? (ui.locale === "it" ? "Completato" : "Done")
+                : `${ex.name} · ${ui.locale === "it" ? "serie" : "set"} ${setIdx + 2}/${ex.sets}`}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* current exercise card */}
+          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Eyebrow className="!text-[10px]">
+                  {ui.locale === "it" ? "Esercizio" : "Exercise"} {exIdx + 1}/{plan.exercises.length}
+                </Eyebrow>
+                <div className="mt-1 text-[20px] font-semibold tracking-[-0.01em] text-ink">
+                  {ex.name}
+                </div>
+                <div className="text-[12px] text-muted">{ex.muscle_group}</div>
+              </div>
+              <div className="text-right">
+                <div className="num mono text-[12px] text-faint">
+                  {t("train_target", { sets: ex.sets, reps: ex.reps })}
+                </div>
+                <SetDots total={ex.sets} current={setIdx} logs={logsForEx} />
+              </div>
+            </div>
+
+            <Hairline className="my-3 !bg-hairline/40" />
+
+            {/* Last time line */}
+            <div className="text-[12px] text-muted">
+              {historyLoading ? (
+                <span>…</span>
+              ) : history.length > 0 ? (
+                <>
+                  <span className="eyebrow !text-[9px]">{t("train_last_time")}</span>{" "}
+                  <span className="num mono text-ink2">
+                    {history[0].weightKg} kg × {history[0].reps}{" "}
+                    <span className="text-faint">· {fmtDate(history[0].date, ui.locale)}</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="eyebrow !text-[9px]">{t("train_last_time")}</span>{" "}
+                  <span className="text-faint">
+                    {ui.locale === "it" ? "prima volta" : "first time"}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* steppers */}
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div>
+                <div className="eyebrow !text-[9px] mb-1.5">{t("train_weight")}</div>
+                <Stepper value={weight} onChange={setWeight} step={2.5} min={0} max={400} suffix="kg" />
+              </div>
+              <div>
+                <div className="eyebrow !text-[9px] mb-1.5">{t("train_reps")}</div>
+                <Stepper value={reps} onChange={setReps} step={1} min={0} max={50} />
+              </div>
+            </div>
+
+            {ex.notes && (
+              <div className="mt-3 text-[11px] italic leading-snug text-muted">{ex.notes}</div>
+            )}
+
+            {/* RPE chip row — only on the last set of an exercise */}
+            {isLastSetOfEx && (
+              <div className="mt-4">
+                <div className="eyebrow !text-[9px] mb-1.5">{t("train_rpe")} (6–10)</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[6, 7, 8, 9, 10].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRpe(rpe === r ? null : r)}
+                      className={`num h-7 rounded-[var(--radius-control)] border px-2.5 text-[12px] font-semibold transition-colors ${
+                        rpe === r
+                          ? "border-primary bg-primarySoft text-primaryText"
+                          : "border-hairline bg-surface text-muted hover:bg-surface2"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                  {rpe !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setRpe(null)}
+                      className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2 text-muted hover:text-ink"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <ApexButton size="lg" className="w-full" onClick={logSet}>
+                {t("train_log_set")}
+              </ApexButton>
+            </div>
+          </div>
+
+          {/* Up next (collapsible) */}
+          {upNext.length > 0 && (
+            <div className="rounded-[var(--radius-card)] border border-hairline bg-surface">
+              <button
+                type="button"
+                onClick={() => setCollapsedUpNext((v) => !v)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+              >
+                <span className="eyebrow !text-[10px]">{t("train_up_next")}</span>
+                <span className="flex items-center gap-2 text-[11px] text-muted">
+                  {upNext.length} {ui.locale === "it" ? "esercizi" : "exercises"}
+                  {collapsedUpNext ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                </span>
+              </button>
+              {!collapsedUpNext && (
+                <div className="border-t border-hairline px-3 py-2">
+                  {upNext.map((e, i) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between py-1.5 text-[12px]"
+                    >
+                      <span className="text-ink2">
+                        {exIdx + 2 + i}. {e.name}
+                      </span>
+                      <span className="num mono text-faint">
+                        {e.sets} × {e.reps} · {e.weight_kg ?? 0}kg
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Whole session expander */}
+          <div className="rounded-[var(--radius-card)] border border-hairline bg-surface">
+            <button
+              type="button"
+              onClick={() => setShowWhole((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+            >
+              <span className="eyebrow !text-[10px]">{t("train_whole_session")}</span>
+              {showWhole ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+            {showWhole && (
+              <div className="border-t border-hairline px-3 py-2">
+                {plan.exercises.map((e, i) => {
+                  const done = plan.setLogs.filter((l) => l.exerciseId === e.id).length;
+                  return (
+                    <div
+                      key={e.id}
+                      className={`flex items-center justify-between py-1.5 text-[12px] ${
+                        i === exIdx ? "text-primaryText" : ""
+                      }`}
+                    >
+                      <span className={i === exIdx ? "font-semibold" : "text-ink2"}>
+                        {i + 1}. {e.name}
+                      </span>
+                      <span className="num mono text-faint">
+                        {done}/{e.sets}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </Card>
   );
 }
 
-/* ----------------------------------------------------- exercise row */
-
-function ExerciseRow({
-  num,
-  name,
-  muscleGroup,
-  sets,
-  reps,
-  weightKg,
-  restS,
-  notes,
-  active,
-  complete,
-  currentSet,
+function SetDots({
+  total,
+  current,
+  logs,
 }: {
-  num: number;
-  name: string;
-  muscleGroup: string;
-  sets: number;
-  reps: string;
-  weightKg: number | null;
-  restS: number;
-  notes: string | null;
-  active: boolean;
-  complete: boolean;
-  currentSet: number | null;
+  total: number;
+  current: number;
+  logs: SetLog[];
+}) {
+  const loggedIdx = new Set(logs.map((l) => l.setIndex));
+  // dots: ● for done, ◐ for current, ○ for upcoming
+  const dots: React.ReactNode[] = [];
+  for (let i = 0; i < total; i++) {
+    let sym: string;
+    let cls: string;
+    if (loggedIdx.has(i)) {
+      sym = "●";
+      cls = "text-primary";
+    } else if (i === current) {
+      sym = "●";
+      cls = "text-primaryText";
+    } else {
+      sym = "○";
+      cls = "text-faint";
+    }
+    dots.push(
+      <span key={i} className={`num mono ${cls}`}>
+        {sym}
+      </span>
+    );
+  }
+  return <div className="mt-1 flex gap-0.5">{dots}</div>;
+}
+
+function FinishSummary({ plan, startedAt }: { plan: Plan; startedAt: number }) {
+  const t = useT();
+  const ui = useApexUi();
+
+  const totalVolume = plan.setLogs.reduce((acc, l) => acc + l.weightKg * l.reps, 0);
+  const durationS = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  const perExercise = new Map<number, { name: string; maxKg: number; maxReps: number }>();
+  for (const e of plan.exercises) {
+    const logs = plan.setLogs.filter((l) => l.exerciseId === e.id);
+    if (logs.length === 0) continue;
+    const maxKg = Math.max(...logs.map((l) => l.weightKg));
+    const maxReps = Math.max(...logs.map((l) => l.reps));
+    perExercise.set(e.id, { name: e.name, maxKg, maxReps });
+  }
+
+  return (
+    <div>
+      <div className="rounded-[var(--radius-card)] border border-positive/40 bg-positiveSoft px-4 py-3 text-[13px] font-medium text-positiveText">
+        {ui.locale === "it"
+          ? "Sessione completata. Recupero attivo consigliato."
+          : "Session complete. Active recovery recommended."}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatPod
+          label={t("train_total_volume")}
+          value={fmtNum(totalVolume, 0)}
+          unit="kg"
+          sub={ui.locale === "it" ? "serie × rip × kg" : "sets × reps × kg"}
+        />
+        <StatPod
+          label={t("train_duration")}
+          value={fmtMSS(durationS)}
+          sub={ui.locale === "it" ? "min:sec" : "min:sec"}
+        />
+        <StatPod
+          label={ui.locale === "it" ? "Serie totali" : "Sets logged"}
+          value={plan.setLogs.length}
+          sub={`${plan.exercises.length} ${ui.locale === "it" ? "esercizi" : "exercises"}`}
+        />
+      </div>
+      <div className="mt-4">
+        <Eyebrow className="!text-[10px]">{t("train_personal_bests")}</Eyebrow>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {Array.from(perExercise.values()).map((e) => (
+            <div
+              key={e.name}
+              className="flex items-center justify-between rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[12px]"
+            >
+              <span className="text-ink2">{e.name}</span>
+              <span className="num mono text-faint">
+                {e.maxKg}kg × {e.maxReps}
+              </span>
+            </div>
+          ))}
+          {perExercise.size === 0 && (
+            <div className="text-[12px] text-faint">
+              {ui.locale === "it" ? "Nessuna serie registrata." : "No sets logged."}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================== ROW 1B: Why this plan */
+
+function WhyThisPlanCard({ plan, today }: { plan: Plan | null; today: string }) {
+  const t = useT();
+  const ui = useApexUi();
+  // hide if no plan
+  if (!plan) return null;
+
+  // local feedback history (last entry)
+  const localFb = readLocalFeedback(me.user_id);
+  const lastFb = localFb[0];
+
+  return (
+    <Card>
+      <CardHeader eyebrow={t("train_why_plan")} />
+      <div className="space-y-4">
+        <div>
+          <Eyebrow className="!text-[10px]">{t("train_adjustment_note")}</Eyebrow>
+          <div className="mt-1 text-[12px] leading-relaxed text-ink2">
+            {plan.adjustmentNote || (ui.locale === "it" ? "—" : "—")}
+          </div>
+        </div>
+
+        <Hairline className="!bg-hairline/40" />
+
+        <div>
+          <Eyebrow className="!text-[10px]">
+            {ui.locale === "it" ? "Oggi" : "Today"}
+          </Eyebrow>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Badge tone="primary" dot>
+              {ui.locale === "it" ? "Prontezza" : "Readiness"} {overview.readiness.value}
+            </Badge>
+            <Badge
+              tone={
+                overview.acwr == null
+                  ? "neutral"
+                  : overview.acwr >= 0.8 && overview.acwr <= 1.3
+                  ? "positive"
+                  : "warning"
+              }
+              dot
+            >
+              ACWR {fmtNum(overview.acwr, 2)}
+            </Badge>
+          </div>
+        </div>
+
+        <Hairline className="!bg-hairline/40" />
+
+        <div>
+          <Eyebrow className="!text-[10px]">
+            {ui.locale === "it" ? "Ultimo feedback" : "Last feedback"}
+          </Eyebrow>
+          {lastFb ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+              <span className="num mono text-ink2">
+                {fmtDate(lastFb.date, ui.locale)}
+              </span>
+              <Badge tone="neutral">RPE {lastFb.rpe}</Badge>
+              <Badge tone="neutral">
+                {ui.locale === "it" ? "Indol." : "Soreness"} {lastFb.soreness}
+              </Badge>
+              {lastFb.injuryFlag && (
+                <Badge tone="alert" dot>
+                  {lastFb.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")}
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <div className="mt-1 text-[12px] text-faint">
+              {ui.locale === "it" ? "Nessun feedback recente." : "No recent feedback."}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 text-[10px] text-faint">
+        {ui.locale === "it"
+          ? "Aggiornato al fuso orario locale"
+          : "Computed in your local timezone"}{" "}
+        · {today}
+      </div>
+    </Card>
+  );
+}
+
+/* =========================================================== ROW 2: This week */
+
+function ThisWeekCard({
+  today,
+  plan,
+  events,
+}: {
+  today: string;
+  plan: Plan | null;
+  events: ApexEvent[];
 }) {
   const t = useT();
   const ui = useApexUi();
+
+  // build Monday → Sunday of the current week
+  const todayWd = isoWeekday(today); // 1=Mon … 7=Sun
+  const monday = addDays(today, -(todayWd - 1));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+
+  const [editing, setEditing] = useState(false);
+  const [routine, setRoutine] = useState<Record<number, { title: string; start: string; discipline: string }>>(DEFAULT_ROUTINE);
+
   return (
-    <div
-      className={`flex flex-col gap-3 border-b border-hairline p-4 last:border-b-0 sm:flex-row sm:items-center sm:gap-4 ${
-        active ? "bg-primarySoft/50" : complete ? "opacity-50" : ""
-      }`}
-    >
-      {/* number / status */}
-      <div className="flex items-center gap-3 sm:w-10">
-        <span
-          className={`num mono flex h-7 w-7 items-center justify-center rounded-[var(--radius-control)] text-[12px] font-semibold ${
-            active
-              ? "bg-primary text-white"
-              : complete
-              ? "bg-positiveSoft text-positive"
-              : "bg-surface3 text-muted"
-          }`}
-        >
-          {complete ? <Check size={12} strokeWidth={3} /> : num}
-        </span>
-      </div>
-
-      {/* exercise name + muscle group */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[14px] font-semibold leading-tight text-ink">
-            {name}
-          </span>
-          {active && currentSet != null && (
-            <Badge tone="primary">
-              {ui.locale === "it" ? "Serie" : "Set"} {currentSet}/{sets}
-            </Badge>
-          )}
-        </div>
-        <div className="eyebrow !text-[10px] mt-1">{muscleGroup}</div>
-        {notes && (
-          <div className="mt-1.5 text-[11px] italic leading-snug text-muted">
-            {notes}
-          </div>
-        )}
-      </div>
-
-      {/* stats */}
-      <div className="flex items-end gap-4 sm:gap-5">
-        <Stat label={t("training.sets_reps")} value={`${sets} × ${reps}`} />
-        <Stat
-          label={t("training.weight_kg")}
-          value={weightKg != null ? fmtNum(weightKg, 1) : "—"}
-          unit="kg"
+    <Card pad={false} className="overflow-hidden">
+      <div className="p-4 pb-0">
+        <SectionHeader
+          eyebrow={ui.locale === "it" ? "Lun → Dom" : "Mon → Sun"}
+          title={t("train_this_week")}
+          right={
+            <ApexButton
+              variant="secondary"
+              size="sm"
+              icon={<Edit2 size={12} />}
+              onClick={() => setEditing((v) => !v)}
+            >
+              {t("train_edit_routine")}
+            </ApexButton>
+          }
         />
-        <Stat label={t("training.rest_timer")} value={fmtMSS(restS)} />
       </div>
-    </div>
+      <div className="grid grid-cols-1 gap-px border-t border-hairline bg-hairline sm:grid-cols-4 lg:grid-cols-7">
+        {days.map((d) => {
+          const wd = isoWeekday(d);
+          const isToday = d === today;
+          const isPast = dayDiff(d, today) < 0;
+          const routineSlot = routine[wd];
+          const isRest = routineSlot?.discipline === "rest";
+          const ev = events.find((e) => e.date === d);
+          const planForDay = d === today && plan ? plan : null;
+          const planStatus: PlanStatus | null = planForDay?.status ?? null;
+          return (
+            <WeekDayCell
+              key={d}
+              date={d}
+              weekdayKey={WEEKDAY_KEYS[wd - 1]}
+              isToday={isToday}
+              isPast={isPast}
+              routineSlot={routineSlot}
+              isRest={isRest}
+              event={ev}
+              planStatus={planStatus}
+              editing={editing}
+              onRoutineChange={(newSlot) => setRoutine((r) => ({ ...r, [wd]: newSlot }))}
+            />
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
-function Stat({
-  label,
-  value,
-  unit,
+function WeekDayCell({
+  date,
+  weekdayKey,
+  isToday,
+  isPast,
+  routineSlot,
+  isRest,
+  event,
+  planStatus,
+  editing,
+  onRoutineChange,
 }: {
-  label: string;
-  value: string;
-  unit?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="eyebrow !text-[9px] !tracking-[0.06em]">{label}</div>
-      <div className="num mono text-[14px] font-semibold leading-none text-ink">
-        {value}
-        {unit && <span className="ml-1 text-[10px] font-medium text-muted">{unit}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------- rest timer */
-
-function RestTimer({
-  remaining,
-  onSkip,
-}: {
-  remaining: number;
-  onSkip: () => void;
+  date: string;
+  weekdayKey: string;
+  isToday: boolean;
+  isPast: boolean;
+  routineSlot: { title: string; start: string; discipline: string };
+  isRest: boolean;
+  event: ApexEvent | undefined;
+  planStatus: PlanStatus | null;
+  editing: boolean;
+  onRoutineChange: (s: { title: string; start: string; discipline: string }) => void;
 }) {
   const t = useT();
+  const ui = useApexUi();
+  const dayNum = date.slice(8, 10);
+
+  // status dot
+  let statusDot: React.ReactNode = (
+    <span className="inline-block h-1.5 w-1.5 rounded-full bg-surface3" />
+  );
+  let statusLabel = "";
+  if (planStatus === "done") {
+    statusDot = (
+      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-positiveSoft text-positive">
+        <Check size={9} strokeWidth={3} />
+      </span>
+    );
+    statusLabel = t("training.done");
+  } else if (planStatus === "confirmed") {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />;
+    statusLabel = t("training.confirmed");
+  } else if (planStatus === "draft") {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />;
+    statusLabel = t("train_draft");
+  } else if (isRest) {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full border border-hairline2" />;
+    statusLabel = t("train_rest_day");
+  } else if (isPast) {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-alert/50" />;
+    statusLabel = ui.locale === "it" ? "Mancato" : "Missed";
+  } else {
+    statusDot = <span className="inline-block h-1.5 w-1.5 rounded-full bg-surface3" />;
+    statusLabel = t("training.planned");
+  }
+
   return (
-    <div className="mb-2 rounded-[var(--radius-card)] border border-primary/40 bg-primarySoft/40 px-4 py-5 text-center">
-      <div className="eyebrow text-primaryText">{t("training.rest_timer")}</div>
-      <div
-        className="num mono mt-2 text-[56px] font-bold leading-none text-ink sm:text-[72px]"
-        style={{ fontFeatureSettings: '"tnum" 1' }}
-      >
-        {fmtMSS(remaining)}
+    <div
+      className={`flex min-h-[112px] flex-col gap-2 bg-surface p-3 transition-colors ${
+        isToday ? "bg-surface2" : ""
+      } ${isPast && !planStatus ? "opacity-70" : ""}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-baseline gap-1.5">
+          <span className="mono eyebrow !text-[10px] !tracking-[0.08em]">{t(weekdayKey)}</span>
+          <span
+            className={`num mono text-[20px] font-semibold leading-none ${
+              isToday ? "text-primaryText" : "text-ink"
+            }`}
+            style={{ fontFeatureSettings: '"tnum" 1' }}
+          >
+            {dayNum}
+          </span>
+          {isToday && (
+            <span className="eyebrow !text-[9px] !tracking-[0.08em] text-primaryText">
+              {ui.locale === "it" ? "oggi" : "today"}
+            </span>
+          )}
+        </div>
+        {statusDot}
       </div>
-      <div className="mt-4">
-        <ApexButton
-          variant="secondary"
-          size="lg"
-          className="w-full sm:w-auto"
-          onClick={onSkip}
-        >
-          {t("training.skip_rest")}
-        </ApexButton>
+
+      <Hairline className="!bg-hairline/60" />
+
+      {editing ? (
+        <div className="space-y-1.5">
+          <input
+            type="text"
+            value={routineSlot?.title || ""}
+            onChange={(e) =>
+              onRoutineChange({
+                ...routineSlot,
+                title: e.target.value,
+              })
+            }
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[11px] text-ink"
+          />
+          <input
+            type="text"
+            value={routineSlot?.start || ""}
+            placeholder="HH:MM"
+            onChange={(e) =>
+              onRoutineChange({
+                ...routineSlot,
+                start: e.target.value,
+              })
+            }
+            className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-2 py-1 text-[11px] text-ink"
+          />
+        </div>
+      ) : (
+        <div>
+          <div className="truncate text-[12px] font-semibold leading-tight text-ink2">
+            {routineSlot?.title || (ui.locale === "it" ? "—" : "—")}
+          </div>
+          <div className="num mt-0.5 flex items-center gap-1.5 text-[10px] text-faint">
+            {routineSlot?.start && <span>{routineSlot.start}</span>}
+            <span>·</span>
+            <span>{statusLabel}</span>
+          </div>
+        </div>
+      )}
+
+      {event && (
+        <div className="mt-auto">
+          <Badge
+            tone={event.priority === "priority_1" || event.priority === "high" ? "warning" : "primary"}
+            dot
+          >
+            {event.title}
+          </Badge>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================== ROW 3A: Load chart */
+
+function LoadCard({
+  load,
+  events,
+}: {
+  load: {
+    series: DayLoad[];
+    taperWindows: TaperWindow[];
+    summary: { acute_load: number | null; chronic_load: number | null; acwr: number | null };
+  } | null;
+  events: ApexEvent[];
+}) {
+  const t = useT();
+  const ui = useApexUi();
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t("train_load")}
+        right={
+          <span className="num text-[10px] text-faint">
+            {ui.locale === "it" ? "56 giorni · 0.8–1.3 banda" : "56 days · 0.8–1.3 band"}
+          </span>
+        }
+      />
+      {!load ? (
+        <Loading label={ui.locale === "it" ? "Carico carico…" : "Loading load…"} />
+      ) : load.series.length === 0 ? (
+        <Empty title={ui.locale === "it" ? "Nessun dato" : "No data yet"} />
+      ) : (
+        <>
+          {/* summary row */}
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <StatPod
+              label={ui.locale === "it" ? "Carico acuto" : "Acute load"}
+              value={fmtNum(load.summary.acute_load, 0)}
+              unit="TSS"
+              sub="7d"
+            />
+            <StatPod
+              label={ui.locale === "it" ? "Carico cronico" : "Chronic load"}
+              value={fmtNum(load.summary.chronic_load, 0)}
+              unit="TSS"
+              sub="28d"
+            />
+            <StatPod
+              label="ACWR"
+              value={fmtNum(load.summary.acwr, 2)}
+              sub="0.8–1.3"
+              tone={
+                load.summary.acwr == null
+                  ? "ink"
+                  : load.summary.acwr >= 0.8 && load.summary.acwr <= 1.3
+                  ? "ink"
+                  : load.summary.acwr > 1.3
+                  ? "alert"
+                  : "primary"
+              }
+            />
+          </div>
+          <LoadChart series={load.series} taperWindows={load.taperWindows} events={events} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function LoadChart({
+  series,
+  taperWindows,
+  events,
+}: {
+  series: DayLoad[];
+  taperWindows: TaperWindow[];
+  events: ApexEvent[];
+}) {
+  const ui = useApexUi();
+
+  // SVG dimensions
+  const W = 720;
+  const H = 220;
+  const PAD = { top: 10, right: 40, bottom: 18, left: 32 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  // y-axis: daily load bars (left)
+  const maxLoad = Math.max(50, ...series.map((s) => s.load));
+  // y-axis right: ACWR 0–2 (clip)
+  const acwrMax = 2;
+  const acwrMin = 0;
+  // chronic line uses the same scale as load (since chronic is a load too)
+  const maxChronic = Math.max(...series.map((s) => s.chronic ?? 0), maxLoad);
+
+  const yScaleMax = Math.max(maxLoad, maxChronic) * 1.1;
+  const barWidth = innerW / series.length;
+  const x = (i: number) => PAD.left + i * barWidth + barWidth / 2;
+  const yLoad = (v: number) => PAD.top + innerH - (v / yScaleMax) * innerH;
+  const yAcwr = (v: number) =>
+    PAD.top + innerH - ((Math.max(acwrMin, Math.min(acwrMax, v)) - acwrMin) / (acwrMax - acwrMin)) * innerH;
+
+  // chronic line path
+  const chronicPoints = series
+    .map((s, i) => (s.chronic != null ? `${x(i).toFixed(2)},${yLoad(s.chronic).toFixed(2)}` : null))
+    .filter((p): p is string => p != null);
+  const chronicPath = "M" + chronicPoints.join(" L");
+
+  // event vertical lines
+  const eventLines = events.filter((e) => {
+    const idx = series.findIndex((s) => s.date === e.date);
+    return idx >= 0;
+  });
+
+  // taper window shading
+  const taperRects = taperWindows
+    .map((w) => {
+      const startIdx = series.findIndex((s) => s.date === w.start);
+      const endIdx = series.findIndex((s) => s.date === w.end);
+      if (startIdx < 0 && endIdx < 0) return null;
+      const s = Math.max(0, startIdx);
+      const e = endIdx < 0 ? series.length - 1 : endIdx;
+      return { x1: x(s) - barWidth / 2, x2: x(e) + barWidth / 2 };
+    })
+    .filter((r): r is { x1: number; x2: number } => r != null);
+
+  // 0.8–1.3 band on ACWR axis
+  const bandTopY = yAcwr(1.3);
+  const bandBotY = yAcwr(0.8);
+
+  // x-axis labels — first, middle, last
+  const labelIdx = [0, Math.floor(series.length / 2), series.length - 1];
+
+  return (
+    <div className="num w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }} aria-hidden>
+        {/* ACWR 0.8–1.3 band */}
+        <rect x={PAD.left} y={bandTopY} width={innerW} height={Math.max(0, bandBotY - bandTopY)} fill="var(--c-positive)" opacity={0.07} />
+
+        {/* taper windows */}
+        {taperRects.map((r, i) => (
+          <rect
+            key={`taper-${i}`}
+            x={r.x1}
+            y={PAD.top}
+            width={Math.max(0, r.x2 - r.x1)}
+            height={innerH}
+            fill="var(--c-warning)"
+            opacity={0.08}
+          />
+        ))}
+
+        {/* y grid + labels (left, load) */}
+        {[0, 0.25, 0.5, 0.75, 1].map((p) => {
+          const yv = PAD.top + innerH - p * innerH;
+          const val = Math.round(yScaleMax * p);
+          return (
+            <g key={`grid-${p}`}>
+              <line x1={PAD.left} y1={yv} x2={W - PAD.right} y2={yv} stroke="var(--c-hairline)" strokeWidth={1} />
+              <text x={PAD.left - 4} y={yv + 3} textAnchor="end" fontSize={9} fill="var(--c-faint)">
+                {val}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* ACWR right-axis labels */}
+        {[0, 0.8, 1.0, 1.3, 2.0].map((v) => {
+          const yv = yAcwr(v);
+          return (
+            <text key={`acwr-${v}`} x={W - PAD.right + 4} y={yv + 3} textAnchor="start" fontSize={9} fill="var(--c-faint)">
+              {v.toFixed(1)}
+            </text>
+          );
+        })}
+
+        {/* event vertical lines */}
+        {eventLines.map((e) => {
+          const idx = series.findIndex((s) => s.date === e.date);
+          if (idx < 0) return null;
+          const xv = x(idx);
+          return (
+            <g key={`ev-${e.id}`}>
+              <line x1={xv} y1={PAD.top} x2={xv} y2={PAD.top + innerH} stroke="var(--c-warning)" strokeWidth={1} strokeDasharray="3,3" opacity={0.7} />
+              <text x={xv + 2} y={PAD.top + 8} fontSize={8} fill="var(--c-warningText)">
+                {e.title.slice(0, 8)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* daily load bars */}
+        {series.map((s, i) => {
+          const h = (s.load / yScaleMax) * innerH;
+          const y = PAD.top + innerH - h;
+          return (
+            <rect
+              key={s.date}
+              x={x(i) - barWidth / 2 + 0.5}
+              y={y}
+              width={Math.max(1, barWidth - 1)}
+              height={Math.max(0, h)}
+              fill="var(--c-primary)"
+              opacity={0.55}
+            />
+          );
+        })}
+
+        {/* chronic line */}
+        {chronicPoints.length > 1 && (
+          <path d={chronicPath} fill="none" stroke="var(--c-ink)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} />
+        )}
+
+        {/* ACWR line (secondary axis) — drawn on top */}
+        {(() => {
+          const pts = series
+            .map((s, i) => (s.acwr != null ? `${x(i).toFixed(2)},${yAcwr(s.acwr).toFixed(2)}` : null))
+            .filter((p): p is string => p != null);
+          if (pts.length < 2) return null;
+          return <path d={"M" + pts.join(" L")} fill="none" stroke="var(--c-warning)" strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round" />;
+        })()}
+
+        {/* x-axis labels */}
+        {labelIdx.map((i) => (
+          <text key={`xl-${i}`} x={x(i)} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--c-faint)">
+            {series[i].date.slice(5)}
+          </text>
+        ))}
+
+        {/* axis baselines */}
+        <line x1={PAD.left} y1={PAD.top + innerH} x2={W - PAD.right} y2={PAD.top + innerH} stroke="var(--c-hairline2)" strokeWidth={1} />
+      </svg>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted">
+        <Legend color="var(--c-primary)" label={ui.locale === "it" ? "Carico giornaliero" : "Daily load"} />
+        <Legend color="var(--c-ink)" label={ui.locale === "it" ? "Cronico (28d)" : "Chronic (28d)"} />
+        <Legend color="var(--c-warning)" label="ACWR" />
+        <Legend color="var(--c-positive)" opacity={0.18} label={ui.locale === "it" ? "Banda 0.8–1.3" : "0.8–1.3 band"} />
+        <Legend color="var(--c-warning)" opacity={0.18} label={ui.locale === "it" ? "Taper" : "Taper"} />
       </div>
     </div>
+  );
+}
+
+function Legend({ color, label, opacity = 1 }: { color: string; label: string; opacity?: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="inline-block h-2 w-2 rounded-sm" style={{ background: color, opacity }} />
+      {label}
+    </span>
+  );
+}
+
+/* =========================================================== ROW 3B: Events */
+
+function EventsCard({
+  events,
+  loading,
+  today,
+  onChange,
+}: {
+  events: ApexEvent[];
+  loading: boolean;
+  today: string;
+  onChange: () => void;
+}) {
+  const t = useT();
+  const ui = useApexUi();
+
+  const [showPast, setShowPast] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const upcoming = events.filter((e) => dayDiff(today, e.date) >= 0).sort((a, b) => a.date.localeCompare(b.date));
+  const past = events.filter((e) => dayDiff(today, e.date) < 0).sort((a, b) => b.date.localeCompare(a.date));
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t("train_events")}
+        right={
+          <ApexButton
+            variant="secondary"
+            size="sm"
+            icon={<Plus size={12} />}
+            onClick={() => {
+              setShowAdd(true);
+              setEditingId(null);
+            }}
+          >
+            {ui.locale === "it" ? "Aggiungi" : "Add"}
+          </ApexButton>
+        }
+      />
+
+      {loading ? (
+        <Loading />
+      ) : upcoming.length === 0 && past.length === 0 ? (
+        <Empty title={t("train_no_events")} />
+      ) : (
+        <div className="space-y-2">
+          {showAdd && (
+            <EventForm
+              today={today}
+              onClose={() => setShowAdd(false)}
+              onSaved={() => {
+                setShowAdd(false);
+                onChange();
+              }}
+            />
+          )}
+
+          {upcoming.map((e) =>
+            editingId === e.id ? (
+              <EventForm
+                key={e.id}
+                event={e}
+                today={today}
+                onClose={() => setEditingId(null)}
+                onSaved={() => {
+                  setEditingId(null);
+                  onChange();
+                }}
+              />
+            ) : (
+              <EventRow key={e.id} event={e} today={today} onEdit={() => setEditingId(e.id)} onDeleted={onChange} />
+            )
+          )}
+
+          {past.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPast((v) => !v)}
+                className="flex w-full items-center justify-between pt-2 text-[11px] text-muted hover:text-ink"
+              >
+                <span className="eyebrow !text-[10px]">
+                  {ui.locale === "it" ? `Passati (${past.length})` : `Past (${past.length})`}
+                </span>
+                {showPast ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+              {showPast &&
+                past.map((e) => (
+                  <EventRow key={e.id} event={e} today={today} past onEdit={() => setEditingId(e.id)} onDeleted={onChange} />
+                ))}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function EventRow({
+  event,
+  today,
+  past = false,
+  onEdit,
+  onDeleted,
+}: {
+  event: ApexEvent;
+  today: string;
+  past?: boolean;
+  onEdit: () => void;
+  onDeleted: () => void;
+}) {
+  const t = useT();
+  const ui = useApexUi();
+  const days = dayDiff(today, event.date);
+  const isPriority = event.priority === "priority_1" || event.priority === "high";
+  const taper = event.taperDays ?? (isPriority ? 5 : 3);
+  const inTaper = !past && days >= 0 && days < taper;
+  const taperDay = taper - days;
+
+  return (
+    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
+      <div className="flex items-start gap-3">
+        <div className="num mono flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-[var(--radius-control)] bg-surface text-ink">
+          <span className="text-[10px] leading-none text-faint">
+            {event.date.slice(5, 7)}
+          </span>
+          <span className="text-[14px] font-bold leading-none">{event.date.slice(8, 10)}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="truncate text-[13px] font-semibold text-ink">{event.title}</div>
+            <div className="flex shrink-0 items-center gap-1">
+              {isPriority && (
+                <Badge tone="warning" dot>
+                  {ui.locale === "it" ? "Priorità" : "Priority"}
+                </Badge>
+              )}
+              <button
+                type="button"
+                onClick={onEdit}
+                className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface3 hover:text-ink"
+                aria-label={t("train_edit_event")}
+              >
+                <Edit2 size={12} />
+              </button>
+              <ConfirmPopover
+                message={ui.locale === "it" ? "Eliminare questo evento?" : "Delete this event?"}
+                onConfirm={async () => {
+                  await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+                  onDeleted();
+                }}
+                onCancel={() => {}}
+                confirmLabel={ui.locale === "it" ? "Elimina" : "Delete"}
+                cancelLabel={ui.locale === "it" ? "Annulla" : "Cancel"}
+              >
+                <button
+                  type="button"
+                  className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-alertSoft hover:text-alertText"
+                  aria-label={ui.locale === "it" ? "Elimina" : "Delete"}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </ConfirmPopover>
+            </div>
+          </div>
+          <div className="num mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+            <span>{event.kind}</span>
+            <span>·</span>
+            <span>
+              {past
+                ? ui.locale === "it"
+                  ? `${Math.abs(days)} gg fa`
+                  : `${Math.abs(days)} d ago`
+                : days === 0
+                ? ui.locale === "it"
+                  ? "oggi"
+                  : "today"
+                : ui.locale === "it"
+                ? `tra ${days} gg`
+                : `in ${days} d`}
+            </span>
+            {event.taperDays != null && (
+              <>
+                <span>·</span>
+                <span>
+                  {t("train_taper_days")}: {event.taperDays}
+                </span>
+              </>
+            )}
+          </div>
+          {inTaper && (
+            <div className="mt-2">
+              <Badge tone="warning" dot>
+                {t("train_taper_progress", { n: taperDay, total: taper })}
+              </Badge>
+            </div>
+          )}
+          {event.note && (
+            <div className="mt-1 text-[11px] italic leading-snug text-muted">{event.note}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventForm({
+  event,
+  today,
+  onClose,
+  onSaved,
+}: {
+  event?: ApexEvent;
+  today: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ui = useApexUi();
+  const [title, setTitle] = useState(event?.title || "");
+  const [kind, setKind] = useState(event?.kind || "session");
+  const [date, setDate] = useState(event?.date || today);
+  const [priority, setPriority] = useState(event?.priority || "normal");
+  const [taperDays, setTaperDays] = useState<number>(event?.taperDays ?? 5);
+  const [note, setNote] = useState(event?.note || "");
+  const [saving, setSaving] = useState(false);
+
+  // When kind changes, pre-fill priority + taper days per plan §2:
+  // race/competition/enduro/ski → priority 1 + 5 taper days; else priority normal + 3 taper days.
+  useEffect(() => {
+    if (event) return; // don't override when editing existing
+    const isPriority = ["race", "competition", "enduro", "ski"].includes(kind);
+    setPriority(isPriority ? "priority_1" : "normal");
+    setTaperDays(isPriority ? 5 : 3);
+  }, [kind, event]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      if (event) {
+        await fetch(`/api/events/${event.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, kind, date, priority, taperDays, note }),
+        });
+      } else {
+        await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, kind, date, priority, taperDays, note }),
+        });
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const kindOptions: { value: string; label: string }[] = [
+    { value: "session", label: ui.locale === "it" ? "Sessione" : "Session" },
+    { value: "race", label: ui.locale === "it" ? "Gara" : "Race" },
+    { value: "competition", label: ui.locale === "it" ? "Competizione" : "Competition" },
+    { value: "enduro", label: "Enduro" },
+    { value: "ski", label: ui.locale === "it" ? "Sci" : "Ski" },
+    { value: "training_camp", label: ui.locale === "it" ? "Ritiro" : "Camp" },
+  ];
+
+  return (
+    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface p-3">
+      <div className="space-y-2.5">
+        <div>
+          <div className="eyebrow !text-[10px] mb-1">
+            {ui.locale === "it" ? "Titolo" : "Title"}
+          </div>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            placeholder="Marathon, ski trip…"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <div className="eyebrow !text-[10px] mb-1">Kind</div>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+              className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            >
+              {kindOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="eyebrow !text-[10px] mb-1">
+              {ui.locale === "it" ? "Data" : "Date"}
+            </div>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <div className="eyebrow !text-[10px] mb-1">
+              {ui.locale === "it" ? "Priorità" : "Priority"}
+            </div>
+            <Segmented
+              value={priority}
+              onChange={(v) => setPriority(v)}
+              options={[
+                { value: "normal", label: ui.locale === "it" ? "Normale" : "Normal" },
+                { value: "priority_1", label: ui.locale === "it" ? "Alta" : "High" },
+              ]}
+            />
+          </div>
+          <div>
+            <div className="eyebrow !text-[10px] mb-1">
+              {ui.locale === "it" ? "Taper (gg)" : "Taper (d)"}
+            </div>
+            <Stepper value={taperDays} onChange={setTaperDays} step={1} min={0} max={21} />
+          </div>
+        </div>
+        <div>
+          <div className="eyebrow !text-[10px] mb-1">{ui.locale === "it" ? "Note" : "Notes"}</div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+            rows={2}
+          />
+        </div>
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <ApexButton variant="ghost" size="sm" onClick={onClose}>
+            {ui.locale === "it" ? "Annulla" : "Cancel"}
+          </ApexButton>
+          <ApexButton size="sm" onClick={save} disabled={saving || !title || !date}>
+            {saving
+              ? ui.locale === "it"
+                ? "Salvo…"
+                : "Saving…"
+              : event
+              ? ui.locale === "it"
+                ? "Aggiorna"
+                : "Update"
+              : ui.locale === "it"
+              ? "Aggiungi"
+              : "Add"}
+          </ApexButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================== ROW 4: Feedback */
+
+const LOCAL_FEEDBACK_KEY = "training.feedback.local";
+
+function readLocalFeedback(userId: number): FeedbackEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(`apex.u${userId}.${LOCAL_FEEDBACK_KEY}`);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalFeedback(userId: number, list: FeedbackEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`apex.u${userId}.${LOCAL_FEEDBACK_KEY}`, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+function FeedbackCard({
+  today,
+  history,
+  loading,
+  onSubmitted,
+}: {
+  today: string;
+  history: FeedbackEntry[];
+  loading: boolean;
+  onSubmitted: () => void;
+}) {
+  const t = useT();
+  const ui = useApexUi();
+
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [soreness, setSoreness] = useState<number | null>(null);
+  const [injuryFlag, setInjuryFlag] = useState(false);
+  const [bodyArea, setBodyArea] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function reset() {
+    setRpe(null);
+    setSoreness(null);
+    setInjuryFlag(false);
+    setBodyArea("");
+    setNotes("");
+  }
+
+  async function submit() {
+    if (rpe == null && soreness == null && !notes) return;
+    setSaving(true);
+    try {
+      // Phase 0 fix #2 — send the full structured payload (not just notes).
+      await fetch("/api/gym/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rpe,
+          soreness,
+          injuryFlag,
+          bodyArea: injuryFlag ? bodyArea : null,
+          notes: notes || null,
+        }),
+      });
+      // store locally (route is not persistent — see route.ts header)
+      const local = readLocalFeedback(me.user_id);
+      const entry: FeedbackEntry = {
+        id: Date.now(),
+        date: today,
+        rpe: rpe ?? 0,
+        soreness: soreness ?? 0,
+        injuryFlag,
+        bodyArea: injuryFlag ? bodyArea : null,
+        notes: notes || null,
+      };
+      writeLocalFeedback(me.user_id, [entry, ...local].slice(0, 30));
+      reset();
+      onSubmitted();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t("train_feedback")}
+        right={
+          <span className="num text-[10px] text-faint">
+            {ui.locale === "it" ? "oggi" : "today"} · {fmtDate(today, ui.locale)}
+          </span>
+        }
+      />
+
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <div className="eyebrow !text-[10px] mb-2">{t("train_rpe_label")}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRpe(rpe === r ? null : r)}
+                  className={`num h-7 rounded-[var(--radius-control)] border px-2 text-[12px] font-semibold transition-colors ${
+                    rpe === r
+                      ? "border-primary bg-primarySoft text-primaryText"
+                      : "border-hairline bg-surface text-muted hover:bg-surface2"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow !text-[10px] mb-2">{t("train_soreness")}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: 5 }, (_, i) => i + 1).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSoreness(soreness === s ? null : s)}
+                  className={`num h-7 rounded-[var(--radius-control)] border px-2.5 text-[12px] font-semibold transition-colors ${
+                    soreness === s
+                      ? "border-primary bg-primarySoft text-primaryText"
+                      : "border-hairline bg-surface text-muted hover:bg-surface2"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <Hairline className="!bg-hairline/40" />
+
+        <div>
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={injuryFlag}
+              onChange={(e) => setInjuryFlag(e.target.checked)}
+              className="h-4 w-4 rounded border-hairline2"
+            />
+            <span className="text-[12px] font-medium text-ink2">
+              {t("train_injury_flag")}
+            </span>
+          </label>
+          {injuryFlag && (
+            <div className="mt-2.5">
+              <div className="eyebrow !text-[10px] mb-1.5">{t("train_body_area")}</div>
+              <input
+                type="text"
+                value={bodyArea}
+                onChange={(e) => setBodyArea(e.target.value)}
+                placeholder="Knee, lower back, right shoulder…"
+                className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+              />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="eyebrow !text-[10px] mb-1.5">{t("train_notes")}</div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            className="w-full rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1.5 text-[12px] text-ink"
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <ApexButton onClick={submit} disabled={saving || (rpe == null && soreness == null && !notes)}>
+            {saving
+              ? ui.locale === "it"
+                ? "Salvo…"
+                : "Saving…"
+              : ui.locale === "it"
+              ? "Salva"
+              : "Save"}
+          </ApexButton>
+          <span className="text-[11px] text-faint">
+            {/* TODO i18n: train_feedback_local_hint */}
+            {ui.locale === "it"
+              ? "Salvato in questo dispositivo (nessun modello Feedback nello schema)."
+              : "Saved on this device (no Feedback model in schema yet)."}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <Eyebrow className="!text-[10px] mb-2">
+          {ui.locale === "it" ? "Cronologia" : "History"}
+        </Eyebrow>
+        {loading ? (
+          <Loading />
+        ) : history.length === 0 ? (
+          <Empty title={t("train_no_feedback")} />
+        ) : (
+          <ul className="space-y-1.5">
+            {history.map((f) => (
+              <li
+                key={f.id}
+                className="flex items-start gap-3 rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-2 text-[12px]"
+              >
+                <span className="num mono shrink-0 text-faint">{fmtDate(f.date, ui.locale)}</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {f.rpe > 0 && <Badge tone="neutral">RPE {f.rpe}</Badge>}
+                  {f.soreness > 0 && (
+                    <Badge tone="neutral">
+                      {ui.locale === "it" ? "Indol." : "Sore"} {f.soreness}
+                    </Badge>
+                  )}
+                  {f.injuryFlag && (
+                    <Badge tone="alert" dot>
+                      {f.bodyArea || (ui.locale === "it" ? "Infortunio" : "Injury")}
+                    </Badge>
+                  )}
+                  {f.notes && <span className="text-muted">· {f.notes}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }
