@@ -1,82 +1,52 @@
 "use client";
 
 /**
- * Apex Health — Overview / Home dashboard (STRICT redesign per Part 1 spec).
+ * Apex Health — Overview (the reference screen).
  *
- * Row-by-row shape (the user explicitly asked the previous redesign to
- * follow this STRICTLY — do not invent a different arrangement):
+ * Implements all 9 design principles from ui-language/RULES.md:
+ *   1. One answer: "Good morning, Matteo. You're moderately ready."
+ *   2. One hero: the readiness ring, 2× anything else.
+ *   3. No outlines: cards by surface contrast, no card-in-card.
+ *   4. Sentence-case labels, 14px minimum.
+ *   5. Numbers stay white; status = dot + word.
+ *   6. Accent (orange) for the hero ring + actions, not for "good".
+ *   7. Plain words: "Body signals", "Training load", "Last night".
+ *   8. Charts: one line + normal band + latest point.
+ *   9. Seven sections maximum.
  *
- *   Row 0 — Needs attention           (col-12, conditional, hidden when empty)
- *   Row 1 — Readiness / Recovery / Strain  (3× col-12 md:col-span-4)
- *   Row 1b — Today's plan             (Planned 5 / Event 4 / Weather 3; conditional)
- *   Row 2 — Load & vitals             (ACWR col-12 xl:col-span-8 + Biomarkers col-12 xl:col-span-4)
- *   Row 3 — Last night's sleep        (col-12, conditional on sleep != null)
- *   Row 4 — Logs & status             (Activities 5 / Gear 4 / Integrations 3)
- *
- * Critical design rules (from the user):
- *   1. DATA color reflects STATE, not the accent. Use scoreTone / acwrTone /
- *      rangeTone / hrvDevTone + toneFor for every ScoreBar / RangeBar / Badge
- *      / StatPod that displays data. Reserve `tone="primary"` for non-data
- *      UI only (active nav, brand, buttons).
- *   2. No fake / computed-from-nothing numbers. Floor/Cap row dropped. The
- *      ACWR "no overreach" static line is replaced with a tone-reactive
- *      status line. The biomarker "all normal" badge is computed from
- *      actual in-range checks.
- *   3. Strain is NEUTRAL — high strain isn't bad. Strain's ScoreBar uses
- *      a `muted` tone, never positive/alert.
- *
- * Data sources:
- *   /api/dashboard        → scores + sleep + biomarkers + activities + alerts + integration_health + gear_due
- *   /api/metrics/load?days=28 → 28-day acute (bar) / chronic (line) series for the ACWR card
- *   /api/gym/plan?date=<today> → today's GymDayPlan for Row 1b Planned session
- *   /api/events           → upcoming events for Row 1b Next event
- *   /api/gear             → gear list (filtered to ≥80% service interval here) for Row 4
- *   /api/integrations     → integration health for Row 4
- *
- * If /api/dashboard fails, the page falls back to the mock `overview` from
- * `@/lib/apex/data` so the layout still renders for development.
+ * Data: /api/dashboard (scores + sleep + biomarkers + activities + alerts),
+ *       /api/gym/plan (today's plan), /api/events (next event),
+ *       /api/metrics/load (28-day chart), /api/gear (due for service).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ChevronRight,
-  Download,
-  Calendar,
-  Dumbbell,
-  AlertTriangle,
-  Wrench,
-  CloudOff,
-} from "lucide-react";
+import { ChevronRight, Info } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
-import { me, overview as mockOverview } from "@/lib/apex/data";
-import { localToday, addDays, dayDiff } from "@/lib/apex/localTime";
+import { me } from "@/lib/apex/data";
+import { localToday, dayDiff } from "@/lib/apex/localTime";
 import {
   Card,
-  CardHeader,
-  PageHeader,
-  BigStat,
-  StatPod,
-  DeltaChip,
-  Badge,
+  Section,
+  Hero,
+  StatusDot,
+  Row,
+  PageSentence,
+  ChartFrame,
   ScoreBar,
-  RangeBar,
-  Eyebrow,
+  DeltaChip,
+  SportIcon,
+  ApexButton,
   Empty,
   Loading,
   Hairline,
-  ApexButton,
-  SportIcon,
-  InfoButton,
-  MetricInfoContent,
+  Sparkline,
   scoreTone,
   acwrTone,
   rangeTone,
-  toneFor,
-  type DataTone,
+  hrvDevTone,
 } from "@/components/apex/kit";
 import { InteractiveComboChart, ChartLegend, ChartInfoBadge } from "@/components/apex/charts";
-import { METRIC_EXPLANATIONS } from "@/lib/apex/metricInfo";
 import {
   fmtNum,
   fmtHours,
@@ -86,34 +56,12 @@ import {
   fmtDate,
   friendlyDiscipline,
 } from "@/lib/apex/format";
-import type { ActivityCard, Gear } from "@/lib/apex/types";
+import type { ActivityCard } from "@/lib/apex/types";
 
-/* ----------------------------------------------------------- response shapes */
-
-interface GearDueItem {
-  id: number;
-  name: string;
-  gear_type: string;
-  brand: string | null;
-  usage_pct: number;
-  hours_since_service: number;
-  service_interval_hours: number | null;
-  km_since_service: number;
-  service_interval_km: number | null;
-}
-
-interface IntegrationHealthItem {
-  provider: string;
-  status: string;
-  last_synced_at: string | null;
-  is_main: boolean;
-  consecutive_failures: number;
-}
+/* ----------------------------------------------------------- types */
 
 interface OverviewData {
   date: string;
-  anchor_is_today: boolean;
-  data_completeness?: "full" | "partial" | "missing";
   readiness: { value: number | null; delta_7d: number | null };
   recovery: { value: number | null; delta_7d: number | null };
   strain: { value: number | null; delta_7d: number | null };
@@ -121,60 +69,27 @@ interface OverviewData {
   sleep_hours: number | null;
   hrv_ms: number | null;
   hrv_baseline_ms: number | null;
-  hrv_norm_30d: number | null;
   hrv_deviation_pct: number | null;
   resting_hr: number | null;
   resting_hr_delta_7d: number | null;
   spo2_avg: number | null;
-  spo2_delta_7d: number | null;
   respiration_avg: number | null;
   weight_kg: number | null;
-  vo2max: number | null;
-  steps: number | null;
   acute_load: number | null;
   chronic_load: number | null;
   acwr: number | null;
-  training_load_7d: number | null;
   activities: ActivityCard[];
   sleep: {
     start_time: string;
     end_time: string;
     total_sleep_s: number | null;
     sleep_score: number | null;
-    stages: {
-      deep_s: number | null;
-      light_s: number | null;
-      rem_s: number | null;
-      awake_s: number | null;
-    };
+    stages: { deep_s: number | null; light_s: number | null; rem_s: number | null; awake_s: number | null };
     respiration_avg: number | null;
     spo2_avg: number | null;
     restlessness: number | null;
   } | null;
-  integration_status: { provider: string; status: string }[];
-  integration_health: IntegrationHealthItem[];
-  gear_due: GearDueItem[];
   alerts: { type: string; severity: "info" | "warning" | "alert"; message: string }[];
-}
-
-interface GymPlanLite {
-  id: number;
-  date: string;
-  title: string;
-  status: string;
-  adjustmentNote: string | null;
-  exercises: unknown[];
-}
-
-interface ApexEvent {
-  id: number;
-  title: string;
-  kind: string;
-  date: string;
-  endDate?: string | null;
-  priority: string;
-  taperDays: number | null;
-  note?: string | null;
 }
 
 interface DayLoad {
@@ -185,1175 +100,709 @@ interface DayLoad {
   acwr: number | null;
 }
 
-/* ----------------------------------------------------------- reference ranges */
-// Per spec: RHR 50-70, SpO₂ 95-100, respiration 12-20. Weight has no fixed
-// range — skip from the in-range count (treated as neutral/muted).
+interface GearItem {
+  id: number;
+  name: string;
+  gear_type: string;
+  usage_pct: number;
+  hours_since_service: number;
+  service_interval_hours: number | null;
+  km_since_service: number;
+  service_interval_km: number | null;
+}
+
+interface ApexEvent {
+  id: number;
+  title: string;
+  kind: string;
+  date: string;
+  priority: string;
+  taperDays: number | null;
+}
+
+interface GymPlanLite {
+  id: number;
+  title: string;
+  status: string;
+  adjustmentNote: string | null;
+  exercises: unknown[];
+}
+
 const RHR_RANGE = { low: 50, high: 70 };
 const SPO2_RANGE = { low: 95, high: 100 };
 const RESP_RANGE = { low: 12, high: 20 };
 
-// ACWR display band — for the bar's optimal-band highlight.
-const ACWR_VIEW = { low: 0.5, high: 2.0 };
-const ACWR_OPT = { low: 0.8, high: 1.3 };
+/* ----------------------------------------------------------- helpers */
 
-const TODAY_LOCAL = localToday(me.timezone);
-
-/* ----------------------------------------------------------- severity tone */
-function severityTone(sev: "info" | "warning" | "alert"): "neutral" | "warning" | "alert" {
-  if (sev === "alert") return "alert";
-  if (sev === "warning") return "warning";
-  return "neutral";
+function scoreWord(tone: "positive" | "warning" | "alert" | "muted"): string {
+  if (tone === "positive") return "Good";
+  if (tone === "warning") return "Watch";
+  if (tone === "alert") return "Low";
+  return "—";
 }
 
-function acwrStatusLine(t: DataTone, acwr: number | null): string {
-  if (acwr === null || !Number.isFinite(acwr)) return "No load data yet — connect Garmin to start the load pipeline.";
-  if (t === "positive") return "Within the 0.8–1.3 optimal band";
-  if (t === "alert") return "Above 1.5 — high injury-risk zone";
-  if (acwr < 0.8) return "Undertrained — load below the optimal band";
-  return "Elevated — approaching overreach";
+function acwrWord(tone: "positive" | "warning" | "alert" | "muted"): string {
+  if (tone === "positive") return "Optimal";
+  if (tone === "warning") return "Elevated";
+  if (tone === "alert") return "High risk";
+  return "—";
 }
 
-/** Map a DataTone to the Badge tone union — Badge has no `muted`, so map
- *  muted → neutral. Use this instead of `toneFor` for Badge components. */
-function badgeTone(t: DataTone): "neutral" | "positive" | "warning" | "alert" {
-  if (t === "positive") return "positive";
-  if (t === "warning") return "warning";
-  if (t === "alert") return "alert";
-  return "neutral";
+function fmtHoursFromSecs(s: number | null): string {
+  if (s === null) return "—";
+  return fmtHours(s);
 }
 
-function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "never";
-  const diffMs = Date.now() - then;
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  return `${months}mo ago`;
-}
+/* ----------------------------------------------------------- page */
 
-/* ============================================================== OverviewPage */
 export function OverviewPage() {
   const t = useT();
   const ui = useApexUi();
 
-  // ----- data state -------------------------------------------------------
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [load, setLoad] = useState<DayLoad[] | null>(null);
+  const [gearDue, setGearDue] = useState<GearItem[]>([]);
   const [plan, setPlan] = useState<GymPlanLite | null>(null);
   const [events, setEvents] = useState<ApexEvent[]>([]);
-  const [load, setLoad] = useState<DayLoad[] | null>(null);
-  const [gearAll, setGearAll] = useState<Gear[]>([]);
-  const [integrations, setIntegrations] = useState<IntegrationHealthItem[]>([]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to load dashboard");
-      setData(json.overview as OverviewData);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-      // graceful fallback to mock so the layout still renders
-      setData(mockOverview as unknown as OverviewData);
+      const r = await fetch("/api/dashboard", { cache: "no-store" });
+      const j = await r.json();
+      if (j?.ok) {
+        setData(j.overview as OverviewData);
+      } else {
+        setError(j?.error || "Failed to load");
+      }
+    } catch {
+      setError("Network error");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadPlan = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/gym/plan?date=${TODAY_LOCAL}`, { cache: "no-store" });
-      const json = await res.json();
-      if (json.ok && json.plan) {
-        setPlan({
-          id: json.plan.id,
-          date: json.plan.date,
-          title: json.plan.title,
-          status: json.plan.status,
-          adjustmentNote: json.plan.adjustmentNote,
-          exercises: json.plan.exercises ?? [],
-        });
-      }
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
-  const loadEvents = useCallback(async () => {
-    try {
-      const res = await fetch("/api/events", { cache: "no-store" });
-      const json = await res.json();
-      if (json.ok) setEvents(json.events);
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
-  const loadMetricsLoad = useCallback(async () => {
-    try {
-      const res = await fetch("/api/metrics/load?days=28", { cache: "no-store" });
-      const json = await res.json();
-      if (json.ok) setLoad(json.series);
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
-  const loadGear = useCallback(async () => {
-    try {
-      const res = await fetch("/api/gear", { cache: "no-store" });
-      const json = await res.json();
-      if (json.ok) setGearAll(json.gear);
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
-  const loadIntegrations = useCallback(async () => {
-    try {
-      const res = await fetch("/api/integrations", { cache: "no-store" });
-      const json = await res.json();
-      if (json.ok) setIntegrations(json.integrations);
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
   useEffect(() => {
     loadAll();
-    loadPlan();
-    loadEvents();
-    loadMetricsLoad();
-    loadGear();
-    loadIntegrations();
-  }, [loadAll, loadPlan, loadEvents, loadMetricsLoad, loadGear, loadIntegrations]);
+    // Load supporting data in parallel
+    (async () => {
+      try {
+        const [loadR, gearR, planR, eventsR] = await Promise.all([
+          fetch("/api/metrics/load?days=28").then((r) => r.json()).catch(() => null),
+          fetch("/api/gear").then((r) => r.json()).catch(() => null),
+          fetch(`/api/gym/plan?date=${localToday("Europe/Rome")}`).then((r) => r.json()).catch(() => null),
+          fetch("/api/events").then((r) => r.json()).catch(() => null),
+        ]);
+        if (loadR?.ok) setLoad(loadR.series);
+        if (gearR?.ok) {
+          const due = (gearR.gear as GearItem[])
+            .filter((g) => g.usage_pct >= 80)
+            .sort((a, b) => b.usage_pct - a.usage_pct)
+            .slice(0, 4);
+          setGearDue(due);
+        }
+        if (planR?.ok && planR.plan) {
+          setPlan({
+            id: planR.plan.id,
+            title: planR.plan.title,
+            status: planR.plan.status,
+            adjustmentNote: planR.plan.adjustmentNote,
+            exercises: planR.plan.exercises ?? [],
+          });
+        }
+        if (eventsR?.ok) setEvents(eventsR.events);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [loadAll]);
 
-  // ----- derived (all hooks must run before any early return) -------------
-  const todayIso = data?.date ?? TODAY_LOCAL;
+  // Derive the page sentence (principle 1: one answer)
+  const readinessValue = data?.readiness?.value ?? null;
+  const readinessTone = scoreTone(readinessValue);
+  const pageSentence = useMemo(() => {
+    const firstName = me.name.split(" ")[0] || "Matteo";
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    if (readinessValue === null) return `${greeting}, ${firstName}. Waiting for your first sync.`;
+    if (readinessTone === "positive") return `${greeting}, ${firstName}. You're ready. Train hard today.`;
+    if (readinessTone === "warning") return `${greeting}, ${firstName}. You're moderately ready. Keep today aerobic.`;
+    return `${greeting}, ${firstName}. You're below your baseline. Prioritise recovery today.`;
+  }, [readinessValue, readinessTone]);
 
-  // Row 1b — events within the next 14 days, sorted ascending.
-  const nextEvents = useMemo(() => {
+  const nextEvent = useMemo(() => {
+    const today = data?.date ?? localToday("Europe/Rome");
     return events
       .filter((e) => {
-        const d = dayDiff(todayIso, e.date);
+        const d = dayDiff(today, e.date);
         return d >= 0 && d <= 14;
       })
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [events, todayIso]);
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+  }, [events, data?.date]);
 
-  // Row 4 — Gear due for service (≥80% service interval). The full list
-  // belongs on the Gear page; this filters to the near/at-threshold items.
-  const gearDueList = useMemo(() => {
-    return gearAll
-      .map((g) => {
-        const hoursPct =
-          g.service_interval_hours && g.service_interval_hours > 0
-            ? (g.hours_since_service / g.service_interval_hours) * 100
-            : 0;
-        const kmPct =
-          g.service_interval_km && g.service_interval_km > 0
-            ? (g.km_since_service / g.service_interval_km) * 100
-            : 0;
-        return { gear: g, usagePct: Math.max(hoursPct, kmPct, g.usage_pct) };
-      })
-      .filter((x) => x.usagePct >= 80)
-      .sort((a, b) => b.usagePct - a.usagePct)
-      .slice(0, 5);
-  }, [gearAll]);
-
-  // ----- early return for loading state (AFTER all hooks have been called) -
   if (loading || !data) {
     return (
-      <div className="mx-auto max-w-[1240px] px-5 py-6 lg:px-8 lg:py-8">
-        <PageHeader title={t("overview.title")} subtitle={t("welcome.preview_overview")} />
-        <div className="mt-6">
-          <Loading label="Loading overview…" />
-        </div>
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <Loading label="Loading your overview…" />
       </div>
     );
   }
 
-  // ----- non-null `data` derivations -------------------------------------
-  // Tone computations — STATE, not accent. Strain is NEUTRAL — never
-  // positive/alert — handled inline via `tone="muted"` on its BigStat/ScoreBar.
-  const readinessTone = scoreTone(data.readiness.value);
-  const recoveryTone = scoreTone(data.recovery.value);
-  const sleepTone = scoreTone(data.sleep_score.value ?? data.sleep?.sleep_score ?? null);
-
-  const acwrValue = data.acwr;
-  const acwrT = acwrTone(acwrValue);
-  const acwrStatTone = toneFor(acwrT);
-
-  // HRV deviation (computed by /api/dashboard when hrv + 30d baseline exist).
-  // Available for a future "HRV vs baseline" tile on the biomarker strip;
-  // currently not surfaced in the spec's Row 2.
-  // Tone would be `hrvDevTone(data.hrv_deviation_pct, 8)` (imported from kit).
-
-  // Biomarker in-range check — compute the summary badge from real values.
-  // NULL values are "no data", not "in range" — so we count only the measured
-  // ones. The badge reads:
-  //   - "no data" (neutral) when none of RHR/SpO₂/Resp are present
-  //   - "X outside range" (alert) when any measured value is out-of-band
-  //   - "Y borderline" (warning) when any measured value is within 10% of a boundary
-  //   - "all normal" (positive) when every measured value sits cleanly in range
-  // Weight has no fixed range and is excluded from the count.
-  const rhrIn = rangeTone(data.resting_hr, RHR_RANGE.low, RHR_RANGE.high);
-  const spo2In = rangeTone(data.spo2_avg, SPO2_RANGE.low, SPO2_RANGE.high);
-  const respIn = rangeTone(data.respiration_avg, RESP_RANGE.low, RESP_RANGE.high);
-  const measuredStates: DataTone[] = [
-    data.resting_hr !== null ? rhrIn : null,
-    data.spo2_avg !== null ? spo2In : null,
-    data.respiration_avg !== null ? respIn : null,
-  ].filter((x): x is DataTone => x !== null);
-  const biomarkerOutOfRange = measuredStates.filter((s) => s === "alert").length;
-  const biomarkerBorderline = measuredStates.filter((s) => s === "warning").length;
-  let biomarkerSummaryTone: DataTone;
-  let biomarkerSummaryLabel: string;
-  if (measuredStates.length === 0) {
-    biomarkerSummaryTone = "muted";
-    biomarkerSummaryLabel = "no data";
-  } else if (biomarkerOutOfRange > 0) {
-    biomarkerSummaryTone = "alert";
-    biomarkerSummaryLabel = `${biomarkerOutOfRange} outside range`;
-  } else if (biomarkerBorderline > 0) {
-    biomarkerSummaryTone = "warning";
-    biomarkerSummaryLabel = `${biomarkerBorderline} borderline`;
-  } else {
-    biomarkerSummaryTone = "positive";
-    biomarkerSummaryLabel = "all normal";
+  if (error) {
+    return (
+      <div className="mx-auto max-w-[1100px] px-6 py-8">
+        <Card>
+          <div className="text-[20px] font-medium text-ink">Couldn't load your data</div>
+          <p className="mt-2 text-[14px] text-ink2">{error}</p>
+          <ApexButton variant="secondary" size="sm" className="mt-4" onClick={loadAll}>
+            Try again
+          </ApexButton>
+        </Card>
+      </div>
+    );
   }
 
-  // Row 0 — Needs attention: severity-sorted list of alerts (+ risk fields
-  // when the backend starts populating them). Render only when non-empty.
-  const sortedAlerts = [...data.alerts].sort((a, b) => {
-    const order = { alert: 0, warning: 1, info: 2 } as const;
-    return order[a.severity] - order[b.severity];
-  });
-  // TODO risk fields: illness_risk_score / injury_risk_score / iron_status_flag
-  // / cross_discipline_fatigue_index — when the backend exposes them, merge
-  // into this list client-side with tone-coloured badges.
+  const sleepTone = scoreTone(data.sleep_score.value ?? data.sleep?.sleep_score ?? null);
+  const acwrT = acwrTone(data.acwr);
+  const rhrTone = rangeTone(data.resting_hr, RHR_RANGE.low, RHR_RANGE.high);
+  const spo2Tone = rangeTone(data.spo2_avg, SPO2_RANGE.low, SPO2_RANGE.high);
+  const respTone = rangeTone(data.respiration_avg, RESP_RANGE.low, RESP_RANGE.high);
+  const hrvTone = hrvDevTone(data.hrv_deviation_pct, 8);
 
-  // Row 1b — Today's plan: render if gym plan exists OR there's an event in
-  // the next 14 days.
-  const nextEvent = nextEvents[0] ?? null;
-  const showRow1b = !!plan || !!nextEvent;
-
-  // Row 1b — "readiness fit" chip on Planned session
-  const readinessFit = computeReadinessFit(data.readiness.value, acwrValue);
-
-  // Row 3 — Sleep present?
-  const showSleep = !!data.sleep;
-
-  // Row 4 — Today's activities
-  const activities = data.activities;
-
-  // Row 4 — Integrations. If all healthy + recent, show a quiet "all synced"
-  // line; otherwise list each row with a red dot on failure.
-  const integrationsQuiet =
-    integrations.length > 0 &&
-    integrations.every((i) => i.status === "active" && i.consecutive_failures === 0);
+  const sleepStages = data.sleep?.stages;
+  const deepS = sleepStages?.deep_s ?? 0;
+  const remS = sleepStages?.rem_s ?? 0;
+  const lightS = sleepStages?.light_s ?? 0;
+  const awakeS = sleepStages?.awake_s ?? 0;
+  const totalSleepS = deepS + lightS + remS || 1;
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 py-6 lg:px-8 lg:py-8">
-      <PageHeader
-        title={t("overview.title")}
-        subtitle={t("welcome.preview_overview")}
-        actions={
-          <div className="flex items-center gap-2">
-            <ApexButton
-              variant="ghost"
-              size="sm"
-              onClick={() => window.print()}
-              icon={<Download size={13} />}
-            >
-              <span className="hidden sm:inline">{t("activities.export")}</span>
-            </ApexButton>
-            <ApexButton
-              variant="secondary"
-              size="sm"
-              onClick={() => ui.setView("biometrics")}
-              iconRight={<span aria-hidden>→</span>}
-            >
-              {t("nav.biometrics")}
-            </ApexButton>
-          </div>
-        }
-      />
-
-      {error && (
-        <div className="mt-3 rounded-[var(--radius-card)] border border-alert/40 bg-alertSoft px-3 py-2 text-[12px] text-alertText">
-          Could not reach the dashboard API — showing demo data. ({error})
-        </div>
-      )}
-
-      {/* ====================================================== ROW 0 — Needs attention */}
-      {sortedAlerts.length > 0 && (
-        <Card className="mt-4">
-          <CardHeader
-            eyebrow={
-              <span className="flex items-center gap-1.5">
-                <AlertTriangle size={12} className="text-alertText" />
-                Needs attention
-                {/* TODO i18n */}
-              </span>
-            }
-          />
-          <ul className="flex flex-col gap-2">
-            {sortedAlerts.map((a, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <Badge tone={severityTone(a.severity)} dot>
-                  {a.severity}
-                </Badge>
-                <span className="text-[13px] leading-relaxed text-ink2">{a.message}</span>
-              </li>
-            ))}
-            {/* TODO risk fields: illness_risk_score / injury_risk_score /
-                iron_status_flag / cross_discipline_fatigue_index — merge here
-                once the backend populates them. */}
-          </ul>
-        </Card>
-      )}
-
-      {/* ====================================================== ROW 1 — Readiness / Recovery / Strain */}
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-12">
-        {/* Readiness — headline size xl */}
-        <Card className="md:col-span-4">
-          <CardHeader
-            eyebrow={
-              <span className="flex items-center gap-1.5">
-                {t("overview.readiness_label")}
-                <InfoButton title={t("overview.readiness_label")}>
-                  <MetricInfoContent
-                    whatItMeasures={METRIC_EXPLANATIONS.readiness.whatItMeasures}
-                    whyItMatters={METRIC_EXPLANATIONS.readiness.whyItMatters}
-                    whatInfluencesIt={METRIC_EXPLANATIONS.readiness.whatInfluencesIt}
-                    howToReadIt={METRIC_EXPLANATIONS.readiness.howToReadIt}
-                  />
-                </InfoButton>
-              </span>
-            }
-            right={
-              <div className="flex items-center gap-1.5">
-                {data.data_completeness && data.data_completeness !== "full" && (
-                  <Badge tone="neutral">estimated</Badge>
-                )}
-                <DeltaChip
-                  delta={data.readiness.delta_7d}
-                  goodWhen="up"
-                  suffix={t("overview.vs7d")}
-                />
-              </div>
-            }
-          />
-          <BigStat
-            size="xl"
-            value={fmtNum(data.readiness.value, 0)}
-            unit="/100"
-            tone={readinessTone === "positive" ? "positive" : readinessTone === "warning" ? "warning" : readinessTone === "alert" ? "alert" : "muted"}
-          />
-          <div className="mt-3">
-            <ScoreBar value={data.readiness.value} tone={toneFor(readinessTone)} height={6} />
-          </div>
-        </Card>
-
-        {/* Recovery — size lg */}
-        <Card className="md:col-span-4">
-          <CardHeader
-            eyebrow={
-              <span className="flex items-center gap-1.5">
-                {t("overview.recovery_label")}
-                <InfoButton title={t("overview.recovery_label")}>
-                  <MetricInfoContent
-                    whatItMeasures={METRIC_EXPLANATIONS.recovery.whatItMeasures}
-                    whyItMatters={METRIC_EXPLANATIONS.recovery.whyItMatters}
-                    whatInfluencesIt={METRIC_EXPLANATIONS.recovery.whatInfluencesIt}
-                    howToReadIt={METRIC_EXPLANATIONS.recovery.howToReadIt}
-                  />
-                </InfoButton>
-              </span>
-            }
-            right={<DeltaChip delta={data.recovery.delta_7d} goodWhen="up" suffix={t("overview.vs7d")} />}
-          />
-          <BigStat
-            size="lg"
-            value={fmtNum(data.recovery.value, 0)}
-            unit="/100"
-            tone={recoveryTone === "positive" ? "positive" : recoveryTone === "warning" ? "warning" : recoveryTone === "alert" ? "alert" : "muted"}
-          />
-          <div className="mt-3">
-            <ScoreBar value={data.recovery.value} tone={toneFor(recoveryTone)} height={6} />
-          </div>
-        </Card>
-
-        {/* Strain — size lg, NEUTRAL tone */}
-        <Card className="md:col-span-4">
-          <CardHeader
-            eyebrow={
-              <span className="flex items-center gap-1.5">
-                {t("overview.strain_label")}
-                <InfoButton title={t("overview.strain_label")}>
-                  <MetricInfoContent
-                    whatItMeasures={METRIC_EXPLANATIONS.strain.whatItMeasures}
-                    whyItMatters={METRIC_EXPLANATIONS.strain.whyItMatters}
-                    whatInfluencesIt={METRIC_EXPLANATIONS.strain.whatInfluencesIt}
-                    howToReadIt={METRIC_EXPLANATIONS.strain.howToReadIt}
-                  />
-                </InfoButton>
-              </span>
-            }
-            right={<DeltaChip delta={data.strain.delta_7d} goodWhen="none" suffix={t("overview.vs7d")} />}
-          />
-          <BigStat
-            size="lg"
-            value={fmtNum(data.strain.value, 0)}
-            unit="/100"
-            tone="muted"
-          />
-          <div className="mt-3">
-            <ScoreBar value={data.strain.value} tone="muted" height={6} />
-          </div>
-          <div className="num mt-2 text-[10px] text-faint">
-            {/* TODO i18n */}
-            neutral — high strain isn&apos;t bad
-          </div>
-        </Card>
+    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+      {/* ====== GREETING (principle 1: one answer) ====== */}
+      <div>
+        <h1 className="page-title">Overview</h1>
+        <PageSentence className="mt-2">{pageSentence}</PageSentence>
       </div>
 
-      {/* ====================================================== ROW 1b — Today's plan */}
-      {showRow1b && (
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-12">
-          {/* Planned session */}
-          {plan && (
-            <Card className="md:col-span-7">
-              <CardHeader
-                eyebrow={
-                  <span className="flex items-center gap-1.5">
-                    <Dumbbell size={12} />
-                    Today&apos;s plan
-                    {/* TODO i18n */}
-                  </span>
-                }
-                right={
-                  <Badge tone={plan.status === "active" ? "positive" : "neutral"}>
-                    {plan.status}
-                  </Badge>
-                }
+      {/* ====== HERO — Readiness ring (principle 2: one hero, 2× anything) ====== */}
+      <Card>
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-8">
+            {/* Readiness ring — the hero */}
+            <ReadinessRing value={readinessValue} tone={readinessTone} />
+            <div>
+              <div className="text-[14px] font-medium text-ink2">Readiness</div>
+              <div className="mt-1 flex items-center gap-3">
+                <StatusDot tone={readinessTone === "positive" ? "ok" : readinessTone === "warning" ? "watch" : readinessTone === "alert" ? "alert" : "neutral"} label={scoreWord(readinessTone)} />
+                {data.readiness.delta_7d !== null && (
+                  <DeltaChip delta={data.readiness.delta_7d} goodWhen="up" suffix="vs 7d" />
+                )}
+              </div>
+              <div className="mt-2 text-[14px] text-ink2">
+                {readinessTone === "positive" && "Your body is handling load well. A hard session is in range."}
+                {readinessTone === "warning" && "Recovery is partial. Keep the session aerobic or skill-focused."}
+                {readinessTone === "alert" && "You're below your baseline. Prioritise sleep and easy movement."}
+                {readinessTone === "muted" && "Sync your devices to see your readiness score."}
+              </div>
+            </div>
+          </div>
+
+          {/* Recovery + Strain as small rings */}
+          <div className="flex gap-6 sm:gap-8">
+            <MiniRing label="Recovery" value={data.recovery.value} tone={scoreTone(data.recovery.value)} />
+            <MiniRing label="Strain" value={data.strain.value} tone="neutral" neutral />
+          </div>
+        </div>
+
+        {/* What's driving it (principle 1: the answer + the why) */}
+        {readinessValue !== null && (
+          <div className="mt-8">
+            <div className="mb-3 text-[14px] font-medium text-ink2">What's driving it</div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Driver
+                label="Sleep"
+                value={data.sleep_score.value !== null ? `${Math.round(data.sleep_score.value)}` : "—"}
+                unit="/100"
+                tone={sleepTone}
               />
-              <button
-                type="button"
+              <Driver
+                label="HRV"
+                value={data.hrv_ms !== null ? `${Math.round(data.hrv_ms)}` : "—"}
+                unit="ms"
+                tone={hrvTone}
+              />
+              <Driver
+                label="Resting HR"
+                value={data.resting_hr !== null ? `${data.resting_hr}` : "—"}
+                unit="bpm"
+                tone={rhrTone}
+              />
+              <Driver
+                label="Load"
+                value={data.acwr !== null ? `${data.acwr.toFixed(2)}` : "—"}
+                unit="ACWR"
+                tone={acwrT}
+              />
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* ====== 3 FACTS (principle: slim row of 3 facts, always right under hero) ====== */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+        {/* Today's plan */}
+        <Card>
+          <div className="text-[14px] font-medium text-ink2">Today's plan</div>
+          {plan ? (
+            <div className="mt-3">
+              <div className="text-[20px] font-semibold text-ink">{plan.title}</div>
+              <div className="mt-1 text-[14px] text-ink2">
+                {plan.status === "confirmed" ? "Confirmed" : "Draft"} · {plan.exercises.length} exercises
+              </div>
+              {plan.adjustmentNote && (
+                <div className="mt-2 text-[13px] text-ink2">{plan.adjustmentNote}</div>
+              )}
+              <ApexButton
+                variant="ghost"
+                size="sm"
+                className="mt-3"
+                iconRight={<ChevronRight size={12} />}
                 onClick={() => ui.setView("training")}
-                className="group block w-full text-left"
               >
-                <div className="text-[15px] font-semibold text-ink group-hover:text-primaryText">
-                  {plan.title}
-                </div>
-                <div className="num mt-1 text-[11px] text-muted">
-                  {Array.isArray(plan.exercises) ? plan.exercises.length : 0} exercises · {plan.date}
-                </div>
-                {plan.adjustmentNote && (
-                  <div className="mt-2 text-[12px] leading-relaxed text-muted line-clamp-2">
-                    {plan.adjustmentNote}
-                  </div>
-                )}
-                <Hairline className="my-3" />
-                <ReadinessFitChip
-                  label={readinessFit.label}
-                  tone={readinessFit.tone}
-                />
-                <div className="num mt-2 flex items-center gap-1 text-[11px] text-primaryText">
-                  Open in Training
-                  <ChevronRight size={11} className="transition-transform group-hover:translate-x-0.5" />
-                </div>
-              </button>
-            </Card>
-          )}
-
-          {/* Next event */}
-          {nextEvent && (
-            <Card className={plan ? "md:col-span-5" : "md:col-span-12"}>
-              <CardHeader
-                eyebrow={
-                  <span className="flex items-center gap-1.5">
-                    <Calendar size={12} />
-                    Next event
-                    {/* TODO i18n */}
-                  </span>
-                }
-              />
-              <NextEventBlock event={nextEvent} otherEvents={nextEvents.slice(1, 3)} todayIso={todayIso} />
-            </Card>
-          )}
-
-          {/* Weather window — HIDDEN (no weather route exists). */}
-          {/* TODO weather window — needs /api/weather/forecast */}
-          {!plan && !nextEvent && (
-            <Card className="md:col-span-12">
-              <div className="flex items-center gap-2 text-[12px] text-muted">
-                <CloudOff size={14} />
-                {/* TODO i18n */}
-                No weather forecast available.
-              </div>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ====================================================== ROW 2 — Load & vitals */}
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* ACWR / load card */}
-        <Card className="xl:col-span-8">
-          <CardHeader
-            eyebrow={
-              <span className="flex items-center gap-1.5">
-                {t("overview.acwr_title")}
-                <ChartInfoBadge text={
-                  <span>
-                    <strong className="text-ink2">Acute load</strong> (bars) = your training load over the last 7 days — current fatigue.{" "}
-                    <strong className="text-ink2">Chronic load</strong> (line) = 28-day rolling average — your fitness base.{" "}
-                    <strong className="text-ink2">ACWR</strong> = acute ÷ chronic. 0.8–1.3 is the optimal zone; above 1.5 is high injury-risk.
-                  </span>
-                } />
-              </span>
-            }
-            right={
-              <span className="num text-[10px] text-faint">
-                {t("overview.optimal_window")}: {fmtNum(ACWR_OPT.low, 2)}–{fmtNum(ACWR_OPT.high, 2)}
-              </span>
-            }
-          />
-          <div className="flex items-baseline gap-3">
-            <BigStat
-              value={fmtNum(acwrValue, 2)}
-              unit="ratio"
-              size="lg"
-              tone={acwrStatTone === "positive" ? "positive" : acwrStatTone === "warning" ? "warning" : acwrStatTone === "alert" ? "alert" : "muted"}
-            />
-          </div>
-
-          {/* ACWR band indicator — optimal band highlighted, current marker */}
-          {acwrValue !== null && Number.isFinite(acwrValue) && (
-            <div className="num mt-4">
-              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface3">
-                <div
-                  className="absolute inset-y-0 bg-positiveSoft"
-                  style={{
-                    left: `${((ACWR_OPT.low - ACWR_VIEW.low) / (ACWR_VIEW.high - ACWR_VIEW.low)) * 100}%`,
-                    width: `${((ACWR_OPT.high - ACWR_OPT.low) / (ACWR_VIEW.high - ACWR_VIEW.low)) * 100}%`,
-                  }}
-                />
-                <div
-                  className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-full bg-ink"
-                  style={{
-                    left: `${Math.max(0, Math.min(100, ((acwrValue - ACWR_VIEW.low) / (ACWR_VIEW.high - ACWR_VIEW.low)) * 100))}%`,
-                  }}
-                />
-              </div>
-              <div className="mt-1.5 flex justify-between text-[9px] text-faint">
-                <span>0.5</span>
-                <span>1.0</span>
-                <span>1.5</span>
-                <span>2.0</span>
-              </div>
+                Open training
+              </ApexButton>
+            </div>
+          ) : (
+            <div className="mt-3">
+              <div className="text-[16px] text-ink2">Rest day</div>
+              <ApexButton
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => ui.setView("training")}
+              >
+                Generate a plan
+              </ApexButton>
             </div>
           )}
-
-          {/* 28-day acute (bar) / chronic (line) chart with interactive hover */}
-          <div className="mt-4">
-            {load && load.length > 0 ? (
-              <InteractiveLoadChart series={load} />
-            ) : (
-              <div className="rounded-[var(--radius-card)] border border-dashed border-hairline2 px-4 py-6 text-center text-[12px] text-muted">
-                {/* TODO i18n */}
-                No load data yet — connect Garmin to populate the 28-day chart.
-              </div>
-            )}
-          </div>
-
-          {/* Stat trio */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <StatPod label={t("overview.acute_load")} value={fmtNum(data.acute_load, 0)} unit="TSS" sub="7-day sum" />
-            <StatPod label={t("overview.chronic_load")} value={fmtNum(data.chronic_load, 0)} unit="TSS" sub="28-day mean" />
-            <StatPod
-              label={t("overview.acwr_index")}
-              value={fmtNum(acwrValue, 2)}
-              tone={acwrStatTone === "positive" ? "positive" : acwrStatTone === "warning" ? "warning" : acwrStatTone === "alert" ? "alert" : "ink"}
-            />
-          </div>
-
-          {/* Tone-reactive status line — FIXES the "no overreach" bug */}
-          <div
-            className={`mt-3 text-[12px] ${
-              acwrT === "positive"
-                ? "text-positiveText"
-                : acwrT === "warning"
-                ? "text-warningText"
-                : acwrT === "alert"
-                ? "text-alertText"
-                : "text-muted"
-            }`}
-          >
-            {acwrStatusLine(acwrT, acwrValue)}
-          </div>
         </Card>
 
-        {/* Biomarker strip */}
-        <Card className="xl:col-span-4">
-          <CardHeader
-            eyebrow={t("overview.biomarkers")}
-            right={<Badge tone={badgeTone(biomarkerSummaryTone)} dot>{biomarkerSummaryLabel}</Badge>}
-          />
-          <div className="flex flex-col gap-3">
-            <BiomarkerTile
-              label={t("overview.resting_hr")}
-              value={data.resting_hr}
-              unit="bpm"
-              range={RHR_RANGE}
-              tone={toneFor(rhrIn)}
-              delta={data.resting_hr_delta_7d}
-              goodWhen="down"
-              info={METRIC_EXPLANATIONS.resting_hr}
-              infoTitle={t("overview.resting_hr")}
-            />
-            <BiomarkerTile
-              label={t("overview.spo2")}
-              value={data.spo2_avg}
-              unit="%"
-              range={SPO2_RANGE}
-              tone={toneFor(spo2In)}
-              delta={data.spo2_delta_7d}
-              goodWhen="up"
-              info={METRIC_EXPLANATIONS.spo2_avg}
-              infoTitle={t("overview.spo2")}
-            />
-            <BiomarkerTile
-              label={t("overview.respiration")}
-              value={data.respiration_avg}
-              unit="brpm"
-              range={RESP_RANGE}
-              tone={toneFor(respIn)}
-              info={METRIC_EXPLANATIONS.respiration_avg}
-              infoTitle={t("overview.respiration")}
-            />
-            <BiomarkerTile
-              label={t("overview.weight_kg")}
-              value={data.weight_kg}
-              unit="kg"
-              range={null}
-              tone="muted"
-              info={METRIC_EXPLANATIONS.weight_kg}
-              infoTitle={t("overview.weight_kg")}
-            />
-          </div>
+        {/* Next event */}
+        <Card>
+          <div className="text-[14px] font-medium text-ink2">Next event</div>
+          {nextEvent ? (
+            <div className="mt-3">
+              <div className="text-[20px] font-semibold text-ink">{nextEvent.title}</div>
+              <div className="mt-1 text-[14px] text-ink2">
+                {fmtDate(nextEvent.date, ui.locale)} · in {dayDiff(data.date, nextEvent.date)} days
+              </div>
+              {nextEvent.taperDays && nextEvent.taperDays > 0 && (
+                <div className="mt-2">
+                  <StatusDot tone="watch" label={`Taper · ${nextEvent.taperDays} days`} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-3 text-[16px] text-ink2">No events in the next 14 days</div>
+          )}
+        </Card>
+
+        {/* Gear due */}
+        <Card>
+          <div className="text-[14px] font-medium text-ink2">Gear due for service</div>
+          {gearDue.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {gearDue.slice(0, 2).map((g) => (
+                <div key={g.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[14px] text-ink">{g.name}</span>
+                  <StatusDot
+                    tone={g.usage_pct >= 100 ? "alert" : "watch"}
+                    label={`${Math.round(g.usage_pct)}%`}
+                  />
+                </div>
+              ))}
+              <ApexButton
+                variant="ghost"
+                size="sm"
+                className="mt-1"
+                iconRight={<ChevronRight size={12} />}
+                onClick={() => ui.setView("gear")}
+              >
+                View all gear
+              </ApexButton>
+            </div>
+          ) : (
+            <div className="mt-3 text-[16px] text-ink2">Nothing due soon</div>
+          )}
         </Card>
       </div>
 
-      {/* ====================================================== ROW 3 — Last night's sleep (compact, data-dense) */}
-      {showSleep && data.sleep && (
-        <Card className="mt-4" pad>
-          <CardHeader
-            eyebrow={t("overview.last_night")}
-            right={
-              <div className="flex items-center gap-1.5">
-                <DeltaChip delta={data.sleep_score.delta_7d} goodWhen="up" suffix={t("overview.vs7d")} />
-                <ApexButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    ui.selectSleepDate(data.date);
-                    ui.setView("sleep-night");
-                  }}
-                  iconRight={<ChevronRight size={11} />}
-                >
-                  {/* TODO i18n */}
-                  Open night
-                </ApexButton>
+      {/* ====== TRAINING LOAD (principle 8: one line + normal band) ====== */}
+      <Card>
+        <Section label="Training load">
+          <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-6">
+              <div>
+                <div className="num text-[40px] font-semibold leading-none text-ink">
+                  {data.acwr !== null ? data.acwr.toFixed(2) : "—"}
+                </div>
+                <div className="mt-1 text-[14px] text-ink2">ACWR</div>
               </div>
-            }
-          />
-          <button
-            type="button"
-            onClick={() => { ui.selectSleepDate(data.date); ui.setView("sleep"); }}
-            className="group block w-full text-left"
-          >
-            {/* Compact 4-column layout: Score | Total | Stages (bar + values) | Vitals */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {/* Col 1 — Sleep score */}
-              <div className="flex flex-col justify-center">
-                <Eyebrow>{t("overview.sleep_score")}</Eyebrow>
-                <div className="num mt-0.5 flex items-baseline gap-1">
-                  <span
-                    className={`text-[32px] font-bold leading-none tabular-nums ${
-                      sleepTone === "positive" ? "text-positiveText" : sleepTone === "warning" ? "text-warningText" : sleepTone === "alert" ? "text-alertText" : "text-ink"
-                    }`}
-                  >
-                    {fmtNum(data.sleep?.sleep_score ?? 0, 0)}
-                  </span>
-                  <span className="text-[11px] font-medium text-muted">/100</span>
-                </div>
-                <div className="mt-2">
-                  <ScoreBar value={data.sleep?.sleep_score ?? null} tone={toneFor(sleepTone)} height={4} />
-                </div>
-              </div>
-
-              {/* Col 2 — Total sleep + window */}
-              <div className="flex flex-col justify-center">
-                <Eyebrow>{t("sleep.total")}</Eyebrow>
-                <div className="num mt-0.5 text-[24px] font-bold leading-none tabular-nums text-ink">
-                  {fmtHours(data.sleep?.total_sleep_s ?? null)}
-                </div>
-                <div className="num mt-1.5 text-[10px] text-muted">
-                  <span className="text-faint">Window </span>
-                  {fmtHours((data.sleep?.end_time ? new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime() : 0) / 1000)}
-                </div>
-                <div className="num mt-0.5 text-[10px] text-muted">
-                  <span className="text-faint">Efficiency </span>
-                  {(() => {
-                    const total = data.sleep?.total_sleep_s ?? 0;
-                    const window = data.sleep?.end_time ? (new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime()) / 1000 : 0;
-                    return window > 0 ? `${Math.round((total / window) * 100)}%` : "—";
-                  })()}
-                </div>
-              </div>
-
-              {/* Col 3 — Stage composition bar + values */}
-              <div className="col-span-2 sm:col-span-2">
-                <Eyebrow>{/* TODO i18n */}Composition</Eyebrow>
-                <SleepStageBar sleep={data.sleep} />
-                <div className="num mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
-                  {(() => {
-                    const s = data.sleep!;
-                    const deep = s.stages.deep_s ?? 0;
-                    const rem = s.stages.rem_s ?? 0;
-                    const light = s.stages.light_s ?? 0;
-                    const awake = s.stages.awake_s ?? 0;
-                    const total = deep + light + rem || 1;
-                    const stages = [
-                      { label: "Deep", v: deep, color: "var(--c-stage-deep)" },
-                      { label: "REM", v: rem, color: "var(--c-stage-rem)" },
-                      { label: "Light", v: light, color: "var(--c-stage-core)" },
-                      { label: "Awake", v: awake, color: "var(--c-stage-awake)" },
-                    ];
-                    return stages.map((st) => (
-                      <div key={st.label} className="flex items-center justify-between gap-1">
-                        <span className="flex items-center gap-1 text-muted">
-                          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
-                          {st.label}
-                        </span>
-                        <span className="font-medium text-ink2">
-                          {fmtHours(st.v)} <span className="text-faint">· {Math.round((st.v / total) * 100)}%</span>
-                        </span>
-                      </div>
-                    ));
-                  })()}
+              <div>
+                <StatusDot
+                  tone={acwrT === "positive" ? "ok" : acwrT === "warning" ? "watch" : acwrT === "alert" ? "alert" : "neutral"}
+                  label={acwrWord(acwrT)}
+                />
+                <div className="mt-1 text-[14px] text-ink2">
+                  Acute {fmtNum(data.acute_load, 0)} · Chronic {fmtNum(data.chronic_load, 0)}
                 </div>
               </div>
             </div>
-
-            {/* Vitals row — compact strip */}
-            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-hairline pt-2.5 text-[11px]">
-              <span className="flex items-center gap-1 text-muted">
-                <span className="text-faint">{t("sleep.respiration")}</span>
-                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.respiration_avg ?? null, 1) ?? "—"}</span>
-                <span className="text-faint">brpm</span>
-              </span>
-              <span className="flex items-center gap-1 text-muted">
-                <span className="text-faint">{t("sleep.spo2")}</span>
-                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.spo2_avg ?? null, 1) ?? "—"}</span>
-                <span className="text-faint">%</span>
-              </span>
-              <span className="flex items-center gap-1 text-muted">
-                <span className="text-faint">{t("sleep.restlessness")}</span>
-                <span className="num font-semibold text-ink2">{fmtNum(data.sleep?.restlessness ?? null, 0) ?? "—"}%</span>
-              </span>
-              <span className="num text-faint">
-                {fmtClock(data.sleep?.start_time ?? null, ui.locale)} → {fmtClock(data.sleep?.end_time ?? null, ui.locale)}
-              </span>
-            </div>
-          </button>
-        </Card>
-      )}
-
-      {/* ====================================================== ROW 4 — Logs & status */}
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-12">
-        {/* Today's activities */}
-        <Card className="md:col-span-5">
-          <CardHeader eyebrow={t("overview.calibrated")} />
-          {activities.length === 0 ? (
-            <Empty title={t("overview.no_activities")} />
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {activities.map((a) => (
-                <li key={a.id}>
-                  <button
-                    type="button"
-                    onClick={() => { ui.selectActivity(a.id); ui.setView("activity-detail"); }}
-                    className="group flex w-full items-start gap-2.5 rounded-[var(--radius-card)] border border-hairline bg-surface2 p-2.5 text-left transition-colors hover:border-hairline2"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface3 text-muted transition-colors group-hover:bg-primarySoft group-hover:text-primaryText">
-                      <SportIcon discipline={a.discipline} size={14} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-semibold leading-tight text-ink" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                        {a.title}
-                      </div>
-                      <div className="num mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted">
-                        <span>{friendlyDiscipline(a.discipline, ui.locale)}</span>
-                        <span aria-hidden className="text-faint">·</span>
-                        <span>{fmtClock(a.start_time, ui.locale)}</span>
-                        <span aria-hidden className="text-faint">·</span>
-                        <Badge tone="neutral">{fmtDuration(a.duration_s)}</Badge>
-                        {a.distance_m !== null && (
-                          <><span aria-hidden className="text-faint">·</span><span>{fmtDistance(a.distance_m, "metric", 1)} km</span></>
-                        )}
-                        {a.avg_hr !== null && (
-                          <><span aria-hidden className="text-faint">·</span><span>{a.avg_hr} bpm</span></>
-                        )}
-                        {a.training_load !== null && (
-                          <><span aria-hidden className="text-faint">·</span><span>{fmtNum(a.training_load, 0)} TSS</span></>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight size={12} className="mt-1 shrink-0 text-faint transition-colors group-hover:text-ink" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {/* Gear due for service */}
-        {gearDueList.length > 0 && (
-          <Card className="md:col-span-7">
-            <CardHeader
-              eyebrow={
-                <span className="flex items-center gap-1.5">
-                  <Wrench size={12} />
-                  Gear due for service
-                  {/* TODO i18n */}
+            <ChartInfoBadge
+              text={
+                <span>
+                  <strong className="text-ink2">Acute load</strong> = 7-day training load (fatigue).{" "}
+                  <strong className="text-ink2">Chronic load</strong> = 28-day average (fitness base).{" "}
+                  <strong className="text-ink2">ACWR</strong> = acute ÷ chronic. 0.8–1.3 optimal; above 1.5 high injury-risk.
                 </span>
               }
-              right={
-                <ApexButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => ui.setView("gear")}
-                  iconRight={<ChevronRight size={11} />}
-                >
-                  {/* TODO i18n */}
-                  All
-                </ApexButton>
-              }
             />
-            <ul className="flex flex-col gap-3">
-              {gearDueList.map(({ gear, usagePct }) => {
-                const gearTone: DataTone = usagePct >= 100 ? "alert" : usagePct >= 90 ? "warning" : "positive";
-                const hoursLeft =
-                  gear.service_interval_hours != null
-                    ? Math.max(0, gear.service_interval_hours - gear.hours_since_service)
-                    : null;
-                const kmLeft =
-                  gear.service_interval_km != null
-                    ? Math.max(0, gear.service_interval_km - gear.km_since_service)
-                    : null;
-                return (
-                  <li key={gear.id}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold text-ink">{gear.name}</div>
-                        <div className="num text-[10px] text-faint">
-                          {gear.gear_type}
-                          {gear.brand ? ` · ${gear.brand}` : ""}
-                        </div>
-                      </div>
-                      <Badge tone={badgeTone(gearTone)} dot>
-                        {Math.round(usagePct)}%
-                      </Badge>
-                    </div>
-                    <div className="mt-1.5">
-                      <ScoreBar value={usagePct} tone={toneFor(gearTone)} height={4} />
-                    </div>
-                    <div className="num mt-1 text-[10px] text-muted">
-                      {hoursLeft !== null && `~${fmtNum(hoursLeft, 0)} hrs to service`}
-                      {hoursLeft !== null && kmLeft !== null && " · "}
-                      {kmLeft !== null && `~${fmtNum(kmLeft, 0)} km to service`}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </Card>
-        )}
+          </div>
 
-        {/* Integration health — REMOVED per user request ("I don't need it.
-            Let's keep that in the settings or in the top bar"). The gear card
-            now spans the remaining width. */}
-      </div>
+          {load && load.length > 0 ? (
+            <div className="mt-6">
+              <InteractiveComboChart
+                categories={load.map((d) => ({ label: d.date.slice(5) }))}
+                bars={{
+                  name: "Acute (7d)",
+                  color: "var(--c-accent)",
+                  values: load.map((d) => d.acute ?? 0),
+                }}
+                lines={[
+                  {
+                    name: "Chronic (28d)",
+                    color: "var(--c-text-3)",
+                    values: load.map((d) => d.chronic ?? 0),
+                  },
+                ]}
+                height={140}
+                formatBarValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
+                formatLineValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
+              />
+              <ChartLegend
+                className="mt-3"
+                items={[
+                  { name: "Acute load (7-day fatigue)", color: "var(--c-accent)" },
+                  { name: "Chronic load (28-day base)", color: "var(--c-text-3)" },
+                ]}
+              />
+            </div>
+          ) : (
+            <div className="mt-6 text-[14px] text-ink2">
+              No load history yet. Sync your devices to populate the chart.
+            </div>
+          )}
+        </Section>
+      </Card>
 
-      {/* ------------------------------------------------- date stamp */}
-      <div className="num mt-4 text-right text-[10px] text-faint">
-        {fmtDate(data.date, ui.locale)}
+      {/* ====== BODY SIGNALS (principle 9: rows, not cards) ====== */}
+      <Card>
+        <Section label="Body signals">
+          <div className="divide-y divide-[var(--c-divider)]">
+            <Row
+              label="Resting heart rate"
+              value={data.resting_hr !== null ? data.resting_hr : "—"}
+              unit="bpm"
+              status={
+                <StatusDot
+                  tone={rhrTone === "positive" ? "ok" : rhrTone === "warning" ? "watch" : rhrTone === "alert" ? "alert" : "neutral"}
+                  label={rhrTone === "positive" ? "In range" : rhrTone === "warning" ? "Borderline" : rhrTone === "alert" ? "Out of range" : "—"}
+                />
+              }
+              spark={
+                data.resting_hr_delta_7d !== null ? (
+                  <DeltaChip delta={data.resting_hr_delta_7d} goodWhen="down" compact />
+                ) : null
+              }
+              onClick={() => { ui.selectMetric("resting_hr"); ui.setView("metric"); }}
+            />
+            <Row
+              label="SpO₂"
+              value={data.spo2_avg !== null ? data.spo2_avg.toFixed(1) : "—"}
+              unit="%"
+              status={
+                <StatusDot
+                  tone={spo2Tone === "positive" ? "ok" : spo2Tone === "warning" ? "watch" : spo2Tone === "alert" ? "alert" : "neutral"}
+                  label={spo2Tone === "positive" ? "In range" : spo2Tone === "warning" ? "Borderline" : spo2Tone === "alert" ? "Low" : "—"}
+                />
+              }
+              onClick={() => { ui.selectMetric("spo2_avg"); ui.setView("metric"); }}
+            />
+            <Row
+              label="Respiration"
+              value={data.respiration_avg !== null ? data.respiration_avg.toFixed(1) : "—"}
+              unit="brpm"
+              status={
+                <StatusDot
+                  tone={respTone === "positive" ? "ok" : respTone === "warning" ? "watch" : respTone === "alert" ? "alert" : "neutral"}
+                  label={respTone === "positive" ? "In range" : respTone === "warning" ? "Borderline" : respTone === "alert" ? "Out of range" : "—"}
+                />
+              }
+              onClick={() => { ui.selectMetric("respiration_avg"); ui.setView("metric"); }}
+            />
+            <Row
+              label="HRV"
+              value={data.hrv_ms !== null ? Math.round(data.hrv_ms) : "—"}
+              unit="ms"
+              status={
+                <StatusDot
+                  tone={hrvTone === "positive" ? "ok" : hrvTone === "warning" ? "watch" : hrvTone === "alert" ? "alert" : "neutral"}
+                  label={hrvTone === "positive" ? "On baseline" : hrvTone === "warning" ? "Slightly off" : hrvTone === "alert" ? "Below baseline" : "—"}
+                />
+              }
+              onClick={() => { ui.selectMetric("hrv_ms"); ui.setView("metric"); }}
+            />
+            <Row
+              label="Weight"
+              value={data.weight_kg !== null ? data.weight_kg.toFixed(1) : "—"}
+              unit="kg"
+              onClick={() => { ui.selectMetric("weight_kg"); ui.setView("metric"); }}
+            />
+          </div>
+        </Section>
+      </Card>
+
+      {/* ====== LAST NIGHT (compact: one stage bar + 5 numbers) ====== */}
+      {data.sleep && (
+        <Card>
+          <Section label="Last night">
+            <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline gap-6">
+                <div>
+                  <div className="num text-[40px] font-semibold leading-none text-ink">
+                    {data.sleep_score.value !== null ? Math.round(data.sleep_score.value) : (data.sleep.sleep_score ?? "—")}
+                  </div>
+                  <div className="mt-1 text-[14px] text-ink2">Sleep score</div>
+                </div>
+                <div>
+                  <StatusDot
+                    tone={sleepTone === "positive" ? "ok" : sleepTone === "warning" ? "watch" : sleepTone === "alert" ? "alert" : "neutral"}
+                    label={scoreWord(sleepTone)}
+                  />
+                  {data.sleep_score.delta_7d !== null && (
+                    <div className="mt-1">
+                      <DeltaChip delta={data.sleep_score.delta_7d} goodWhen="up" compact />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <ApexButton
+                variant="ghost"
+                size="sm"
+                iconRight={<ChevronRight size={12} />}
+                onClick={() => { ui.selectSleepDate(data.date); ui.setView("sleep-night"); }}
+              >
+                Open night
+              </ApexButton>
+            </div>
+
+            {/* Stage bar — one horizontal bar, honest */}
+            <div className="mt-6">
+              <div className="flex h-3 overflow-hidden rounded-full bg-surface2">
+                {[
+                  { v: deepS, color: "var(--c-stage-deep)" },
+                  { v: remS, color: "var(--c-stage-rem)" },
+                  { v: lightS, color: "var(--c-stage-core)" },
+                ].map((s, i) => (
+                  <div key={i} style={{ width: `${(s.v / totalSleepS) * 100}%`, background: s.color }} />
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[13px]">
+                <span className="flex items-center gap-1.5 text-ink2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--c-stage-deep)" }} />
+                  Deep {fmtHoursFromSecs(deepS)} · {Math.round((deepS / totalSleepS) * 100)}%
+                </span>
+                <span className="flex items-center gap-1.5 text-ink2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--c-stage-rem)" }} />
+                  REM {fmtHoursFromSecs(remS)} · {Math.round((remS / totalSleepS) * 100)}%
+                </span>
+                <span className="flex items-center gap-1.5 text-ink2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--c-stage-core)" }} />
+                  Light {fmtHoursFromSecs(lightS)} · {Math.round((lightS / totalSleepS) * 100)}%
+                </span>
+                <span className="flex items-center gap-1.5 text-ink2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--c-stage-awake)" }} />
+                  Awake {fmtHoursFromSecs(awakeS)}
+                </span>
+              </div>
+            </div>
+
+            {/* 5 numbers */}
+            <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-5">
+              <Fact label="Total" value={fmtHoursFromSecs(data.sleep.total_sleep_s)} />
+              <Fact label="Window" value={fmtHoursFromSecs(data.sleep.end_time && data.sleep.start_time ? (new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime()) / 1000 : 0)} />
+              <Fact label="Bedtime" value={fmtClock(data.sleep.start_time, ui.locale)} />
+              <Fact label="Wake" value={fmtClock(data.sleep.end_time, ui.locale)} />
+              <Fact label="Efficiency" value={data.sleep.total_sleep_s && data.sleep.end_time ? `${Math.round((data.sleep.total_sleep_s / ((new Date(data.sleep.end_time).getTime() - new Date(data.sleep.start_time).getTime()) / 1000)) * 100)}%` : "—"} />
+            </div>
+          </Section>
+        </Card>
+      )}
+
+      {/* ====== TODAY'S ACTIVITIES (list, not cards) ====== */}
+      {data.activities.length > 0 && (
+        <Card>
+          <Section label="Today's activities">
+            <div className="space-y-3">
+              {data.activities.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => { ui.selectActivity(a.id); ui.setView("activity-detail"); }}
+                  className="flex w-full items-center gap-4 py-2 text-left transition-colors hover:bg-surface2 rounded-[var(--radius-control)] px-2 -mx-2"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-surface2 text-ink2">
+                    <SportIcon discipline={a.discipline} size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[16px] font-medium text-ink">{a.title}</div>
+                    <div className="text-[13px] text-ink2">
+                      {friendlyDiscipline(a.discipline, ui.locale)} · {fmtClock(a.start_time, ui.locale)} · {fmtDuration(a.duration_s)}
+                    </div>
+                  </div>
+                  <div className="num text-[14px] text-ink2">
+                    {a.distance_m !== null ? fmtDistance(a.distance_m, "metric", 1) : ""}
+                    {a.avg_hr !== null ? ` · ${a.avg_hr} bpm` : ""}
+                  </div>
+                  <ChevronRight size={14} className="shrink-0 text-ink3" />
+                </button>
+              ))}
+            </div>
+          </Section>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------- sub-components */
+
+/** Readiness ring — the hero. 120px SVG ring, 72px number inside. */
+function ReadinessRing({ value, tone }: { value: number | null; tone: "positive" | "warning" | "alert" | "muted" }) {
+  const v = value ?? 0;
+  const r = 54;
+  const c = 2 * Math.PI * r;
+  const color = tone === "positive" ? "var(--c-ok)" : tone === "warning" ? "var(--c-watch)" : tone === "alert" ? "var(--c-alert)" : "var(--c-text-3)";
+  return (
+    <div className="relative h-[120px] w-[120px] shrink-0">
+      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--c-surface-2)" strokeWidth="8" />
+        <circle
+          cx="60"
+          cy="60"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - v / 100)}
+          style={{ transition: "stroke-dashoffset 600ms cubic-bezier(0.16,1,0.3,1)" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="num text-[40px] font-semibold leading-none text-ink">
+          {value !== null ? Math.round(value) : "—"}
+        </span>
+        <span className="text-[12px] text-ink2">/ 100</span>
       </div>
     </div>
   );
 }
 
-/* ============================================================== sub-components */
-
-function BiomarkerTile({
+/** Mini ring for Recovery + Strain (smaller, under the hero). */
+function MiniRing({
   label,
   value,
-  unit,
-  range,
   tone,
-  delta,
-  goodWhen,
-  info,
-  infoTitle,
+  neutral = false,
 }: {
   label: string;
   value: number | null;
-  unit: string;
-  range: { low: number; high: number } | null;
   tone: "positive" | "warning" | "alert" | "muted";
-  delta?: number | null;
-  goodWhen?: "up" | "down";
-  info: { whatItMeasures: string; whyItMatters: string; whatInfluencesIt: string; howToReadIt: string };
-  infoTitle: string;
+  neutral?: boolean;
 }) {
+  const v = value ?? 0;
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const color = neutral ? "var(--c-text-3)" : tone === "positive" ? "var(--c-ok)" : tone === "warning" ? "var(--c-watch)" : tone === "alert" ? "var(--c-alert)" : "var(--c-text-3)";
   return (
-    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Eyebrow className="truncate">{label}</Eyebrow>
-          <InfoButton title={infoTitle}>
-            <MetricInfoContent
-              whatItMeasures={info.whatItMeasures}
-              whyItMatters={info.whyItMatters}
-              whatInfluencesIt={info.whatInfluencesIt}
-              howToReadIt={info.howToReadIt}
-            />
-          </InfoButton>
-        </div>
-        {delta !== undefined && goodWhen && (
-          <DeltaChip delta={delta} goodWhen={goodWhen} compact suffix={undefined} showSuffix={false} />
-        )}
-      </div>
-      <div className="num mt-1 flex items-baseline gap-1 text-[20px] font-bold text-ink">
-        {fmtNum(value, value !== null && Math.abs(value) < 100 ? 1 : 0)}
-        <span className="text-[10px] font-medium text-muted">{unit}</span>
-      </div>
-      <div className="mt-1.5">
-        <RangeBar
-          value={value}
-          low={range ? range.low : 0}
-          high={range ? range.high : 100}
-          tone={tone}
-          unit={unit}
-          height={4}
-        />
-        {range && (
-          <div className="num mt-0.5 flex justify-between text-[9px] text-faint">
-            <span>{range.low}</span>
-            <span>{range.high}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Sleep stage bar — Deep / REM / Light / Awake stacked + legend. */
-function SleepStageBar({
-  sleep,
-}: {
-  sleep: {
-    stages: {
-      deep_s: number | null;
-      light_s: number | null;
-      rem_s: number | null;
-      awake_s: number | null;
-    };
-  };
-}) {
-  const deep = sleep.stages.deep_s ?? 0;
-  const light = sleep.stages.light_s ?? 0;
-  const rem = sleep.stages.rem_s ?? 0;
-  const awake = sleep.stages.awake_s ?? 0;
-  const total = deep + light + rem + awake || 1;
-  const segments = [
-    { label: "Deep", value: deep, color: "var(--c-stage-deep)" },
-    { label: "REM", value: rem, color: "var(--c-stage-rem)" },
-    { label: "Light", value: light, color: "var(--c-stage-core)" },
-    { label: "Awake", value: awake, color: "var(--c-stage-awake)" },
-  ];
-  return (
-    <div>
-      <div className="flex h-3 w-full overflow-hidden rounded-[var(--radius-control)]">
-        {segments.map((s, i) => (
-          <div
-            key={i}
-            style={{ width: `${(s.value / total) * 100}%`, background: s.color, height: "100%" }}
-            title={`${s.label}: ${fmtHours(s.value)}`}
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative h-[80px] w-[80px]">
+        <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
+          <circle cx="40" cy="40" r={r} fill="none" stroke="var(--c-surface-2)" strokeWidth="5" />
+          <circle
+            cx="40"
+            cy="40"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - v / 100)}
+            style={{ transition: "stroke-dashoffset 600ms cubic-bezier(0.16,1,0.3,1)" }}
           />
-        ))}
-      </div>
-      <div className="num mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted">
-        {segments.map((s, i) => (
-          <span key={i} className="flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
-            {s.label}
-            <span className="text-faint">{fmtHours(s.value)}</span>
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="num text-[20px] font-semibold text-ink">
+            {value !== null ? Math.round(value) : "—"}
           </span>
-        ))}
+        </div>
       </div>
+      <span className="text-[14px] text-ink2">{label}</span>
     </div>
   );
 }
 
-/** "readiness fit" chip for the Planned session card. */
-function ReadinessFitChip({ label, tone }: { label: string; tone: DataTone }) {
-  const cls =
-    tone === "positive"
-      ? "text-positiveText bg-positiveSoft"
-      : tone === "warning"
-      ? "text-warningText bg-warningSoft"
-      : tone === "alert"
-      ? "text-alertText bg-alertSoft"
-      : "text-muted bg-surface3";
-  return (
-    <span className={`eyebrow inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-0.5 !text-[10px] ${cls}`}>
-      {label}
-    </span>
-  );
-}
-
-/** Compute the readiness-fit chip from today's readiness + ACWR. */
-function computeReadinessFit(
-  readiness: number | null,
-  acwr: number | null,
-): { label: string; tone: DataTone } {
-  if (readiness === null) return { label: "No readiness data", tone: "muted" };
-  if (readiness < 50) {
-    if (acwr !== null && acwr > 1.3) return { label: `Hard session on ${readiness} readiness`, tone: "alert" };
-    return { label: `Tough day — readiness ${readiness}`, tone: "warning" };
-  }
-  if (readiness < 70) {
-    return { label: `Fair readiness ${readiness}`, tone: "warning" };
-  }
-  return { label: `Ready to train — ${readiness}`, tone: "positive" };
-}
-
-/** Next-event block: big countdown + taper progress dots. */
-function NextEventBlock({
-  event,
-  otherEvents,
-  todayIso,
+/** Driver — a small stat in the "What's driving it" grid. */
+function Driver({
+  label,
+  value,
+  unit,
+  tone,
 }: {
-  event: ApexEvent;
-  otherEvents: ApexEvent[];
-  todayIso: string;
+  label: string;
+  value: string;
+  unit: string;
+  tone: "positive" | "warning" | "alert" | "muted";
 }) {
-  const days = Math.max(0, dayDiff(todayIso, event.date));
-  // Taper: if the event has taperDays and we're inside the taper window
-  // (today is within [eventDate - taperDays, eventDate)).
-  let taperLine: string | null = null;
-  if (event.taperDays && event.taperDays > 0) {
-    const taperStart = addDays(event.date, -event.taperDays);
-    const taperDayIdx = dayDiff(taperStart, todayIso); // 0..taperDays-1 within the window
-    if (taperDayIdx >= 0 && taperDayIdx < event.taperDays) {
-      taperLine = `taper day ${taperDayIdx + 1} of ${event.taperDays}`;
-    }
-  }
   return (
     <div>
-      <div className="flex items-baseline gap-2">
-        <BigStat value={days} unit="days" size="lg" tone="ink" />
-        <span className="num text-[11px] text-muted">until</span>
+      <div className="text-[14px] text-ink2">{label}</div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="num text-[24px] font-semibold text-ink">{value}</span>
+        <span className="text-[13px] text-ink2">{unit}</span>
       </div>
-      <div className="mt-1 text-[14px] font-semibold text-ink">{event.title}</div>
-      <div className="num mt-0.5 text-[11px] text-muted">
-        {event.kind} · {event.priority}
+      <div className="mt-1">
+        <StatusDot
+          tone={tone === "positive" ? "ok" : tone === "warning" ? "watch" : tone === "alert" ? "alert" : "neutral"}
+          label={tone === "positive" ? "Good" : tone === "warning" ? "Watch" : tone === "alert" ? "Low" : "—"}
+        />
       </div>
-      {taperLine && (
-        <div className="num mt-2 text-[11px] text-warningText">
-          {taperLine}
-        </div>
-      )}
-      {otherEvents.length > 0 && (
-        <div className="mt-3 border-t border-hairline pt-2">
-          <div className="eyebrow !text-[9px] text-faint">Also upcoming</div>
-          <ul className="mt-1 flex flex-col gap-1">
-            {otherEvents.map((e) => (
-              <li key={e.id} className="num flex items-center justify-between text-[11px]">
-                <span className="truncate text-muted">{e.title}</span>
-                <span className="shrink-0 text-faint">{Math.max(0, dayDiff(todayIso, e.date))}d</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
 
-/** 28-day acute (bar) / chronic (line) SVG chart. */
-function InteractiveLoadChart({ series }: { series: DayLoad[] }) {
-  // Render only days where acute + chronic are both non-null (the first ~27
-  // days have null chronic because the rolling window isn't full).
-  const usable = series.filter((d) => d.acute !== null && d.chronic !== null);
-  if (usable.length < 2) {
-    return (
-      <div className="rounded-[var(--radius-card)] border border-dashed border-hairline2 px-4 py-6 text-center text-[12px] text-muted">
-        Not enough load history yet — the 28-day chart needs ~28 days of data.
-      </div>
-    );
-  }
-
-  const categories = usable.map((d) => ({ label: d.date.slice(5) })); // MM-DD
-  const acuteBars = {
-    name: "Acute (7d)",
-    color: "var(--c-positive)",
-    values: usable.map((d) => d.acute ?? 0),
-  };
-  const chronicLine = {
-    name: "Chronic (28d)",
-    color: "var(--c-text-muted)",
-    values: usable.map((d) => d.chronic ?? 0),
-  };
-  const acwrLine = {
-    name: "ACWR",
-    color: "var(--c-warning)",
-    values: usable.map((d) => d.acwr ?? 0),
-  };
-
+/** Fact — a label + value in the sleep 5-numbers row. */
+function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <InteractiveComboChart
-        categories={categories}
-        bars={acuteBars}
-        lines={[chronicLine]}
-        height={130}
-        formatBarValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
-        formatLineValue={(v) => (v === null ? "—" : `${Math.round(v)} TSS`)}
-      />
-      <ChartLegend
-        className="mt-2"
-        items={[
-          { name: "Acute load (7-day fatigue)", color: "var(--c-positive)" },
-          { name: "Chronic load (28-day base)", color: "var(--c-text-muted)" },
-        ]}
-      />
+      <div className="text-[13px] text-ink2">{label}</div>
+      <div className="num mt-0.5 text-[20px] font-semibold text-ink">{value}</div>
     </div>
   );
 }

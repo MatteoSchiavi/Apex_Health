@@ -1,194 +1,170 @@
+/**
+ * Apex Health — Design tokens (frozen per ui-language/RULES.md).
+ *
+ * The 9 principles are the source of truth. These tokens implement them.
+ * Do not change these values without updating RULES.md first.
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * APEX HEALTH — design tokens (Apex Precision).
- * One semantic token set, two palettes (dark default + light).
- * Components consume ONLY semantic aliases — never raw hex.
- */
-
+/* --------------------------------------------------------------- MAPPING */
+/* Tailwind theme variables → Apex tokens */
 @theme inline {
-  /* shadcn/ui semantic aliases (kept for compatibility) */
-  --color-background: var(--c-bg-accent);
+  --color-background: var(--c-bg);
   --color-foreground: var(--c-text);
   --color-card: var(--c-surface);
   --color-card-foreground: var(--c-text);
   --color-popover: var(--c-surface-2);
   --color-popover-foreground: var(--c-text);
-  --color-primary: var(--c-primary);
+  --color-primary: var(--c-accent);
   --color-primary-foreground: #ffffff;
   --color-secondary: var(--c-surface-2);
   --color-secondary-foreground: var(--c-text);
-  --color-muted: var(--c-surface-3);
-  --color-muted-foreground: var(--c-text-muted);
-  --color-accent: var(--c-surface-3);
+  --color-muted: var(--c-surface-2);
+  --color-muted-foreground: var(--c-text-3);
+  --color-accent: var(--c-surface-2);
   --color-accent-foreground: var(--c-text);
   --color-destructive: var(--c-alert);
-  --color-destructive-foreground: #ffffff;
-  --color-border: var(--c-hairline);
-  --color-input: var(--c-hairline-strong);
-  --color-ring: var(--c-primary);
-
-  /* chart slot aliases */
-  --color-chart-1: var(--c-primary);
-  --color-chart-2: var(--c-positive);
-  --color-chart-3: var(--c-warning);
+  --color-border: var(--c-divider);
+  --color-input: var(--c-surface-2);
+  --color-ring: var(--c-accent);
+  --color-chart-1: var(--c-accent);
+  --color-chart-2: var(--c-ok);
+  --color-chart-3: var(--c-watch);
   --color-chart-4: var(--c-alert);
-  --color-chart-5: var(--c-text-faint);
-
-  /* sidebar */
   --color-sidebar: var(--c-bg);
   --color-sidebar-foreground: var(--c-text);
-  --color-sidebar-primary: var(--c-primary);
-  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-primary: var(--c-accent);
   --color-sidebar-accent: var(--c-surface-2);
   --color-sidebar-accent-foreground: var(--c-text);
-  --color-sidebar-border: var(--c-hairline);
-  --color-sidebar-ring: var(--c-primary);
-
-  /* Apex semantic palette (the real vocabulary) */
+  --color-sidebar-ring: var(--c-accent);
   --color-bg: var(--c-bg);
-  --color-canvas: var(--c-bg-accent);
+  --color-canvas: var(--c-bg);
   --color-surface: var(--c-surface);
   --color-surface2: var(--c-surface-2);
   --color-surface3: var(--c-surface-3);
-  --color-hairline: var(--c-hairline);
-  --color-hairline2: var(--c-hairline-strong);
-
+  --color-hairline: var(--c-divider);
+  --color-hairline2: var(--c-divider-strong);
   --color-ink: var(--c-text);
   --color-ink2: var(--c-text-2);
-  --color-muted: var(--c-text-muted);
-  --color-faint: var(--c-text-faint);
-
-  --color-primary: var(--c-primary);
-  --color-primarySoft: var(--c-primary-soft);
-  --color-primaryText: var(--c-primary-text);
-  --color-positive: var(--c-positive);
-  --color-positiveSoft: var(--c-positive-soft);
-  --color-positiveText: var(--c-positive-text);
+  --color-muted: var(--c-text-3);
+  --color-faint: var(--c-text-3);
+  --color-primary: var(--c-accent);
+  --color-primarySoft: var(--c-accent-soft);
+  --color-primaryText: var(--c-accent-text);
+  --color-positive: var(--c-ok);
+  --color-positiveSoft: var(--c-ok-soft);
+  --color-positiveText: var(--c-ok-text);
   --color-alert: var(--c-alert);
   --color-alertSoft: var(--c-alert-soft);
   --color-alertText: var(--c-alert-text);
-  --color-warning: var(--c-warning);
-  --color-warningSoft: var(--c-warning-soft);
-  --color-warningText: var(--c-warning-text);
-
-  --color-stageAwake: var(--c-stage-awake);
-  --color-stageRem: var(--c-stage-rem);
-  --color-stageCore: var(--c-stage-core);
-  --color-stageDeep: var(--c-stage-deep);
-
-  /* fonts */
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
-
-  /* radii (design law: 4px controls, 8px cards) */
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.625rem;
-  --radius-2xl: 0.75rem;
-  --radius-card: 0.625rem;
-  --radius-control: 0.25rem;
+  --color-warning: var(--c-watch);
+  --color-warningSoft: var(--c-watch-soft);
+  --color-warningText: var(--c-watch-text);
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --radius-sm: 8px;
 }
 
-/* --------------------------------------------------- DARK (default) */
+/* --------------------------------------------------------------- DARK (default) */
 :root {
-  --radius: 0.625rem;
+  /* Surface separation ≥ 1.14:1 — cards read by contrast, not borders */
+  --c-bg: #0B0C0F;
+  --c-surface: #191C22;       /* 1.16:1 on bg */
+  --c-surface-2: #23272F;     /* 1.07:1 on surface */
+  --c-surface-3: #2D323B;
+  --c-divider: rgba(255, 255, 255, 0.07);
+  --c-divider-strong: rgba(255, 255, 255, 0.12);
 
-  /* Pure black — no blue tint. The #1 vibecode giveaway was the blue-tinted bg. */
-  --c-bg: #000000;
-  --c-bg-accent: #08080a;
-  --c-surface: #0e0e10;
-  --c-surface-2: #161618;
-  --c-surface-3: #1e1e22;
-  --c-hairline: rgba(255, 255, 255, 0.08);
-  --c-hairline-strong: rgba(255, 255, 255, 0.14);
+  /* Text — all meet WCAG AA on surface (#191C22) */
+  --c-text: #EEF0F3;          /* 15.5:1 */
+  --c-text-2: #A3A9B3;        /* 7.2:1 */
+  --c-text-3: #7A818D;        /* 4.35:1 */
+  --c-text-faint: #7A818D;    /* alias of text-3, kept for compat */
 
-  --c-text: #f0f0f2;
-  --c-text-2: #c0c0c4;
-  --c-text-muted: #80808a;
-  --c-text-faint: #50505a;
+  /* Accent — warm orange, distinct from "good" (green) */
+  --c-accent: #FF7A1A;
+  --c-accent-soft: rgba(255, 122, 26, 0.12);
+  --c-accent-text: #FF9A4D;
 
-  /* Accent color — driven by the accent color selector in Settings.
-     Default is a warm emerald that works well against pure black.
-     Override by setting --c-accent on <html> via the Zustand store. */
-  --c-primary: var(--c-accent, #10b981);
-  --c-primary-soft: color-mix(in srgb, var(--c-accent, #10b981) 12%, transparent);
-  --c-primary-text: color-mix(in srgb, var(--c-accent, #10b981) 80%, white);
+  /* Status colours — green = good, amber = watch, red = alert */
+  --c-ok: #5BD6A0;
+  --c-ok-soft: rgba(91, 214, 160, 0.12);
+  --c-ok-text: #5BD6A0;
 
-  --c-positive: #10b981;
-  --c-positive-soft: rgba(16, 185, 129, 0.10);
-  --c-positive-text: #34d399;
+  --c-watch: #F2C14E;
+  --c-watch-soft: rgba(242, 193, 78, 0.12);
+  --c-watch-text: #F2C14E;
 
-  --c-alert: #ef4444;
-  --c-alert-soft: rgba(239, 68, 68, 0.10);
-  --c-alert-text: #f87171;
+  --c-alert: #FF5C6C;
+  --c-alert-soft: rgba(255, 92, 108, 0.12);
+  --c-alert-text: #FF5C6C;
 
-  --c-warning: #f59e0b;
-  --c-warning-soft: rgba(245, 158, 11, 0.10);
-  --c-warning-text: #fbbf24;
-
-  --c-stage-awake: #ef4444;
-  --c-stage-rem: #a78bfa;
-  --c-stage-core: #7c6ff0;
-  --c-stage-deep: #5b4ed4;
+  /* Sleep stages — indigo family */
+  --c-stage-deep: #3F4DB8;
+  --c-stage-rem: #6F7CF0;
+  --c-stage-core: #A9B2FA;   /* light sleep */
+  --c-stage-awake: #F2C14E;
 
   --c-shadow-flyout: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --c-shadow-card: none;     /* dark theme: no shadow, contrast separates */
   color-scheme: dark;
 }
 
-/* --------------------------------------------------- LIGHT */
+/* --------------------------------------------------------------- LIGHT */
 .light {
-  --c-bg: #f5f5f5;
-  --c-bg-accent: #fafafa;
-  --c-surface: #ffffff;
-  --c-surface-2: #f8f8f8;
-  --c-surface-3: #eaeaec;
-  --c-hairline: rgba(0, 0, 0, 0.08);
-  --c-hairline-strong: rgba(0, 0, 0, 0.14);
+  --c-bg: #F4F3F0;
+  --c-surface: #FFFFFF;
+  --c-surface-2: #ECEAE5;
+  --c-surface-3: #DFDDD8;
+  --c-divider: rgba(0, 0, 0, 0.08);
+  --c-divider-strong: rgba(0, 0, 0, 0.12);
 
-  --c-text: #0a0a0a;
-  --c-text-2: #3a3a3c;
-  --c-text-muted: #6a6a70;
-  --c-text-faint: #9a9aa0;
+  --c-text: #14161A;
+  --c-text-2: #4A505A;       /* 8.1:1 on white */
+  --c-text-3: #656B75;       /* 5.4:1 on white */
+  --c-text-faint: #656B75;
 
-  --c-primary: var(--c-accent, #059669);
-  --c-primary-soft: color-mix(in srgb, var(--c-accent, #059669) 10%, transparent);
-  --c-primary-text: color-mix(in srgb, var(--c-accent, #059669) 80%, black);
+  /* Accent — darker orange for text contrast on white */
+  --c-accent: #E85D04;       /* fill */
+  --c-accent-soft: rgba(232, 93, 4, 0.10);
+  --c-accent-text: #C2410C;  /* 5.2:1 on white */
 
-  --c-positive: #059669;
-  --c-positive-soft: rgba(5, 150, 105, 0.08);
-  --c-positive-text: #047857;
+  --c-ok: #2D9D6F;
+  --c-ok-soft: rgba(45, 157, 111, 0.10);
+  --c-ok-text: #1A7A52;
 
-  --c-alert: #dc2626;
-  --c-alert-soft: rgba(220, 38, 38, 0.10);
-  --c-alert-text: #b91c1c;
+  --c-watch: #D4901A;
+  --c-watch-soft: rgba(212, 144, 26, 0.12);
+  --c-watch-text: #A66E0A;
 
-  --c-warning: #d97706;
-  --c-warning-soft: rgba(217, 119, 6, 0.10);
-  --c-warning-text: #b45309;
+  --c-alert: #DC2545;
+  --c-alert-soft: rgba(220, 37, 69, 0.10);
+  --c-alert-text: #B91C36;
 
-  --c-stage-awake: #dc2626;
-  --c-stage-rem: #3b82f6;
-  --c-stage-core: #3b5bdb;
-  --c-stage-deep: #4338ca;
+  --c-stage-deep: #2E3A9C;
+  --c-stage-rem: #4F5BD8;
+  --c-stage-core: #7B82E8;
+  --c-stage-awake: #D4901A;
 
-  --c-shadow-flyout: 0 4px 12px rgba(15, 23, 42, 0.06);
+  /* Light theme: soft shadow on cards (contrast only 1.11:1) */
+  --c-shadow-card: 0 1px 2px rgba(20, 22, 26, 0.06);
+  --c-shadow-flyout: 0 4px 16px rgba(20, 22, 26, 0.12);
   color-scheme: light;
 }
 
-/* --------------------------------------------------- base */
+/* --------------------------------------------------------------- BASE */
 @layer base {
   * {
-    border-color: var(--c-hairline);
-    outline-color: color-mix(in oklch, var(--c-primary) 50%, transparent);
+    border-color: var(--c-divider);
+    outline-color: color-mix(in oklch, var(--c-accent) 50%, transparent);
   }
   html, body { height: 100%; }
   body {
-    background: var(--c-bg-accent);
+    background: var(--c-bg);
     color: var(--c-text);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -199,7 +175,7 @@
   }
 }
 
-/* tabular figures — anti-jitter law */
+/* Tabular figures on every number (RULES: "Numbers stay white") */
 .num, .tnum, td, th {
   font-feature-settings: "tnum" 1, "cv03" 1;
   font-variant-numeric: tabular-nums;
@@ -207,59 +183,84 @@
 
 .mono { font-family: var(--font-mono); }
 
-/* label-caps eyebrow */
+/* --------------------------------------------------------------- LABEL (not "eyebrow") */
+/* RULES principle 4: sentence-case labels, 13px minimum, no all-caps.
+   The old .eyebrow class was uppercase 11px — replaced by .label (13px sentence-case).
+   Kept .eyebrow as an alias for compat but it now renders sentence-case 13px. */
+.label,
 .eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--c-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--c-text-3);
 }
 
-/* hero page title */
+/* Page title — 40px per the type scale */
 .page-title {
-  font-size: 28px;
+  font-size: 40px;
   font-weight: 600;
-  line-height: 36px;
-  letter-spacing: -0.02em;
+  line-height: 44px;
+  letter-spacing: -0.025em;
   color: var(--c-text);
 }
 @media (max-width: 767px) {
-  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
+  .page-title { font-size: 28px; line-height: 32px; letter-spacing: -0.02em; }
 }
 
-/* scrollbar styling — subtle, fits the Apex monochrome system */
+/* Page sentence — the one-answer 20px line */
+.page-sentence {
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+  color: var(--c-text-2);
+}
+
+/* Hero number — 72px semibold (RULES: one hero per page) */
+.hero-num {
+  font-size: 72px;
+  font-weight: 600;
+  line-height: 72px;
+  letter-spacing: -0.03em;
+  color: var(--c-text);  /* never coloured */
+}
+@media (max-width: 767px) {
+  .hero-num { font-size: 56px; line-height: 56px; }
+}
+
+/* --------------------------------------------------------------- SCROLLBAR */
 .scroll-area {
   scrollbar-width: thin;
-  scrollbar-color: var(--c-hairline-strong) transparent;
+  scrollbar-color: var(--c-divider-strong) transparent;
 }
 .scroll-area::-webkit-scrollbar { width: 8px; height: 8px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
 .scroll-area::-webkit-scrollbar-thumb {
-  background: var(--c-hairline-strong);
+  background: var(--c-divider-strong);
   border-radius: 4px;
 }
 .scroll-area::-webkit-scrollbar-thumb:hover {
-  background: var(--c-text-faint);
+  background: var(--c-text-3);
 }
 
-/* focus ring — clean, single-pixel, semantic */
+/* Focus ring — accent, 2px */
 :focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--c-primary) 60%, transparent);
+  outline: 2px solid color-mix(in oklch, var(--c-accent) 60%, transparent);
   outline-offset: 2px;
   border-radius: 3px;
 }
 
-/* utility: surface card */
-.surface-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-hairline);
-  border-radius: var(--radius-card);
+/* Selection */
+::selection {
+  background: var(--c-accent-soft);
+  color: var(--c-accent-text);
 }
 
-/* selection */
-::selection {
-  background: var(--c-primary-soft);
-  color: var(--c-primary-text);
+/* --------------------------------------------------------------- CARD (borderless per RULES principle 3) */
+.surface-card {
+  background: var(--c-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--c-shadow-card);
 }

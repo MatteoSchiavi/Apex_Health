@@ -93,7 +93,7 @@ export const useApexUi = create<ApexUiState>()(
       ttsAutoPlay: false,
       setTtsAutoPlay: (v) => set({ ttsAutoPlay: v }),
 
-      accentColor: "#10b981",
+      accentColor: "#FF7A1A",
       setAccentColor: (v) => set({ accentColor: v }),
 
       view: "welcome",

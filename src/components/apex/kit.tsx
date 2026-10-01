@@ -32,6 +32,9 @@ import {
 
 /* ------------------------------------------------------------------ Card */
 
+/* RULES principle 3: No outlines. Cards are separated by surface contrast
+   (≥1.14:1) + soft shadow (light theme). No border on cards.
+   No card inside a card — use spacing + a label for grouping instead. */
 export function Card({
   children,
   className = "",
@@ -48,7 +51,7 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`rounded-[var(--radius-card)] border border-hairline bg-surface ${pad ? "p-6" : ""} ${className}`}
+      className={`rounded-[var(--radius-card)] bg-surface ${pad ? "p-7" : ""} ${className}`}
       style={style}
     >
       {children}
@@ -115,7 +118,9 @@ export function PageHeader({
 }
 
 /* ------------------------------------------------------------- Big stat */
-
+/* RULES principle 5: "Numbers stay white. Never colour a big number."
+   The `tone` prop is kept for compat but only affects the unit suffix,
+   NOT the number itself. Use <StatusDot> next to the number to show state. */
 export function BigStat({
   value,
   unit,
@@ -125,17 +130,19 @@ export function BigStat({
 }: {
   value: ReactNode;
   unit?: ReactNode;
-  size?: "md" | "lg" | "xl";
+  size?: "md" | "lg" | "xl" | "hero";
   className?: string;
   tone?: "ink" | "primary" | "positive" | "alert" | "warning" | "muted";
 }) {
   const sizes = {
-    md: "text-[28px] leading-[34px] font-bold tracking-[-0.02em]",
-    lg: "text-[40px] leading-[46px] font-bold tracking-[-0.02em]",
-    xl: "text-[56px] leading-[62px] font-bold tracking-[-0.03em]",
+    md: "text-[28px] leading-[34px] font-semibold tracking-[-0.02em]",
+    lg: "text-[40px] leading-[44px] font-semibold tracking-[-0.02em]",
+    xl: "text-[56px] leading-[60px] font-semibold tracking-[-0.025em]",
+    hero: "text-[72px] leading-[72px] font-semibold tracking-[-0.03em]",
   } as const;
-  const toneCls = {
-    ink: "text-ink",
+  // Per RULES: the number is always text-ink. The tone only colors the unit.
+  const unitTone = {
+    ink: "text-ink2",
     primary: "text-primaryText",
     positive: "text-positiveText",
     alert: "text-alertText",
@@ -143,9 +150,9 @@ export function BigStat({
     muted: "text-muted",
   }[tone];
   return (
-    <div className={`num flex items-baseline gap-1.5 ${toneCls} ${sizes[size]} ${className}`}>
+    <div className={`num flex items-baseline gap-1.5 text-ink ${sizes[size]} ${className}`}>
       {value}
-      {unit && <span className="text-[12px] font-medium text-muted">{unit}</span>}
+      {unit && <span className={`text-[14px] font-medium ${unitTone}`}>{unit}</span>}
     </div>
   );
 }
@@ -1133,5 +1140,166 @@ export function MetricInfoContent({
         <div className="mt-0.5">{howToReadIt}</div>
       </div>
     </>
+  );
+}
+
+/* ================================================================== */
+/* NEW PRIMITIVES per ui-language/RULES.md — the re-foundation          */
+/* ================================================================== */
+
+/* ------------------------------------------------------------- StatusDot
+ * RULES principle 5: "A status dot plus a word" — never a coloured big number.
+ * Use this next to any value to show its state. */
+export function StatusDot({
+  tone = "neutral",
+  label,
+  className = "",
+}: {
+  tone?: "neutral" | "ok" | "watch" | "alert";
+  label?: ReactNode;
+  className?: string;
+}) {
+  const colors = {
+    neutral: "var(--c-text-3)",
+    ok: "var(--c-ok)",
+    watch: "var(--c-watch)",
+    alert: "var(--c-alert)",
+  } as const;
+  const textColors = {
+    neutral: "text-ink2",
+    ok: "text-ink2",
+    watch: "text-ink2",
+    alert: "text-ink2",
+  } as const;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[14px] font-medium ${textColors[tone]} ${className}`}>
+      <span className="inline-block h-2 w-2 rounded-full" style={{ background: colors[tone] }} />
+      {label && <span>{label}</span>}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------- Hero
+ * RULES principle 2: "One hero, 2× the visual weight of anything else."
+ * The one big number per page. 72px semibold, never coloured.
+ * Use with a StatusDot below for state. */
+export function Hero({
+  value,
+  unit,
+  caption,
+  className = "",
+}: {
+  value: ReactNode;
+  unit?: ReactNode;
+  caption?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="num flex items-baseline gap-2 text-ink">
+        <span className="hero-num">{value}</span>
+        {unit && <span className="text-[20px] font-medium text-ink2">{unit}</span>}
+      </div>
+      {caption && <div className="mt-1 text-[16px] text-ink2">{caption}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- Row
+ * RULES principle 9: "Lists of metrics are rows, not cards."
+ * A flat row: label · value · status · sparkline. No border, no box. */
+export function Row({
+  label,
+  value,
+  unit,
+  status,
+  spark,
+  onClick,
+  className = "",
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  unit?: ReactNode;
+  status?: ReactNode;
+  spark?: ReactNode;
+  onClick?: () => void;
+  className?: string;
+}) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`flex w-full items-center gap-4 py-3 text-left transition-colors ${onClick ? "hover:bg-surface2" : ""} ${className}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-ink2">{label}</div>
+      </div>
+      {spark && <div className="shrink-0">{spark}</div>}
+      {status && <div className="shrink-0">{status}</div>}
+      <div className="num flex shrink-0 items-baseline gap-1 text-ink">
+        <span className="text-[20px] font-semibold">{value}</span>
+        {unit && <span className="text-[13px] text-ink2">{unit}</span>}
+      </div>
+    </Tag>
+  );
+}
+
+/* ------------------------------------------------------------- Section
+ * A named section within a page. Label (sentence-case 13px) + content.
+ * Replaces the old CardHeader eyebrow pattern. */
+export function Section({
+  label,
+  children,
+  className = "",
+}: {
+  label?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={className}>
+      {label && (
+        <div className="mb-3 text-[14px] font-medium text-ink2">{label}</div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------- PageSentence
+ * RULES principle 1: "One answer per screen." The 20px sentence that
+ * answers the page's question. Goes right under the page title. */
+export function PageSentence({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <p className={`page-sentence ${className}`}>{children}</p>;
+}
+
+/* ------------------------------------------------------------- ChartFrame
+ * RULES principle 8: "Every chart is built the same way." A wrapper that
+ * provides the standard frame: title (optional), the chart, a legend slot. */
+export function ChartFrame({
+  title,
+  info,
+  children,
+  legend,
+  className = "",
+}: {
+  title?: ReactNode;
+  info?: ReactNode;
+  children: ReactNode;
+  legend?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      {title && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-[14px] font-medium text-ink2">{title}</span>
+          {info}
+        </div>
+      )}
+      {children}
+      {legend && <div className="mt-3">{legend}</div>}
+    </div>
   );
 }

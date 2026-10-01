@@ -43,7 +43,7 @@ function ThemeSync() {
 function AccentColorSync() {
   const accentColor = useApexUi((s) => s.accentColor);
   useEffect(() => {
-    document.documentElement.style.setProperty("--c-accent", accentColor || "#10b981");
+    document.documentElement.style.setProperty("--c-accent", accentColor || "#FF7A1A");
   }, [accentColor]);
   return null;
 }

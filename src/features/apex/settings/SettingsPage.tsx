@@ -39,18 +39,12 @@ import { ThemePreviewCard } from "@/components/apex/ThemePreviewCard";
 
 /* ----------------------------------------------------------- accent colors */
 
-/** Pre-picked accent colors that look good in both dark and light themes. */
+/** Accent colors — only 3, all distinct from the status colours (green/amber/red).
+ * RULES principle 6: "The accent is not a status colour." Orange is the default. */
 const ACCENT_COLORS = [
-  { name: "Emerald", value: "#10b981" },
-  { name: "Teal", value: "#14b8a6" },
-  { name: "Blue", value: "#3b82f6" },
-  { name: "Indigo", value: "#6366f1" },
-  { name: "Violet", value: "#8b5cf6" },
-  { name: "Pink", value: "#ec4899" },
-  { name: "Rose", value: "#f43f5e" },
-  { name: "Amber", value: "#f59e0b" },
-  { name: "Lime", value: "#84cc16" },
-  { name: "Cyan", value: "#06b6d4" },
+  { name: "Orange", value: "#FF7A1A" },
+  { name: "Ice blue", value: "#4CC9F0" },
+  { name: "Lime", value: "#B6F24A" },
 ] as const;
 
 /* ----------------------------------------------------------- input styles */
