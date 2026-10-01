@@ -34,6 +34,7 @@ export const translations = {
       train: "Train",
       recover: "Recover",
       community: "Community",
+      more: "More",
     },
     theme: {
       dark: "Dark",
@@ -784,6 +785,7 @@ export const translations = {
       train: "Allena",
       recover: "Recupero",
       community: "Community",
+      more: "Altro",
     },
     theme: {
       dark: "Scuro",

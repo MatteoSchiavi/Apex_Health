@@ -19,6 +19,7 @@ import {
   Dumbbell,
   Footprints,
   HeartPulse,
+  Info,
   Mountain,
   PersonStanding,
   Rows,
@@ -989,4 +990,144 @@ function renderInline(text: string): ReactNode[] {
     if (/^`[^`]+`$/.test(tok)) return <code key={i} className="num rounded-[3px] bg-surface3 px-1 py-0.5 text-[12px] text-ink">{tok.slice(1, -1)}</code>;
     return <span key={i}>{tok}</span>;
   });
+}
+
+/* ------------------------------------------------------------- State-based tone helpers
+ * Per the user's rule: DATA color must reflect STATE (in-range / abnormal /
+ * out-of-range), NOT the accent color. Accent is reserved for non-data UI
+ * (active nav, buttons, focus rings, brand). These helpers compute the correct
+ * semantic tone for a value so graphs and badges always read state at a glance.
+ */
+
+export type DataTone = "positive" | "warning" | "alert" | "muted";
+
+/** Tone for a 0–100 score (readiness / recovery / sleep score).
+ *  ≥75 positive (good), 50–74 warning (fair), <50 alert (poor). */
+export function scoreTone(value: number | null | undefined): DataTone {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "muted";
+  if (value >= 75) return "positive";
+  if (value >= 50) return "warning";
+  return "alert";
+}
+
+/** Tone for ACWR (acute:chronic workload ratio).
+ *  0.8–1.3 positive (optimal), 1.3–1.5 warning (elevated), else alert. */
+export function acwrTone(value: number | null | undefined): DataTone {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "muted";
+  if (value >= 0.8 && value <= 1.3) return "positive";
+  if (value < 0.8) return "warning";
+  if (value <= 1.5) return "warning";
+  return "alert";
+}
+
+/** Tone for a value against a reference range (low/high).
+ *  In range → positive; within 10% of a boundary → warning; outside → alert. */
+export function rangeTone(
+  value: number | null | undefined,
+  low: number | null,
+  high: number | null,
+): DataTone {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "muted";
+  if (low === null || high === null) return "muted";
+  const margin = (high - low) * 0.1;
+  if (value < low - margin || value > high + margin) return "alert";
+  if (value < low || value > high) return "warning";
+  return "positive";
+}
+
+/** Tone for HRV deviation from baseline (in ms or %).
+ *  |dev| < 1 SD → positive, 1–2 SD → warning, >2 SD → alert. Pass sd as the
+ *  30-day standard deviation. Falls back to a flat 8ms / 16ms threshold. */
+export function hrvDevTone(deviation: number | null | undefined, sd: number | null = null): DataTone {
+  if (deviation === null || deviation === undefined || !Number.isFinite(deviation)) return "muted";
+  const abs = Math.abs(deviation);
+  const one = sd && sd > 0 ? sd : 8;
+  if (abs < one) return "positive";
+  if (abs < one * 2) return "warning";
+  return "alert";
+}
+
+/** Map a DataTone to the ScoreBar/RangeBar/StatPod tone union. */
+export function toneFor(tone: DataTone): "positive" | "warning" | "alert" | "muted" {
+  return tone === "positive" ? "positive" : tone === "warning" ? "warning" : tone === "alert" ? "alert" : "muted";
+}
+
+/* ------------------------------------------------------------- Info button (plan: metric pages) */
+
+/** Small (i) info button that opens a popover with an explanation. Used on
+ *  metric pages and anywhere a value needs context. */
+export function InfoButton({
+  title,
+  children,
+  className = "",
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-faint transition-colors hover:bg-surface2 hover:text-ink"
+        aria-label={`Info: ${typeof title === "string" ? title : "more info"}`}
+        aria-expanded={open}
+      >
+        <Info size={13} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-[var(--radius-card)] border border-hairline bg-surface p-3 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+            <div className="mb-1.5 text-[12px] font-semibold text-ink">{title}</div>
+            <div className="space-y-1.5 text-[11px] leading-relaxed text-muted">{children}</div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="mt-2 text-[10px] font-semibold text-primaryText hover:underline"
+            >
+              Close
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Structured metric explanation block — the four standard sections every
+ *  metric page info popover should have. */
+export function MetricInfoContent({
+  whatItMeasures,
+  whyItMatters,
+  whatInfluencesIt,
+  howToReadIt,
+}: {
+  whatItMeasures: ReactNode;
+  whyItMatters: ReactNode;
+  whatInfluencesIt: ReactNode;
+  howToReadIt: ReactNode;
+}) {
+  return (
+    <>
+      <div>
+        <div className="eyebrow !text-[9px] text-faint">What it measures</div>
+        <div className="mt-0.5">{whatItMeasures}</div>
+      </div>
+      <div>
+        <div className="eyebrow !text-[9px] text-faint">Why it matters</div>
+        <div className="mt-0.5">{whyItMatters}</div>
+      </div>
+      <div>
+        <div className="eyebrow !text-[9px] text-faint">What influences it</div>
+        <div className="mt-0.5">{whatInfluencesIt}</div>
+      </div>
+      <div>
+        <div className="eyebrow !text-[9px] text-faint">How to read it</div>
+        <div className="mt-0.5">{howToReadIt}</div>
+      </div>
+    </>
+  );
 }

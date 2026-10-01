@@ -19,6 +19,7 @@ import {
   Bot,
   ChevronRight,
   HeartPulse,
+  Menu,
   Moon,
   Search,
   PanelLeftClose,
@@ -30,6 +31,7 @@ import {
   Wrench,
   TestTube,
   LogOut,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -317,30 +319,31 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
   );
 }
 
-/** Topbar (mobile) — brand + theme/locale compact controls + search + scan. */
-function Topbar({ current, onSearch, onScan }: { current: ViewKey; onSearch: () => void; onScan: () => void }) {
+/** Topbar (mobile) — brand + hamburger + current label + search + notifications. */
+function Topbar({ current, onSearch, onMenu }: { current: ViewKey; onSearch: () => void; onMenu: () => void }) {
   const t = useT();
   const currentLabel = NAV.find((n) => n.view === current)?.labelKey;
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-hairline bg-bg/95 px-4 backdrop-blur lg:hidden">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-hairline bg-bg/95 px-3 backdrop-blur lg:hidden">
       <button
         type="button"
-        onClick={() => useApexUi.getState().setView("overview")}
-        className="transition-opacity hover:opacity-80"
+        onClick={onMenu}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-hairline bg-surface text-ink transition-colors hover:bg-surface2"
+        aria-label="Open navigation menu"
       >
-        <Logo />
+        <Menu size={16} />
       </button>
-      <div className="num truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+      <div className="num min-w-0 flex-1 truncate text-center text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
         {currentLabel ? t(currentLabel) : ""}
       </div>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={onSearch}
-          className="inline-flex h-6 items-center justify-center rounded-[var(--radius-control)] border border-hairline bg-bg px-2 text-muted transition-colors hover:text-ink"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-hairline bg-surface text-muted transition-colors hover:text-ink"
           aria-label={t("app.search")}
         >
-          <Search size={12} />
+          <Search size={16} />
         </button>
         <NotificationsBell />
       </div>
@@ -367,16 +370,15 @@ function ThemeSegmentedCompact() {
   );
 }
 
-/** Bottom navigation (mobile). */
-function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) => void }) {
+/** Bottom navigation (mobile) — quick access to 4 most-used + More (opens drawer). */
+function BottomNav({ current, onNav, onMore }: { current: ViewKey; onNav: (v: ViewKey) => void; onMore: () => void }) {
   const t = useT();
-  // Mobile bottom bar: Overview, Coach, Training, Activities, More (settings)
-  const PRIMARY: NavItem[] = [
+  // 4 quick tabs + a "More" button that opens the full nav drawer.
+  const QUICK: NavItem[] = [
     NAV_GROUPS[0].items[0], // overview
-    NAV_GROUPS[0].items[1], // coach
     NAV_GROUPS[1].items[0], // training
     NAV_GROUPS[1].items[1], // activities
-    SETTINGS_ITEM,          // settings
+    NAV_GROUPS[0].items[1], // coach
   ];
   return (
     <nav
@@ -384,7 +386,7 @@ function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) =
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="flex items-stretch justify-around">
-        {PRIMARY.map((item) => {
+        {QUICK.map((item) => {
           const Icon = item.icon;
           const active = current === item.view;
           return (
@@ -392,12 +394,11 @@ function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) =
               <button
                 type="button"
                 onClick={() => onNav(item.view)}
-                className={`relative flex h-16 w-full flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ${
+                className={`relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
                   active ? "text-primaryText" : "text-muted"
                 }`}
                 aria-current={active ? "page" : undefined}
               >
-                {/* Top active indicator bar */}
                 {active && (
                   <span
                     className="absolute left-1/2 top-0 h-0.5 w-8 -translate-x-1/2 rounded-b-full bg-primary"
@@ -412,8 +413,107 @@ function BottomNav({ current, onNav }: { current: ViewKey; onNav: (v: ViewKey) =
             </li>
           );
         })}
+        {/* More button — opens the full nav drawer */}
+        <li className="flex-1">
+          <button
+            type="button"
+            onClick={onMore}
+            className="relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted transition-colors hover:text-ink2"
+            aria-label="More navigation"
+          >
+            <Menu size={20} strokeWidth={1.8} />
+            <span className="num text-[9px] tracking-[0.04em] uppercase">{t("nav.more") || "More"}</span>
+          </button>
+        </li>
       </ul>
     </nav>
+  );
+}
+
+/** Mobile nav drawer — full grouped nav, opened from hamburger or "More". */
+function MobileNavDrawer({
+  open,
+  onClose,
+  current,
+  onNav,
+}: {
+  open: boolean;
+  onClose: () => void;
+  current: ViewKey;
+  onNav: (v: ViewKey) => void;
+}) {
+  const t = useT();
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <aside className="absolute left-0 top-0 flex h-full w-[85%] max-w-[300px] flex-col border-r border-hairline bg-bg shadow-2xl">
+        {/* Drawer header */}
+        <div className="flex h-14 items-center justify-between border-b border-hairline px-4">
+          <Logo />
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+            aria-label="Close menu"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        {/* Full grouped nav — same as desktop sidebar */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.groupKey} className={gi > 0 ? "mt-4" : ""}>
+              <div className="px-2.5 pb-1">
+                <div className="eyebrow !text-[9px] text-faint">{t(group.groupKey)}</div>
+              </div>
+              <ul className="space-y-0.5">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = current === item.view;
+                  return (
+                    <li key={item.view}>
+                      <button
+                        type="button"
+                        onClick={() => { onNav(item.view); onClose(); }}
+                        className={`group flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2.5 text-[14px] font-medium transition-colors ${
+                          active ? "bg-surface2 text-ink" : "text-muted hover:bg-surface hover:text-ink2"
+                        }`}
+                      >
+                        <Icon size={18} className={active ? "text-primaryText" : "text-muted group-hover:text-ink2"} strokeWidth={2} />
+                        <span className="truncate">{t(item.labelKey)}</span>
+                        {active && <ChevronRight size={12} className="ml-auto text-muted" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+          {/* Settings pinned at the bottom */}
+          <div className="mt-4 border-t border-hairline pt-2">
+            <ul className="space-y-0.5">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => { onNav(SETTINGS_ITEM.view); onClose(); }}
+                  className={`group flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2.5 text-[14px] font-medium transition-colors ${
+                    current === SETTINGS_ITEM.view ? "bg-surface2 text-ink" : "text-muted hover:bg-surface hover:text-ink2"
+                  }`}
+                >
+                  <Settings size={18} className={current === SETTINGS_ITEM.view ? "text-primaryText" : "text-muted group-hover:text-ink2"} strokeWidth={2} />
+                  <span className="truncate">{t(SETTINGS_ITEM.labelKey)}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+        {/* Sync footer */}
+        <div className="border-t border-hairline px-2 py-3">
+          <SyncFooter />
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -507,6 +607,9 @@ export function AppShell({
   // Sidebar collapsed state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Mobile nav drawer state
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   // Respect the user's OS-level prefers-reduced-motion setting
   const reducedMotion = useReducedMotion();
 
@@ -539,10 +642,10 @@ export function AppShell({
         </header>
 
         {/* Mobile topbar */}
-        <Topbar current={current} onSearch={() => setCmdOpen(true)} onScan={() => setScanOpen(true)} />
+        <Topbar current={current} onSearch={() => setCmdOpen(true)} onMenu={() => setMobileNavOpen(true)} />
 
         {/* Page content — fades in on view change (respects prefers-reduced-motion) */}
-        <main className="flex-1 px-4 pb-24 pt-4 lg:px-6 lg:pb-12 lg:pt-6">
+        <main className="flex-1 px-4 pb-20 pt-4 lg:px-6 lg:pb-12 lg:pt-6">
           <motion.div
             key={current}
             initial={reducedMotion ? false : { opacity: 0, y: 6 }}
@@ -553,7 +656,8 @@ export function AppShell({
           </motion.div>
         </main>
       </div>
-      <BottomNav current={current} onNav={onNav} />
+      <BottomNav current={current} onNav={onNav} onMore={() => setMobileNavOpen(true)} />
+      <MobileNavDrawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} current={current} onNav={onNav} />
 
       {/* Global overlays */}
       <CommandPalette
