@@ -56,10 +56,10 @@ export function ChartTooltip({
       style={style}
       className="num min-w-[140px] max-w-[200px] rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
     >
-      <div className="mb-1 truncate text-[10px] font-semibold text-ink2">{point.label}</div>
+      <div className="mb-1 truncate text-[12px] font-semibold text-ink2">{point.label}</div>
       <div className="space-y-0.5">
         {point.values.map((v, i) => (
-          <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+          <div key={i} className="flex items-center justify-between gap-2 text-[12px]">
             <span className="flex items-center gap-1.5 text-muted">
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: v.color }} />
               {v.name}
@@ -383,7 +383,7 @@ export function InteractiveLineChart({
       )}
       {/* baseline legend */}
       {baseline !== null && (
-        <div className="absolute bottom-0 right-2 text-[9px] text-faint">
+        <div className="absolute bottom-0 right-2 text-[12px] text-faint">
           {baselineLabel}
         </div>
       )}
@@ -549,7 +549,7 @@ export function ChartLegend({
   return (
     <div className={`flex flex-wrap items-center gap-3 ${className}`}>
       {items.map((it, i) => (
-        <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted">
+        <div key={i} className="flex items-center gap-1.5 text-[12px] text-muted">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: it.color }} />
           {it.name}
         </div>
@@ -568,8 +568,8 @@ export function ChartInfoBadge({ text }: { text: string | ReactNode }) {
       className="group relative inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full text-faint transition-colors hover:bg-surface2 hover:text-ink"
       aria-label="chart info"
     >
-      <span className="text-[10px] font-bold">i</span>
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 w-52 -translate-x-1/2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[11px] text-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+      <span className="text-[12px] font-bold">i</span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 w-52 -translate-x-1/2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[12px] text-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
         {text}
       </span>
     </span>

@@ -192,7 +192,7 @@ export function MarkerTrendChart({
       )}
 
       {/* band legend */}
-      <div className="absolute bottom-0 right-2 text-[9px] text-faint">
+      <div className="absolute bottom-0 right-2 text-[12px] text-faint">
         {baselineLabel}: {Number.isInteger(refLow) ? refLow : refLow.toFixed(1)}–
         {Number.isInteger(refHigh) ? refHigh : refHigh.toFixed(1)} {unit}
       </div>

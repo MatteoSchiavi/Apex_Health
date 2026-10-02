@@ -112,7 +112,7 @@ export function ThemePreviewCard({
           </div>
           {isActive && (
             <span
-              className="num rounded-[var(--radius-control)] px-1.5 py-0.5 text-[9px] font-semibold"
+              className="num rounded-[var(--radius-control)] px-1.5 py-0.5 text-[12px] font-semibold"
               style={{
                 background: "var(--c-primary-soft)",
                 color: "var(--c-primary-text)",
@@ -139,7 +139,7 @@ export function ThemePreviewCard({
             style={{ color: "var(--c-text)" }}
           >
             84
-            <span className="text-[10px] font-medium" style={{ color: "var(--c-text-muted)" }}>
+            <span className="text-[12px] font-medium" style={{ color: "var(--c-text-muted)" }}>
               /100
             </span>
           </div>
@@ -158,13 +158,13 @@ export function ThemePreviewCard({
           </div>
           {/* Sub-row: HRV + dot */}
           <div className="mt-2 flex items-center justify-between">
-            <span className="num text-[9px]" style={{ color: "var(--c-text-faint)" }}>
+            <span className="num text-[12px]" style={{ color: "var(--c-text-faint)" }}>
               HRV
             </span>
             <div className="flex items-center gap-1">
               <span className="h-1 w-1 rounded-full" style={{ background: "var(--c-positive)" }} />
               <span
-                className="num text-[10px] font-semibold"
+                className="num text-[12px] font-semibold"
                 style={{ color: "var(--c-positive-text)" }}
               >
                 64 ms
@@ -174,7 +174,7 @@ export function ThemePreviewCard({
         </div>
 
         {/* Bottom hint */}
-        <div className="num mt-2 text-[10px]" style={{ color: "var(--c-text-faint)" }}>
+        <div className="num mt-2 text-[12px]" style={{ color: "var(--c-text-faint)" }}>
           {isActive ? "Currently applied" : "Click to apply"}
         </div>
       </div>

@@ -379,11 +379,11 @@ export function CommandPalette({
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[13px] font-medium text-ink">{item.label}</div>
                           {item.hint && (
-                            <div className="num truncate text-[11px] text-muted">{item.hint}</div>
+                            <div className="num truncate text-[12px] text-muted">{item.hint}</div>
                           )}
                         </div>
                         {active && (
-                          <div className="flex items-center gap-1 text-[10px] text-faint">
+                          <div className="flex items-center gap-1 text-[12px] text-faint">
                             <CornerDownLeft size={10} />
                           </div>
                         )}
@@ -397,18 +397,18 @@ export function CommandPalette({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 border-t border-hairline px-4 py-2 text-[10px] text-faint">
+        <div className="flex items-center justify-between gap-3 border-t border-hairline px-4 py-2 text-[12px] text-faint">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[9px] text-muted">↑↓</kbd>
+              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[12px] text-muted">↑↓</kbd>
               navigate
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[9px] text-muted">↵</kbd>
+              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[12px] text-muted">↵</kbd>
               select
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[9px] text-muted">esc</kbd>
+              <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[12px] text-muted">esc</kbd>
               close
             </span>
           </div>

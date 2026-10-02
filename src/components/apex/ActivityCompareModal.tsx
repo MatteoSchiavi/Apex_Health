@@ -211,7 +211,7 @@ export function ActivityCompareModal({
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-[12px] font-semibold text-ink">{a.title}</div>
-                              <div className="num text-[10px] text-muted">
+                              <div className="num text-[12px] text-muted">
                                 {fmtDate(a.start_time, "en")} · {fmtClock(a.start_time, "en")} · {friendlyDiscipline(a.discipline, "en")}
                               </div>
                             </div>
@@ -231,7 +231,7 @@ export function ActivityCompareModal({
               <table className="w-full min-w-[640px] border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-hairline bg-surface2 text-left">
-                    <th className="eyebrow !text-[10px] !font-semibold px-3 py-2.5 w-[160px]">Metric</th>
+                    <th className="eyebrow !text-[12px] !font-semibold px-3 py-2.5 w-[160px]">Metric</th>
                     {selectedActivities.map((a) => (
                       <th key={a.id} className="px-3 py-2.5 text-left">
                         <div className="flex items-center gap-2">
@@ -240,7 +240,7 @@ export function ActivityCompareModal({
                           </span>
                           <div className="min-w-0">
                             <div className="truncate text-[12px] font-semibold text-ink">{a.title}</div>
-                            <div className="num text-[10px] text-muted">
+                            <div className="num text-[12px] text-muted">
                               {fmtDate(a.start_time, "en")}
                             </div>
                           </div>
@@ -256,7 +256,7 @@ export function ActivityCompareModal({
                     const minV = Math.min(...values.filter((v): v is number => v !== null) as number[], Infinity);
                     return (
                       <tr key={metric.key} className="border-b border-hairline/60 last:border-b-0">
-                        <td className="eyebrow !text-[10px] px-3 py-2.5">{metric.label}</td>
+                        <td className="eyebrow !text-[12px] px-3 py-2.5">{metric.label}</td>
                         {selectedActivities.map((a, i) => {
                           const v = values[i];
                           if (v === null || v === undefined || !Number.isFinite(v)) {
@@ -282,7 +282,7 @@ export function ActivityCompareModal({
                               className={`num px-3 py-2.5 text-right font-medium ${cellCls} ${isBest ? "rounded-[var(--radius-control)]" : ""}`}
                             >
                               {metric.format(v)}
-                              {isBest && <span className="ml-1 text-[9px] opacity-80">★</span>}
+                              {isBest && <span className="ml-1 text-[12px] opacity-80">★</span>}
                             </td>
                           );
                         })}
@@ -301,7 +301,7 @@ export function ActivityCompareModal({
           {/* Selected chips + clear */}
           {selectedActivities.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="eyebrow !text-[10px]">Selected</span>
+              <span className="eyebrow !text-[12px]">Selected</span>
               {selectedActivities.map((a) => (
                 <Badge
                   key={a.id}
@@ -322,7 +322,7 @@ export function ActivityCompareModal({
               <button
                 type="button"
                 onClick={() => setSelected([])}
-                className="num ml-auto text-[11px] font-semibold text-muted hover:text-ink"
+                className="num ml-auto text-[12px] font-semibold text-muted hover:text-ink"
               >
                 Clear all
               </button>
@@ -332,7 +332,7 @@ export function ActivityCompareModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-hairline px-5 py-3">
-          <div className="num text-[10px] text-faint">
+          <div className="num text-[12px] text-faint">
             ★ = best value for this metric (higher is better where applicable)
           </div>
           <div className="flex items-center gap-2">

@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, CheckCircle2, AlertCircle, Eye, EyeOff, Unlink } from "lucide-react";
-import { ApexButton, Hairline, Eyebrow, Badge } from "@/components/apex/kit";
+import { ApexButton, Hairline, Badge } from "@/components/apex/kit";
 import { useToast } from "@/hooks/use-toast";
 
 export function GarminConnectForm({ onConnected }: { onConnected: () => void }) {
@@ -129,7 +129,7 @@ export function GarminConnectForm({ onConnected }: { onConnected: () => void }) 
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Eyebrow>Garmin Connect</Eyebrow>
+            <div className="text-[14px] font-medium text-ink2">Garmin Connect</div>
             {loading ? (
               <Loader2 size={12} className="animate-spin text-faint" />
             ) : connected ? (
@@ -174,7 +174,7 @@ export function GarminConnectForm({ onConnected }: { onConnected: () => void }) 
                 Disconnect
               </ApexButton>
             </div>
-            <p className="text-[11px] text-faint">
+            <p className="text-[12px] text-faint">
               {/* TODO i18n */}
               Your credentials are stored in the local database and used for
               scheduled syncs. Disconnect to clear them.
@@ -184,13 +184,13 @@ export function GarminConnectForm({ onConnected }: { onConnected: () => void }) 
           /* Not connected — show the form */
           <div className="space-y-3">
             {error && (
-              <div className="flex items-start gap-2 rounded-[var(--radius-control)] border border-alert/40 bg-alertSoft/40 px-2.5 py-2 text-[11px] text-alertText">
+              <div className="flex items-start gap-2 rounded-[var(--radius-control)] border border-alert/40 bg-alertSoft/40 px-2.5 py-2 text-[12px] text-alertText">
                 <AlertCircle size={13} className="mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
             <div>
-              <label className="eyebrow mb-1 block !text-[10px] text-faint">Garmin email</label>
+              <label className="mb-1 block text-[14px] font-medium text-ink2">Garmin email</label>
               <input
                 type="email"
                 value={email}
@@ -201,7 +201,7 @@ export function GarminConnectForm({ onConnected }: { onConnected: () => void }) 
               />
             </div>
             <div>
-              <label className="eyebrow mb-1 block !text-[10px] text-faint">Password</label>
+              <label className="mb-1 block text-[14px] font-medium text-ink2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -236,7 +236,7 @@ export function GarminConnectForm({ onConnected }: { onConnected: () => void }) 
               >
                 {connecting ? "Connecting…" : "Connect & sync"}
               </ApexButton>
-              <span className="text-[10px] text-faint">
+              <span className="text-[12px] text-faint">
                 {/* TODO i18n */}
                 Credentials are validated by logging in to Garmin Connect, then
                 stored locally for future syncs.

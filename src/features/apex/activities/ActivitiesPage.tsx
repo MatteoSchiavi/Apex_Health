@@ -378,7 +378,7 @@ export function ActivitiesPage() {
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] px-1.5 py-0.5 text-[11px] font-medium text-muted transition-colors hover:bg-surface2 hover:text-ink"
+                className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] px-1.5 py-0.5 text-[12px] font-medium text-muted transition-colors hover:bg-surface2 hover:text-ink"
               >
                 <X size={11} />
                 {t("act_clear_filters")}
@@ -438,7 +438,7 @@ export function ActivitiesPage() {
         <Card className="mt-4" pad={false}>
           <div className="flex items-start justify-between gap-3 px-4 pt-4">
             <div>
-              <div className="eyebrow">{t("act_weekly_volume")}</div>
+              <div className="text-[14px] font-medium text-ink2">{t("act_weekly_volume")}</div>
               {/* TODO i18n — "last N weeks" */}
               <div className="mt-0.5 text-[12px] text-muted">
                 Last {WEEKS_SHOWN} weeks · click a bar to filter the list
@@ -502,7 +502,7 @@ export function ActivitiesPage() {
 
               {/* Load more */}
               <div className="mt-4 flex flex-col items-center gap-2">
-                <div className="num text-[11px] text-faint">
+                <div className="num text-[12px] text-faint">
                   {t("act_showing", { shown: activities.length, total })}
                 </div>
                 {activities.length < total && (
@@ -529,7 +529,7 @@ export function ActivitiesPage() {
       )}
 
       <Hairline className="mt-6 opacity-60" />
-      <div className="mt-3 text-[11px] text-faint">
+      <div className="mt-3 text-[12px] text-faint">
         <span className="num">{t("app.measured")}</span>
       </div>
     </div>
@@ -541,7 +541,7 @@ export function ActivitiesPage() {
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="eyebrow !text-[10px] text-faint">{label}</span>
+      <span className="text-[14px] font-medium text-faint">{label}</span>
       {children}
     </div>
   );
@@ -562,10 +562,10 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2 py-1 text-[11px] font-medium transition-colors ${
+      className={`num inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-2 py-1 text-[12px] font-medium transition-colors ${
         active
-          ? "border-primary bg-primarySoft text-primaryText"
-          : "border-hairline bg-surface text-muted hover:bg-surface2 hover:text-ink"
+          ? "bg-primarySoft text-primaryText"
+          : "bg-surface text-muted hover:bg-surface2 hover:text-ink"
       }`}
     >
       {color && !active && (
@@ -588,7 +588,7 @@ function ActiveChip({
   children: React.ReactNode;
 }) {
   return (
-    <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-surface2 px-1.5 py-0.5 text-[11px] font-medium text-ink2">
+    <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-surface2 px-1.5 py-0.5 text-[12px] font-medium text-ink2">
       {children}
       <button
         type="button"
@@ -616,14 +616,14 @@ function SummaryStat({
   delta: number | null;
 }) {
   return (
-    <div className="rounded-[var(--radius-card)] border border-hairline bg-surface2 px-3 py-2.5">
+    <div className="rounded-[var(--radius-card)] bg-surface2 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="eyebrow truncate !text-[10px]">{label}</div>
+        <div className="truncate text-[14px] font-medium text-ink2">{label}</div>
         <DeltaChip delta={delta} compact goodWhen="up" showSuffix={false} />
       </div>
       <div className="num mt-1 flex items-baseline gap-1 text-[22px] font-bold leading-7 text-ink tabular-nums">
         {value}
-        {unit && <span className="text-[10px] font-medium text-muted">{unit}</span>}
+        {unit && <span className="text-[12px] font-medium text-muted">{unit}</span>}
       </div>
     </div>
   );
@@ -862,7 +862,7 @@ function WeeklyVolumeChart({
 
       {/* Tooltip / hover summary */}
       {hover !== null && weekly[hover] && (
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted">
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-muted">
           <span className="num font-medium text-ink">
             {fmtDate(weekly[hover].week_start, locale)}
           </span>
@@ -898,7 +898,7 @@ function WeeklyVolumeChart({
           {disciplines.map((d) => (
             <span
               key={d}
-              className="num inline-flex items-center gap-1.5 text-[10px] text-muted"
+              className="num inline-flex items-center gap-1.5 text-[12px] text-muted"
             >
               <span
                 aria-hidden
@@ -952,9 +952,9 @@ function WeekGroup({
             {fmtDate(weekKey, locale)}
           </span>
           {/* TODO i18n — "Week of {date}" */}
-          <span className="text-[11px] text-faint">Week of</span>
+          <span className="text-[12px] text-faint">Week of</span>
         </div>
-        <div className="num flex items-center gap-3 text-[11px] text-muted tabular-nums">
+        <div className="num flex items-center gap-3 text-[12px] text-muted tabular-nums">
           <span>
             {items.length} {items.length === 1 ? "session" : "sessions"}
           </span>
@@ -1052,24 +1052,24 @@ function ActivityCompactRow({
           <div className="truncate text-[12px] font-semibold leading-tight text-ink">
             {disciplineLabel(a.discipline, locale)}
           </div>
-          <div className="num text-[10px] text-faint tabular-nums">
+          <div className="num text-[12px] text-faint tabular-nums">
             {fmtDate(a.start_time, locale)} · {fmtClock(a.start_time, locale)}
           </div>
         </div>
       </div>
 
       {/* Duration */}
-      <div className="num w-[60px] shrink-0 text-right text-[11px] text-ink2 tabular-nums">
+      <div className="num w-[60px] shrink-0 text-right text-[12px] text-ink2 tabular-nums">
         {fmtDuration(a.duration_s)}
       </div>
 
       {/* Primary metric (discipline-aware) */}
-      <div className="num w-[80px] shrink-0 text-right text-[11px] text-ink2 tabular-nums">
+      <div className="num w-[80px] shrink-0 text-right text-[12px] text-ink2 tabular-nums">
         {primary ? primary.value : <span className="text-faint">—</span>}
       </div>
 
       {/* Avg HR */}
-      <div className="num hidden w-[60px] shrink-0 text-right text-[11px] text-ink2 tabular-nums sm:block">
+      <div className="num hidden w-[60px] shrink-0 text-right text-[12px] text-ink2 tabular-nums sm:block">
         {a.avg_hr !== null && Number.isFinite(a.avg_hr) ? (
           `${a.avg_hr}`
         ) : (
@@ -1087,7 +1087,7 @@ function ActivityCompactRow({
             />
           )}
         </div>
-        <span className="num w-[28px] text-right text-[10px] text-muted tabular-nums">
+        <span className="num w-[28px] text-right text-[12px] text-muted tabular-nums">
           {a.training_load !== null ? Math.round(a.training_load) : "—"}
         </span>
       </div>
@@ -1123,10 +1123,10 @@ function ActivityCompactRow({
 
       {/* Mobile-only secondary line: HR + load + sources */}
       <div className="flex w-full items-center gap-3 sm:hidden">
-        <div className="num text-[10px] text-muted tabular-nums">
+        <div className="num text-[12px] text-muted tabular-nums">
           HR {a.avg_hr ?? "—"}
         </div>
-        <div className="num flex items-center gap-1.5 text-[10px] text-muted tabular-nums">
+        <div className="num flex items-center gap-1.5 text-[12px] text-muted tabular-nums">
           <span>Load</span>
           <span className="num h-1 flex-1 overflow-hidden rounded-full bg-surface3" style={{ minWidth: 36 }}>
             {loadPct > 0 && (

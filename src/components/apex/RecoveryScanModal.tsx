@@ -138,7 +138,7 @@ export function RecoveryScanModal({
             >
               <Loader2 size={28} className="animate-spin text-primaryText" />
               <div className="mt-3 text-[13px] text-muted">{t("coach.loading")}</div>
-              <div className="num mt-1 text-[10px] text-faint">
+              <div className="num mt-1 text-[12px] text-faint">
                 Readiness {fmtNum(overview.readiness.value, 0)} · HRV {fmtNum(overview.hrv_ms, 0)} ms · ACWR {fmtNum(overview.acwr, 2)}
               </div>
             </div>
@@ -155,7 +155,7 @@ export function RecoveryScanModal({
                 <AlertTriangle size={18} />
               </div>
               <div className="text-[13px] font-medium text-ink">{t("common.error")}</div>
-              <div className="max-w-[320px] text-[11px] text-muted">{error}</div>
+              <div className="max-w-[320px] text-[12px] text-muted">{error}</div>
             </div>
           )}
 
@@ -228,7 +228,7 @@ export function RecoveryScanModal({
               {/* Disclaimer */}
               <div className="flex items-start gap-2 rounded-[var(--radius-card)] border border-alert/20 bg-alertSoft/50 p-3">
                 <ShieldAlert size={12} className="mt-0.5 shrink-0 text-alertText/70" />
-                <p className="text-[11px] italic leading-[1.5] text-alertText/80">{scan.disclaimer}</p>
+                <p className="text-[12px] italic leading-[1.5] text-alertText/80">{scan.disclaimer}</p>
               </div>
             </div>
           )}
@@ -236,7 +236,7 @@ export function RecoveryScanModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-hairline px-5 py-3">
-          <div className="num text-[10px] text-faint">
+          <div className="num text-[12px] text-faint">
             {overview.date} · {t("overview.epoch")}
           </div>
           <div className="flex items-center gap-2">

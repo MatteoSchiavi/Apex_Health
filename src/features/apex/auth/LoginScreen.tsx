@@ -30,7 +30,7 @@ import { useState, type FormEvent } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
-import { ApexButton, Eyebrow, Card } from "@/components/apex/kit";
+import { ApexButton, Card } from "@/components/apex/kit";
 import type { ViewKey } from "@/lib/apex/types";
 
 /** All app views a deep link may legitimately target after login. */
@@ -116,7 +116,7 @@ export function LoginScreen() {
           {t("auth_back")}
         </button>
 
-        <Eyebrow>{t("auth.login_title")}</Eyebrow>
+        <div className="text-[14px] font-medium text-ink2">{t("auth.login_title")}</div>
         <h1 className="page-title mt-2">{t("auth.login_sub")}</h1>
 
         <Card className="mt-6">
@@ -173,7 +173,7 @@ export function LoginScreen() {
           </form>
 
           {/* Demo hint — how to trigger each of the three error states. */ }
-          <p className="num mt-3 text-[10px] leading-[14px] text-faint">
+          <p className="num mt-3 text-[12px] leading-[14px] text-faint">
             {/* TODO i18n — main agent will add an auth.demo_hint key */}
             {"Demo: leave password empty → wrong credentials · email contains \"locked\" → locked · email contains \"error\" → server error."}
           </p>

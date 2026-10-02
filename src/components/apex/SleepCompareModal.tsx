@@ -198,7 +198,7 @@ export function SleepCompareModal({
                               <div className="truncate text-[12px] font-semibold text-ink">
                                 {fmtDate(s.local_date, locale)}
                               </div>
-                              <div className="num text-[10px] text-muted">
+                              <div className="num text-[12px] text-muted">
                                 {t("sleep.score")} {s.sleep_score ?? "—"} · {fmtHours(s.total_sleep_s ?? 0)}
                               </div>
                             </div>
@@ -218,7 +218,7 @@ export function SleepCompareModal({
               <table className="w-full min-w-[640px] border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-hairline bg-surface2 text-left">
-                    <th className="eyebrow !text-[10px] !font-semibold px-3 py-2.5 w-[160px]">Metric</th>
+                    <th className="eyebrow !text-[12px] !font-semibold px-3 py-2.5 w-[160px]">Metric</th>
                     {selectedSessions.map((s) => (
                       <th key={s.local_date} className="px-3 py-2.5 text-left">
                         <div className="flex items-center gap-2">
@@ -229,7 +229,7 @@ export function SleepCompareModal({
                             <div className="truncate text-[12px] font-semibold text-ink">
                               {fmtDate(s.local_date, locale)}
                             </div>
-                            <div className="num text-[10px] text-muted">
+                            <div className="num text-[12px] text-muted">
                               {fmtClock(s.start_time, locale)} → {fmtClock(s.end_time, locale)}
                             </div>
                           </div>
@@ -245,7 +245,7 @@ export function SleepCompareModal({
                     const minV = Math.min(...values.filter((v): v is number => v !== null) as number[], Infinity);
                     return (
                       <tr key={metric.key} className="border-b border-hairline/60 last:border-b-0">
-                        <td className="eyebrow !text-[10px] px-3 py-2.5">{metric.label}</td>
+                        <td className="eyebrow !text-[12px] px-3 py-2.5">{metric.label}</td>
                         {selectedSessions.map((s, i) => {
                           const v = values[i];
                           if (v === null || v === undefined || !Number.isFinite(v)) {
@@ -270,7 +270,7 @@ export function SleepCompareModal({
                               className={`num px-3 py-2.5 text-right font-medium ${cellCls} ${isBest ? "rounded-[var(--radius-control)]" : ""}`}
                             >
                               {metric.format(v)}
-                              {isBest && <span className="ml-1 text-[9px] opacity-80">★</span>}
+                              {isBest && <span className="ml-1 text-[12px] opacity-80">★</span>}
                             </td>
                           );
                         })}
@@ -289,7 +289,7 @@ export function SleepCompareModal({
           {/* Selected chips */}
           {selectedSessions.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="eyebrow !text-[10px]">Selected</span>
+              <span className="eyebrow !text-[12px]">Selected</span>
               {selectedSessions.map((s) => (
                 <Badge key={s.local_date} tone="primary" className="cursor-pointer" dot>
                   <button
@@ -305,7 +305,7 @@ export function SleepCompareModal({
               <button
                 type="button"
                 onClick={() => setSelected([])}
-                className="num ml-auto text-[11px] font-semibold text-muted hover:text-ink"
+                className="num ml-auto text-[12px] font-semibold text-muted hover:text-ink"
               >
                 Clear all
               </button>
@@ -315,7 +315,7 @@ export function SleepCompareModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-hairline px-5 py-3">
-          <div className="num text-[10px] text-faint">
+          <div className="num text-[12px] text-faint">
             ★ = best value for this metric
           </div>
           <div className="flex items-center gap-2">

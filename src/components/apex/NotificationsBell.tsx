@@ -142,14 +142,14 @@ export function NotificationsBell() {
           <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
             <div className="eyebrow">{t("overview.open_alerts")}</div>
             <div className="flex items-center gap-3">
-              <span className="num text-[10px] text-faint">
+              <span className="num text-[12px] text-faint">
                 {unreadCount > 0 ? `${unreadCount} unread` : "All read"}
               </span>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={markAllRead}
-                  className="num text-[10px] font-semibold text-primaryText hover:text-primaryText/80"
+                  className="num text-[12px] font-semibold text-primaryText hover:text-primaryText/80"
                 >
                   Mark all read
                 </button>
@@ -191,11 +191,11 @@ export function NotificationsBell() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="eyebrow !text-[9px] uppercase">{a.type}</span>
+                            <span className="eyebrow !text-[12px] uppercase">{a.type}</span>
                             {!isRead && (
                               <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="unread" />
                             )}
-                            <span className="num text-[9px] text-faint">
+                            <span className="num text-[12px] text-faint">
                               {timeAgo(new Date(Date.now() - i * 3600_000).toISOString(), ui.locale)}
                             </span>
                           </div>
@@ -218,7 +218,7 @@ export function NotificationsBell() {
                 ui.setView("overview");
                 setOpen(false);
               }}
-              className="num text-[11px] font-semibold text-primaryText hover:text-primaryText/80"
+              className="num text-[12px] font-semibold text-primaryText hover:text-primaryText/80"
             >
               {t("overview.title")} →
             </button>

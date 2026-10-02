@@ -8,7 +8,7 @@
  * The most analytically dense page in the app. Layout (top-to-bottom):
  *   1. Back link
  *   2. PageHeader (title + date · time · discipline + Export)
- *   3. Primary metrics strip — 8 StatPods
+ *   3. Primary metrics strip — 8 metric tiles
  *   4. Two-column grid: GPS Trace (~8 cols) + side panel (~4 cols)
  *      Side panel = Weather + Gear + Sources (source_metrics) + Export
  *   5. Synchronized Timeline Stream — 5 sparkline-style SVG charts stacked
@@ -35,13 +35,9 @@ import {
 } from "@/lib/apex/data";
 import {
   Card,
-  CardHeader,
   PageHeader,
-  StatPod,
   ZoneBar,
   SportIcon,
-  Eyebrow,
-  SectionHeader,
   Empty,
   SourcePill,
   BackLink,
@@ -121,42 +117,60 @@ export function ActivityDetailPage() {
 
       {/* Primary metrics strip */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <StatPod
-          label={t("activities.distance")}
-          value={detail.distance_m === null ? "—" : fmtDistance(detail.distance_m, "metric", 1)}
-          unit={detail.distance_m === null ? undefined : "km"}
-        />
-        <StatPod label={t("activities.duration")} value={fmtDuration(detail.duration_s)} />
-        <StatPod
-          label={t("activities.elevation")}
-          value={detail.elevation_gain_m === null ? "—" : fmtElevation(detail.elevation_gain_m)}
-          unit={detail.elevation_gain_m === null ? undefined : "m"}
-        />
-        <StatPod
-          label={t("activities.avg_power")}
-          value={detail.avg_power === null ? "—" : detail.avg_power}
-          unit={detail.avg_power === null ? undefined : "W"}
-        />
-        <StatPod
-          label={t("activities.avg_hr")}
-          value={detail.avg_hr === null ? "—" : detail.avg_hr}
-          unit={detail.avg_hr === null ? undefined : "bpm"}
-        />
-        <StatPod
-          label={t("activities.max_hr")}
-          value={detail.max_hr === null ? "—" : detail.max_hr}
-          unit={detail.max_hr === null ? undefined : "bpm"}
-        />
-        <StatPod
-          label={t("activities.calories")}
-          value={detail.calories === null ? "—" : detail.calories}
-          unit={detail.calories === null ? undefined : "kcal"}
-        />
-        <StatPod
-          label={t("activities.col_load")}
-          value={detail.training_load === null ? "—" : detail.training_load}
-          tone="primary"
-        />
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.distance")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.distance_m === null ? "—" : fmtDistance(detail.distance_m, "metric", 1)}</span>
+            {detail.distance_m !== null && <span className="text-[14px] text-ink2">km</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.duration")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{fmtDuration(detail.duration_s)}</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.elevation")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.elevation_gain_m === null ? "—" : fmtElevation(detail.elevation_gain_m)}</span>
+            {detail.elevation_gain_m !== null && <span className="text-[14px] text-ink2">m</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.avg_power")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.avg_power === null ? "—" : detail.avg_power}</span>
+            {detail.avg_power !== null && <span className="text-[14px] text-ink2">W</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.avg_hr")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.avg_hr === null ? "—" : detail.avg_hr}</span>
+            {detail.avg_hr !== null && <span className="text-[14px] text-ink2">bpm</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.max_hr")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.max_hr === null ? "—" : detail.max_hr}</span>
+            {detail.max_hr !== null && <span className="text-[14px] text-ink2">bpm</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.calories")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.calories === null ? "—" : detail.calories}</span>
+            {detail.calories !== null && <span className="text-[14px] text-ink2">kcal</span>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[14px] text-ink2">{t("activities.col_load")}</div>
+          <div className="num mt-1 flex items-baseline gap-1 text-ink">
+            <span className="text-[28px] font-semibold">{detail.training_load === null ? "—" : detail.training_load}</span>
+          </div>
+        </div>
       </div>
 
       {/* GPS trace + side panel */}
@@ -164,13 +178,13 @@ export function ActivityDetailPage() {
         <Card pad={false} className="overflow-hidden lg:col-span-8">
           <div className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-3">
             <div>
-              <div className="eyebrow">{t("activities.map")}</div>
-              <div className="num mt-0.5 text-[11px] text-faint">
+              <div className="text-[14px] font-medium text-ink2">{t("activities.map")}</div>
+              <div className="num mt-0.5 text-[12px] text-faint">
                 {detail.route !== null ? `${detail.route.length} pts` : "—"}
               </div>
             </div>
             {detail.route !== null && (
-              <div className="flex items-center gap-3 text-[10px] text-muted">
+              <div className="flex items-center gap-3 text-[12px] text-muted">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-2 w-2 rounded-full bg-positive" />
                   {t("activities.gps_start")}
@@ -194,7 +208,7 @@ export function ActivityDetailPage() {
         <div className="space-y-4 lg:col-span-4">
           {/* Weather */}
           <Card>
-            <CardHeader eyebrow={t("activities.weather")} />
+            <div className="mb-3 text-[14px] font-medium text-ink2">{t("activities.weather")}</div>
             {detail.weather ? (
               <div className="grid grid-cols-2 gap-2.5">
                 <WeatherStat label={t("activities.conditions")} value={detail.weather.conditions} />
@@ -209,7 +223,7 @@ export function ActivityDetailPage() {
 
           {/* Gear */}
           <Card>
-            <CardHeader eyebrow={t("activities.gear")} />
+            <div className="mb-3 text-[14px] font-medium text-ink2">{t("activities.gear")}</div>
             {detail.gear.length === 0 ? (
               <div className="text-[12px] text-faint">—</div>
             ) : (
@@ -222,7 +236,7 @@ export function ActivityDetailPage() {
                       </span>
                       <span className="truncate text-[12px] text-ink2">{g.name}</span>
                     </div>
-                    <span className="num shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">{g.type}</span>
+                    <span className="num shrink-0 text-[12px] tracking-[0.06em] text-faint">{g.type}</span>
                   </li>
                 ))}
               </ul>
@@ -231,7 +245,7 @@ export function ActivityDetailPage() {
 
           {/* Sources */}
           <Card>
-            <CardHeader eyebrow={t("activities.sources")} />
+            <div className="mb-3 text-[14px] font-medium text-ink2">{t("activities.sources")}</div>
             <ul className="space-y-1.5">
               {Object.entries(detail.source_metrics).map(([k, v]) => (
                 <li key={k} className="flex items-center justify-between gap-2 text-[12px]">
@@ -252,15 +266,12 @@ export function ActivityDetailPage() {
       {/* Synchronized Timeline Stream */}
       <Card pad={false} className="mt-6 overflow-hidden">
         <div className="border-b border-hairline px-4 py-3">
-          <SectionHeader
-            eyebrow={t("activities.streams")}
-            right={
-              <div className="num text-[10px] text-faint">
-                {fmtDuration(detail.duration_s)} · {streams.t.length} samples
-              </div>
-            }
-            className="mb-0"
-          />
+          <div className="mb-0 flex items-baseline justify-between gap-3">
+            <div className="text-[14px] font-medium text-ink2">{t("activities.streams")}</div>
+            <div className="num text-[12px] text-faint">
+              {fmtDuration(detail.duration_s)} · {streams.t.length} samples
+            </div>
+          </div>
         </div>
         <StreamCharts
           streams={streams}
@@ -273,21 +284,19 @@ export function ActivityDetailPage() {
 
       {/* Heart Rate Zone Distribution */}
       <Card className="mt-6">
-        <CardHeader
-          eyebrow={t("activities.zones")}
-          right={
-            <span className="num text-[10px] text-faint">
-              {t("activities.zone_pct")} · max HR {MAX_HR}
-            </span>
-          }
-        />
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <div className="text-[14px] font-medium text-ink2">{t("activities.zones")}</div>
+          <span className="num text-[12px] text-faint">
+            {t("activities.zone_pct")} · max HR {MAX_HR}
+          </span>
+        </div>
         <HrZones hrData={streams.columns.hr} t={t} />
       </Card>
 
       {/* Laps table */}
       <Card pad={false} className="mt-6 overflow-hidden">
         <div className="border-b border-hairline px-4 py-3">
-          <div className="eyebrow">{t("activities.laps")}</div>
+          <div className="text-[14px] font-medium text-ink2">{t("activities.laps")}</div>
         </div>
         <div className="overflow-x-auto scroll-area">
           <table className="w-full min-w-[640px] border-collapse text-[12px]">
@@ -356,7 +365,7 @@ export function ActivityDetailPage() {
 
       {/* Sources footer */}
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Eyebrow>{t("activities.source_label")}</Eyebrow>
+        <div className="text-[14px] font-medium text-ink2">{t("activities.source_label")}</div>
         {detail.sources.map((s) => (
           <SourcePill key={s}>{s}</SourcePill>
         ))}
@@ -371,15 +380,15 @@ export function ActivityDetailPage() {
 
 function WeatherStat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2.5 py-2">
-      <div className="eyebrow !text-[9px] truncate">{label}</div>
+    <div className="rounded-[var(--radius-control)] bg-surface2 px-2.5 py-2">
+      <div className="truncate text-[14px] font-medium text-ink2">{label}</div>
       <div className="num mt-1 text-[14px] font-semibold tabular-nums text-ink">{value}</div>
     </div>
   );
 }
 
 function LapTh({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <th className={`eyebrow !text-[10px] !font-semibold px-3 py-2.5 ${className}`}>{children}</th>;
+  return <th className={`text-[14px] font-semibold text-ink2 px-3 py-2.5 ${className}`}>{children}</th>;
 }
 
 function LapTd({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -630,8 +639,8 @@ function StreamCharts({
         {metricPaths.map((m) => (
           <div key={m.key} className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />
-            <span className="text-[11px] font-medium text-muted">{m.label}</span>
-            <span className="num text-[10px] text-faint">{Math.round(m.min)}–{Math.round(m.max)}</span>
+            <span className="text-[12px] font-medium text-muted">{m.label}</span>
+            <span className="num text-[12px] text-faint">{Math.round(m.min)}–{Math.round(m.max)}</span>
           </div>
         ))}
       </div>
@@ -690,7 +699,7 @@ function StreamCharts({
       </div>
 
       {/* X-axis labels */}
-      <div className="num mt-1 flex justify-between px-12 text-[9px] text-faint">
+      <div className="num mt-1 flex justify-between px-12 text-[12px] text-faint">
         {xLabels.map((label, i) => <span key={i}>{label}</span>)}
       </div>
 
@@ -706,14 +715,14 @@ function StreamCharts({
           role="status" aria-live="polite"
         >
           <div className="flex items-center justify-between border-b border-hairline px-3 py-1.5">
-            <span className="eyebrow !text-[9px]">{hoverTimeStr}</span>
-            <span className="num text-[9px] text-faint">{hoverIdx + 1}/{streamCount}</span>
+            <span className="text-[14px] font-medium text-ink2">{hoverTimeStr}</span>
+            <span className="num text-[12px] text-faint">{hoverIdx + 1}/{streamCount}</span>
           </div>
           <ul className="px-3 py-1.5">
             {metricPaths.map((m) => {
               const v = m.data[hoverIdx];
               return (
-                <li key={m.key} className="flex items-center justify-between gap-2 py-0.5 text-[11px]">
+                <li key={m.key} className="flex items-center justify-between gap-2 py-0.5 text-[12px]">
                   <span className="flex items-center gap-1.5 min-w-0">
                     <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: m.color }} />
                     <span className="text-muted truncate">{m.label}</span>
@@ -789,17 +798,17 @@ function HrZones({
         {zoneData.map((z, i) => (
           <div
             key={i}
-            className="rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2.5 py-2"
+            className="rounded-[var(--radius-control)] bg-surface2 px-2.5 py-2"
           >
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: colors[i] }} />
-              <span className="eyebrow !text-[10px] truncate">{labels[i]}</span>
+              <span className="truncate text-[14px] font-medium text-ink2">{labels[i]}</span>
             </div>
             <div className="num mt-1 text-[16px] font-bold tabular-nums text-ink">
               {z.toFixed(0)}
-              <span className="text-[10px] font-medium text-muted">%</span>
+              <span className="text-[12px] font-medium text-muted">%</span>
             </div>
-            <div className="num mt-0.5 text-[10px] text-faint">{hrRanges[i]} bpm</div>
+            <div className="num mt-0.5 text-[12px] text-faint">{hrRanges[i]} bpm</div>
           </div>
         ))}
       </div>

@@ -141,7 +141,7 @@ export function ShortcutsHelpModal({
                     {group.shortcuts.map((sc, i) => (
                       <li key={i} className="flex items-center justify-between gap-3">
                         <span className="text-[12px] text-ink2">{sc.desc}</span>
-                        <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[10px] font-semibold text-ink2">
+                        <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1.5 py-0.5 text-[12px] font-semibold text-ink2">
                           {sc.keys}
                         </kbd>
                       </li>
@@ -154,18 +154,18 @@ export function ShortcutsHelpModal({
 
           <Hairline className="my-4 opacity-60" />
 
-          <p className="text-[11px] leading-[1.55] text-muted">
+          <p className="text-[12px] leading-[1.55] text-muted">
             Shortcuts are active across the Apex Health SPA. The "g" prefix is a
-            vim-style chord: press and release <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[10px] font-semibold text-ink2">g</kbd>,
+            vim-style chord: press and release <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[12px] font-semibold text-ink2">g</kbd>,
             then press the target letter within 800ms. Press{" "}
-            <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[10px] font-semibold text-ink2">Esc</kbd>{" "}
+            <kbd className="num rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[12px] font-semibold text-ink2">Esc</kbd>{" "}
             to cancel a chord mid-sequence.
           </p>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-hairline px-5 py-3">
-          <div className="num text-[10px] text-faint">
+          <div className="num text-[12px] text-faint">
             Apex Health · {GROUPS.reduce((s, g) => s + g.shortcuts.length, 0)} shortcuts
           </div>
           <ApexButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>

@@ -2,7 +2,7 @@
 
 import { useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
-import { ApexButton, Eyebrow, PageHeader, Card, BackLink } from "@/components/apex/kit";
+import { ApexButton, PageHeader, Card, BackLink } from "@/components/apex/kit";
 
 export function JoinScreen() {
   const t = useT();
@@ -10,7 +10,7 @@ export function JoinScreen() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-canvas px-5">
       <div className="w-full max-w-md">
-        <Eyebrow>{t("auth.redeem")}</Eyebrow>
+        <div className="text-[14px] font-medium text-ink2">{t("auth.redeem")}</div>
         <h1 className="page-title mt-2">{t("auth.invite_code")}</h1>
         <Card className="mt-6">
           <form

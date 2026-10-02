@@ -110,7 +110,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div className="flex items-baseline gap-1.5 tracking-tight">
           <span className="text-[15px] font-bold tracking-[0.02em] text-ink">{t("app.name")}</span>
-          <span className="text-[11px] font-medium tracking-[0.22em] text-muted">{t("app.suffix")}</span>
+          <span className="text-[12px] font-medium tracking-[0.22em] text-muted">{t("app.suffix")}</span>
         </div>
       )}
     </div>
@@ -134,7 +134,7 @@ function ThemeSegmented() {
           type="button"
           aria-label={t(`theme.${tname}`)}
           onClick={() => apply(tname)}
-          className={`flex h-6 items-center gap-1.5 rounded-[calc(var(--radius-control)-1px)] px-2 text-[11px] font-medium transition-colors ${
+          className={`flex h-6 items-center gap-1.5 rounded-[calc(var(--radius-control)-1px)] px-2 text-[12px] font-medium transition-colors ${
             (theme === tname || (theme === undefined && tname === "dark"))
               ? "bg-surface2 text-ink"
               : "text-muted hover:text-ink2"
@@ -156,7 +156,7 @@ function LocaleToggle() {
     <button
       type="button"
       onClick={() => setLocale(locale === "en" ? "it" : "en")}
-      className="num inline-flex h-6 items-center rounded-[var(--radius-control)] border border-hairline bg-bg px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted transition-colors hover:text-ink"
+      className="num inline-flex h-6 items-center rounded-[var(--radius-control)] border border-hairline bg-bg px-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-muted transition-colors hover:text-ink"
       aria-label={t("locale.switch")}
     >
       {locale === "en" ? "EN" : "IT"}
@@ -174,7 +174,7 @@ function SyncFooter() {
       <div className="rounded-[var(--radius-card)] border border-hairline bg-surface px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-hairline2" />
-          <span className="eyebrow !text-[10px]">{t("overview.no_devices")}</span>
+          <span className="eyebrow !text-[12px]">{t("overview.no_devices")}</span>
         </div>
       </div>
     );
@@ -193,13 +193,13 @@ function SyncFooter() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-positive" />
           </span>
-          <span className="num truncate text-[10px] font-medium tracking-[0.08em] text-ink2">
+          <span className="num truncate text-[12px] font-medium tracking-[0.08em] text-ink2">
             {names}
           </span>
         </div>
       </div>
-      <div className="num mt-1 flex items-center justify-between text-[10px] text-faint">
-        <span className="eyebrow !text-[9px]">{t("overview.telemetry_state")}</span>
+      <div className="num mt-1 flex items-center justify-between text-[12px] text-faint">
+        <span className="eyebrow !text-[12px]">{t("overview.telemetry_state")}</span>
         <span>{freshest ? timeAgo(freshest, locale) : "—"}</span>
       </div>
     </div>
@@ -245,7 +245,7 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
 
       {!collapsed && (
         <div className="px-4 py-2">
-          <div className="eyebrow !text-[10px]">{t("app.section")}</div>
+          <div className="eyebrow !text-[12px]">{t("app.section")}</div>
         </div>
       )}
 
@@ -254,7 +254,7 @@ function Sidebar({ current, onNav, collapsed, onToggleCollapse }: { current: Vie
           <div key={group.groupKey} className={gi > 0 ? "mt-3" : ""}>
             {!collapsed && (
               <div className="px-2.5 pb-1 pt-1">
-                <div className="eyebrow !text-[9px] text-faint">{t(group.groupKey)}</div>
+                <div className="eyebrow !text-[12px] text-faint">{t(group.groupKey)}</div>
               </div>
             )}
             <ul className="space-y-0.5">
@@ -335,7 +335,7 @@ function Topbar({ current, onSearch, onMenu }: { current: ViewKey; onSearch: () 
       >
         <Menu size={16} />
       </button>
-      <div className="num min-w-0 flex-1 truncate text-center text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+      <div className="num min-w-0 flex-1 truncate text-center text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
         {currentLabel ? t(currentLabel) : ""}
       </div>
       <div className="flex items-center gap-1.5">
@@ -396,7 +396,7 @@ function BottomNav({ current, onNav, onMore }: { current: ViewKey; onNav: (v: Vi
               <button
                 type="button"
                 onClick={() => onNav(item.view)}
-                className={`relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                className={`relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[12px] font-medium transition-colors ${
                   active ? "text-primaryText" : "text-muted"
                 }`}
                 aria-current={active ? "page" : undefined}
@@ -408,7 +408,7 @@ function BottomNav({ current, onNav, onMore }: { current: ViewKey; onNav: (v: Vi
                   />
                 )}
                 <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
-                <span className="num truncate text-[9px] tracking-[0.04em] uppercase">
+                <span className="num truncate text-[12px] tracking-[0.04em] uppercase">
                   {t(item.labelKey)}
                 </span>
               </button>
@@ -420,11 +420,11 @@ function BottomNav({ current, onNav, onMore }: { current: ViewKey; onNav: (v: Vi
           <button
             type="button"
             onClick={onMore}
-            className="relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted transition-colors hover:text-ink2"
+            className="relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[12px] font-medium text-muted transition-colors hover:text-ink2"
             aria-label="More navigation"
           >
             <Menu size={20} strokeWidth={1.8} />
-            <span className="num text-[9px] tracking-[0.04em] uppercase">{t("nav.more") || "More"}</span>
+            <span className="num text-[12px] tracking-[0.04em] uppercase">{t("nav.more") || "More"}</span>
           </button>
         </li>
       </ul>
@@ -467,7 +467,7 @@ function MobileNavDrawer({
           {NAV_GROUPS.map((group, gi) => (
             <div key={group.groupKey} className={gi > 0 ? "mt-4" : ""}>
               <div className="px-2.5 pb-1">
-                <div className="eyebrow !text-[9px] text-faint">{t(group.groupKey)}</div>
+                <div className="eyebrow !text-[12px] text-faint">{t(group.groupKey)}</div>
               </div>
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
@@ -542,7 +542,7 @@ function AccountChip() {
         </div>
         <div className="hidden text-left xl:block">
           <div className="num text-[12px] font-semibold leading-tight text-ink">{me.name}</div>
-          <div className="num text-[10px] text-muted">{me.email}</div>
+          <div className="num text-[12px] text-muted">{me.email}</div>
         </div>
       </button>
       {open && (
@@ -683,12 +683,12 @@ function SearchTrigger({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="num group flex h-8 items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] text-muted transition-colors hover:bg-surface2 hover:text-ink"
+      className="num group flex h-8 items-center gap-2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[12px] text-muted transition-colors hover:bg-surface2 hover:text-ink"
       aria-label={t("app.search")}
     >
       <Search size={12} />
       <span className="hidden xl:inline">{t("app.search")}</span>
-      <kbd className="num ml-1 hidden rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[9px] text-faint xl:inline">
+      <kbd className="num ml-1 hidden rounded-[3px] border border-hairline bg-surface3 px-1 py-0.5 text-[12px] text-faint xl:inline">
         ⌘K
       </kbd>
     </button>

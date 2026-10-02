@@ -197,9 +197,9 @@ export function StatPod({
       </div>
       <div className={`num mt-1 flex items-baseline gap-1 text-[22px] font-bold leading-7 ${toneCls}`}>
         {value}
-        {unit && <span className="text-[10px] font-medium text-muted">{unit}</span>}
+        {unit && <span className="text-[12px] font-medium text-muted">{unit}</span>}
       </div>
-      {sub && <div className="num mt-0.5 text-[10px] text-faint">{sub}</div>}
+      {sub && <div className="num mt-0.5 text-[12px] text-faint">{sub}</div>}
     </div>
   );
 }
@@ -236,7 +236,7 @@ export function DeltaChip({
   }${unit && unit !== "%" ? ` ${unit}` : ""}`;
   return (
     <span
-      className={`num inline-flex items-center gap-1 rounded-[var(--radius-control)] px-1.5 py-0.5 text-[11px] font-semibold ${cls}`}
+      className={`num inline-flex items-center gap-1 rounded-[var(--radius-control)] px-1.5 py-0.5 text-[12px] font-semibold ${cls}`}
     >
       <Icon size={11} strokeWidth={2.4} />
       {text}
@@ -274,7 +274,7 @@ export function Badge({
   }[tone];
   return (
     <span
-      className={`eyebrow inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-0.5 !text-[10px] ${tones[tone]} ${className}`}
+      className={`eyebrow inline-flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-0.5 !text-[12px] ${tones[tone]} ${className}`}
     >
       {dot && <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotCls}`} />}
       {children}
@@ -514,7 +514,7 @@ export function ErrorNote({
         <button
           type="button"
           onClick={onRetry}
-          className="ml-auto rounded-[var(--radius-control)] border border-alert/40 px-2 py-0.5 text-[11px] font-semibold hover:bg-alertSoft"
+          className="ml-auto rounded-[var(--radius-control)] border border-alert/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-alertSoft"
         >
           Retry
         </button>
@@ -527,7 +527,7 @@ export function ErrorNote({
 
 export function SourcePill({ children }: { children: ReactNode }) {
   return (
-    <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-surface3 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-muted">
+    <span className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-surface3 px-1.5 py-0.5 text-[12px] font-medium uppercase tracking-[0.06em] text-muted">
       {children}
     </span>
   );
@@ -573,7 +573,7 @@ export function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(opt.value)}
           className={`num flex items-center gap-1.5 rounded-[calc(var(--radius-control)-1px)] ${
-            size === "sm" ? "h-6 px-2 text-[11px]" : "h-7 px-2.5 text-[12px]"
+            size === "sm" ? "h-6 px-2 text-[12px]" : "h-7 px-2.5 text-[12px]"
           } font-medium transition-colors ${
             value === opt.value ? "bg-surface2 text-ink shadow-[0_1px_0_var(--c-hairline)]" : "text-muted hover:text-ink2"
           }`}
@@ -599,7 +599,7 @@ export const ApexButton = forwardRef<HTMLButtonElement, ApexButtonProps>(functio
   ref
 ) {
   const sizes = {
-    sm: "h-7 px-2.5 text-[11px]",
+    sm: "h-7 px-2.5 text-[12px]",
     md: "h-9 px-3.5 text-[13px]",
     lg: "h-11 px-5 text-[14px]",
   } as const;
@@ -639,7 +639,7 @@ export function LinkButton({
   className?: string;
 }) {
   const sizes = {
-    sm: "h-7 px-2.5 text-[11px]",
+    sm: "h-7 px-2.5 text-[12px]",
     md: "h-9 px-3.5 text-[13px]",
     lg: "h-11 px-5 text-[14px]",
   } as const;
@@ -746,7 +746,7 @@ export function Stepper({
       </button>
       <div className="num flex min-w-[3rem] items-baseline justify-center gap-0.5 px-1 text-[18px] font-bold tabular-nums text-ink">
         {value}
-        {suffix && <span className="text-[10px] font-medium text-muted">{suffix}</span>}
+        {suffix && <span className="text-[12px] font-medium text-muted">{suffix}</span>}
       </div>
       <button
         type="button"
@@ -801,28 +801,28 @@ export function RestTimerRing({
           <div className="num text-[32px] font-bold tabular-nums text-ink">
             {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
           </div>
-          <div className="eyebrow !text-[9px] text-faint">rest</div>
+          <div className="eyebrow !text-[12px] text-faint">rest</div>
         </div>
       </div>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => onAdjust(-15)}
-          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
         >
           −15s
         </button>
         <button
           type="button"
           onClick={() => onAdjust(15)}
-          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+          className="num h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
         >
           +15s
         </button>
         <button
           type="button"
           onClick={onSkip}
-          className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+          className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
         >
           Skip
         </button>
@@ -861,14 +861,14 @@ export function ConfirmPopover({
               <button
                 type="button"
                 onClick={() => { setOpen(false); onCancel(); }}
-                className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
+                className="h-7 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-surface2 hover:text-ink"
               >
                 {cancelLabel}
               </button>
               <button
                 type="button"
                 onClick={() => { setOpen(false); onConfirm(); }}
-                className="h-7 rounded-[var(--radius-control)] bg-alert px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-alert/90"
+                className="h-7 rounded-[var(--radius-control)] bg-alert px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-alert/90"
               >
                 {confirmLabel}
               </button>
@@ -1093,11 +1093,11 @@ export function InfoButton({
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-[var(--radius-card)] border border-hairline bg-surface p-3 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
             <div className="mb-1.5 text-[12px] font-semibold text-ink">{title}</div>
-            <div className="space-y-1.5 text-[11px] leading-relaxed text-muted">{children}</div>
+            <div className="space-y-1.5 text-[12px] leading-relaxed text-muted">{children}</div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="mt-2 text-[10px] font-semibold text-primaryText hover:underline"
+              className="mt-2 text-[12px] font-semibold text-primaryText hover:underline"
             >
               Close
             </button>
@@ -1124,19 +1124,19 @@ export function MetricInfoContent({
   return (
     <>
       <div>
-        <div className="eyebrow !text-[9px] text-faint">What it measures</div>
+        <div className="eyebrow !text-[12px] text-faint">What it measures</div>
         <div className="mt-0.5">{whatItMeasures}</div>
       </div>
       <div>
-        <div className="eyebrow !text-[9px] text-faint">Why it matters</div>
+        <div className="eyebrow !text-[12px] text-faint">Why it matters</div>
         <div className="mt-0.5">{whyItMatters}</div>
       </div>
       <div>
-        <div className="eyebrow !text-[9px] text-faint">What influences it</div>
+        <div className="eyebrow !text-[12px] text-faint">What influences it</div>
         <div className="mt-0.5">{whatInfluencesIt}</div>
       </div>
       <div>
-        <div className="eyebrow !text-[9px] text-faint">How to read it</div>
+        <div className="eyebrow !text-[12px] text-faint">How to read it</div>
         <div className="mt-0.5">{howToReadIt}</div>
       </div>
     </>

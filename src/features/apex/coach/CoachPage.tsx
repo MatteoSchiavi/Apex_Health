@@ -47,7 +47,6 @@ import {
   Card,
   ConfirmPopover,
   Empty,
-  Eyebrow,
   Hairline,
   Loading,
   Markdown,
@@ -166,7 +165,7 @@ function EvidenceChips({
           key={i}
           type="button"
           onClick={() => onJump(c.view, c.metric)}
-          className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-0.5 text-[10px] font-medium text-muted transition-colors hover:border-hairline2 hover:bg-surface3 hover:text-ink2"
+          className="num inline-flex items-center gap-1 rounded-[var(--radius-control)] bg-surface2 px-2 py-0.5 text-[12px] font-medium text-muted transition-colors hover:bg-surface3 hover:text-ink2"
           title={`Open ${c.label}`}
         >
           <Info size={9} className="text-faint" />
@@ -205,14 +204,14 @@ function DraftCard({
         )}
       </div>
       <div className="mt-1.5 text-[13px] font-semibold text-ink">{draft.title}</div>
-      <div className="mono text-[10px] text-faint">
+      <div className="mono text-[12px] text-faint">
         {Array.isArray((draft as CoachDraft & { dates?: unknown }).dates)
           ? ((draft as CoachDraft & { dates: string[] }).dates.join(" → "))
           : "—"}
       </div>
       <div className="mt-1 text-[12px] text-muted">{draft.summary}</div>
       {lines.length > 0 && (
-        <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
+        <ul className="mt-1.5 space-y-0.5 text-[12px] text-muted">
           {lines.map((l, i) => (
             <li key={i} className="leading-[15px]">{l.replace(/^[-*]\s*/, "")}</li>
           ))}
@@ -281,11 +280,11 @@ function AssistantMessage({
         <ApexMonogram size={22} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="rounded-[var(--radius-card)] border border-hairline bg-surface px-3 py-2.5">
+        <div className="rounded-[var(--radius-card)] bg-surface px-3 py-2.5">
           <Markdown content={msg.content} />
           {drafts.length > 0 && (
             <div className="mt-2">
-              <div className="eyebrow text-[9px] text-faint">{t("coach_proposed")}</div>
+              <div className="text-[14px] font-medium text-faint">{t("coach_proposed")}</div>
               {drafts.map((d) => (
                 <DraftCard
                   key={d.id}
@@ -300,9 +299,9 @@ function AssistantMessage({
         </div>
         {/* footer */}
         <div className="mt-1 flex items-center gap-2 px-1">
-          <span className="mono text-[10px] text-faint">{fmtClock(msg.created_at, locale)}</span>
+          <span className="mono text-[12px] text-faint">{fmtClock(msg.created_at, locale)}</span>
           {msg.model_tier && (
-            <Badge tone="neutral" className="!text-[9px]">
+            <Badge tone="neutral">
               {msg.model_tier}
             </Badge>
           )}
@@ -339,14 +338,14 @@ function UserMessage({
     <div className="flex flex-col items-end gap-1">
       <div className="flex max-w-[80%] flex-col items-end">
         <div
-          className={`rounded-[var(--radius-card)] border px-3 py-2 text-ink ${
-            isError ? "border-alert/40 bg-alertSoft/40" : "border-hairline bg-primarySoft/30"
+          className={`rounded-[var(--radius-card)] px-3 py-2 text-ink ${
+            isError ? "bg-alertSoft/40" : "bg-primarySoft/30"
           }`}
         >
           <div className="whitespace-pre-wrap text-[13px] leading-[20px]">{msg.content}</div>
         </div>
       </div>
-      <div className="mono flex items-center gap-1.5 pr-1 text-[10px] text-faint">
+      <div className="mono flex items-center gap-1.5 pr-1 text-[12px] text-faint">
         {isSending && <span className="text-primaryText">{/* spinner */}
           <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary align-middle" />
           {locale === "it" ? "invio…" : "sending…"}
@@ -378,7 +377,7 @@ function WorkingRow({ t }: { t: (p: string, vars?: Record<string, string | numbe
       <div className="mt-0.5 shrink-0">
         <ApexMonogram size={22} />
       </div>
-      <div className="flex items-center gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface2/60 px-3 py-2">
+      <div className="flex items-center gap-2 rounded-[var(--radius-card)] bg-surface2/60 px-3 py-2">
         <span className="relative flex h-3 w-3">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-40" />
           <span className="relative inline-flex h-3 w-3 rounded-full bg-primary/40" />
@@ -448,7 +447,7 @@ function SessionsRail({
         <div className="flex flex-col gap-3">
           {groups.map((g) => (
             <div key={g.label} className="flex flex-col gap-1">
-              <div className="eyebrow text-[9px] text-faint">{t(g.label)}</div>
+              <div className="text-[14px] font-medium text-faint">{t(g.label)}</div>
               {g.rows.map((s) => (
                 <SessionRow
                   key={s.id}
@@ -493,10 +492,10 @@ function SessionRow({
         <div className="truncate text-[12.5px] font-semibold text-ink">
           {s.title || t("coach_new_chat")}
         </div>
-        <div className="mono mt-0.5 text-[10px] text-faint">
+        <div className="mono mt-0.5 text-[12px] text-faint">
           {fmtDate(s.last_activity_at, locale)} · {timeAgo(s.last_activity_at, locale)}
         </div>
-        <div className="mono text-[10px] text-faint">
+        <div className="mono text-[12px] text-faint">
           {t("coach_messages", { n: s.message_count })}
         </div>
       </button>
@@ -552,7 +551,7 @@ function ContextPanel({
 
   return (
     <Card pad={false} className="flex flex-col gap-3 p-3">
-      <Eyebrow>{t("coach_context_panel")}</Eyebrow>
+      <div className="text-[14px] font-medium text-ink2">{t("coach_context_panel")}</div>
 
       {/* Mini row: Readiness / Recovery / Strain */}
       <div className="grid grid-cols-3 gap-1.5">
@@ -560,14 +559,14 @@ function ContextPanel({
         <MiniStat label={t("coach_context_recovery")} value={recovery} />
         <MiniStat label={t("coach_context_strain")} value={strain} />
       </div>
-      <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1">
-        <span className="eyebrow text-[9px] text-faint">{t("coach_context_acwr")}</span>
+      <div className="flex items-center justify-between rounded-[var(--radius-control)] bg-surface2 px-2 py-1">
+        <span className="text-[14px] font-medium text-faint">{t("coach_context_acwr")}</span>
         <span className="num text-[12px] font-semibold text-ink2">
           {acwr === null ? "—" : acwr.toFixed(2)}
         </span>
       </div>
-      <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1">
-        <span className="eyebrow text-[9px] text-faint">Alerts</span>
+      <div className="flex items-center justify-between rounded-[var(--radius-control)] bg-surface2 px-2 py-1">
+        <span className="text-[14px] font-medium text-faint">Alerts</span>
         <span className="num text-[12px] font-semibold text-ink2">
           {t("coach_context_alerts", { n: alerts.length })}
         </span>
@@ -577,12 +576,12 @@ function ContextPanel({
 
       {/* Next event + today's session */}
       <div className="flex flex-col gap-1.5">
-        <div className="eyebrow text-[9px] text-faint">{t("coach_context_next_event")}</div>
+        <div className="text-[14px] font-medium text-faint">{t("coach_context_next_event")}</div>
         {nextEvent ? (
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="truncate text-[12px] font-semibold text-ink">{nextEvent.title}</div>
-              <div className="mono text-[10px] text-faint">
+              <div className="mono text-[12px] text-faint">
                 {fmtDate(nextEvent.date, locale)}
                 {(() => {
                   const d = dayCountdown(nextEvent.date);
@@ -596,13 +595,13 @@ function ContextPanel({
             <Badge tone="neutral" className="shrink-0">{nextEvent.kind}</Badge>
           </div>
         ) : (
-          <div className="text-[11px] text-muted">—</div>
+          <div className="text-[12px] text-muted">—</div>
         )}
-        <div className="eyebrow text-[9px] text-faint">{t("coach_context_today_session")}</div>
+        <div className="text-[14px] font-medium text-faint">{t("coach_context_today_session")}</div>
         {todaySession ? (
           <div className="text-[12px] text-ink2">{todaySession.title}</div>
         ) : (
-          <div className="text-[11px] text-muted">—</div>
+          <div className="text-[12px] text-muted">—</div>
         )}
       </div>
 
@@ -610,11 +609,11 @@ function ContextPanel({
 
       {/* Context docs */}
       <div className="flex items-center justify-between">
-        <div className="eyebrow text-[9px] text-faint">Context documents</div>
+        <div className="text-[14px] font-medium text-faint">Context documents</div>
         <button
           type="button"
           onClick={onEditDocs}
-          className="text-[10px] font-semibold text-primaryText hover:underline"
+          className="text-[12px] font-semibold text-primaryText hover:underline"
         >
           {t("coach_doc_edit")} →
         </button>
@@ -627,16 +626,16 @@ function ContextPanel({
           return (
             <div
               key={kind}
-              className="flex items-center justify-between rounded-[var(--radius-control)] border border-hairline bg-surface2/60 px-2 py-1"
+              className="flex items-center justify-between rounded-[var(--radius-control)] bg-surface2/60 px-2 py-1"
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <span
                   className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${filled ? "bg-positive" : "bg-faint"}`}
                   aria-label={filled ? "filled" : "empty"}
                 />
-                <span className="text-[11px] text-ink2 truncate">{t(labelKey)}</span>
+                <span className="text-[12px] text-ink2 truncate">{t(labelKey)}</span>
               </div>
-              <span className="mono text-[9px] text-faint shrink-0">
+              <span className="mono text-[12px] text-faint shrink-0">
                 {filled
                   ? timeAgo(doc!.updated_at, locale)
                   : t("coach_doc_empty")}
@@ -660,8 +659,8 @@ const DOC_LABEL_KEYS: Record<DocKind, string> = {
 
 function MiniStat({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="flex flex-col rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2 py-1">
-      <span className="eyebrow text-[9px] text-faint">{label}</span>
+    <div className="flex flex-col rounded-[var(--radius-control)] bg-surface2 px-2 py-1">
+      <span className="text-[14px] font-medium text-faint">{label}</span>
       <span className="num text-[13px] font-semibold text-ink2">
         {value === null || value === undefined ? "—" : Math.round(value)}
       </span>
@@ -1108,7 +1107,7 @@ export function CoachPage() {
               <div className="min-w-0 truncate text-[15px] font-semibold text-ink">{headerTitle}</div>
               <div className="flex items-center gap-2 text-faint">
                 <Clock size={11} />
-                <span className="mono text-[10px]">
+                <span className="mono text-[12px]">
                   {currentSession
                     ? timeAgo(currentSession.last_activity_at, locale)
                     : locale === "it" ? "nuova" : "new"}
@@ -1124,7 +1123,7 @@ export function CoachPage() {
               {messages.length === 0 && !messagesLoading && !sending && (
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center">
                   <div>
-                    <div className="eyebrow text-faint">{t("coach_suggested")}</div>
+                    <div className="text-[14px] font-medium text-faint">{t("coach_suggested")}</div>
                     <div className="mt-1 max-w-md text-[12px] text-muted">
                       {overview
                         ? locale === "it"
@@ -1139,7 +1138,7 @@ export function CoachPage() {
                         key={i}
                         type="button"
                         onClick={() => pickSuggestion(p)}
-                        className="num rounded-[var(--radius-control)] border border-hairline bg-surface2 px-3 py-1.5 text-[12px] text-ink2 transition-colors hover:border-hairline2 hover:bg-surface3"
+                        className="num rounded-[var(--radius-control)] bg-surface2 px-3 py-1.5 text-[12px] text-ink2 transition-colors hover:bg-surface3"
                       >
                         {p.label}
                       </button>
@@ -1174,7 +1173,7 @@ export function CoachPage() {
               )}
               {sending && <WorkingRow t={t} />}
               {error && (
-                <div className="rounded-[var(--radius-card)] border border-alert/40 bg-alertSoft/40 px-3 py-2 text-[11px] text-alertText">
+                <div className="rounded-[var(--radius-card)] border border-alert/40 bg-alertSoft/40 px-3 py-2 text-[12px] text-alertText">
                   {error}
                 </div>
               )}
@@ -1191,7 +1190,7 @@ export function CoachPage() {
                       key={i}
                       type="button"
                       onClick={() => pickSuggestion(p)}
-                      className="num rounded-[var(--radius-control)] border border-hairline bg-surface2 px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-hairline2 hover:bg-surface3 hover:text-ink2"
+                      className="num rounded-[var(--radius-control)] bg-surface2 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-surface3 hover:text-ink2"
                     >
                       {p.label}
                     </button>
@@ -1223,7 +1222,7 @@ export function CoachPage() {
                   <span className="hidden sm:inline">{t("coach.send")}</span>
                 </ApexButton>
               </div>
-              <p className="mt-2 px-1 text-[10px] italic text-alertText/40">{t("coach.ai_warning")}</p>
+              <p className="mt-2 px-1 text-[12px] italic text-alertText/40">{t("coach.ai_warning")}</p>
             </div>
           </Card>
         </section>
@@ -1272,7 +1271,7 @@ export function CoachPage() {
           />
           <div className="absolute left-0 top-0 h-full w-[85%] max-w-[320px] overflow-y-auto border-r border-hairline bg-surface p-3 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
-              <Eyebrow>{t("coach.past_chats")}</Eyebrow>
+              <div className="text-[14px] font-medium text-ink2">{t("coach.past_chats")}</div>
               <button
                 type="button"
                 onClick={() => setSessionsOpen(false)}
@@ -1305,7 +1304,7 @@ export function CoachPage() {
           />
           <div className="absolute right-0 top-0 h-full w-[85%] max-w-[360px] overflow-y-auto border-l border-hairline bg-surface p-3 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
-              <Eyebrow>{t("coach_context_panel")}</Eyebrow>
+              <div className="text-[14px] font-medium text-ink2">{t("coach_context_panel")}</div>
               <button
                 type="button"
                 onClick={() => setContextOpen(false)}
