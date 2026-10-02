@@ -2611,3 +2611,23 @@ Stage Summary:
 - The "vibecoded" look is gone: no more wall of equal cards, no boxes-in-boxes, no uppercase micro-labels, no coloured big numbers, no "telemetry" jargon.
 - The Overview is now the reference screen: one hero ring, page sentence, rows not cards, StatusDots, InteractiveCharts with hover tooltips.
 - Committed + pushed (commits 5e8023b + 89e6661).
+
+---
+Task ID: AUDIT-2 (final clean + polish audit)
+Agent: main (Z.ai Code)
+Task: Full check — no dangerous files, no useless files, clean commit, easy install.
+
+Work Log:
+- Recovered from a git rebase mishap that rewound HEAD to an old commit — restored the correct re-foundation HEAD (a201a2e) from the reflog.
+- Scrubbed personal data from the codebase: real email → demo@apexhealth.app, real activity place names (Gravedona, Travo, La Maddalena) → fictional demo names, real name "Matteo Schiavi" → "Apex Athlete". Verified: 0 personal data in src/ scripts/ worklog.md.
+- Scrubbed the credential leak description from worklog.md (the security incident log entry had the original email + password in plaintext — now [REDACTED]).
+- Removed `typescript.ignoreBuildErrors: true` from next.config.ts (review concern 2 — a broken page can no longer ship silently).
+- Regenerated the Prisma client (was stale — missing garminEmail/garminPassword fields from the Integration model).
+- Verified fresh-install: removed .env + db, ran setup script — it created .env with demo credentials, pushed schema, seeded 30 activities + 13 sleep + 7 biometrics. App boots with real data.
+- Verified no dangerous/useless files tracked: .env, .env-backup, .db, .next/, uploads/, .log files all gitignored.
+
+Stage Summary:
+- Remote is clean and polished at commit 81ea1ad.
+- tsc: 0 errors in src/ (with ignoreBuildErrors removed). Lint: 0 errors.
+- Fresh clone works with: bun install && bun run dev (auto-setup creates .env + DB + seeds).
+- No personal data, no secrets, no dangerous files, no useless files in the repo.
