@@ -29,14 +29,14 @@ export function JoinScreen() {
             <input
               required
               placeholder={t("auth.your_name")}
-              defaultValue="Matteo Schiavi"
+              defaultValue="Apex Athlete"
               className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
             />
             <input
               type="email"
               required
               placeholder={t("auth.email")}
-              defaultValue="matteo.schiavi@apexhealth.app"
+              defaultValue="demo@apexhealth.app"
               className="num w-full rounded-[var(--radius-control)] border border-hairline bg-surface px-3 py-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
             />
             <div className="grid grid-cols-2 gap-2">

@@ -69,7 +69,7 @@ export function LoginScreen() {
   const t = useT();
   const ui = useApexUi();
 
-  const [email, setEmail] = useState("matteo.schiavi@apexhealth.app");
+  const [email, setEmail] = useState("demo@apexhealth.app");
   const [password, setPassword] = useState("demo");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);

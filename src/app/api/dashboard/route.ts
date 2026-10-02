@@ -44,7 +44,7 @@ async function getOrCreateUser() {
     user = await db.user.create({
       data: {
         email,
-        name: "Matteo Schiavi",
+        name: "Apex Athlete",
         password: process.env.GARMIN_PASSWORD || "",
         timezone: "Europe/Rome",
         locale: "en",

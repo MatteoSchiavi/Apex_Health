@@ -1595,8 +1595,8 @@ Task: User reported that .env with personal Garmin credentials was pushed to Git
 
 Work Log:
 - Audited git history: `.env` was committed in commit 88493b9 ("Backend: Garmin Connect sync working") and persisted in ~30 subsequent commits. `backend/.env.dev` was committed in commit 065913c.
-- Confirmed leaked credentials: GARMIN_EMAIL/GARMIN_PASSWORD + OWNER_EMAIL/OWNER_PASSWORD = `1matteoschiavi@gmail.com` / `xXmemedesimoXx@07` (same for Garmin + owner). Also SESSION_SECRET, ENCRYPTION_KEY (dev values).
-- Found hardcoded email `1matteoschiavi@gmail.com` as a fallback default (`|| "..."`) in 9 API route files: activities, dashboard, events, garmin/sync, parse-document, sleep, upload (x2). Plus 2 comments in src/lib/apex/data.ts.
+- Confirmed leaked credentials: GARMIN_EMAIL/GARMIN_PASSWORD + OWNER_EMAIL/OWNER_PASSWORD = `[REDACTED_EMAIL]` / `[REDACTED_PASSWORD]` (same for Garmin + owner). Also SESSION_SECRET, ENCRYPTION_KEY (dev values).
+- Found hardcoded email `[REDACTED_EMAIL]` as a fallback default (`|| "..."`) in 9 API route files: activities, dashboard, events, garmin/sync, parse-document, sleep, upload (x2). Plus 2 comments in src/lib/apex/data.ts.
 - Backed up `.env` and `backend/.env.dev` to `.env-backup-LOCAL-ONLY/` (gitignored, kept locally so the app still runs and the owner knows what to rotate).
 - `git rm --cached .env backend/.env.dev` — untracked from git, kept on disk.
 - Updated `.gitignore`: added `.env-backup-LOCAL-ONLY/` and `backend/.env*`.
@@ -1604,10 +1604,10 @@ Work Log:
 - Verified no credentials remain in source dirs or worklog.
 - Committed sanitized working tree as `691fa66` ("SECURITY: untrack env files + scrub hardcoded account email from source").
 - Installed `git-filter-repo` (via pip --break-system-packages) — the recommended history-rewrite tool.
-- Created `/tmp/replacements.txt` with `1matteoschiavi@gmail.com==>[REDACTED]` and `xXmemedesimoXx@07==>[REDACTED]`.
+- Created `/tmp/replacements.txt` with `[REDACTED_EMAIL]==>[REDACTED]` and `[REDACTED_PASSWORD]==>[REDACTED]`.
 - Ran `git-filter-repo --force --path .env --path backend/.env.dev --invert-paths --replace-text /tmp/replacements.txt` — rewrote 114 commits in 0.61s. Removed `.env` + `backend/.env.dev` from every commit, and replaced email + password strings with `[REDACTED]` in all remaining file contents.
 - git-filter-repo removed `origin` remote (expected behavior); re-added it from the saved URL in /tmp/origin_url.txt.
-- Verified: `git log --all -- .env` → empty; `git log --all -- backend/.env.dev` → empty; `git log --all -p -S "xXmemedesimoXx@07"` → empty; `git log --all -p -S "1matteoschiavi@gmail.com"` → empty; `git grep` across all commits → empty.
+- Verified: `git log --all -- .env` → empty; `git log --all -- backend/.env.dev` → empty; `git log --all -p -S "[REDACTED_PASSWORD]"` → empty; `git log --all -p -S "[REDACTED_EMAIL]"` → empty; `git grep` across all commits → empty.
 - Confirmed `.env.example` (still tracked) contains only empty template values — no real creds.
 - `git reflog expire --expire=now --all` + `git gc --prune=now --aggressive` to drop dangling commits locally. `git fsck --unreachable` → clean.
 - `git push --force --set-upstream origin main` — remote main updated from 2797379 → 691fa66. All commit SHAs are now new (history-rewritten), so the old commits with credentials are unreachable on the remote.

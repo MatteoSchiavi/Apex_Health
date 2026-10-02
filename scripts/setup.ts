@@ -25,7 +25,7 @@ const DB_DIR = join(ROOT, "db");
 const DEFAULT_ENV = `# Apex Health — local development environment.
 # Auto-created by scripts/setup.ts on first run. Edit to add real credentials.
 DATABASE_URL=file:\${ROOT}/db/custom.db
-GARMIN_EMAIL=matteo.schiavi@apexhealth.app
+GARMIN_EMAIL=demo@apexhealth.app
 GARMIN_PASSWORD=demo
 `;
 

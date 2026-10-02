@@ -8,13 +8,13 @@
 import { db } from "../src/lib/db";
 
 async function main() {
-  const email = process.env.GARMIN_EMAIL || "matteo.schiavi@apexhealth.app";
+  const email = process.env.GARMIN_EMAIL || "demo@apexhealth.app";
   let user = await db.user.findFirst({ where: { email } });
   if (!user) {
     user = await db.user.create({
       data: {
         email,
-        name: "Matteo Schiavi",
+        name: "Apex Athlete",
         password: "demo",
         timezone: "Europe/Rome",
         locale: "en",

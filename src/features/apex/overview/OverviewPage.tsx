@@ -4,7 +4,7 @@
  * Apex Health — Overview (the reference screen).
  *
  * Implements all 9 design principles from ui-language/RULES.md:
- *   1. One answer: "Good morning, Matteo. You're moderately ready."
+ *   1. One answer: "Good morning, Apex. You're moderately ready."
  *   2. One hero: the readiness ring, 2× anything else.
  *   3. No outlines: cards by surface contrast, no card-in-card.
  *   4. Sentence-case labels, 14px minimum.
@@ -224,7 +224,7 @@ export function OverviewPage() {
   const readinessValue = data?.readiness?.value ?? null;
   const readinessTone = scoreTone(readinessValue);
   const pageSentence = useMemo(() => {
-    const firstName = me.name.split(" ")[0] || "Matteo";
+    const firstName = me.name.split(" ")[0] || "Apex";
     const hour = new Date().getHours();
     const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
     if (readinessValue === null) return `${greeting}, ${firstName}. Waiting for your first sync.`;
