@@ -51,7 +51,7 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`rounded-[var(--radius-card)] bg-surface ${pad ? "p-7" : ""} ${className}`}
+      className={`rounded-[var(--radius-card)] bg-surface ${pad ? "p-6" : ""} ${className}`}
       style={style}
     >
       {children}
@@ -189,7 +189,7 @@ export function StatPod({
   return (
     <div
       onClick={onClick}
-      className={`rounded-[var(--radius-card)] border border-hairline bg-surface2 p-3 ${onClick ? "cursor-pointer hover:border-hairline2" : ""} ${className}`}
+      className={`rounded-[var(--radius-card)] bg-surface2 p-3 ${onClick ? "cursor-pointer hover:bg-surface3" : ""} ${className}`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="eyebrow truncate">{label}</div>
@@ -487,7 +487,7 @@ export function Skeleton({
 /** Skeleton block that mimics a card with a header + 3 rows. */
 export function SkeletonCard({ className = "" }: { className?: string }) {
   return (
-    <div className={`rounded-[var(--radius-card)] border border-hairline bg-surface p-4 ${className}`}>
+    <div className={`rounded-[var(--radius-card)] bg-surface p-4 ${className}`}>
       <Skeleton width={120} height={12} />
       <div className="mt-3 space-y-2">
         <Skeleton width="100%" height={20} />

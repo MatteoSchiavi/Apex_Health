@@ -280,7 +280,7 @@ export function OverviewPage() {
   const totalSleepS = deepS + lightS + remS || 1;
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
+    <div className="mx-auto max-w-[1100px] space-y-6 px-6 py-8">
       {/* ====== GREETING (principle 1: one answer) ====== */}
       <div>
         <h1 className="page-title">Overview</h1>

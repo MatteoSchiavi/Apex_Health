@@ -64,9 +64,9 @@
   --color-warning: var(--c-watch);
   --color-warningSoft: var(--c-watch-soft);
   --color-warningText: var(--c-watch-text);
-  --radius-card: 20px;
-  --radius-control: 12px;
-  --radius-sm: 8px;
+  --radius-card: 10px;
+  --radius-control: 7px;
+  --radius-sm: 4px;
 }
 
 /* --------------------------------------------------------------- DARK (default) */

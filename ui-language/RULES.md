@@ -81,10 +81,11 @@ All numbers use `tabular-nums` (Geist). JetBrains Mono only for chart axes and i
 ### Spacing + radius
 
 - 8-point spacing grid
-- Card padding: 28px
-- Gap between sections: 24–32px
-- Card radius: 20px
-- Inner element radius: 12px
+- Card padding: 24px
+- Gap between sections: 24px
+- Card radius: 10px (tight, professional — not soft)
+- Inner element radius: 7px
+- Smallest radius (chips, dots): 4px
 
 ### Contrast requirements (checkable)
 - background → surface: ≥ 1.14:1 (dark: `#0B0C0F` → `#191C22` = 1.16:1 ✓)
