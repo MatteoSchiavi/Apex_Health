@@ -1246,7 +1246,7 @@ function ExpandableCalendarCard({
 
   return (
     <Card pad={false} className="overflow-hidden">
-      <div className="p-7 pb-0">
+      <div className="p-6 pb-0">
         <div className="mb-4 flex items-end justify-between gap-3">
           <div>
             <div className="text-[14px] text-ink2">{ui.locale === "it" ? "Lun → Dom" : "Mon → Sun"}</div>

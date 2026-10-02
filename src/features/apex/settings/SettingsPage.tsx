@@ -361,7 +361,7 @@ export function SettingsPage() {
 
         {/* ===== Devices & Integrations (full row) ===== */}
         <Card pad={false} className="lg:col-span-2">
-          <div className="p-7 pb-3">
+          <div className="p-6 pb-3">
             <div className="flex items-end justify-between gap-3">
               <div className="text-[14px] font-medium text-ink2">{t("settings.devices_title")}</div>
               <ApexButton

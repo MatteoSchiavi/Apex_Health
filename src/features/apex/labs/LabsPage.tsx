@@ -491,7 +491,7 @@ export function LabsPage() {
             {/* Left: panels as rows */}
             <div className="xl:col-span-8">
               <Card pad={false}>
-                <div className="p-7 pb-3">
+                <div className="p-6 pb-3">
                   <div className="text-[14px] font-medium text-ink2">History</div>
                 </div>
                 <div className="px-7">

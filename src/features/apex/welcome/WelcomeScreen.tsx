@@ -127,7 +127,7 @@ export function WelcomeScreen() {
           </div>
 
           {/* Mockup surface — one borderless Card holding flat sub-surfaces */}
-          <div className="mt-10 rounded-[var(--radius-card)] bg-surface p-7 shadow-[var(--c-shadow-flyout)]">
+          <div className="mt-10 rounded-[var(--radius-card)] bg-surface p-6">
             {/* Top demo metrics row (flat, surface-2 contrast only) */}
             <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
               <DemoMetric label="Readiness" value="84" unit="/100" />
