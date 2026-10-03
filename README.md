@@ -1,5 +1,10 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
+Current release audit: [alpha readiness findings and roadmap](docs/ALPHA_READINESS_AUDIT.md).
+The root Next.js app currently uses simulated login and lacks API session
+authentication. Its demo must not be treated as the authenticated platform
+described by the Python backend documentation below.
+
 > ## 🚀 Quick Start (Web UI)
 >
 > The web UI is a **Next.js 16 app** at the repository root. It auto-configures
@@ -13,6 +18,8 @@
 > Then open **http://localhost:3000** and sign in (any password works for the
 > demo). The app comes with 30 real activities, 13 sleep sessions, and 7 days
 > of biometrics pre-seeded.
+> Demo seeding requires `APEX_DEMO_MODE=true` (set in newly generated `.env`
+> files). Existing environments are not seeded unless they explicitly opt in.
 >
 > **To sync your real Garmin data**: edit `.env` (auto-created on first run)
 > and fill in your `GARMIN_EMAIL` + `GARMIN_PASSWORD`, then call
@@ -626,7 +633,8 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 315 tests, fixtures only — no live APIs
+# Use disposable PostgreSQL/Redis services: the suite erases both stores.
+APEX_TEST_DATABASE_RESET=1 uv run pytest -q
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

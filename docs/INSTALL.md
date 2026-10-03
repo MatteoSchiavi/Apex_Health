@@ -151,15 +151,12 @@ what you verify here is exactly what later lands on the Linux server.
         -d '{"email":"<OWNER_EMAIL>","password":"<OWNER_PASSWORD>"}'
    curl.exe -b cookies.txt http://localhost:8000/labs
    ```
-6. **Run the test suite on Windows (optional):** the images ship without
-   dev dependencies, but the api container has `uv` and the full source —
-   pull dev deps and run inside the container (tests create and drop their
-   own throwaway databases):
-   ```powershell
-   docker compose -f infra/docker-compose.yml exec api sh -c "uv sync --frozen && uv run pytest -q"
-   ```
-   This mutates only the disposable container's venv — `up -d` recreates
-   it clean. If it gives you trouble, rely on CI (the same 269 tests run
+6. **Run the test suite on Windows (optional):** use a separate test stack
+   with disposable PostgreSQL and Redis stores, or rely on GitHub Actions.
+   The suite truncates the configured database, rebuilds its schema, and
+   flushes Redis. Running it inside the deployed API container would erase
+   the deployed data; a disposable container alone does not isolate its
+   database volume. See §10 for the explicit reset flag. Rely on CI (the tests run
    on every push) plus the functional checks above.
 7. **Migrating to the Linux server afterwards:** §9 as-is — the compose
    stack is identical. Bring your `.env` (secrets decrypt your connector
@@ -647,8 +644,9 @@ cost, §9.2); raise it with `PATCH /settings/users/{id}/ai-tier`.
 
 ```bash
 cd backend && uv sync
-# point DATABASE_URL/REDIS_URL at a DEV database (tests create their own DBs)
-uv run pytest -q          # 315 passed is the green baseline
+# Point DATABASE_URL and REDIS_URL at disposable TEST services.
+# Tests erase the configured schema and flush the configured Redis database.
+APEX_TEST_DATABASE_RESET=1 uv run pytest -q
 ```
 
 CI (GitHub Actions) runs the same suite against

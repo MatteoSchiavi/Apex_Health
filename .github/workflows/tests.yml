@@ -15,6 +15,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Install web dependencies
+        run: bun install --frozen-lockfile
+      - name: Set up the isolated demo database
+        run: bun run setup
+      - name: Type check
+        run: bun run typecheck
+      - name: Web regression tests (fixture providers only)
+        run: bun run test
+      - name: Lint
+        run: bun run lint
+      - name: Production build
+        run: bun run build
+
   pytest:
     runs-on: ubuntu-latest
 
@@ -59,6 +79,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://hcc:hcc@localhost:5433/hcc
           REDIS_URL: redis://localhost:6380/0
+          APEX_TEST_DATABASE_RESET: "1"
           SESSION_SECRET: ci-session-secret
           ENCRYPTION_KEY: ci-encryption-key
           OWNER_EMAIL: owner@apexhealth.dev

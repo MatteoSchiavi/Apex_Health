@@ -1,8 +1,7 @@
 /**
  * First-run setup — ensures a fresh clone works out of the box.
  *
- * Runs automatically before `bun run dev` (via the `predev` script).
- * Idempotent: skips any step that's already done.
+ * Runs automatically before `bun run dev`. Fails if any required step fails.
  *
  *   1. Creates .env with sensible defaults if missing
  *   2. Runs `prisma db push` to create the SQLite DB + schema
@@ -15,7 +14,7 @@
 
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 const ROOT = process.cwd();
 const ENV_PATH = join(ROOT, ".env");
@@ -25,6 +24,7 @@ const DB_DIR = join(ROOT, "db");
 const DEFAULT_ENV = `# Apex Health — local development environment.
 # Auto-created by scripts/setup.ts on first run. Edit to add real credentials.
 DATABASE_URL=file:\${ROOT}/db/custom.db
+APEX_DEMO_MODE=true
 GARMIN_EMAIL=demo@apexhealth.app
 GARMIN_PASSWORD=demo
 `;
@@ -35,7 +35,8 @@ function log(msg: string) {
 
 async function main() {
   // Step 1: Create .env if missing
-  if (!existsSync(ENV_PATH)) {
+  const createdEnv = !existsSync(ENV_PATH);
+  if (createdEnv) {
     const envContent = DEFAULT_ENV.replace("${ROOT}", ROOT);
     writeFileSync(ENV_PATH, envContent, "utf-8");
     log("Created .env with default values (SQLite + demo user).");
@@ -48,44 +49,39 @@ async function main() {
     mkdirSync(DB_DIR, { recursive: true });
     log("Created db/ directory.");
   }
-
-  // Step 3: Push Prisma schema to create the DB + tables
-  try {
-    execSync("bunx prisma db push --accept-data-loss --skip-generate", {
-      stdio: "pipe",
-      cwd: ROOT,
-    });
-    log("Database schema pushed (prisma db push).");
-  } catch {
-    // May fail if DB is already in sync — that's fine
-    log("Database schema already in sync (or prisma db push skipped).");
+  // Prisma 6's SQLite engine can fail with an empty "Schema engine error"
+  // when the default file is absent. Initialize only our new demo database;
+  // never overwrite an existing file or an externally configured database.
+  const demoDbPath = join(DB_DIR, "custom.db");
+  if (createdEnv && !existsSync(demoDbPath)) {
+    writeFileSync(demoDbPath, "", { flag: "wx", mode: 0o600 });
   }
 
-  // Step 4: Generate Prisma client (ensures the latest schema is compiled)
-  try {
-    execSync("bunx prisma generate", { stdio: "pipe", cwd: ROOT });
-    log("Prisma client generated.");
-  } catch {
-    log("Prisma client already up to date.");
-  }
+  // Generate before schema push so a fresh install has the required engines.
+  execFileSync("bunx", ["prisma", "generate"], { stdio: "inherit", cwd: ROOT });
+  log("Prisma client generated.");
+
+  // Never approve data loss automatically. A destructive schema change must
+  // stop startup and surface Prisma's diagnostic before any seeding occurs.
+  execFileSync("bunx", ["prisma", "db", "push", "--skip-generate"], {
+    stdio: "inherit",
+    cwd: ROOT,
+  });
+  log("Database schema is ready.");
 
   // Step 5: Seed demo data if the DB is empty
   log("Seeding demo data (if needed)...");
-  try {
-    execSync("bun run scripts/seed-db.ts", {
-      stdio: "inherit",
-      cwd: ROOT,
-      env: { ...process.env },
-    });
-  } catch (e) {
-    log("Seed script failed (non-fatal — the app will still start): " + (e instanceof Error ? e.message : "unknown"));
-  }
+  execFileSync("bun", ["run", "scripts/seed-db.ts"], {
+    stdio: "inherit",
+    cwd: ROOT,
+    env: { ...process.env },
+  });
 
   log("Setup complete. Starting dev server...");
 }
 
 main().catch((e) => {
-  console.error("[setup] Error:", e);
-  // Don't exit with error — let the dev server try to start anyway
-  process.exit(0);
+  console.error("[setup] Setup failed. Resolve the error above before starting the app.");
+  console.error(e instanceof Error ? e.message : "Unknown setup error");
+  process.exit(1);
 });

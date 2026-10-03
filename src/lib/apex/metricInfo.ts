@@ -85,13 +85,13 @@ export const METRIC_EXPLANATIONS: Record<string, MetricExplanation> = {
     howToReadIt: "Read it relative to chronic load, not in isolation. A number that's normal for you might be too much if chronic load just dropped.",
   },
   chronic_load: {
-    whatItMeasures: "Your training load over the last 28 days (rolling average). Represents the fitness base you've built.",
+    whatItMeasures: "Your training load over the last 28 days divided by four, in weekly units. Represents the fitness base you've built.",
     whyItMatters: "It's the denominator of the ACWR — the 'chronic' side. Higher chronic load means more capacity to absorb acute work.",
     whatInfluencesIt: "Consistent training over the last 4 weeks. Takes ~4 weeks to meaningfully change.",
     howToReadIt: "Rises slowly with consistent training. A sudden drop (injury, travel) means you can no longer safely absorb the same acute load.",
   },
   acwr: {
-    whatItMeasures: "Acute:Chronic Workload Ratio — acute load (7d) ÷ chronic load (28d). The single most studied injury-risk metric in endurance sport.",
+    whatItMeasures: "Acute:Chronic Workload Ratio — the 7-day load divided by the weekly average of the last 28 days. Steady training gives a ratio near 1.",
     whyItMatters: "A ratio in the 0.8–1.3 'sweet spot' balances fitness and freshness. Above 1.5 dramatically increases injury risk.",
     whatInfluencesIt: "Sudden increases in training volume/intensity, returning from a break, racing spikes, reduced recovery.",
     howToReadIt: "0.8–1.3 optimal · 1.3–1.5 elevated — ease back · >1.5 high injury-risk zone · <0.8 undertraining (detraining risk).",

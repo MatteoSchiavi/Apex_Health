@@ -35,15 +35,24 @@ export async function POST(req: NextRequest) {
     // Run the sync
     const report = await syncGarminData(user.id);
 
-    // Update the integration's lastSyncedAt on success
-    if (report.errors.length === 0) {
+    const ok = report.errors.length === 0;
+    // A failed or partial sync must not advance the last successful timestamp.
+    if (ok) {
       await db.integration.updateMany({
         where: { userId: user.id, provider: "Garmin" },
         data: { lastSyncedAt: new Date().toISOString(), status: "active" },
-      }).catch(() => {});
+      });
+    } else {
+      await db.integration.updateMany({
+        where: { userId: user.id, provider: "Garmin", status: { not: "paused" } },
+        data: { status: "error" },
+      });
     }
 
-    return NextResponse.json({ ok: true, userId: user.id, report });
+    return NextResponse.json(
+      { ok, userId: user.id, report, ...(ok ? {} : { error: report.errors.join("; ") }) },
+      { status: ok ? 200 : 502 },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

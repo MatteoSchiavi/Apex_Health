@@ -98,6 +98,13 @@ def _alembic_downgrade_tolerant() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database() -> None:
     """Rebuild the schema from scratch for the whole session."""
+    if os.environ.get("APEX_TEST_DATABASE_RESET") != "1":
+        pytest.exit(
+            "Tests erase the configured PostgreSQL schema and flush Redis. "
+            "Point DATABASE_URL and REDIS_URL at disposable test services, "
+            "then explicitly set APEX_TEST_DATABASE_RESET=1.",
+            returncode=2,
+        )
     asyncio.run(_wipe_domain_tables())
     _alembic_downgrade_tolerant()
     _run_alembic("upgrade", "head")

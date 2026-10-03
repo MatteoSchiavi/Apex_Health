@@ -4,8 +4,7 @@
  * GET /api/integrations → list of connected integrations for the current
  * user with { provider, status, last_synced_at, is_main, consecutive_failures }.
  *
- * If no integrations exist, seeds Garmin (active) so the "Integration
- * health" Overview card has something to display.
+ * Returns saved integrations only; reading status never creates a connection.
  */
 
 import { NextResponse } from "next/server";
@@ -36,23 +35,10 @@ export async function GET() {
   try {
     const user = await getOrCreateUser();
 
-    let integrations = await db.integration.findMany({
+    const integrations = await db.integration.findMany({
       where: { userId: user.id },
       orderBy: [{ isMain: "desc" }, { provider: "asc" }],
     });
-
-    if (integrations.length === 0) {
-      const seeded = await db.integration.create({
-        data: {
-          userId: user.id,
-          provider: "Garmin",
-          status: "active",
-          lastSyncedAt: new Date().toISOString(),
-          isMain: true,
-        },
-      });
-      integrations = [seeded];
-    }
 
     return NextResponse.json({
       ok: true,
