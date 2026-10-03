@@ -26,16 +26,52 @@ test("all metrics remain reachable through keyboard tabs; sleep score has correc
   });
   await installApi(page);
   await page.goto("/app/biometrics");
-  for (const name of [
-    "Body signals",
-    "Recovery & sleep",
-    "Load & risk scores",
-    "Body & daily activity",
-  ]) {
+  for (const [name, metricKeys] of [
+    ["Body signals", ["resting_hr", "hrv_deviation", "spo2", "respiration"]],
+    [
+      "Recovery & sleep",
+      [
+        "readiness",
+        "recovery",
+        "sleep_score",
+        "sleep_duration",
+        "sleep_deep",
+        "sleep_rem",
+        "sleep_light",
+        "restlessness",
+      ],
+    ],
+    [
+      "Load & risk scores",
+      [
+        "strain",
+        "acwr",
+        "acute_load",
+        "chronic_load",
+        "illness_risk",
+        "injury_risk",
+      ],
+    ],
+    [
+      "Body & daily activity",
+      ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
+    ],
+  ] as const) {
     await page.getByRole("tab", { name, exact: true }).click();
-    await expect(page.locator(".metric-row a")).toHaveCount(0);
-    await expect(page.locator("a.metric-row").first()).toBeVisible();
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator("a.metric-row")
+          .evaluateAll((rows) => rows.map((row) => row.getAttribute("href"))),
+      )
+      .toEqual(metricKeys.map((key) => "/app/biometrics/" + key));
+    await expect
+      .poll(() => metricKeys.every((key) => visited.has(key)))
+      .toBe(true);
   }
   expect([...visited].sort()).toEqual([...keys].sort());
   const tab = page.getByRole("tab", {
