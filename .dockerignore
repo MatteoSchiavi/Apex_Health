@@ -16,3 +16,13 @@ scripts
 my-project
 *.log
 .env
+
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+db
+uploads
+backend/.coverage

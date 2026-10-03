@@ -13,7 +13,6 @@ A DST fall-back double-run is harmless: every row upserts idempotently per
 (user, report_type, period_start) (§17).
 """
 
-import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -26,6 +25,7 @@ from app.models.user import User
 from app.reports.daily import upsert_daily_report
 from app.reports.periodic import upsert_periodic_report
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.reports")
 
@@ -157,14 +157,14 @@ def _now_of(now_iso: str | None) -> datetime:
 
 @celery_app.task(name="reports.daily_summary")
 def daily_summaries(now_iso: str | None = None) -> dict:
-    return asyncio.run(_dispatch_daily(now_iso))
+    return run_async(_dispatch_daily(now_iso))
 
 
 @celery_app.task(name="reports.weekly")
 def weekly_reports(now_iso: str | None = None) -> dict:
-    return asyncio.run(_dispatch_periodic("weekly", now_iso))
+    return run_async(_dispatch_periodic("weekly", now_iso))
 
 
 @celery_app.task(name="reports.monthly")
 def monthly_reports(now_iso: str | None = None) -> dict:
-    return asyncio.run(_dispatch_periodic("monthly", now_iso))
+    return run_async(_dispatch_periodic("monthly", now_iso))

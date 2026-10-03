@@ -32,8 +32,8 @@ from app.models.training import PlannedSession, TrainingPlan
 from app.models.user import User
 from app.queries.gym import journal_streak, resolve_day
 from tests.conftest import reset_owner_auth_state
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -71,7 +71,7 @@ async def _clean(db_session: AsyncSession, *user_ids: int) -> None:
 async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
     await reset_owner_auth_state(db_session)
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
     cookies = dict(resp.cookies)
@@ -81,7 +81,7 @@ async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
 
 async def _mint_token(client: AsyncClient, cookies: dict, name: str) -> dict:
     resp = await client.post(
-        "/watch/tokens", json={"name": name}, headers=CSRF, cookies=cookies
+        "/watch/tokens", json={"name": name}, headers=csrf_headers(client, cookies), cookies=cookies
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -113,7 +113,7 @@ async def test_schedule_crud_roundtrip(client: AsyncClient, db_session):
         "/schedule",
         json={"weekday": 0, "start_time": "18:00", "title": "Push Day",
               "description": "Bench 4x8 · Incline 3x10"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     assert created.status_code == 201, created.text
     slot = created.json()
@@ -126,13 +126,13 @@ async def test_schedule_crud_roundtrip(client: AsyncClient, db_session):
     patched = await client.patch(
         f"/schedule/{slot['id']}",
         json={"start_time": "19:30", "active": False},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     assert patched.status_code == 200
     assert patched.json()["start_time"] == "19:30"
     assert patched.json()["active"] is False
 
-    deleted = await client.delete(f"/schedule/{slot['id']}", headers=CSRF, cookies=owner)
+    deleted = await client.delete(f"/schedule/{slot['id']}", headers=csrf_headers(client, owner), cookies=owner)
     assert deleted.status_code == 204
     assert (await client.get("/schedule", cookies=owner)).json() == []
 
@@ -143,17 +143,17 @@ async def test_schedule_validation_rejects_bad_input(client: AsyncClient, db_ses
 
     bad_weekday = await client.post(
         "/schedule", json={"weekday": 7, "start_time": "18:00", "title": "X"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     assert bad_weekday.status_code == 422
     bad_time = await client.post(
         "/schedule", json={"weekday": 0, "start_time": "25:99", "title": "X"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     assert bad_time.status_code == 422
     bad_title = await client.post(
         "/schedule", json={"weekday": 0, "start_time": "18:00", "title": ""},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     assert bad_title.status_code == 422
 
@@ -183,7 +183,7 @@ async def test_recurring_slot_fills_any_matching_weekday(client: AsyncClient, db
     await client.post(
         "/schedule",
         json={"weekday": local_today.weekday(), "start_time": "07:00", "title": "Easy 5k"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     resp = await client.get("/watch/day", headers=await _bearer(client, owner))
     assert resp.status_code == 200
@@ -211,7 +211,7 @@ async def test_confirmed_plan_overrides_recurring_slot(client: AsyncClient, db_s
     await client.post(
         "/schedule",
         json={"weekday": slot_weekday, "start_time": "18:00", "title": "Push Day"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     plan = TrainingPlan(
         user_id=user_id, created_by="ai",
@@ -254,7 +254,7 @@ async def test_draft_plan_never_overrides(client: AsyncClient, db_session):
     await client.post(
         "/schedule",
         json={"weekday": local_today.weekday(), "start_time": "18:00", "title": "Push Day"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )
     plan = TrainingPlan(
         user_id=user_id, created_by="ai",
@@ -325,13 +325,13 @@ async def test_friend_token_and_slots_are_isolated(client: AsyncClient, db_sessi
     await _clean(db_session)
 
     # friend account via the invite flow
-    mint = await client.post("/settings/invites", json={}, headers=CSRF, cookies=owner)
+    mint = await client.post("/settings/invites", json={}, headers=csrf_headers(client, owner), cookies=owner)
     code = mint.json()["code"]
     redeem = await client.post(
         "/auth/invite/redeem",
         json={"code": code, "name": "Gym Friend", "email": "gym.friend@example.com",
               "password": "a-strong-password-gym"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert redeem.status_code == 201
     friend_id = redeem.json()["user_id"]
@@ -343,12 +343,12 @@ async def test_friend_token_and_slots_are_isolated(client: AsyncClient, db_sessi
     owner_slot = (await client.post(
         "/schedule", json={"weekday": local_today.weekday(), "start_time": "18:00",
                            "title": "Owner Secret Session"},
-        headers=CSRF, cookies=owner,
+        headers=csrf_headers(client, owner), cookies=owner,
     )).json()
     friend_slot = (await client.post(
         "/schedule", json={"weekday": local_today.weekday(), "start_time": "07:00",
                            "title": "Friend Mobility"},
-        headers=CSRF, cookies=friend_cookies,
+        headers=csrf_headers(client, friend_cookies), cookies=friend_cookies,
     )).json()
 
     # friend's list shows only the friend's slot
@@ -358,10 +358,10 @@ async def test_friend_token_and_slots_are_isolated(client: AsyncClient, db_sessi
     # cross-user PATCH/DELETE answer 404 (no existence leak)
     assert (
         await client.patch(f"/schedule/{owner_slot['id']}", json={"title": "hijack"},
-                           headers=CSRF, cookies=friend_cookies)
+                           headers=csrf_headers(client, friend_cookies), cookies=friend_cookies)
     ).status_code == 404
     assert (
-        await client.delete(f"/schedule/{owner_slot['id']}", headers=CSRF, cookies=friend_cookies)
+        await client.delete(f"/schedule/{owner_slot['id']}", headers=csrf_headers(client, friend_cookies), cookies=friend_cookies)
     ).status_code == 404
 
     # the friend's WATCH sees the friend's schedule — never the owner's

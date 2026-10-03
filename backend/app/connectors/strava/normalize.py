@@ -13,7 +13,7 @@ Field mapping (Strava v3 summary activity):
                             -> activities.source_metrics["strava"]  (NOT
                                training_load — different semantics)
 data_completeness = 'partial' (summary-only, no streams this phase).
-Idempotent via activity_source_links UNIQUE (source, external_id).
+Idempotent via activity_source_links UNIQUE (user_id, source, external_id).
 """
 
 import logging
@@ -108,6 +108,7 @@ async def normalize_raw_row(
         select(ActivitySourceLink).where(
             ActivitySourceLink.source == SOURCE,
             ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == user_id,
         )
     )
     if link is None:
@@ -138,6 +139,7 @@ async def normalize_raw_row(
         await session.flush()
         session.add(
             ActivitySourceLink(
+                user_id=user_id,
                 activity_id=activity.id,
                 source=SOURCE,
                 external_id=external_id,

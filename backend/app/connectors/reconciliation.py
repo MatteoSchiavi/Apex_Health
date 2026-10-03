@@ -168,6 +168,7 @@ async def reconcile_activity(
 
     session.add(
         ActivitySourceLink(
+            user_id=existing.user_id,
             activity_id=existing.id,
             source=source,
             external_id=external_id,

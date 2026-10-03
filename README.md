@@ -1,35 +1,16 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
-Current release audit: [alpha readiness findings and roadmap](docs/ALPHA_READINESS_AUDIT.md).
-The root Next.js app currently uses simulated login and lacks API session
-authentication. Its demo must not be treated as the authenticated platform
-described by the Python backend documentation below.
+Backend release work uses the authenticated **FastAPI + PostgreSQL + Redis/Celery**
+platform in `backend/`. Docker also serves the existing Vite frontend from
+`frontend/`; the UI redesign will follow backend acceptance.
 
-> ## 🚀 Quick Start (Web UI)
->
-> The web UI is a **Next.js 16 app** at the repository root. It auto-configures
-> on first run — no manual `.env` setup or database creation needed.
->
-> ```bash
-> bun install          # install dependencies
-> bun run dev          # start dev server (auto-creates .env + DB + seeds demo data)
-> ```
->
-> Then open **http://localhost:3000** and sign in (any password works for the
-> demo). The app comes with 30 real activities, 13 sleep sessions, and 7 days
-> of biometrics pre-seeded.
-> Demo seeding requires `APEX_DEMO_MODE=true` (set in newly generated `.env`
-> files). Existing environments are not seeded unless they explicitly opt in.
->
-> **To sync your real Garmin data**: edit `.env` (auto-created on first run)
-> and fill in your `GARMIN_EMAIL` + `GARMIN_PASSWORD`, then call
-> `POST /api/garmin/sync`.
->
-> ---
->
-> The sections below describe the original Python backend architecture.
-> The Next.js web UI at the root is the current active frontend — the
-> `frontend/` directory contains the legacy Vite SPA (not used anymore).
+Start with the [installation guide](docs/INSTALL.md) and the
+[backend release checklist](docs/BACKEND_RELEASE.md). The
+[alpha audit](docs/ALPHA_READINESS_AUDIT.md) tracks the earlier fixes.
+
+The root Next.js app remains a separate prototype with simulated login and
+SQLite APIs. It is unsuitable for hosting private health data and is not the
+backend deployment path.
 
 ![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -37,7 +18,6 @@ described by the Python backend documentation below.
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-315_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **blood-donation
 lab panels**, **subjective journaling via

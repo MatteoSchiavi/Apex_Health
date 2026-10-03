@@ -21,6 +21,7 @@ from sqlalchemy import select
 from app.auth.service import create_session, resolve_session
 from app.core.config import get_settings
 from app.models.user import UserSession
+from tests.conftest import csrf_headers
 
 
 # ---------------------------------------------------------------- §22.2 sliding
@@ -108,7 +109,7 @@ async def test_every_route_denies_unauthenticated_access(client: AsyncClient):
             resp = await client.request(
                 method.upper(),
                 path,
-                headers={"X-CSRF-Token": "audit"},
+                headers=csrf_headers(client),
             )
             probed.append((method.upper(), path, resp.status_code))
             assert resp.status_code in {401, 403}, (

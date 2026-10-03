@@ -279,6 +279,7 @@ async def seed_activities(session, user_id: int, days: int, rng: random.Random):
         source = "garmin" if disc.name not in ("strength", "gym_general") else \
                  ("whoop" if rng.random() < 0.6 else "garmin")
         session.add(ActivitySourceLink(
+            user_id=act.user_id,
             activity_id=act.id, source=source,
             external_id=f"{source}-demo-{act.id}", raw_ingest_id=None))
         g = gear["bike"] if disc.name == "road_cycling" else \

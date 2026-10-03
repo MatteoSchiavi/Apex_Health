@@ -132,30 +132,24 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 @pytest_asyncio.fixture
 async def client(owner_account) -> AsyncIterator[AsyncClient]:
-    """ASGI client; base_url https so Secure cookies round-trip.
+    """HTTPS client with a server-signed bootstrap cookie.
 
-    F-04 audit: pre-sets a ``csrf_token`` cookie matching the ``test`` header
-    every test sends, so the double-submit CSRF middleware accepts the
-    request. Login/redeem are exempt (they MINT the cookie); all other
-    state-changing endpoints require the cookie+header pair to match.
-
-    After login, the server sets a NEW csrf cookie. Tests that send the
-    static ``X-CSRF-Token: test`` header after login will mismatch unless
-    they call ``sync_csrf_header(client)`` to re-read the cookie. The
-    ``login`` helper below does this automatically.
+    Tests mirror the current cookie explicitly via csrf_headers; missing and
+    mismatched header tests exercise the middleware without a bypass.
     """
     from app.main import app
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="https://testserver") as c:
-        # Pre-set the CSRF cookie so the double-submit middleware accepts
-        # the X-CSRF-Token: test header that every test sends. The cookie
-        # value MUST match the header value (hmac.compare_digest).
-        # NOTE: no domain — setting a domain creates a second cookie when
-        # the server responds with Set-Cookie (no domain), causing
-        # httpx.CookieConflict on subsequent reads.
-        c.cookies.set("csrf_token", "test")
+        from app.core.middleware import mint_csrf_token
+        c.cookies.set("csrf_token", mint_csrf_token(), domain="testserver.local", path="/")
         yield c
+
+
+def csrf_headers(client: AsyncClient, cookies=None) -> dict[str, str]:
+    """Mirror the CSRF cookie for this request, including explicit account jars."""
+    jar = cookies if cookies is not None else client.cookies
+    return {"X-CSRF-Token": jar.get("csrf_token", "")}
 
 
 def sync_csrf_header(client: AsyncClient) -> dict[str, str]:

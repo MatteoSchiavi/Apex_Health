@@ -179,8 +179,9 @@ records before the export/migration and parity criteria are demonstrated.
   mobile detail at 390px without overflow, and a deliberately delayed 90-day
   response unable to overwrite a newer 12-month selection. No page errors.
 - No live Garmin, LLM, Telegram, watch or other provider account was tested.
-  Full application Docker deployment, real data migration and target-host
-  restore remain unverified. Green fixture tests do not establish these.
+  The subsequent backend pass verified an isolated Docker deployment, a
+  populated schema upgrade and actual TimescaleDB restoration (below).
+  Migration of real user data and restoration on the target host remain unverified.
 
 ## Remaining limits of the fixes
 
@@ -191,3 +192,37 @@ plaintext connector storage remain. Activity detail is truthful but summary-only
 coach action application is explicitly unavailable. The bounded Node sync
 adapter remains pending convergence. Database error logs and API error bodies still
 need proper redaction. The roadmap above is the remaining release work.
+
+## Backend release pass — 2026-10-03
+
+Canonical release scope is the FastAPI/PostgreSQL/Celery platform. The root
+Next.js prototype retains the limitations listed above; UI convergence is
+the next phase after backend production acceptance.
+
+| ID | Confirmed issue | Backend resolution |
+|---|---|---|
+| A37 | Client-selected CSRF token; cross-origin bootstrap and logout gaps | Session-bound signed tokens, fresh login tokens, Origin checks, logout protection |
+| A38 | Other sessions survive password changes; cookie and server sliding expiry diverge | Revoke other sessions; serialize credential changes; renew cookie and expiry within lifetime cap |
+| A39 | Unknown-email login bypasses limiting; failure keys persist forever and clock collisions undercount | Uniform Argon2 verification; atomic distinct failures with expiry and hashed identifiers |
+| A40 | Provider IDs and source-link lookups have global ownership | Migration 0009 backfills account IDs; account uniqueness and ownership FK; all connector/CSV lookups scoped |
+| A41 | Sync failures look successful; SQL errors poison bookkeeping; overlap and checkpoint gaps | Per-account retry jobs, advisory locks, rollback before escalation, live checkpoints and honest partial/failure outcomes |
+| A42 | Sync endpoint blocks the event loop, then may start a duplicate inline run | 202 queued response and account-scoped status; queue failure is 503 |
+| A43 | Asyncpg connections persist across Celery's closed event loops | Dispose pooled connections before each task loop ends; repeated real jobs verified |
+| A44 | API starts before migrations; port binds publicly; queues and backup mounts lack recovery guarantees | Migration/health ordering, loopback binding, persistent Redis AOF, bounded worker concurrency and backup permissions/path |
+| A45 | Restore drill adds fake clinical data and drops a fixed-name database | Read-only source, unique scratch targets, checksums and unconditional cleanup |
+| A46 | Dump credentials appear in arguments; backup memory grows with database; failed restore can partially apply | libpq environment, streaming authenticated archives, legacy support, transactional restore and interruption rollback |
+| A47 | Chat POST accesses a request field that does not exist | Define and validate session_id; test start/resume through HTTP |
+| A48 | Explicit model tier bypasses a friend's AI access cap | Apply entitlement even with an explicit tier |
+| A49 | CSV guesses units by numeric size; UTC offset can become NULL; malformed values crash | Header units, finite/range validation, bounded upload read and safe malformed-row handling |
+| A50 | New web conversations reuse the bot's recent idle-window session | Explicit fresh web session, bounded replay for requested resume |
+| A51 | Concurrent draft transitions race; replacement end date includes the new start date | Row locks and serialized same-account replacement; end previous protocol the day before |
+
+Validation: **480 backend tests passed**, plus authenticated-route probing
+with matching CSRF headers. Final production image and Compose startup
+passed. Deployed HTTP smoke, four Celery round trips, pending-job recovery
+across queue/worker restart, authenticated API restart, actual encrypted
+TimescaleDB restore (58-table checksum match), and failed/interrupted
+restore rollback passed. No real vendor account or production host was used.
+
+See [BACKEND_RELEASE.md](BACKEND_RELEASE.md) for upgrade instructions, repeatable
+checks and the live-account/TLS/target-host acceptance boundary.

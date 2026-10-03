@@ -340,6 +340,7 @@ async def _upsert_workout(
         select(ActivitySourceLink).where(
             ActivitySourceLink.source == SOURCE,
             ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == user_id,
         )
     )
     activity_id: int
@@ -363,6 +364,7 @@ async def _upsert_workout(
             if winner is not None:
                 session.add(
                     ActivitySourceLink(
+                        user_id=user_id,
                         activity_id=winner.id,
                         source=SOURCE,
                         external_id=external_id,
@@ -414,6 +416,7 @@ async def _upsert_workout(
         activity_id = activity.id
         session.add(
             ActivitySourceLink(
+                user_id=user_id,
                 activity_id=activity_id,
                 source=SOURCE,
                 external_id=external_id,

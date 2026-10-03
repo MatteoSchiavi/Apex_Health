@@ -16,10 +16,10 @@ import pytest_asyncio
 from sqlalchemy import select, text
 
 from app.models.weather import ForecastCache
+from tests.conftest import csrf_headers
 
 # Same session-based client conventions as the other API tests: GETs need no
 # CSRF header; POST /auth/login does (§22.3).
-CSRF = {"X-CSRF-Token": "test"}
 
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
@@ -70,7 +70,7 @@ async def _seed_cache(db_session, *, days: int = 3, lat: float = 45.075, lon: fl
 
 async def _login(client) -> None:
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
 

@@ -81,7 +81,7 @@ async def seed_source_activity(
     await session.flush()
     session.add(
         ActivitySourceLink(
-            activity_id=activity.id, source=source, external_id=external_id
+            user_id=user_id, activity_id=activity.id, source=source, external_id=external_id
         )
     )
     await session.commit()

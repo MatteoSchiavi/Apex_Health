@@ -1,7 +1,7 @@
 """Normalizer for the Technogym connector (§3 stage 3, §11a, §17).
 
 Keyed per §17 idempotent-upsert law: activities -> activity_source_links
-UNIQUE (source, external_id); the linked activity row is updated in place,
+UNIQUE (user_id, source, external_id); the linked activity row is updated in place,
 never duplicated.
 
 Raw purity: raw_json is stored exactly as upstream returned it; fetch context
@@ -159,6 +159,7 @@ async def _upsert_activity(
         select(ActivitySourceLink).where(
             ActivitySourceLink.source == fetch.SOURCE,
             ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == raw.user_id,
         )
     )
     if link is not None:
@@ -197,6 +198,7 @@ async def _upsert_activity(
             await session.flush()
             session.add(
                 ActivitySourceLink(
+                    user_id=raw.user_id,
                     activity_id=activity.id,
                     source=fetch.SOURCE,
                     external_id=external_id,

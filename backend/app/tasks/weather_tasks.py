@@ -12,7 +12,6 @@ the owner hasn't set a location yet. No integrations row exists for weather
 authenticated per-user connectors).
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -26,6 +25,7 @@ from app.core.config import get_settings
 from app.core.db import sessionmaker
 from app.models.user import User
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.weather")
 
@@ -101,7 +101,7 @@ async def _refresh_all(
 
 @celery_app.task(name="weather.refresh_all")
 def refresh_all() -> dict:
-    return asyncio.run(_refresh_all())
+    return run_async(_refresh_all())
 # ---------------------------------------------------- §14 forecast × readiness
 
 
@@ -221,4 +221,4 @@ async def _readiness_nudge(now_iso: str | None = None, client=None) -> dict:
 
 @celery_app.task(name="weather.readiness_nudge")
 def readiness_nudge() -> dict:
-    return asyncio.run(_readiness_nudge())
+    return run_async(_readiness_nudge())

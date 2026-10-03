@@ -10,7 +10,6 @@ is configured they are pushed to the linked chat(s) right after the commit
 (§21 contract in app/connectors/telegram/alerts.py).
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -23,6 +22,7 @@ from app.gear.service import accumulate_gear_usage
 from app.models.gear import Gear
 from app.models.user import User
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.gear")
 
@@ -85,4 +85,4 @@ async def _accumulate_all(now_iso: str | None = None) -> dict:
 
 @celery_app.task(name="gear.accumulate_all")
 def accumulate_all_gear(now_iso: str | None = None) -> dict:
-    return asyncio.run(_accumulate_all(now_iso))
+    return run_async(_accumulate_all(now_iso))

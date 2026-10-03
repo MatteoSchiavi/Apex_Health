@@ -45,6 +45,33 @@ async def make_user(db_session) -> int:
     return user.id
 
 
+@pytest.mark.parametrize("duration_header,duration,distance_header,distance,seconds,meters", [
+    ("duration (min)", "5", "distance (m)", "500", 300, 500),
+    ("elapsed_time", "120", "distance (km)", "1001", 120, 1001000),
+    ("duration", "5", "distance", "500", 5, 500),
+])
+async def test_units_come_from_headers_and_utc_offset_is_zero(db_session, duration_header, duration, distance_header, distance, seconds, meters):
+    user_id = await make_user(db_session)
+    csv = f"sport,start_time,{duration_header},{distance_header}\nRunning,2026-09-15T07:30:00Z,{duration},{distance}\n"
+    report = await import_csv(db_session, user_id, "units.csv", csv, "UTC")
+    assert report.activities_upserted == 1
+    activity = await db_session.scalar(select(Activity).where(Activity.user_id == user_id))
+    assert activity.duration_s == seconds
+    assert activity.distance_m == meters
+    assert activity.start_tz_offset_minutes == 0
+
+
+async def test_invalid_numbers_and_extra_csv_columns_do_not_crash_import(db_session):
+    user_id = await make_user(db_session)
+    report = await import_csv(db_session, user_id, "bad.csv", "date,steps,weight_kg,hrv_ms\n2026-09-15,100,NaN,9999\n2026-09-16,100,70,80,extra\n")
+    assert report.biometrics_upserted == 1
+    assert report.hrv_upserted == 0
+    assert report.skipped == 1
+    bio = await db_session.scalar(select(DailyBiometric).where(DailyBiometric.user_id == user_id))
+    assert bio.steps == 100
+    assert bio.weight_kg is None
+
+
 async def test_workouts_csv_imports_activities(db_session):
     user_id = await make_user(db_session)
     report = await import_csv(db_session, user_id, "export.csv", WORKOUTS_CSV)

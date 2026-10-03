@@ -13,7 +13,6 @@ range — upserts by (user_id, date) make it a safe backfill, and dates whose
 data disappeared get their stale rows deleted.
 """
 
-import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -24,6 +23,7 @@ from app.features.engine import compute_user_day, compute_user_range
 from app.core.db import sessionmaker
 from app.models.user import User
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.feature_engine")
 
@@ -85,10 +85,10 @@ def date_from_iso(value: str) -> date:
 @celery_app.task(name="features.nightly")
 def nightly_features(now_iso: str | None = None) -> dict:
     """Compute the prior LOCAL day for every user currently at 03:00."""
-    return asyncio.run(_nightly(now_iso))
+    return run_async(_nightly(now_iso))
 
 
 @celery_app.task(name="features.recompute_range")
 def recompute_features(user_id: int, start: str, end: str) -> dict:
     """Owner-facing correction backfill for a closed local-date range (§6.4)."""
-    return asyncio.run(_recompute(user_id, start, end))
+    return run_async(_recompute(user_id, start, end))

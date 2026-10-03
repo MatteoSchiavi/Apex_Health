@@ -18,7 +18,7 @@ next work item (spec Appendix A). Product background lives in the
 | **Python 3.12** + [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | **PostgreSQL 16** with **TimescaleDB** and **pgvector** extensions | via the compose image `timescale/timescaledb-ha:pg16`, or a local install |
 | **Redis 7+** | broker + one-time codes + dedup keys |
-| ~2 GB RAM, ~5 GB disk for the stack | bare-metal dev needs more for the source-built Postgres |
+| 8 GB RAM, at least 15 GB free disk for images, data and backups | bare-metal dev needs more for the source-built Postgres |
 
 Ports used by default: **8000** API · **5433** Postgres · **6380** Redis.
 Option A's compose keeps Postgres/Redis
@@ -57,7 +57,7 @@ Fill `.env` (gitignored — never commit it). The complete reference:
 | `LOW_FERRITIN_NG_ML` | optional | default `30` (§12) |
 | `BACKUP_ENCRYPTION_KEY` | for backups | dedicated Fernet key — different from `ENCRYPTION_KEY` (§22.7) |
 | `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET` | for offsite | Backblaze B2 upload (§22.7) |
-| `TRUST_PROXY_HEADERS` | for Funnel/proxy | `true` behind Tailscale Funnel / Caddy — adopts X-Forwarded-Proto/For from loopback peers only (§15) |
+| `TRUST_PROXY_HEADERS` | for Funnel/proxy | `true` behind Tailscale Funnel / Caddy — adopts X-Forwarded-Proto/For from `TRUSTED_PROXY_IPS` only (§15) |
 
 > **Note (dev keys):** any valid Fernet string works for
 > `ENCRYPTION_KEY`/`BACKUP_ENCRYPTION_KEY` in dev. In production they are
@@ -86,23 +86,22 @@ polling), which lives behind the `telegram` profile: start it once
 carries `restart: unless-stopped`, so a server reboot brings the stack
 back with the Docker daemon.
 
-Then apply migrations (first boot — the API does **not** auto-migrate;
-owner bootstrap happens on startup):
-
-```bash
-docker compose -f infra/docker-compose.yml exec api alembic upgrade head
-```
+The `migrate` service runs `alembic upgrade head` before the API can boot.
+The worker and optional bot wait for the API's health check, which also
+ensures owner bootstrap and production secret validation have completed.
+The API binds to **127.0.0.1:8000**; terminate TLS at your reverse proxy.
+Redis uses a persistent AOF volume and refuses writes when its memory cap
+is reached rather than evicting queues or login protection.
 
 Nightly backup artifacts land on the host in `./backups/` (bind-mounted
 into api + worker — containers stay disposable), and the api/worker
 images carry `pg_dump`/`psql` 16 so the §22.7 backup task and the restore
 tooling work unmodified.
 
-**Honest caveat:** the whole project was developed and verified on the
-bare-metal path; the compose file mirrors it but **Docker parity is still
-unproven on your host** — treat the first `up --build` as the acceptance
-run (log output welcome as an issue/PR). The full SSH-migration
-walkthrough is §9.
+The release checks exercise image build, Compose startup, migrations and
+actual TimescaleDB backup restoration in disposable environments. See the
+[backend release checklist](BACKEND_RELEASE.md) for the remaining checks
+against your host and real provider accounts.
 
 ### 4a. Windows notes (Docker Desktop)
 

@@ -16,8 +16,8 @@ from app.core.encryption import decrypt_json
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.integration import Integration, RawIngest
 from app.models.user import User
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -98,7 +98,7 @@ async def make_strava_user(session, tz: str = "Europe/Rome"):
 
 async def _login(client: AsyncClient) -> None:
     login = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert login.status_code == 200
 
@@ -147,7 +147,7 @@ async def clean_strava_tables(db_session):
 async def test_full_flow_stores_encrypted_tokens(client: AsyncClient, db_session, monkeypatch):
     await _login(client)
     minted = (
-        await client.post("/settings/integrations/strava/authorize", headers=CSRF)
+        await client.post("/settings/integrations/strava/authorize", headers=csrf_headers(client))
     ).json()
     assert minted["authorize_url"].startswith(SETTINGS.strava_oauth_authorize_url)
 

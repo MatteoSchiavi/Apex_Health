@@ -3,6 +3,8 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
+from redis.exceptions import RedisError
+from starlette.responses import JSONResponse
 
 from app.api import (
     activities,
@@ -49,10 +51,17 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="Health Control Center", lifespan=lifespan)
+
+    @app.exception_handler(RedisError)
+    async def redis_unavailable(request, exc):
+        return JSONResponse(status_code=503, content={
+            "detail": "Service temporarily unavailable; try again shortly.",
+        })
     app.add_middleware(CSRFMiddleware)
     # §15: behind Tailscale Funnel/Caddy, honor X-Forwarded-* from the local
     # terminator when configured to (infra/tailscale-funnel-setup.md).
-    app.add_middleware(ProxyHeadersMiddleware, trusted=get_settings().trust_proxy_headers)
+    app.add_middleware(ProxyHeadersMiddleware, trusted=get_settings().trust_proxy_headers,
+                       trusted_ips=get_settings().trusted_proxy_ips)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(labs.router)

@@ -93,10 +93,10 @@ async def test_backfill_populates_normalized_tables(db_session):
 
     assert report is not None and report.mode == "backfill"
 
-    # --- raw-first law (§17): 4 summaries + 2 streams + 8 wellness payloads
-    assert report.raw_rows_stored == 14
+    # --- raw-first law (§17): 4 summaries + 2 streams + 13 wellness payloads (including today)
+    assert report.raw_rows_stored == 19
     raw_total = await count(db_session, RawIngest)
-    assert raw_total == 14
+    assert raw_total == 19
 
     unprocessed = (
         (await db_session.scalars(select(RawIngest).where(RawIngest.processed.is_(False))))
@@ -108,7 +108,7 @@ async def test_backfill_populates_normalized_tables(db_session):
     processed_rows = (
         await db_session.scalars(select(RawIngest).where(RawIngest.processed.is_(True)))
     ).all()
-    assert len(processed_rows) == 13
+    assert len(processed_rows) == 18
     # raw payloads are stored byte-pure: no injected metadata keys
     summary_rows = (
         await db_session.scalars(
@@ -163,8 +163,8 @@ async def test_backfill_populates_normalized_tables(db_session):
 
     # --- sleep: wake-up day is the local_date (§17)
     sleeps = (await db_session.scalars(select(SleepSession))).all()
-    assert len(sleeps) == 1
-    s = sleeps[0]
+    assert len(sleeps) == 2
+    s = next(row for row in sleeps if str(row.local_date) == "2025-03-09")
     assert s.start_time == datetime(2025, 3, 8, 22, 30, tzinfo=UTC)
     assert s.end_time == datetime(2025, 3, 9, 6, 40, tzinfo=UTC)
     assert str(s.local_date) == "2025-03-09"
@@ -173,9 +173,10 @@ async def test_backfill_populates_normalized_tables(db_session):
 
     # --- hrv: 4 x 5min + 1 overnight_avg (same timestamp, distinct type)
     hrvs = (await db_session.scalars(select(HrvReading).order_by(HrvReading.timestamp))).all()
-    assert len(hrvs) == 5
+    assert len(hrvs) == 13
     overnight = [h for h in hrvs if h.reading_type == "overnight_avg"]
-    assert len(overnight) == 1
+    assert len(overnight) == 2
+    overnight = [h for h in overnight if h.timestamp < datetime(2025, 3, 9, 12, tzinfo=UTC)]
     assert float(overnight[0].hrv_ms) == 45.2
     five_min_same_ts = [
         h for h in hrvs if h.reading_type == "5min" and h.timestamp == overnight[0].timestamp
@@ -184,14 +185,14 @@ async def test_backfill_populates_normalized_tables(db_session):
 
     # --- stress with body battery joined by timestamp
     stress = (await db_session.scalars(select(StressReading))).all()
-    assert len(stress) == 2
-    midday = next(r for r in stress if r.timestamp.hour == 13)
+    assert len(stress) == 6
+    midday = next(r for r in stress if r.timestamp.day == 9 and r.timestamp.hour == 13)
     assert float(midday.stress_level) == 58 and float(midday.body_battery) == 71
 
     # --- daily biometrics (weight grams -> kg; vo2max from activities)
     bio = (await db_session.scalars(select(DailyBiometric).order_by(DailyBiometric.date))).all()
-    assert len(bio) == 2
-    d8, d9 = bio  # ascending date order
+    assert len(bio) == 3
+    d8, d9, d10 = bio  # ascending date order
     assert str(d9.date) == "2025-03-09" and str(d8.date) == "2025-03-08"
     assert d9.resting_hr == 49 and d9.steps == 11020 and d9.floors == 8
     assert d9.weight_kg == pytest.approx(71.6) and d9.body_fat_pct == pytest.approx(12.9)
@@ -244,7 +245,7 @@ async def test_second_sync_does_not_duplicate_rows(db_session):
     assert await count(db_session, ActivityStream) == 10  # no new activities -> untouched
 
     # sleep: the 03-09 row is the SAME row (id stable); the only other row is
-    # the genuinely new 03-10 session pulled in by the incremental window
+    # the 03-10 session already pulled in by the initial backfill
     assert await count(db_session, SleepSession) == 2
     sleep9_after = (
         await db_session.scalars(
@@ -253,8 +254,7 @@ async def test_second_sync_does_not_duplicate_rows(db_session):
     ).one()
     assert sleep9_after.id == sleep9_before.id
 
-    # hrv: 5 existing readings keep their ids; +8 distinct new ones (03-10 —
-    # its night starts 23:00Z on 03-09, which is correct per the wake-date rule)
+    # hrv: all 13 initial readings retain their IDs across the overlap
     assert await count(db_session, HrvReading) == 13
     hrv_ids_after = {
         h.timestamp: h.id
@@ -262,7 +262,6 @@ async def test_second_sync_does_not_duplicate_rows(db_session):
             await db_session.scalars(
                 select(HrvReading).where(
                     HrvReading.reading_type == "5min",
-                    HrvReading.timestamp < datetime(2025, 3, 9, 12, 0, tzinfo=UTC),
                 )
             )
         ).all()
@@ -273,7 +272,7 @@ async def test_second_sync_does_not_duplicate_rows(db_session):
     assert await count(db_session, DailyBiometric) == 3  # 2 + 03-10
 
     # raw trail grows by design (+3 re-fetched summaries, +10 wellness in window)
-    assert await count(db_session, RawIngest) == 14 + 13
+    assert await count(db_session, RawIngest) == 19 + 13
     # the malformed 03-02 row is OUTSIDE the incremental window: still exactly 1
     unprocessed_count = len(
         (await db_session.scalars(select(RawIngest).where(RawIngest.processed.is_(False)))).all()
@@ -345,7 +344,7 @@ async def test_malformed_payload_stays_unprocessed_others_normalize(db_session):
     assert report.stats is not None
     # every non-malformed payload still normalized
     assert report.stats.activities_upserted == 4
-    assert report.stats.sleep_upserted == 1
+    assert report.stats.sleep_upserted == 2
 
 
 # ------------------------------------------------------------- §19 pacing
@@ -365,7 +364,7 @@ async def test_remote_calls_are_paced(db_session):
     elapsed = (datetime.now(UTC) - started).total_seconds()
     # every remote call is paced: 1 inter-page + 4 stream fetches + paces
     # between the 18-day backfill wellness walk (last day not followed by one)
-    assert report is not None and report.wellness_days == 18
+    assert report is not None and report.wellness_days == 19
     assert elapsed >= 22 * 0.02
 
 

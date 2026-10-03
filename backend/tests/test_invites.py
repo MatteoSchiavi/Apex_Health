@@ -13,8 +13,8 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import reset_owner_auth_state
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -22,7 +22,7 @@ OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
     await reset_owner_auth_state(db_session)
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
     cookies = dict(resp.cookies)
@@ -34,7 +34,7 @@ async def _mint(client: AsyncClient, owner_cookies: dict, **payload) -> dict:
     resp = await client.post(
         "/settings/invites",
         json=payload or None,
-        headers=CSRF,
+        headers=csrf_headers(client, owner_cookies),
         cookies=owner_cookies,
     )
     return resp
@@ -64,7 +64,7 @@ async def test_invite_minting_is_owner_only(client: AsyncClient, db_session):
     # before the auth check runs. A stranger WITH the csrf cookie but no
     # session → 401 from the auth check. Both are "not allowed"; the test
     # accepts either.
-    stranger_resp = await client.post("/settings/invites", json={}, headers=CSRF)
+    stranger_resp = await client.post("/settings/invites", json={}, headers=csrf_headers(client))
     assert stranger_resp.status_code in (401, 403)
 
     # A friend (redeemed account) cannot mint either.
@@ -76,14 +76,14 @@ async def test_invite_minting_is_owner_only(client: AsyncClient, db_session):
             "email": "friend1@apexhealth.dev",
             "password": "correct-horse-battery",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert redeem.status_code == 201
     friend_cookies = dict(redeem.cookies)
     client.cookies.clear()  # every later call carries its identity explicitly
 
     denied = await client.post(
-        "/settings/invites", json={}, headers=CSRF, cookies=friend_cookies
+        "/settings/invites", json={}, headers=csrf_headers(client, friend_cookies), cookies=friend_cookies
     )
     assert denied.status_code == 403
     assert "Owner" in denied.json()["detail"]
@@ -105,7 +105,7 @@ async def test_friend_redeems_logs_in_and_uses_the_session(client: AsyncClient, 
             "email": "marco@friend.example",
             "password": "a-strong-password-9",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert redeem.status_code == 201
     body = redeem.json()
@@ -136,7 +136,7 @@ async def test_invite_code_cannot_be_redeemed_twice(client: AsyncClient, db_sess
             "email": "first@friend.example",
             "password": "a-strong-password-1",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert first.status_code == 201
 
@@ -148,7 +148,7 @@ async def test_invite_code_cannot_be_redeemed_twice(client: AsyncClient, db_sess
             "email": "second@friend.example",
             "password": "a-strong-password-2",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert second.status_code == 400
     assert "not valid" in second.json()["detail"]
@@ -175,7 +175,7 @@ async def test_unknown_and_expired_codes_are_rejected_uniformly(
             "email": "ghost@friend.example",
             "password": "a-strong-password-3",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert unknown.status_code == 400
 
@@ -200,7 +200,7 @@ async def test_unknown_and_expired_codes_are_rejected_uniformly(
             "email": "late@friend.example",
             "password": "a-strong-password-4",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert expired.status_code == 400
     assert expired.json()["detail"] == unknown.json()["detail"]  # no oracle
@@ -220,7 +220,7 @@ async def test_redeem_rejects_already_registered_email_but_keeps_invite(
             "email": OWNER_EMAIL,  # the owner's email
             "password": "a-strong-password-5",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert clash.status_code == 409
 
@@ -238,7 +238,7 @@ async def test_redeem_rejects_already_registered_email_but_keeps_invite(
             "email": "real@friend.example",
             "password": "a-strong-password-6",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert good.status_code == 201
 
@@ -255,7 +255,7 @@ async def test_weak_password_is_rejected_by_validation(client: AsyncClient, db_s
             "email": "weak@friend.example",
             "password": "short",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert weak.status_code == 422
 
@@ -267,10 +267,10 @@ async def test_unused_invite_can_be_revoked_used_one_cannot(client: AsyncClient,
     invite_id = next(i["id"] for i in listed.json() if i["code"] == code)
 
     assert (
-        await client.delete(f"/settings/invites/{invite_id}", headers=CSRF, cookies=owner)
+        await client.delete(f"/settings/invites/{invite_id}", headers=csrf_headers(client, owner), cookies=owner)
     ).status_code == 204
     assert (
-        await client.delete(f"/settings/invites/{invite_id}", headers=CSRF, cookies=owner)
+        await client.delete(f"/settings/invites/{invite_id}", headers=csrf_headers(client, owner), cookies=owner)
     ).status_code == 404
 
     # A used invite is redemption history — irrevocable.
@@ -283,11 +283,11 @@ async def test_unused_invite_can_be_revoked_used_one_cannot(client: AsyncClient,
             "email": "used@friend.example",
             "password": "a-strong-password-7",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     listed = await client.get("/settings/invites", cookies=owner)
     used_id = next(i["id"] for i in listed.json() if i["code"] == code2)
-    resp = await client.delete(f"/settings/invites/{used_id}", headers=CSRF, cookies=owner)
+    resp = await client.delete(f"/settings/invites/{used_id}", headers=csrf_headers(client, owner), cookies=owner)
     assert resp.status_code == 409
 
 
@@ -302,7 +302,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
             "email": "tiered@friend.example",
             "password": "a-strong-password-8",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     friend_id = redeem.json()["user_id"]
     friend_cookies = dict(redeem.cookies)
@@ -312,7 +312,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
     denied = await client.patch(
         f"/settings/users/{friend_id}/ai-tier",
         json={"ai_access_tier": "full"},
-        headers=CSRF,
+        headers=csrf_headers(client, friend_cookies),
         cookies=friend_cookies,
     )
     assert denied.status_code == 403
@@ -321,7 +321,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
     raised = await client.patch(
         f"/settings/users/{friend_id}/ai-tier",
         json={"ai_access_tier": "full"},
-        headers=CSRF,
+        headers=csrf_headers(client, owner),
         cookies=owner,
     )
     assert raised.status_code == 200
@@ -331,7 +331,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
     bad = await client.patch(
         f"/settings/users/{friend_id}/ai-tier",
         json={"ai_access_tier": "unlimited"},
-        headers=CSRF,
+        headers=csrf_headers(client, owner),
         cookies=owner,
     )
     assert bad.status_code == 422
@@ -340,7 +340,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
     missing = await client.patch(
         "/settings/users/999999/ai-tier",
         json={"ai_access_tier": "full"},
-        headers=CSRF,
+        headers=csrf_headers(client, owner),
         cookies=owner,
     )
     assert missing.status_code == 404
@@ -355,7 +355,7 @@ async def test_ai_tier_update_is_owner_only_and_validated(client: AsyncClient, d
     own = await client.patch(
         f"/settings/users/{owner_id}/ai-tier",
         json={"ai_access_tier": "cheap_only"},
-        headers=CSRF,
+        headers=csrf_headers(client, owner),
         cookies=owner,
     )
     assert own.status_code == 409

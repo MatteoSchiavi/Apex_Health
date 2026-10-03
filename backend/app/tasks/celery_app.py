@@ -54,6 +54,8 @@ celery_app.conf.update(
     # reject_on_worker_lost=True: if the worker process dies (OOM, kill),
     # the task is requeued instead of being marked failed.
     task_reject_on_worker_lost=True,
+    task_track_started=True,
+    result_expires=7 * 24 * 3600,
     # visibility_timeout MUST exceed the longest task (the redis broker
     # uses it to redeliver tasks whose ack is overdue). 5h comfortably
     # covers the 4h hard time limit below.

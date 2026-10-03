@@ -24,6 +24,7 @@ import csv
 import hashlib
 import io
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
@@ -34,6 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.wellness import DailyBiometric, HrvReading
+from app.connectors.validation import (
+    valid_body_fat_pct, valid_hrv_ms, valid_resting_hr_bpm,
+    valid_spo2_pct, valid_weight_kg,
+)
 
 logger = logging.getLogger("services.csv_import")
 
@@ -45,8 +50,8 @@ _WORKOUT_HEADERS = {
     "start": ["start time", "start_time", "start_date", "start", "date"],
     "end": ["end time", "end_time", "end_date", "end"],
     "sport": ["workout type", "workout_type", "sport", "sport_type", "type", "activity"],
-    "duration": ["duration", "duration (min)", "elapsed_time", "elapsed time (min)", "elapsed time"],
-    "distance": ["distance (km)", "distance_km", "distance", "distance (m)"],
+    "duration": ["duration_s", "duration (s)", "duration (min)", "duration", "elapsed_time", "elapsed time (min)", "elapsed time"],
+    "distance": ["distance (km)", "distance_km", "distance_m", "distance", "distance (m)"],
     "calories": ["energy burned (kcal)", "energy burned", "calories", "calories (kcal)", "active energy (kcal)"],
     "avg_hr": ["average heart rate (bpm)", "avg_hr", "average heart rate", "avg heart rate"],
     "max_hr": ["max heart rate (bpm)", "max_hr", "maximum heart rate", "max heart rate"],
@@ -106,7 +111,8 @@ def _parse_number(value: object) -> float | None:
     if not text:
         return None
     try:
-        return float(text)
+        number = float(text)
+        return number if math.isfinite(number) else None
     except ValueError:
         return None
 
@@ -173,19 +179,21 @@ async def _import_workouts(
         if end is not None and end > start:
             duration_s = int((end - start).total_seconds())
         elif "duration" in cols:
-            minutes = _parse_number(row.get(cols["duration"]))
-            if minutes is not None and minutes > 0:
-                # tolerate both minutes and the mislabeled "duration" in hours
-                duration_s = int(minutes * 60) if minutes > 10 else int(minutes)
+            duration = _parse_number(row.get(cols["duration"]))
+            if duration is not None and duration > 0:
+                header = _norm_header(cols["duration"])
+                # Explicit minute columns are minutes; generic duration and
+                # elapsed_time follow canonical seconds. Never guess by size.
+                duration_s = int(duration * 60) if "(min)" in header else int(duration)
         if duration_s is None or duration_s <= 0:
             report.skipped += 1
             report.errors.append(f"workouts row {idx + 2}: no duration")
             continue
         sport = (row.get(cols.get("sport")) or "gym_general").strip() or "gym_general"
-        distance_km = _parse_number(row.get(cols.get("distance")))
-        distance_m = (
-            int(distance_km * 1000) if distance_km is not None and distance_km < 1000
-            else (int(distance_km) if distance_km is not None and distance_km >= 1000 else None)
+        distance = _parse_number(row.get(cols.get("distance")))
+        distance_header = _norm_header(cols.get("distance", ""))
+        distance_m = None if distance is None else round(
+            distance * 1000 if distance_header in {"distance (km)", "distance_km"} else distance
         )
         calories = _parse_number(row.get(cols.get("calories")))
         avg_hr = _parse_number(row.get(cols.get("avg_hr")))
@@ -198,6 +206,7 @@ async def _import_workouts(
             select(ActivitySourceLink).where(
                 ActivitySourceLink.source == SOURCE,
                 ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == user_id,
             )
         )
         if link is not None:
@@ -208,7 +217,7 @@ async def _import_workouts(
             discipline_id=None,
             start_time=start,
             start_tz_offset_minutes=(
-                int(start.utcoffset().total_seconds() // 60) if start.utcoffset() else None
+                int(start.utcoffset().total_seconds() // 60) if start.utcoffset() else 0
             ),
             local_date=start.astimezone(tz).date(),
             duration_s=duration_s,
@@ -225,6 +234,7 @@ async def _import_workouts(
         await session.flush()
         session.add(
             ActivitySourceLink(
+                user_id=user_id,
                 activity_id=activity.id,
                 source=SOURCE,
                 external_id=external_id,
@@ -266,6 +276,13 @@ async def _import_daily(
         rhr = _parse_number(row.get(cols.get("resting_hr")))
         spo2 = _parse_number(row.get(cols.get("spo2")))
         hrv = _parse_number(row.get(cols.get("hrv")))
+        weight = valid_weight_kg(weight)
+        body_fat = valid_body_fat_pct(body_fat)
+        rhr = valid_resting_hr_bpm(rhr)
+        spo2 = valid_spo2_pct(spo2)
+        hrv = valid_hrv_ms(hrv)
+        if steps is not None and steps < 0:
+            steps = None
 
         if all(v is None for v in (steps, weight, body_fat, rhr, spo2, hrv)):
             report.skipped += 1
@@ -327,8 +344,19 @@ async def import_csv(
     if isinstance(content, bytes):
         content = content.decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(content))
-    rows = [r for r in reader if any((v or "").strip() for v in r.values())]
     report = ImportReport()
+    rows = []
+    try:
+        for row in reader:
+            if None in row:
+                report.skipped += 1
+                report.errors.append("CSV row contains more values than headers")
+                continue
+            if any((v or "").strip() for v in row.values()):
+                rows.append(row)
+    except csv.Error:
+        report.errors.append("Invalid CSV or a field exceeds the allowed size")
+        return report
     if not rows:
         report.errors.append("CSV has no data rows")
         return report

@@ -25,29 +25,26 @@ given; the key is never echoed, never logged.
 """
 
 import argparse
-import gzip
 import os
 import subprocess
+import threading
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
-from app.core.backups import BackupCorruptError, _fernet
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.core.backups import BackupCorruptError, iter_backup, read_backup
 from app.core.config import get_settings
+from app.core.postgres_cli import postgres_environment
 
 
 def decrypt_to_sql(artifact_path: str, backup_key: str) -> bytes:
     """Fernet-decrypt + gunzip the artifact back to plain SQL text."""
-    ciphertext = Path(artifact_path).read_bytes()
-    try:
-        compressed = _fernet(backup_key).decrypt(ciphertext)
-    except Exception as exc:  # noqa: BLE001 — InvalidToken; message stays honest
-        raise BackupCorruptError(
-            f"decryption failed for {artifact_path}: wrong key or corrupt artifact"
-        ) from exc
-    return gzip.decompress(compressed)
+    return read_backup(artifact_path, backup_key)
 
 
-def restore_sql(sql: bytes, target_dsn: str, *, psql_bin: str = "psql", timescaledb: bool = True) -> None:
+def restore_sql(sql: bytes | Iterable[bytes], target_dsn: str, *, psql_bin: str = "psql", timescaledb: bool = True) -> None:
     """Pipe plain SQL into psql against target_dsn, failing on the first error.
 
     timescaledb=True follows TimescaleDB's documented plain-SQL restore
@@ -56,24 +53,52 @@ def restore_sql(sql: bytes, target_dsn: str, *, psql_bin: str = "psql", timescal
     calls must not share a transaction with the restore body). The SQL is
     passed on stdin — never a temp file with plaintext health data on disk.
     """
-    def _psql(payload: bytes) -> None:
-        proc = subprocess.run(
-            [psql_bin, target_dsn, "--set", "ON_ERROR_STOP=1", "--quiet"],
-            input=payload,
-            capture_output=True,
-            timeout=1800,
+    env = postgres_environment(target_dsn)
+    def _psql(payload: bytes | Iterable[bytes], *, atomic: bool = False) -> None:
+        command = [psql_bin, "--no-psqlrc", "--set", "ON_ERROR_STOP=1", "--quiet"]
+        if atomic:
+            command.append("--single-transaction")
+        proc = subprocess.Popen(
+            command,
+            env=env,
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        if proc.returncode != 0:
-            stderr = proc.stderr.decode("utf-8", "replace").strip()
-            # The DSN may embed credentials — redact before printing anything.
-            stderr = stderr.replace(target_dsn, "<target-dsn-redacted>")
-            raise RuntimeError(f"restore failed (psql exit {proc.returncode}):\n{stderr}")
+        timer = threading.Timer(1800, proc.kill)
+        timer.daemon = True
+        timer.start()
+        try:
+            chunks = [payload] if isinstance(payload, bytes) else payload
+            try:
+                for chunk in chunks:
+                    proc.stdin.write(chunk)
+                proc.stdin.close()
+            except BaseException:
+                # Kill BEFORE closing stdin: EOF would let psql commit a
+                # truncated but syntactically valid dump. Killing rolls back.
+                proc.kill()
+                raise
+            if proc.wait() != 0:
+                raise RuntimeError("Restore failed or timed out; the target transaction was rolled back")
+        except BrokenPipeError:
+            raise RuntimeError("Restore failed; the target transaction was rolled back") from None
+        finally:
+            timer.cancel()
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+            if not proc.stdin.closed:
+                try:
+                    proc.stdin.close()
+                except BrokenPipeError:
+                    pass
 
     if timescaledb:
         _psql(b"SELECT timescaledb_pre_restore();")
-    _psql(sql)
-    if timescaledb:
-        _psql(b"SELECT timescaledb_post_restore();")
+    try:
+        _psql(sql, atomic=True)
+    finally:
+        if timescaledb:
+            _psql(b"SELECT timescaledb_post_restore();")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -102,18 +127,14 @@ def main(argv: list[str] | None = None) -> int:
     psql_bin = args.psql_bin or settings.psql_bin
 
     try:
-        sql = decrypt_to_sql(args.artifact, backup_key)
+        sql = iter_backup(args.artifact, backup_key)
+        restore_sql(sql, args.target_dsn, psql_bin=psql_bin,
+                    timescaledb=not args.no_timescaledb)
     except BackupCorruptError as exc:
         print(f"restore aborted: {exc}", file=sys.stderr)
         return 2
 
-    restore_sql(
-        sql,
-        args.target_dsn,
-        psql_bin=psql_bin,
-        timescaledb=not args.no_timescaledb,
-    )
-    print(f"restore complete: {args.artifact} -> {args.target_dsn}")
+    print(f"restore complete: {args.artifact} -> target database")
     return 0
 
 

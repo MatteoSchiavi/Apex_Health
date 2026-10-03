@@ -59,6 +59,10 @@ class LLMError(Exception):
     pass
 
 
+class LLMUnavailableError(LLMError):
+    """The selected provider has not been configured."""
+
+
 class LLMClient(Protocol):
     async def complete(
         self,
@@ -124,6 +128,9 @@ class LiveGLMClient:
         }
         self._client = httpx.AsyncClient(timeout=120.0)
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def complete(
         self,
         messages: list[dict[str, Any]],
@@ -136,6 +143,8 @@ class LiveGLMClient:
         if tier not in self._endpoints:
             raise LLMError(f"tier {tier!r} has no endpoint configured")
         api_base, api_key = self._endpoints[tier]
+        if not api_key:
+            raise LLMUnavailableError("LLM provider is not configured")
         payload_messages: list[dict[str, Any]] = []
         if system:
             payload_messages.append({"role": "system", "content": system})
@@ -151,8 +160,8 @@ class LiveGLMClient:
             )
             resp.raise_for_status()
             body = resp.json()
-        except httpx.HTTPError as exc:
-            raise LLMError(f"LLM completion failed ({tier}): {exc}") from exc
+        except (httpx.HTTPError, ValueError):
+            raise LLMError(f"LLM completion failed ({tier})") from None
         return parse_completion(body, fallback_model=self._models[tier])
 
 

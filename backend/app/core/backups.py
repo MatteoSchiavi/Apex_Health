@@ -17,16 +17,20 @@ independent of the daily pool) — a documented judgment call on "Retain
 excluded from the daily rotation so month boundaries survive it.
 """
 
-import gzip
 import hashlib
 import re
 import subprocess
+import os
+import tempfile
+import threading
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 
-from app.core.encryption import EncryptionError
+from app.core.postgres_cli import postgres_environment
+from app.core.backup_archive import ArchiveCorruptError, CHUNK, read_archive, write_archive
 
 
 class BackupError(Exception):
@@ -67,23 +71,33 @@ def run_pg_dump(pg_dump_bin: str, database_url: str) -> bytes:
     database_url is the SQLAlchemy asyncpg URL — pg_dump needs a libpq URL,
     so the scheme is rewritten (postgresql+asyncpg:// -> postgresql://).
     """
-    libpq_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return b"".join(iter_pg_dump(pg_dump_bin, database_url))
+
+
+def iter_pg_dump(pg_dump_bin: str, database_url: str) -> Iterator[bytes]:
     try:
-        proc = subprocess.run(
-            [pg_dump_bin, "--format=plain", "--no-owner", "--no-privileges", libpq_url],
-            capture_output=True,
-            check=True,
-            timeout=600,
+        proc = subprocess.Popen(
+            [pg_dump_bin, "--format=plain", "--no-owner", "--no-privileges"],
+            env=postgres_environment(database_url),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
     except FileNotFoundError as exc:
         raise BackupError(f"pg_dump binary not found: {pg_dump_bin!r}") from exc
-    except subprocess.CalledProcessError as exc:
-        # stderr may embed the connection string — keep the message, drop nothing
-        # the operator needs, but never log credentials: strip any URL in it.
-        tail = exc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
-        tail = [line.replace(libpq_url, "<db-url-redacted>") for line in tail]
-        raise BackupError(f"pg_dump failed: {' | '.join(tail)}") from exc
-    return proc.stdout
+    timer = threading.Timer(600, proc.kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        with proc.stdout:
+            while chunk := proc.stdout.read(CHUNK):
+                yield chunk
+        if proc.wait() != 0:
+            raise BackupError("pg_dump failed or timed out; check database connectivity and permissions")
+    finally:
+        timer.cancel()
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
 
 
 def create_backup(
@@ -101,42 +115,61 @@ def create_backup(
     fernet = _fernet(backup_encryption_key)
     now = now or datetime.now(timezone.utc)
 
-    plaintext_dump = run_pg_dump(pg_dump_bin, database_url)
-    if not plaintext_dump.strip():
-        raise BackupError("pg_dump produced 0 bytes — refusing to archive it")
-
-    compressed = gzip.compress(plaintext_dump, compresslevel=6)
-    ciphertext = fernet.encrypt(compressed)
-
     target_dir = Path(backup_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     name = backup_filename(now)
     final = target_dir / name
-    tmp = target_dir / f".{name}.tmp"
-    tmp.write_bytes(ciphertext)
-    tmp.replace(final)  # atomic — a crash mid-write never leaves a partial archive
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{name}.", suffix=".tmp", dir=target_dir)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as archive:
+            chunks = iter_pg_dump(pg_dump_bin, database_url)
+            first = next(chunks, b"")
+            if not first.strip():
+                chunks.close()
+                raise BackupError("pg_dump produced 0 bytes — refusing to archive it")
+            from itertools import chain
+            try:
+                write_archive(chain([first], chunks), archive, fernet)
+            finally:
+                chunks.close()
+            archive.flush()
+            os.fsync(archive.fileno())
+        # Publish without overwriting another backup from the same second.
+        os.link(tmp, final)
+        directory_fd = os.open(target_dir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except FileExistsError:
+        raise BackupError("A backup already exists for this timestamp; no archive was overwritten") from None
+    finally:
+        tmp.unlink(missing_ok=True)
 
+    digest = hashlib.sha256()
+    with final.open("rb") as artifact:
+        while chunk := artifact.read(CHUNK):
+            digest.update(chunk)
     return {
         "path": str(final),
-        "size": len(ciphertext),
-        "sha256": hashlib.sha256(ciphertext).hexdigest(),
+        "size": final.stat().st_size,
+        "sha256": digest.hexdigest(),
         "kind": "monthly" if now.day == 1 else "daily",
     }
 
 
 def read_backup(path: str, backup_encryption_key: str) -> bytes:
     """Decrypt + gunzip an artifact back to plain SQL (restore path / drill)."""
+    return b"".join(iter_backup(path, backup_encryption_key))
+
+
+def iter_backup(path: str, backup_encryption_key: str) -> Iterator[bytes]:
     try:
-        ciphertext = Path(path).read_bytes()
-    except OSError as exc:
-        raise BackupCorruptError(f"cannot read backup: {path}") from exc
-    try:
-        compressed = _fernet(backup_encryption_key).decrypt(ciphertext)
-    except (InvalidToken, EncryptionError) as exc:
-        raise BackupCorruptError(
-            "decryption failed: wrong BACKUP_ENCRYPTION_KEY or corrupt artifact"
-        ) from exc
-    return gzip.decompress(compressed)
+        with Path(path).open("rb") as artifact:
+            yield from read_archive(artifact, _fernet(backup_encryption_key))
+    except (OSError, ArchiveCorruptError) as exc:
+        raise BackupCorruptError("Cannot read backup: wrong key or corrupt artifact") from exc
 
 
 def classify(backup_dir: str) -> tuple[list[Path], list[Path]]:
@@ -157,6 +190,8 @@ def prune_backups(backup_dir: str, retain_daily: int = 14, retain_monthly: int =
     Returns the deleted paths. Daily pool = non-first-of-month artifacts,
     newest 14 kept; monthly pool = first-of-month artifacts, newest 6 kept.
     """
+    if retain_daily < 0 or retain_monthly < 0:
+        raise ValueError("Backup retention counts must be nonnegative")
     dailies, monthlies = classify(backup_dir)
     doomed = dailies[retain_daily:] + monthlies[retain_monthly:]
     removed = []

@@ -76,11 +76,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    # D-09 audit: hard cap on Redis memory + LRU eviction. Every key the app
-    # sets carries a TTL (rate-limit windows, OAuth state, agent locks) so
-    # volatile-lru is safe — it never evicts a key the app still needs.
-    # Without this cap Redis grows unbounded until OOM on the 8 GB box.
-    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru
+    # Persist queued jobs across restarts. Never evict queue or auth state;
+    # when full, fail writes explicitly instead of silently losing tasks.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -91,10 +91,40 @@ services:
     mem_reservation: 64m
     logging: *default_logging
 
+  # One migration runner gates every process before it can use the schema.
+  migrate:
+    image: apex-health-backend:local
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: alembic upgrade head
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
+      REDIS_URL: redis://redis:6379/0
+      BACKUP_DIR: /app/backups
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 512m
+    logging: *default_logging
+
+  backup-permissions:
+    image: redis:7-alpine
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /app/backups && chown 1000:1000 /app/backups && chmod 0700 /app/backups"]
+    volumes:
+      - ../backups:/app/backups
+    restart: "no"
+    logging: *default_logging
+
   api:
     # Root context + backend/Dockerfile: the multi-stage build compiles the
     # SPA into the image (stage 1 node build -> /app/spa), so `docker compose
     # build` is the only UI deploy step and no Node runtime ships to prod.
+    image: apex-health-backend:local
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -103,16 +133,26 @@ services:
       # Container-network URLs override host-side .env values.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
       REDIS_URL: redis://redis:6379/0
+      BACKUP_DIR: /app/backups
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
     depends_on:
-      db:
-        condition: service_healthy
+      backup-permissions:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     # F-31 audit: bind to 127.0.0.1 so the API (and /docs) is NOT exposed to
     # the LAN by default. Caddy / Tailscale Funnel terminate TLS and proxy
     # to localhost — they are the only intended public surface.
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 20s
     restart: unless-stopped
     # Nightly backup artifacts live here on the host, outside the container
     # lifecycle; the same mount lets `exec api python tools/restore_drill.py`
@@ -124,6 +164,7 @@ services:
     logging: *default_logging
 
   worker:
+    image: apex-health-backend:local
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -131,13 +172,15 @@ services:
     # every 6h, nightly feature engine 03:00 user-local, gear accumulation,
     # AI budget check 23:45 UTC, nightly encrypted backup 02:00 UTC, reports).
     # Without it the schedule is DEFINED but never ticked.
-    command: celery -A app.tasks.celery_app worker --beat --loglevel=INFO
+    command: celery -A app.tasks.celery_app worker --beat --concurrency=2 --loglevel=INFO
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
       REDIS_URL: redis://redis:6379/0
+      BACKUP_DIR: /app/backups
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
     depends_on:
-      db:
+      api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -153,6 +196,7 @@ services:
   # healthy instead of crash-looping the bot container:
   #   docker compose -f infra/docker-compose.yml --profile telegram up -d
   bot:
+    image: apex-health-backend:local
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -162,8 +206,10 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
       REDIS_URL: redis://redis:6379/0
+      BACKUP_DIR: /app/backups
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
     depends_on:
-      db:
+      api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -174,3 +220,4 @@ services:
 
 volumes:
   db_data:
+  redis_data:

@@ -5,15 +5,15 @@ import os
 from httpx import AsyncClient
 
 from tests.conftest import reset_owner_auth_state
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 
 async def login(client: AsyncClient, email: str, password: str):
     return await client.post(
-        "/auth/login", json={"email": email, "password": password}, headers=CSRF
+        "/auth/login", json={"email": email, "password": password}, headers=csrf_headers(client)
     )
 
 
@@ -53,8 +53,8 @@ async def test_logout_destroys_session(client: AsyncClient, db_session):
     resp = await login(client, OWNER_EMAIL, OWNER_PASSWORD)
     cookie = resp.cookies
 
-    out = await client.post("/auth/logout", headers=CSRF, cookies=cookie)
+    out = await client.post("/auth/logout", headers=csrf_headers(client, cookie), cookies=cookie)
     assert out.status_code == 204
 
-    replay = await client.post("/auth/logout", headers=CSRF, cookies=cookie)
+    replay = await client.post("/auth/logout", headers=csrf_headers(client, cookie), cookies=cookie)
     assert replay.status_code == 401

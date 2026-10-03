@@ -24,6 +24,12 @@ class OuraAuthError(Exception):
     """Raised when Oura tokens are missing/expired and refresh fails."""
 
 
+def build_live_client(credentials: dict | None):
+    if not credentials:
+        raise OuraAuthError("No stored Oura credentials; connect the account first")
+    return OuraClient(OAuthTokens.from_credentials(credentials))
+
+
 def build_authorize_url(state: str) -> str:
     from app.connectors.oauth2 import build_authorize_url as shared
 

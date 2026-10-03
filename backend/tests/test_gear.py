@@ -35,10 +35,10 @@ from tests.helpers.telegram import (
     FixtureTelegramClient,
     clean_bot_tables,  # noqa: F401 — autouse per-test truncate
 )
+from tests.conftest import csrf_headers
 
 ROME_NOW = datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -426,7 +426,7 @@ async def test_gear_api_endpoints(client: AsyncClient, db_session):
     login = await client.post(
         "/auth/login",
         json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert login.status_code == 200
 
@@ -437,7 +437,7 @@ async def test_gear_api_endpoints(client: AsyncClient, db_session):
     service = await client.post(
         f"/gear/{world['gear'].id}/service",
         json={"service_type": "full overhaul", "notes": "chain"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert service.status_code == 200
     body = service.json()
@@ -447,6 +447,6 @@ async def test_gear_api_endpoints(client: AsyncClient, db_session):
     assert after["hours_since_service"] == 0.0
 
     missing = await client.post(
-        "/gear/99999/service", json={"service_type": "x"}, headers=CSRF
+        "/gear/99999/service", json={"service_type": "x"}, headers=csrf_headers(client)
     )
     assert missing.status_code == 404

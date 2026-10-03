@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # --- Stage 1: build the SPA (Apex Precision web UI) -------------------------
 # The official UI is a static Vite bundle the API serves (docs/STACK.md §2.1):
 # building it INTO the image means `docker compose build` is the only step and
@@ -5,7 +6,9 @@
 FROM node:22-slim AS spa
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=secret,id=proxy_ca,mode=0444 \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
@@ -19,7 +22,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 # refuses cross-major dumps): the nightly backup task (§22.7) shells out to
 # pg_dump and the restore tooling (tools/restore_backup.py, restore_drill.py)
 # shells out to psql. Both must exist inside the api/worker images.
-RUN apt-get update \
+RUN --mount=type=secret,id=proxy_ca,mode=0444 \
+    if [ -f /run/secrets/proxy_ca ]; then \
+        export CURL_CA_BUNDLE=/run/secrets/proxy_ca; \
+        echo 'Acquire::https::CaInfo "/run/secrets/proxy_ca";' > /etc/apt/apt.conf.d/99-session-ca; \
+    fi; \
+    apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -30,18 +38,24 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends postgresql-client-16 \
     && apt-get purge -y curl gnupg \
     && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99-session-ca
 
-RUN pip install --no-cache-dir uv
+RUN --mount=type=secret,id=proxy_ca,mode=0444 \
+    if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
+    pip install --no-cache-dir uv
 
 WORKDIR /app
 
 # Install dependencies first for layer caching.
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=secret,id=proxy_ca,mode=0444 \
+    if [ -f /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    uv sync --frozen --no-dev --no-install-project
 
 COPY backend/ ./
-RUN uv sync --frozen --no-dev
+RUN --mount=type=secret,id=proxy_ca,mode=0444 \
+    if [ -f /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    uv sync --frozen --no-dev
 
 # Ship the built SPA with the image; _mount_spa() picks it up via SPA_DIST_DIR
 # and serves it at / with history-API fallback (main.py).

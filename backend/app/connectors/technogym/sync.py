@@ -116,6 +116,7 @@ async def fetch_workouts(
                 select(ActivitySourceLink).where(
                     ActivitySourceLink.source == SOURCE,
                     ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == user_id,
                 )
             )
             if link is None:

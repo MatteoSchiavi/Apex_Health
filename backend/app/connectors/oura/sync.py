@@ -110,6 +110,8 @@ async def sync_user_oura(
     report.stats = totals
     if errors:
         report.notes.append("collection errors: " + "; ".join(errors))
+        await session.commit()
+        raise RuntimeError("Some Oura collections could not be fetched")
 
     integration.last_synced_at = now
     return report
@@ -133,3 +135,7 @@ async def run_user_sync_with_oura(
         source_label="oura",
         **kwargs,
     )
+
+
+# Shared task-driver interface; retain the existing public helper name.
+run_user_sync_with_escalation = run_user_sync_with_oura
