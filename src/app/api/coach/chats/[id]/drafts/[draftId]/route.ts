@@ -1,44 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-/**
- * Draft confirm / discard.
- *   POST /api/coach/chats/[id]/drafts/[draftId]   body: { action: "confirm" | "discard" }
- *
- * Updates the draft's `status` field inside the assistant message's `drafts`
- * JSON array. Returns the updated drafts list.
- */
+/** Legacy drafts can be discarded idempotently. Confirmation is unavailable
+ * until the canonical agent can actually apply the payload; never report a
+ * changed status as an applied plan or protocol. */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function ensureUser() {
-  const email = process.env.GARMIN_EMAIL || "";
-  let user = await db.user.findFirst({ where: { email } });
-  if (!user) {
-    user = await db.user.create({
-      data: {
-        email,
-        name: "Apex Athlete",
-        password: process.env.GARMIN_PASSWORD || "",
-        timezone: "Europe/Rome",
-        locale: "en",
-        theme: "dark",
-        units: "metric",
-        role: "owner",
-        aiTier: "pro",
-      },
-    });
-  }
-  return user;
-}
-
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string; draftId: string }> }) {
   try {
-    const user = await ensureUser();
+    const user = await db.user.findFirst({ where: { email: process.env.GARMIN_EMAIL || "" } });
+    if (!user) return NextResponse.json({ ok: false, error: "Account not found" }, { status: 404 });
     const { id: idStr, draftId } = await ctx.params;
-    const sessionId = parseInt(idStr);
-    if (!sessionId) return NextResponse.json({ ok: false, error: "Bad session id" }, { status: 400 });
+    const sessionId = /^\d+$/.test(idStr) ? Number(idStr) : NaN;
+    if (!Number.isSafeInteger(sessionId) || sessionId < 1) return NextResponse.json({ ok: false, error: "Bad session id" }, { status: 400 });
 
     const session = await db.chatSession.findFirst({ where: { id: sessionId, userId: user.id } });
     if (!session) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
@@ -65,22 +41,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         continue;
       }
       if (!Array.isArray(arr)) continue;
-      let touched = false;
-      arr = arr.map((d) => {
-        if (d && typeof d === "object" && "id" in d && (d as { id: string }).id === draftId) {
-          touched = true;
-          return { ...(d as Record<string, unknown>), status: action === "confirm" ? "confirmed" : "discarded" };
-        }
-        return d;
-      });
-      if (touched) {
-        await db.chatMessage.update({
-          where: { id: m.id },
-          data: { drafts: JSON.stringify(arr) },
-        });
-        updated = arr as unknown[];
-        break;
+      const draft = arr.find((d) => d && typeof d === "object" && d.id === draftId);
+      if (!draft) continue;
+      if (action === "confirm") {
+        return NextResponse.json({ ok: false, error: "Draft application is unavailable. No plan or protocol was applied." }, { status: 501 });
       }
+      if (draft.status === "discarded") return NextResponse.json({ ok: true, drafts: arr });
+      if (draft.status !== "pending") return NextResponse.json({ ok: false, error: "Draft is already finalized" }, { status: 409 });
+      const next = arr.map((d) => d?.id === draftId ? { ...d, status: "discarded" } : d);
+      // Compare-and-swap prevents one simultaneous draft update overwriting another.
+      const result = await db.chatMessage.updateMany({
+        where: { id: m.id, drafts: m.drafts }, data: { drafts: JSON.stringify(next) },
+      });
+      if (result.count !== 1) return NextResponse.json({ ok: false, error: "Draft changed. Reload and retry." }, { status: 409 });
+      updated = next;
+      break;
     }
 
     if (!updated) {
@@ -89,7 +64,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     return NextResponse.json({ ok: true, drafts: updated });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Could not update draft" }, { status: 500 });
   }
 }

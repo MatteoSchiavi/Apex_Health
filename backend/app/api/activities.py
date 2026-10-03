@@ -233,10 +233,15 @@ async def activity_streams(
     if not rows:
         return StreamOut(activity_id=a.id, t=[], columns={})
 
-    stride = max(1, len(rows) // max_points)
-    picked = rows[::stride]
-    if picked[-1].t_offset_s != rows[-1].t_offset_s:
-        picked.append(rows[-1])
+    # Sample at most max_points, preserving both endpoints and aligned columns.
+    # Floor-based stride could return almost twice the requested budget.
+    if len(rows) <= max_points:
+        picked = rows
+    else:
+        picked = [
+            rows[i * (len(rows) - 1) // (max_points - 1)]
+            for i in range(max_points)
+        ]
 
     def series(pick, cast=float) -> list:
         return [cast(pick(r)) if pick(r) is not None else None for r in picked]

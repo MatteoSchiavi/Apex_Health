@@ -28,16 +28,14 @@
  * SourcePill, Empty, Loading, Hairline, ApexButton).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitCompare, Download, Plus, Loader2, X } from "lucide-react";
 import { useI18n, useT } from "@/lib/apex/i18nContext";
 import { useApexUi } from "@/lib/apex";
-import { me } from "@/lib/apex/data";
 import {
   Card,
   CardHeader,
   PageHeader,
-  DeltaChip,
   Segmented,
   SportIcon,
   SourcePill,
@@ -60,7 +58,7 @@ import {
   DisciplineDot,
   disciplineLabel,
   primaryMetricFor,
-  weekKeyForISO,
+  weekKeyForLocalDate,
 } from "@/lib/apex/disciplines";
 import type { ActivityCard, Locale, Units, WeeklyVolume } from "@/lib/apex/types";
 
@@ -69,7 +67,6 @@ type VolumeMetric = "hours" | "load" | "distance";
 
 const RANGE_DAYS: Record<RangeKey, number> = { "30d": 30, "90d": 90, "12m": 365 };
 const PAGE_SIZE = 60;
-const WEEKS_SHOWN = 12;
 
 interface SummaryBlock {
   sessions: number;
@@ -103,7 +100,7 @@ export function ActivitiesPage() {
   const t = useT();
   const { locale } = useI18n();
   const ui = useApexUi();
-  const units: Units = me.units ?? "metric";
+  const units = ui.units;
 
   // Filters + range
   const [range, setRange] = useState<RangeKey>("30d");
@@ -124,6 +121,8 @@ export function ActivitiesPage() {
   const [compareOpen, setCompareOpen] = useState(false);
 
   const days = RANGE_DAYS[range];
+  const listRequest = useRef<AbortController | null>(null);
+  const weeklyRequest = useRef<AbortController | null>(null);
 
   // Stable query string for discipline + source params.
   const filterQ = useMemo(() => {
@@ -135,74 +134,82 @@ export function ActivitiesPage() {
   // Fetch list + summary (offset 0 = replace; >0 = append for Load more).
   const fetchList = useCallback(
     async (off: number, append: boolean) => {
+      listRequest.current?.abort();
+      const controller = new AbortController();
+      listRequest.current = controller;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else { setLoading(true); setLoadingMore(false); }
       setError(null);
       try {
         const url = `/api/activities?days=${days}&offset=${off}&limit=${PAGE_SIZE}${
           filterQ ? "&" + filterQ : ""
-        }`;
-        const res = await fetch(url);
+        }${weekFilter ? "&week=" + encodeURIComponent(weekFilter) : ""}`;
+        const res = await fetch(url, { signal: controller.signal });
         const data: ActivitiesResponse = await res.json();
-        if (!data.ok) throw new Error(data.error || "Failed to load activities");
+        if (controller.signal.aborted) return;
+        if (!res.ok || !data.ok) throw new Error(data.error || "Failed to load activities");
         setActivities((prev) => (append ? [...prev, ...data.activities] : data.activities));
         setSummary(data.summary);
         setTotal(data.total);
         setOffset(off);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (!controller.signal.aborted) { setLoading(false); setLoadingMore(false); }
       }
     },
-    [days, filterQ]
+    [days, filterQ, weekFilter]
   );
 
-  // Fetch weekly volume (silent failures — it's a supporting view).
+  // Cancel obsolete chart requests and clear failed data rather than retain a stale chart.
   const fetchWeekly = useCallback(async () => {
+    weeklyRequest.current?.abort();
+    const controller = new AbortController();
+    weeklyRequest.current = controller;
+    setWeekly([]);
     try {
-      const url = `/api/activities/weekly?weeks=${WEEKS_SHOWN}${filterQ ? "&" + filterQ : ""}`;
-      const res = await fetch(url);
+      const url = `/api/activities/weekly?days=${days}${filterQ ? "&" + filterQ : ""}`;
+      const res = await fetch(url, { signal: controller.signal });
       const data: WeeklyResponse = await res.json();
-      if (data.ok) setWeekly(data.weekly);
-    } catch {
-      /* no-op */
-    }
-  }, [filterQ]);
+      if (!controller.signal.aborted && res.ok && data.ok) setWeekly(data.weekly);
+    } catch { /* Supporting chart stays empty on failure. */ }
+  }, [days, filterQ]);
 
-  // Refetch when filters or range change.
+  useEffect(() => { setWeekFilter(null); }, [days, filterQ]);
   useEffect(() => {
-    setWeekFilter(null);
     fetchList(0, false);
+    return () => { listRequest.current?.abort(); };
+  }, [fetchList]);
+  useEffect(() => {
     fetchWeekly();
-  }, [fetchList, fetchWeekly]);
+    return () => { weeklyRequest.current?.abort(); };
+  }, [fetchWeekly]);
 
   // The discipline + source chips are derived from what's currently loaded —
   // only show filters that have actual data behind them.
   const availableDisciplines = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(disciplines);
     for (const a of activities) set.add(a.discipline);
     return Array.from(set).sort();
-  }, [activities]);
+  }, [activities, disciplines]);
 
   const availableSources = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(sources);
     for (const a of activities) for (const s of a.sources) set.add(s);
     return Array.from(set).sort();
-  }, [activities]);
+  }, [activities, sources]);
 
   // Filter list to the clicked week (ISO week_start), if any.
   const filteredByWeek = useMemo(() => {
     if (!weekFilter) return activities;
-    return activities.filter((a) => weekKeyForISO(a.start_time) === weekFilter);
+    return activities.filter((a) => weekKeyForLocalDate(a.local_date) === weekFilter);
   }, [activities, weekFilter]);
 
   // Group the filtered list by ISO week.
   const weeklyGroups = useMemo(() => {
     const map = new Map<string, ActivityCard[]>();
     for (const a of filteredByWeek) {
-      const k = weekKeyForISO(a.start_time);
+      const k = weekKeyForLocalDate(a.local_date);
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(a);
     }
@@ -275,7 +282,7 @@ export function ActivitiesPage() {
               onClick={handleExportCsv}
               icon={<Download size={13} />}
             >
-              <span className="hidden sm:inline">CSV</span>
+              <span className="hidden sm:inline">CSV · {locale === "it" ? "caricate" : "loaded"}</span>
             </ApexButton>
             <ApexButton
               variant="secondary"
@@ -297,7 +304,7 @@ export function ActivitiesPage() {
           </div>
         }
       />
-      <ActivityCompareModal open={compareOpen} onOpenChange={setCompareOpen} />
+      <ActivityCompareModal activities={activities} open={compareOpen} onOpenChange={setCompareOpen} />
 
       {/* Filter row */}
       {(availableDisciplines.length > 0 || availableSources.length > 0) && (
@@ -410,12 +417,14 @@ export function ActivitiesPage() {
             label={t("act_summary_time")}
             value={fmtHours(summary.total_time_s)}
             delta={summary.total_time_s - summary.prev_total_time_s}
+            formatDelta={(v) => fmtDuration(v)}
           />
           <SummaryStat
             label={t("act_summary_distance")}
             value={fmtDistance(summary.total_distance_m, units, 0)}
             unit={units === "imperial" ? "mi" : "km"}
             delta={summary.total_distance_m - summary.prev_total_distance_m}
+            formatDelta={(v) => `${fmtDistance(v, units, 1)} ${units === "imperial" ? "mi" : "km"}`}
           />
           <SummaryStat
             label={t("act_summary_load")}
@@ -441,7 +450,7 @@ export function ActivitiesPage() {
               <div className="text-[14px] font-medium text-ink2">{t("act_weekly_volume")}</div>
               {/* TODO i18n — "last N weeks" */}
               <div className="mt-0.5 text-[12px] text-muted">
-                Last {WEEKS_SHOWN} weeks · click a bar to filter the list
+                Last {weekly.length} weeks · click a bar to filter the list
               </div>
             </div>
             <Segmented
@@ -609,17 +618,19 @@ function SummaryStat({
   value,
   unit,
   delta,
+  formatDelta = (v: number) => String(Math.round(v)),
 }: {
   label: string;
   value: string;
   unit?: string;
   delta: number | null;
+  formatDelta?: (value: number) => string;
 }) {
   return (
     <div className="rounded-[var(--radius-card)] bg-surface2 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="truncate text-[14px] font-medium text-ink2">{label}</div>
-        <DeltaChip delta={delta} compact goodWhen="up" showSuffix={false} />
+        {delta !== null && <span className="num text-[12px] text-muted" title="Change from the previous equal period">{delta >= 0 ? "+" : "−"}{formatDelta(Math.abs(delta))}</span>}
       </div>
       <div className="num mt-1 flex items-baseline gap-1 text-[22px] font-bold leading-7 text-ink tabular-nums">
         {value}
@@ -929,7 +940,7 @@ function WeekGroup({
   locale: Locale;
   units: Units;
   maxLoad: number;
-  onRowClick: (id: number) => void;
+  onRowClick: (id: string) => void;
 }) {
   // Per-week totals (computed from the items shown — the API returns totals in
   // summary, but the week group only sees its own items, which is what's displayed).
@@ -1050,10 +1061,10 @@ function ActivityCompactRow({
         </span>
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold leading-tight text-ink">
-            {disciplineLabel(a.discipline, locale)}
+            {a.title || disciplineLabel(a.discipline, locale)}
           </div>
           <div className="num text-[12px] text-faint tabular-nums">
-            {fmtDate(a.start_time, locale)} · {fmtClock(a.start_time, locale)}
+            {fmtDate(a.start_time, locale)} · {fmtClock(a.start_time, locale)} · {disciplineLabel(a.discipline, locale)}
           </div>
         </div>
       </div>

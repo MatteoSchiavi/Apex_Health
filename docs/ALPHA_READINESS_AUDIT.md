@@ -1,7 +1,7 @@
 # Apex Health: alpha readiness audit
 
 Audited 2026-10-03 against `main` at `1cc885a`. Fixes and this report are on
-`codex/alpha-readiness-audit`. This is a first stabilization pass, not a beta
+`codex/alpha-readiness-audit`. This includes two stabilization passes, not a beta
 release or a claim that live integrations work.
 
 ## Assessment
@@ -12,7 +12,7 @@ feature engine, and an AI tool harness. The newer web app implements a second,
 much thinner version of those responsibilities and mixes its results with
 fixtures. A UI restyle alone cannot make these workflows reliable.
 
-There is useful work to retain. The Python suite passes **436 tests** against
+There is useful work to retain. The Python suite passes **443 tests** against
 isolated PostgreSQL with TimescaleDB/pgvector and Redis. The connected Vite
 frontend builds. The current Next.js UI has reusable components and an explicit
 design language. Stabilization should join those strengths into one product.
@@ -52,11 +52,11 @@ authenticated and no production database was accessed.
 | ID | Finding and evidence | Status / required action |
 |---|---|---|
 | A07 | **Two databases and two business-logic implementations.** SQLite data is invisible to the Python feature engine, bot, watch endpoints, backups and workers. Docker ships a different UI than root development. | **Open.** Establish one canonical backend/database and one UI. Define and test the deployment topology before adding features. |
-| A08 | **An activity list opens sample detail data.** [ActivityDetailPage](../src/features/apex/activities/ActivityDetailPage.tsx) calls `getActivityDetail` / `getActivityStreams` from [data.ts](../src/lib/apex/data.ts). Unknown real IDs fall back to the first fixture; routes, laps, weather and streams are generated. The Prisma activity model cannot store these detail structures. | **Open.** Fetch the selected canonical activity and its recorded streams/laps. Missing streams are an empty state, not generated measurements. Preserve IDs as strings where appropriate. |
+| A08 | **An activity list opens sample detail data.** [ActivityDetailPage](../src/features/apex/activities/ActivityDetailPage.tsx) calls `getActivityDetail` / `getActivityStreams` from [data.ts](../src/lib/apex/data.ts). Unknown real IDs fall back to the first fixture; routes, laps, weather and streams are generated. The Prisma activity model cannot store these detail structures. | **Fixed fabricated detail.** Detail now fetches the selected stored summary; IDs stay strings in list, overview, selection and comparison. Unknown/foreign records return 404; recordings not imported remain explicitly unavailable. GPS/streams/laps from the canonical backend are still pending convergence. |
 | A09 | **Body signals and metric trends are fixtures.** [BiometricsPage](../src/features/apex/biometrics/BiometricsPage.tsx) and [MetricPage](../src/features/apex/biometrics/MetricPage.tsx) consume `metricCatalog`, `labMarkers` and generated trends. The overview uses a different source. | **Open.** Connect catalog, trend and lab views to the same canonical queries as the overview. Verify navigation preserves the value, date, units, source and completeness. |
 | A10 | **Profile “Save” reports success without persistence.** [SettingsPage](../src/features/apex/settings/SettingsPage.tsx) only toasts on profile submission. AI tier, invitations and most device actions also use local state or cosmetic feedback. Units are persisted in the UI store while several views read fixture `me.units`. | **Open.** Wire server mutations and invalidate/refetch shared data. A saved profile must survive reload and a second device. Show unavailable actions honestly until connected. |
-| A11 | **Coach data references and proposed actions are fabricated.** [messages route](../src/app/api/coach/chats/[id]/messages/route.ts) builds successful “tool calls” by matching words, without executing queries. Health readings are not loaded into the prompt. It creates preset workout/supplement drafts even after an LLM failure. | **Open.** Use the Python agent/tool registry, real query results, cost routing and failure handling. Remove keyword-generated supplement protocols and false tool audits. |
-| A12 | **Confirming a coach draft does not apply its action.** [draft route](../src/app/api/coach/chats/[id]/drafts/[draftId]/route.ts) changes JSON `status` only, without creating a plan or protocol. Terminal states can be changed again. | **Open.** Transactional, idempotent application of the actual proposed payload, with a one-way state transition and ownership validation. |
+| A11 | **Coach data references and proposed actions are fabricated.** [messages route](../src/app/api/coach/chats/[id]/messages/route.ts) builds successful “tool calls” by matching words, without executing queries. Health readings are not loaded into the prompt. It creates preset workout/supplement drafts even after an LLM failure. | **Fixed false audits and preset drafts.** Conversation-only replies cite supplied context documents, never keyword-invented queries or protocols. Provider failure returns 502 with no successful reply/drafts persisted. Measured-data grounding, real tools and cost routing remain open in the root UI. |
+| A12 | **Confirming a coach draft does not apply its action.** [draft route](../src/app/api/coach/chats/[id]/drafts/[draftId]/route.ts) changes JSON `status` only, without creating a plan or protocol. Terminal states can be changed again. | **Fixed false confirmation.** Confirmation returns 501 explaining that no plan/protocol was applied. Legacy drafts can be discarded idempotently; finalized drafts cannot be reversed and concurrent edits use compare-and-swap. Actual action application remains unavailable until canonical agent integration. |
 | A13 | **Failed syncs returned success.** [sync adapter](../src/lib/garmin/sync.ts) swallowed per-day errors, and [sync API](../src/app/api/garmin/sync/route.ts) always returned `ok: true`, which Settings treated as success. | **Fixed.** Partial/provider failures remain in the report, return 502 with `ok: false`, mark an existing integration as error, and preserve its last successful timestamp. Empty valid provider results are still accepted. |
 | A14 | **Garmin cached sessions used only the first two password characters and were global.** Disconnect could fall back to environment credentials. | **Fixed.** Cache is per-user and fingerprints full credentials. Paused integration blocks fallback and cached sessions. Remaining work: persistent tokens, expiry/re-auth handling, MFA, rate limits and queued jobs. |
 | A15 | **Node ingestion is incomplete.** Only 50 activities, 14 sleep days and 7 biometric days are fetched. `hrvReadings` is never incremented. Power/training-load fields are not saved; no raw-first store, full backfill, deduplication across sources or background schedule exists in this adapter. | **Open.** Use the existing Python connector rather than extending a second ingestion engine. Add job progress, resumable checkpoints and recorded-provider integration tests. |
@@ -72,15 +72,31 @@ authenticated and no production database was accessed.
 |---|---|---|
 | A21 | **Fresh root build and typecheck were unreliable.** Fonts were downloaded during build; local build failed on font-fetch TLS. Root TypeScript scanned unrelated Vite, example and mini-service projects, producing missing `socket.io` errors. | **Fixed.** Use the already bundled fonts and scope root typechecking to its own code/tests/config. Root production build, typecheck and lint now pass. |
 | A22 | **CI did not exercise root web work.** Only pytest ran. | **Fixed.** Add frozen Bun install, fresh setup, web tests, typecheck, lint and production build. Hosted workflow results must still be checked after pushing. |
-| A23 | **Activities “pagination” loads the entire window.** [activities API](../src/app/api/activities/route.ts) fetches full rows for current and previous windows and slices in memory. `days` is not bounded and malformed numeric parameters are not rejected. | **Open.** Database pagination and aggregates, bounded ranges, input schemas. Use shared query caching, cancellation and invalidation for views. |
-| A24 | **Historical windows are not always calendar windows.** Dashboard takes last N records, not necessarily last N days. Activity filtering mixes server-local dates with UTC strings; Node sync converts server-local midnight with `toISOString`. Sleep regularity uses UTC minutes rather than the user's local time. | **Open.** One timezone-aware contract, local calendar windows, UTC instants for timestamps, DST and sparse-data tests. |
+| A23 | **Activities “pagination” loads the entire window.** [activities API](../src/app/api/activities/route.ts) fetches full rows for current and previous windows and slices in memory. `days` is not bounded and malformed numeric parameters are not rejected. | **Fixed.** Validated bounded filters, database skip/take, stable tie-breaking, transactionally consistent counts and aggregates. Weekly volume aggregates by day/discipline and shares the selected calendar window. Week drill-down queries all matching records, including those outside the first page. |
+| A24 | **Historical windows are not always calendar windows.** Dashboard takes last N records, not necessarily last N days. Activity filtering mixes server-local dates with UTC strings; Node sync converts server-local midnight with `toISOString`. Sleep regularity uses UTC minutes rather than the user's local time. | **Partially fixed.** Activities use account-local calendar labels and equal bounded periods, exclude future records, and group by recorded local date. DST/year-boundary examples pass. Dashboard sparse baselines, sleep timezone semantics and Node ingestion dates still need correction. |
 | A25 | **Document pipeline is tied to prototype infrastructure.** Z-AI configuration is not represented by the backend's configured LLM providers. PDF parsing passes a Uint8Array directly to a constructor documented as accepting `{ data }`; errors are swallowed before raw-PDF fallback. Upload location depends on `process.cwd()`, which changes in standalone production. | **Open; extraction not exercised live.** Test digital/scanned PDFs, bound file/parser/provider work, validate extracted schemas, configure an absolute persistent upload directory and use an authenticated download route. |
 | A26 | **Mobile overview overflowed by 32px at 390px width.** Browser geometry traced it to an invisible centered ChartInfoBadge tooltip extending beyond the viewport. | **Fixed.** Tooltip aligns to the trigger's right edge. Browser verification covers desktop and 390px mobile. |
 | A27 | **Low workload was labeled “Elevated,” and ACWR copy implied a definitive injury prediction.** Seen in the overview at ACWR 0.00. | **Fixed in Overview.** Low load is labeled correctly; high ratio says “High load”; help text describes comparable units and contextual interpretation. Other metric explanations need the same review. |
-| A28 | **Design rules are written but not enforced.** Stock component scaffolding and page-specific charts coexist; uppercase labels, small text and arbitrary metric formatting remain. Activities shows raw second/meter deltas such as `−96406` without units. Settings is a very long mixed-purpose page. | **Open.** A small real design system with tested formatting, accessibility and responsive states; automated token/contrast/typography checks. See the design direction below. |
+| A28 | **Design rules are written but not enforced.** Stock component scaffolding and page-specific charts coexist; uppercase labels, small text and arbitrary metric formatting remain. Activities shows raw second/meter deltas such as `−96406` without units. Settings is a very long mixed-purpose page. | **Partially fixed.** Activity deltas show durations/distances with units and neutral interpretation; list/detail/comparison honor the saved unit preference. Rows show recorded titles. Comparison no longer labels higher training load or lower HR universally better. Broader UI/accessibility work remains open. |
 | A29 | **Large components and stale compatibility code complicate changes.** TrainingPage has 2,617 lines, kit 1,305. `gearDb.ts` still uses raw SQL to work around a previously cached Prisma client. Several effects suppress failures. | **Open.** Split by real feature responsibilities; regenerate clients normally; remove obsolete workarounds and unify API error handling. |
 | A30 | **Unused infrastructure/dependency candidates remain.** `useSyncStatus` has no current caller; its simulator mini-service is not part of the normal deployment. No active source imports were found for `next-auth`, `next-intl`, the DnD packages, MDX editor, React Query or TanStack Table. Large template component sets remain. | **Open.** Confirm with import/bundle analysis, then remove in a separate cleanup. Installed-but-unused dependencies are not necessarily shipped in the browser bundle. Keep the connected Vite app until replacement parity is demonstrated. |
 | A31 | **Verbose database logging and missing Python ignore rules.** Root Prisma logged every query; normal pytest/collection created untracked cache artifacts. | **Fixed.** Log warnings/errors and ignore Python virtualenv/cache output. Raw API error serialization and credential redaction still need a broader review. |
+
+## Second-pass findings and fixes
+
+| ID | Confirmed defect | Change and evidence |
+|---|---|---|
+| A32 | Backend `/me` ignored explicit `null`, making DOB, sex and height impossible to clear. | **Fixed.** Distinguish omitted fields from explicit clearing. Authenticated update/read regression covers both behaviors. Root Settings still has a cosmetic save and is not connected to this endpoint. |
+| A33 | Backend stream decimation used floor division. A 199-point recording with `max_points=100` returned 199 points; an appended endpoint could exceed the budget again. | **Fixed.** Bounded evenly spaced sampling retains endpoints and aligned columns. Tests cover short/exact/over-budget recordings and sparse fields. The query still reads all stored stream rows before sampling; database-side sampling remains a performance opportunity. |
+| A34 | SPA fallback used a textual path prefix for containment. A sibling such as `dist-private` and symlinks into it could expose files outside `dist`. | **Fixed.** Resolve paths and require actual ancestry. ASGI regressions request encoded traversal and an escaping symlink; neither returns the private fixture. |
+| A35 | Slow activity/filter requests could overwrite later selections. Weekly chart ignored the selected period, retained stale data on failure, and week selection filtered only the currently loaded page. | **Fixed.** Abort obsolete requests, guard response updates, clear failed supporting charts, share range filters and paginate a selected week in the database. Selected filter chips remain removable even with zero matching rows. |
+| A36 | Coach prompt treated instructions as an assistant reply and included the new user message twice. Failed provider work could appear as a persisted successful conversation. | **Fixed.** System role, bounded history/input, one pending message, atomic conversation persistence after a completed reply, explicit failures without fabricated drafts or provider-secret details. Provider timeouts/budgets and full agent integration remain open. |
+
+The activity screen now has a smaller recorded-summary layout composed from the
+existing Apex kit. Generated detail charts, weather, gear provenance, guessed
+heart-rate zones and their unused generators were removed (over 1,000 lines).
+CSV and comparison explicitly operate on loaded activities. This does not remove
+real canonical backend recordings or change stored activity IDs.
 
 ## Product and UI direction
 
@@ -143,10 +159,12 @@ records before the export/migration and parity criteria are demonstrated.
 
 ## Verification of this branch
 
-- Python backend: **436 passed**, 93 warnings, both before changes and after the
-  explicit test-reset guard, against disposable Docker services. Warnings are
+- Python backend after the second pass: **443 passed**, 93 warnings, against
+  disposable Docker services. The first pass had 436 tests; seven backend regressions were added in the second pass. Warnings are
   mostly framework/test deprecations and should be reviewed separately.
-- Web regressions: **24 passed**, with mocked provider calls. Covers ACWR,
+- Web regressions: **24 existing cases**, **23 activity API cases**, and
+  **nine coach safety cases** pass. Activity cases use an isolated real SQLite
+  store; coach/provider cases use fixtures in isolated processes. Also covers ACWR,
   readiness, stale sleep, complete/partial/failed sync, cache isolation,
   disconnect, empty labs/gear/integrations and setup failure paths.
 - Both frontends build. Root TypeScript and ESLint pass. The final root build
@@ -156,7 +174,10 @@ records before the export/migration and parity criteria are demonstrated.
   schema push exited 1 and retained the populated column.
 - Backend tests without the reset flag exited 2 before running tests.
 - Production-server browser checks: welcome/login, overview, activities,
-  settings and mobile overview; no page errors in those visited flows.
+  settings and mobile overview from the first pass. Second pass: selected
+  recorded detail, comparison with imperial units, missing-detail error/retry,
+  mobile detail at 390px without overflow, and a deliberately delayed 90-day
+  response unable to overwrite a newer 12-month selection. No page errors.
 - No live Garmin, LLM, Telegram, watch or other provider account was tested.
   Full application Docker deployment, real data migration and target-host
   restore remain unverified. Green fixture tests do not establish these.
@@ -165,7 +186,8 @@ records before the export/migration and parity criteria are demonstrated.
 
 This branch removes specific unsafe or misleading behavior; it does **not**
 make the root web app authenticated or production-ready. Existing seeded data,
-fixture-backed detail/metric/social screens, duplicated feature formulas and
-plaintext connector storage remain. It also retains the bounded Node sync
-adapter pending convergence. Database error logs and API error bodies still
+fixture-backed metric/social screens, duplicated feature formulas and
+plaintext connector storage remain. Activity detail is truthful but summary-only;
+coach action application is explicitly unavailable. The bounded Node sync
+adapter remains pending convergence. Database error logs and API error bodies still
 need proper redaction. The roadmap above is the remaining release work.

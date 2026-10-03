@@ -694,3 +694,46 @@ async def test_garmin_sync_now_requires_connection(client: AsyncClient):
     await _login(client)
     resp = await client.post("/settings/integrations/garmin/sync", headers=CSRF)
     assert resp.status_code == 400
+
+
+async def test_me_can_clear_optional_fields_without_clearing_omitted_fields(client, db_session):
+    await _login(client)
+    populated = await client.put(
+        "/me", json={"dob": "1990-06-15", "sex": "male", "height_cm": 180}, headers=CSRF
+    )
+    assert populated.status_code == 200
+    unchanged = await client.put("/me", json={"units": "metric"}, headers=CSRF)
+    assert unchanged.json()["dob"] == "1990-06-15"
+    assert unchanged.json()["height_cm"] == 180
+    cleared = await client.put(
+        "/me", json={"dob": None, "sex": None, "height_cm": None}, headers=CSRF
+    )
+    assert cleared.status_code == 200
+    reread = (await client.get("/me")).json()
+    assert all(reread[key] is None for key in ("dob", "sex", "height_cm"))
+
+
+@pytest.mark.parametrize("samples,budget", [(1, 100), (100, 100), (199, 100), (201, 100), (2401, 1200)])
+async def test_activity_stream_budget_and_alignment(client, db_session, samples, budget):
+    from app.models.activity import ActivityStream
+
+    await _login(client)
+    user = await _owner_user(db_session)
+    await _seed_day(db_session, user.id)
+    activity = await db_session.scalar(select(Activity).where(Activity.user_id == user.id))
+    db_session.add_all([
+        ActivityStream(activity_id=activity.id, t_offset_s=i, hr=100 + i % 80, power=i)
+        for i in range(samples)
+    ])
+    await db_session.commit()
+    response = await client.get(f"/activities/{activity.id}/streams?max_points={budget}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["t"]) == min(samples, budget)
+    assert data["t"][0] == 0
+    assert data["t"][-1] == samples - 1
+    assert data["t"] == sorted(set(data["t"]))
+    for column in data["columns"].values():
+        assert len(column) == len(data["t"])
+    assert data["columns"]["power"] == data["t"]
+    assert data["columns"]["hr"] == [100 + i % 80 for i in data["t"]]

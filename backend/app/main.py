@@ -139,7 +139,7 @@ def _mount_spa(app: FastAPI) -> None:
         if (
             full_path
             and candidate.is_file()
-            and str(candidate).startswith(str(dist.resolve()))
+            and candidate.is_relative_to(dist.resolve())
         ):
             return FileResponse(candidate)
         return FileResponse(dist / "index.html")

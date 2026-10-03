@@ -45,8 +45,8 @@ interface ApexUiState {
   setView: (v: ViewKey) => void;
 
   // selections
-  selectedActivityId: number | null;
-  selectActivity: (id: number | null) => void;
+  selectedActivityId: string | null;
+  selectActivity: (id: string | null) => void;
   selectedSleepDate: string | null;
   selectSleepDate: (d: string | null) => void;
   selectedMetricKey: string | null;

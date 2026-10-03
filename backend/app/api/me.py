@@ -60,11 +60,11 @@ async def update_me(
 
     if payload.name is not None:
         user.name = payload.name
-    if payload.dob is not None:
+    if "dob" in payload.model_fields_set:
         user.dob = payload.dob
-    if payload.sex is not None:
+    if "sex" in payload.model_fields_set:
         user.sex = payload.sex
-    if payload.height_cm is not None:
+    if "height_cm" in payload.model_fields_set:
         user.height_cm = payload.height_cm
     if payload.timezone is not None:
         try:

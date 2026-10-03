@@ -376,7 +376,7 @@ export async function GET() {
         acwr,
         training_load_7d: acuteLoad, // 7-day acute sum (same thing)
         activities: recentActivities.map((a) => ({
-          id: Number(a.id),
+          id: a.id,
           // Normalise SQLite's space-separated "YYYY-MM-DD HH:MM:SS" to ISO
           // "YYYY-MM-DDTHH:MM:SS" so client `new Date(iso)` parses deterministically.
           start_time: a.startTime.includes(" ") ? a.startTime.replace(" ", "T") : a.startTime,
