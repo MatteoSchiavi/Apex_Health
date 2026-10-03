@@ -12,6 +12,7 @@ import {
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkPointComponent,
   MarkLineComponent,
   MarkAreaComponent,
 } from "echarts/components";
@@ -19,9 +20,17 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useUi } from "../../app/stores/ui";
 
 echarts.use([
-  LineChart, BarChart, CustomChart, ScatterChart,
-  GridComponent, TooltipComponent, LegendComponent, DataZoomComponent,
-  MarkLineComponent, MarkAreaComponent,
+  LineChart,
+  BarChart,
+  CustomChart,
+  ScatterChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  MarkPointComponent,
+  MarkLineComponent,
+  MarkAreaComponent,
   CanvasRenderer,
 ]);
 
@@ -29,25 +38,28 @@ export type ChartOption = echarts.EChartsCoreOption;
 
 export function useChartTheme() {
   const theme = useUi((s) => s.theme);
-  const ink = theme === "light" ? "#0f172a" : "#e2e2e8";
-  const muted = theme === "light" ? "#64748b" : "#8c909f";
-  const hairline = theme === "light" ? "rgba(15,23,42,0.10)" : "rgba(255,255,255,0.08)";
-  const surface = theme === "light" ? "#ffffff" : "#181c26";
+  const ink = theme === "light" ? "#242420" : "#f2f1ed";
+  const muted = theme === "light" ? "#696960" : "#aaa9a5";
+  const hairline =
+    theme === "light" ? "rgba(15,23,42,0.10)" : "rgba(255,255,255,0.08)";
+  const surface = theme === "light" ? "#fffefa" : "#242424";
   return {
     theme,
-    ink, muted, hairline, surface,
-    primary: theme === "light" ? "#2563eb" : "#3b82f6",
-    positive: theme === "light" ? "#059669" : "#10b981",
-    alert: theme === "light" ? "#dc2626" : "#ef4444",
-    warning: theme === "light" ? "#d97706" : "#f59e0b",
+    ink,
+    muted,
+    hairline,
+    surface,
+    primary: theme === "light" ? "#c9511e" : "#ed7435",
+    positive: theme === "light" ? "#347858" : "#76b994",
+    alert: theme === "light" ? "#b73f3f" : "#e07878",
+    warning: theme === "light" ? "#a26b12" : "#d6a755",
     stage: {
-      awake: theme === "light" ? "#dc2626" : "#ef4444",
-      rem: theme === "light" ? "#3b82f6" : "#60a5fa",
-      core: "#3b5bdb",
-      deep: theme === "light" ? "#4338ca" : "#3730a3",
+      awake: theme === "light" ? "#d5d3ca" : "#c9c7bf",
+      rem: theme === "light" ? "#aaa89c" : "#a2a097",
+      core: "#74766e",
+      deep: theme === "light" ? "#353b34" : "#4b4b46",
     },
     font: '12px "Geist", sans-serif',
-    mono: '11px "JetBrains Mono", monospace',
   };
 }
 

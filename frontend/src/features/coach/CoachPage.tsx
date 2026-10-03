@@ -1,239 +1,315 @@
-/**
- * AI Coach chat — resumable conversations (owner ask).
- *
- * Server side: every turn persists to ai_chat_sessions/ai_chat_messages;
- * the sidebar lists past sessions from GET /coach/chats and a click resumes
- * it (GET /coach/chats/{id}). Local side: the ACTIVE transcript + draft are
- * mirrored into localStorage (apex.chat.*) so a reload mid-conversation
- * never loses context, and the draft survives.
- */
-
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Plus, Send, Trash2 } from "lucide-react";
+import { ArrowUpRight, Plus, Send, Trash2 } from "lucide-react";
 import {
   api,
-  type ChatMessageOut,
   type ChatSessionDetail,
   type ChatSessionOut,
 } from "../../app/api";
-import { Badge, Button, Card, ErrorNote, Loading, PageHeader } from "../../components/kit";
-
-const LS_ACTIVE = "apex.chat.activeId";
-const LS_DRAFT = "apex.chat.draft";
-
-function loadDraft(): string {
+import { useUi } from "../../app/stores/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorNote,
+  Loading,
+  PageHeader,
+} from "../../components/kit";
+function stored(key: string) {
   try {
-    return localStorage.getItem(LS_DRAFT) ?? "";
+    return localStorage.getItem(key) ?? "";
   } catch {
     return "";
   }
 }
-
 export default function CoachPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const [activeId, setActiveId] = useState<number | null>(() => {
-    const v = Number(localStorage.getItem(LS_ACTIVE));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  });
-  const [draft, setDraft] = useState(loadDraft);
-  const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
+  const uid = useUi((s) => s.me!.user_id);
+  const activeKey = "apex.chat." + uid + ".active";
+  const draftKey = "apex.chat." + uid + ".draft";
+  const [activeId, setActiveId] = useState<number | null>(() =>
+    Number(stored(activeKey)) > 0 ? Number(stored(activeKey)) : null,
+  );
+  const [draft, setDraft] = useState(() => stored(draftKey));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const bottom = useRef<HTMLDivElement>(null);
   const sessions = useQuery({
-    queryKey: ["chats"],
+    queryKey: ["chats", uid],
     queryFn: () => api.get<ChatSessionOut[]>("/coach/chats"),
   });
   const active = useQuery({
-    queryKey: ["chat", activeId],
-    queryFn: () => api.get<ChatSessionDetail>(`/coach/chats/${activeId}`),
-    enabled: activeId !== null,
+    queryKey: ["chat", uid, activeId],
+    queryFn: () => api.get<ChatSessionDetail>("/coach/chats/" + activeId),
+    enabled: activeId != null,
   });
-
   useEffect(() => {
     try {
-      if (activeId === null) localStorage.removeItem(LS_ACTIVE);
-      else localStorage.setItem(LS_ACTIVE, String(activeId));
-    } catch { /* ignore */ }
-  }, [activeId]);
+      if (activeId == null) localStorage.removeItem(activeKey);
+      else localStorage.setItem(activeKey, String(activeId));
+    } catch {
+      /* unavailable */
+    }
+  }, [activeId, activeKey]);
   useEffect(() => {
     try {
-      localStorage.setItem(LS_DRAFT, draft);
-    } catch { /* ignore */ }
-  }, [draft]);
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [active.data?.messages.length, sending]);
-
+      localStorage.setItem(draftKey, draft);
+    } catch {
+      /* unavailable */
+    }
+  }, [draft, draftKey]);
   const send = useMutation({
-    mutationFn: (text: string) =>
+    mutationFn: ({
+      text,
+      sessionId,
+    }: {
+      text: string;
+      sessionId: number | null;
+    }) =>
       api.post<ChatSessionDetail>("/coach/chats", {
         text,
-        session_id: activeId,
+        ...(sessionId != null ? { session_id: sessionId } : {}),
       }),
-    onMutate: () => {
-      setSending(true);
-      setDraft("");
-    },
-    onSettled: () => setSending(false),
+    onMutate: () => setDraft(""),
     onSuccess: (data) => {
       setActiveId(data.id);
-      qc.invalidateQueries({ queryKey: ["chats"] });
-      qc.setQueryData(["chat", data.id], data);
+      qc.setQueryData(["chat", uid, data.id], data);
+      qc.invalidateQueries({ queryKey: ["chats", uid] });
+    },
+    onError: (_err, variables) => {
+      setDraft(variables.text);
+      qc.invalidateQueries({ queryKey: ["chat", uid, variables.sessionId] });
+      qc.invalidateQueries({ queryKey: ["chats", uid] });
     },
   });
-
   const remove = useMutation({
-    mutationFn: (id: number) => api.delete(`/coach/chats/${id}`),
-    onSuccess: (_d, id) => {
+    mutationFn: (id: number) => api.delete("/coach/chats/" + id),
+    onSuccess: (_data, id) => {
       if (id === activeId) setActiveId(null);
-      qc.invalidateQueries({ queryKey: ["chats"] });
+      qc.removeQueries({ queryKey: ["chat", uid, id] });
+      qc.invalidateQueries({ queryKey: ["chats", uid] });
     },
   });
-
-  const messages: ChatMessageOut[] = active.data?.messages ?? [];
-
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [active.data?.messages.length, send.isPending]);
+  function submit() {
+    if (draft.trim() && !send.isPending && !active.isLoading)
+      send.mutate({ text: draft.trim(), sessionId: activeId });
+  }
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title={t("coach.title")} subtitle={t("coach.subtitle")} />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[260px_1fr]">
-      {/* session list */}
-      <Card className="h-fit">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="eyebrow">{t("coach.past_chats")}</div>
-          <button
-            type="button"
-            onClick={() => setActiveId(null)}
-            className="flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-control border border-hairline px-2 text-[12px] font-medium text-ink2 hover:bg-surface3"
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={t("coach.title")}
+        subtitle={t("coach.subtitle")}
+        actions={
+          <Button
+            variant="ghost"
+            icon={<Plus size={16} />}
+            disabled={send.isPending}
+            onClick={() => {
+              setActiveId(null);
+              send.reset();
+            }}
           >
-            <Plus size={12} /> {t("coach.new_chat")}
+            {t("coach.new_chat")}
+          </Button>
+        }
+      />
+      <div className="grid gap-6 xl:grid-cols-[240px_1fr]">
+        <aside className="min-w-0">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            aria-expanded={historyOpen}
+            className="mb-4 text-[14px] font-medium xl:hidden"
+          >
+            {t("coach.past_chats")} ↓
           </button>
-        </div>
-        {sessions.isLoading ? (
-          <Loading />
-        ) : !sessions.data || sessions.data.length === 0 ? (
-          <p className="text-[12px] text-faint">{t("coach.no_chats")}</p>
-        ) : (
-          <div className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
-            {sessions.data.map((s) => (
-              <div
-                key={s.id}
-                className={`group flex items-center gap-1 rounded-control px-2 py-1.5 transition-colors ${
-                  s.id === activeId ? "bg-surface3" : "hover:bg-surface2"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => setActiveId(s.id)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <div className="truncate text-[12px] font-medium text-ink2">
-                    {s.title ?? t("coach.new_chat")}
-                  </div>
-                  <div className="num text-[10px] text-faint">
-                    {new Date(s.last_activity_at).toLocaleDateString(undefined, {
-                      day: "numeric",
-                      month: "short",
-                    })}{" "}
-                    · {s.message_count} msg
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  aria-label={t("training.delete")}
-                  onClick={() => {
-                    if (confirm(t("coach.delete_confirm"))) remove.mutate(s.id);
-                  }}
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
-                >
-                  <Trash2 size={13} className="text-faint hover:text-alertText" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="mt-3 border-t border-hairline pt-2 text-[10px] leading-snug text-faint">
-          {t("coach.saved_locally")}
-        </p>
-      </Card>
-
-      {/* conversation */}
-      <Card className="flex min-h-[70vh] flex-col !p-0">
-        <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
-          <div className="eyebrow">{t("coach.conversation")}</div>
-          {messages.at(-1)?.model_tier && (
-            <Badge tone="primary">{messages.at(-1)!.model_tier}</Badge>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {messages.length === 0 && !sending ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-              <div className="text-[15px] font-semibold text-ink">{t("coach.empty_title")}</div>
-              <div className="max-w-sm text-[12px] text-muted">{t("coach.empty_body")}</div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+          <div className={(historyOpen ? "" : "hidden ") + "xl:block"}>
+            <h2 className="section-label mb-5 hidden xl:block">
+              {t("coach.past_chats")}
+            </h2>
+            {sessions.isLoading ? (
+              <Loading />
+            ) : sessions.isError ? (
+              <ErrorNote />
+            ) : !sessions.data?.length ? (
+              <p className="text-[13px] text-muted">{t("coach.no_chats")}</p>
+            ) : (
+              <div className="max-h-[55vh] overflow-y-auto">
+                {sessions.data.map((s) => (
                   <div
-                    className={`max-w-[85%] whitespace-pre-wrap rounded-card px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                      m.role === "user"
-                        ? "bg-primarySoft text-ink"
-                        : "border border-hairline bg-surface2 text-ink2"
-                    }`}
+                    key={s.id}
+                    className={
+                      "group mb-1 flex items-center gap-2 px-3 py-4 " +
+                      (activeId === s.id ? "bg-surface2" : "hover:bg-surface")
+                    }
                   >
-                    {m.content}
+                    <button
+                      disabled={send.isPending}
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => {
+                        setActiveId(s.id);
+                        setHistoryOpen(false);
+                        send.reset();
+                      }}
+                    >
+                      <span className="block truncate text-[13px] font-medium">
+                        {s.title ?? t("coach.new_chat")}
+                      </span>
+                      <span className="mt-1 block text-[12px] text-muted">
+                        {new Date(s.last_activity_at).toLocaleDateString()} ·{" "}
+                        {s.message_count}
+                      </span>
+                    </button>
+                    <button
+                      disabled={send.isPending || remove.isPending}
+                      onClick={() => {
+                        if (confirm(t("coach.delete_confirm")))
+                          remove.mutate(s.id);
+                      }}
+                      aria-label={t("training.delete")}
+                      className="p-2 text-muted hover:text-alertText"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {remove.isError && <ErrorNote />}
+            <p className="mt-6 border-t border-hairline pt-4 text-[12px] text-muted">
+              {t("coach.saved_locally")}
+            </p>
+          </div>
+        </aside>
+        <Card className="flex h-[min(75dvh,850px)] min-h-[480px] flex-col !p-0">
+          <div className="flex items-center justify-between border-b border-hairline px-6 py-4">
+            <span className="text-[13px] font-medium">
+              {active.data?.title ?? t("coach.conversation")}
+            </span>
+            {active.data?.messages.at(-1)?.model_tier && (
+              <Badge>{active.data.messages.at(-1)!.model_tier}</Badge>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
+            {active.isLoading ? (
+              <Loading />
+            ) : active.isError ? (
+              <ErrorNote />
+            ) : !active.data?.messages.length && !send.isPending ? (
+              <div className="flex h-full flex-col items-start justify-center">
+                <span className="mb-6 text-[12px] text-muted">
+                  APEX / {t("nav.coach")}
+                </span>
+                <h2 className="max-w-lg text-[28px] font-medium leading-tight tracking-[-.04em]">
+                  {t("coach.empty_title")}
+                </h2>
+                <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">
+                  {t("coach.empty_body")}
+                </p>
+                <div className="mt-8 flex w-full flex-col border-t border-hairline">
+                  {["prompt_recovery", "prompt_training", "prompt_trends"].map(
+                    (k) => (
+                      <button
+                        key={k}
+                        onClick={() => setDraft(t("design." + k))}
+                        className="flex items-center justify-between border-b border-hairline py-4 text-left text-[13px]"
+                      >
+                        {t("design." + k)}
+                        <ArrowUpRight size={16} />
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {active.data?.messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={
+                      m.role === "user" ? "ml-8 bg-surface2 p-5" : "pr-6"
+                    }
+                  >
+                    <span className="mb-2 block text-[12px] font-medium text-muted">
+                      {m.role === "user" ? t("social.you") : t("nav.coach")}
+                    </span>
+                    <p className="whitespace-pre-wrap break-words text-[14px] leading-7">
+                      {m.content}
+                    </p>
                     {m.model_tier === "medical" && m.role === "assistant" && (
-                      <div className="mt-2 border-t border-hairline pt-2 text-[11px] text-warningText">
+                      <p className="mt-4 text-[12px] text-warningText">
                         {t("coach.medical_disclaimer")}
-                      </div>
+                      </p>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {sending && (
-            <div className="mt-3 flex items-center gap-2 text-[12px] text-muted">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-hairline2 border-t-primary" />
-              {t("coach.thinking")}
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        <div className="border-t border-hairline p-3">
-          {active.isError && <ErrorNote />}
-          <div className="flex items-end gap-2">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={t("coach.placeholder")}
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (draft.trim() && !send.isPending) send.mutate(draft.trim());
-                }
-              }}
-              className="max-h-40 flex-1 resize-none rounded-control border border-hairline bg-surface2 px-3 py-2 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
-            />
-            <Button
-              onClick={() => draft.trim() && send.mutate(draft.trim())}
-              disabled={!draft.trim() || sending}
-              icon={<Send size={14} />}
-            >
-              <span className="hidden sm:inline">{t("coach.send")}</span>
-            </Button>
+                ))}
+              </div>
+            )}
+            {send.isPending && send.variables && (
+              <div className="ml-8 mt-6 bg-surface2 p-5">
+                <span className="mb-2 block text-[12px] font-medium text-muted">
+                  {t("social.you")}
+                </span>
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-7">
+                  {send.variables.text}
+                </p>
+              </div>
+            )}
+            {send.isPending && (
+              <div role="status" className="mt-6 text-[13px] text-muted">
+                {t("coach.thinking")}
+              </div>
+            )}
+            <div ref={bottom} />
           </div>
-        </div>
-      </Card>
+          <div className="border-t border-hairline p-5">
+            {send.isError && (
+              <div className="mb-4">
+                <ErrorNote message={send.error.message} />
+              </div>
+            )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+              className="flex items-end gap-3"
+            >
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={8000}
+                aria-label={t("coach.placeholder")}
+                placeholder={t("coach.placeholder")}
+                rows={2}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+                className="min-w-0 flex-1 resize-none border border-hairline bg-transparent px-4 py-3 text-[14px] outline-none"
+              />
+              <Button
+                type="submit"
+                disabled={
+                  !draft.trim() ||
+                  send.isPending ||
+                  active.isLoading ||
+                  active.isError
+                }
+                icon={<Send size={16} />}
+              >
+                <span className="sr-only sm:not-sr-only">
+                  {t("coach.send")}
+                </span>
+              </Button>
+            </form>
+          </div>
+        </Card>
       </div>
     </div>
   );

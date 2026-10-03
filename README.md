@@ -1,8 +1,8 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
 Backend release work uses the authenticated **FastAPI + PostgreSQL + Redis/Celery**
-platform in `backend/`. Docker also serves the existing Vite frontend from
-`frontend/`; the UI redesign will follow backend acceptance.
+platform in `backend/`. Docker serves the redesigned, authenticated Vite SPA
+from `frontend/`. See the [UI redesign and screenshots](docs/UI_REDESIGN.md).
 
 Start with the [installation guide](docs/INSTALL.md) and the
 [backend release checklist](docs/BACKEND_RELEASE.md). The
@@ -30,8 +30,9 @@ your explicit confirmation.
 Single source of truth for product decisions:
 [`MASTER_SPEC.md`](./MASTER_SPEC.md) (§ references throughout this README
 point there). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
-Data currently surfaces via the REST API and the Telegram bot; the real
-full web UI is the next work item (spec Appendix A).
+Data surfaces through the authenticated web UI, REST API and Telegram bot.
+The web UI includes overview, health metrics, labs, activities, sleep, training,
+coach, challenges and account management.
 
 ---
 

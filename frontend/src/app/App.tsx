@@ -6,31 +6,42 @@
  * the user to /login. Invite onboarding lives at /join.
  */
 
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect, type ReactNode } from "react";
-import { api, type Me } from "./api";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { api, ApiError, type Me } from "./api";
 import { useUi } from "./stores/ui";
+import { PageBoundary } from "../components/PageBoundary";
 import { AppShell } from "../components/layout/AppShell";
 import Login from "../features/auth/Login";
 import Join from "../features/auth/Join";
-import OverviewPage from "../features/overview/OverviewPage";
-import ActivitiesPage from "../features/activities/ActivitiesPage";
-import ActivityDetailPage from "../features/activities/ActivityDetailPage";
-import SleepListPage from "../features/sleep/SleepListPage";
-import SleepNightPage from "../features/sleep/SleepNightPage";
-import BiometricsHubPage from "../features/biometrics/BiometricsHubPage";
-import MetricPage from "../features/biometrics/MetricPage";
-import TrainingPage from "../features/training/TrainingPage";
-import CoachPage from "../features/coach/CoachPage";
-import SocialPage from "../features/social/SocialPage";
-import SettingsPage from "../features/settings/SettingsPage";
+const OverviewPage = lazy(() => import("../features/overview/OverviewPage"));
+const ActivitiesPage = lazy(
+  () => import("../features/activities/ActivitiesPage"),
+);
+const ActivityDetailPage = lazy(
+  () => import("../features/activities/ActivityDetailPage"),
+);
+const SleepListPage = lazy(() => import("../features/sleep/SleepListPage"));
+const SleepNightPage = lazy(() => import("../features/sleep/SleepNightPage"));
+const BiometricsHubPage = lazy(
+  () => import("../features/biometrics/BiometricsHubPage"),
+);
+const MetricPage = lazy(() => import("../features/biometrics/MetricPage"));
+const TrainingPage = lazy(() => import("../features/training/TrainingPage"));
+const CoachPage = lazy(() => import("../features/coach/CoachPage"));
+const SocialPage = lazy(() => import("../features/social/SocialPage"));
+const SettingsPage = lazy(() => import("../features/settings/SettingsPage"));
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false },
-  },
-});
+import { queryClient } from "./query";
+import { Button, ErrorNote, Loading } from "../components/kit";
+import { useTranslation } from "react-i18next";
 
 function useSession() {
   const setMe = useUi((s) => s.setMe);
@@ -47,15 +58,31 @@ function useSession() {
 
 function Protected({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const { t } = useTranslation();
   const me = useUi((s) => s.me);
-  const { isLoading, isError } = useSession();
-  if (isLoading) return <div className="min-h-dvh bg-canvas" />;
-  if (isError)
+  const { isLoading, isError, error, refetch } = useSession();
+  if (isLoading) return <Loading />;
+  if (isError && error instanceof ApiError && error.status === 401)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (isError)
+    return (
+      <div className="mx-auto max-w-lg p-10">
+        <ErrorNote />
+        <Button variant="ghost" onClick={() => refetch()} className="mt-4">
+          {t("common.retry")}
+        </Button>
+      </div>
+    );
   // The /me effect lands one commit after the query resolves; pages read
   // the store for account prefs, so hold the shell until it is populated.
   if (!me) return <div className="min-h-dvh bg-canvas" />;
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <PageBoundary key={location.pathname}>
+        <Suspense fallback={<Loading />}>{children}</Suspense>
+      </PageBoundary>
+    </AppShell>
+  );
 }
 
 export default function App() {
@@ -65,17 +92,94 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/join" element={<Join />} />
-          <Route path="/app" element={<Protected><OverviewPage /></Protected>} />
-          <Route path="/app/activities" element={<Protected><ActivitiesPage /></Protected>} />
-          <Route path="/app/activities/:id" element={<Protected><ActivityDetailPage /></Protected>} />
-          <Route path="/app/sleep" element={<Protected><SleepListPage /></Protected>} />
-          <Route path="/app/sleep/:date" element={<Protected><SleepNightPage /></Protected>} />
-          <Route path="/app/biometrics" element={<Protected><BiometricsHubPage /></Protected>} />
-          <Route path="/app/biometrics/:key" element={<Protected><MetricPage /></Protected>} />
-          <Route path="/app/training" element={<Protected><TrainingPage /></Protected>} />
-          <Route path="/app/coach" element={<Protected><CoachPage /></Protected>} />
-          <Route path="/app/social" element={<Protected><SocialPage /></Protected>} />
-          <Route path="/app/settings" element={<Protected><SettingsPage /></Protected>} />
+          <Route
+            path="/app"
+            element={
+              <Protected>
+                <OverviewPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/activities"
+            element={
+              <Protected>
+                <ActivitiesPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/activities/:id"
+            element={
+              <Protected>
+                <ActivityDetailPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/sleep"
+            element={
+              <Protected>
+                <SleepListPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/sleep/:date"
+            element={
+              <Protected>
+                <SleepNightPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/biometrics"
+            element={
+              <Protected>
+                <BiometricsHubPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/biometrics/:key"
+            element={
+              <Protected>
+                <MetricPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/training"
+            element={
+              <Protected>
+                <TrainingPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/coach"
+            element={
+              <Protected>
+                <CoachPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/social"
+            element={
+              <Protected>
+                <SocialPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/settings"
+            element={
+              <Protected>
+                <SettingsPage />
+              </Protected>
+            }
+          />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>

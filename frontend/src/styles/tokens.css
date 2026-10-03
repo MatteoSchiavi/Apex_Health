@@ -1,97 +1,63 @@
-/*
- * APEX PRECISION — design tokens v2 (ui-language/apex_precision_1+2/DESIGN.md,
- * approved mockups: home dashboard, sleep night, HR telemetry, activity detail).
- *
- * One token set, two palettes. Dark is the default (:root); the light theme
- * resolves the same semantic variables against the surgical off-white
- * palette under html.light. Components consume ONLY semantic aliases
- * (--bg, --surface, --hairline, --text, ...) — never raw hex — which is
- * what guarantees the two themes cannot drift apart.
- *
- * Type law: Geist for structure/prose, JetBrains Mono for numeric telemetry,
- * tabular figures ("tnum") on every numeric readout, label-caps eyebrows.
- * Hierarchy lives in TONAL LAYERING + 1px hairlines — never drop shadows.
- */
-
 @import "tailwindcss";
 
 :root {
-  /* --- dark palette (default) ------------------------------------------ */
-  --c-bg: #0d0f13;                 /* level-0 ground plane (sidebar/topbar) */
-  --c-bg-accent: #111318;          /* content canvas */
-  --c-surface: #11141b;            /* level-1 panels/cards (mockup surface) */
-  --c-surface-2: #181c26;          /* level-2 controls/flyouts/active */
-  --c-surface-3: #1f2430;          /* hover / nested wells */
-  --c-hairline: rgba(255, 255, 255, 0.08);
-  --c-hairline-strong: rgba(255, 255, 255, 0.14);
-
-  --c-text: #e2e2e8;               /* on-surface */
-  --c-text-2: #c2c6d6;             /* on-surface-variant */
-  --c-text-muted: #8c909f;         /* outline / labels */
-  --c-text-faint: #5c6070;
-
-  --c-primary: #3b82f6;            /* telemetry blue — interactive only */
-  --c-primary-soft: rgba(59, 130, 246, 0.12);
-  --c-primary-text: #93c5fd;
-
-  --c-positive: #10b981;           /* positive biological delta */
-  --c-positive-soft: rgba(16, 185, 129, 0.12);
-  --c-positive-text: #4edea3;
-
-  --c-alert: #ef4444;              /* acute strain / risk */
-  --c-alert-soft: rgba(239, 68, 68, 0.12);
-  --c-alert-text: #ff8a85;
-
-  --c-warning: #f59e0b;            /* borderline */
-  --c-warning-soft: rgba(245, 158, 11, 0.12);
-  --c-warning-text: #fbbf24;
-
-  /* sleep-stage hues (hypnogram) */
-  --c-stage-awake: #ef4444;
-  --c-stage-rem: #60a5fa;
-  --c-stage-core: #3b5bdb;
-  --c-stage-deep: #3730a3;
-
-  --c-shadow-flyout: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --c-bg: #151515;
+  --c-bg-accent: #101010;
+  --c-surface: #191919;
+  --c-surface-2: #242424;
+  --c-surface-3: #303030;
+  --c-hairline: rgba(255, 255, 255, 0.1);
+  --c-hairline-strong: rgba(255, 255, 255, 0.22);
+  --c-text: #f2f1ed;
+  --c-text-2: #d1d0cc;
+  --c-text-muted: #aaa9a5;
+  --c-text-faint: #94938f;
+  --c-primary: #ed7435;
+  --c-primary-soft: rgba(237, 116, 53, 0.1);
+  --c-primary-text: #ffa475;
+  --c-positive: #76b994;
+  --c-positive-soft: rgba(118, 185, 148, 0.1);
+  --c-positive-text: #94d2b0;
+  --c-warning: #d6a755;
+  --c-warning-soft: rgba(214, 167, 85, 0.1);
+  --c-warning-text: #e4bd7a;
+  --c-alert: #e07878;
+  --c-alert-soft: rgba(224, 120, 120, 0.1);
+  --c-alert-text: #f29b9b;
+  --c-stage-awake: #c9c7bf;
+  --c-stage-rem: #a2a097;
+  --c-stage-core: #74736d;
+  --c-stage-deep: #4b4b46;
   color-scheme: dark;
 }
-
 html.light {
-  --c-bg: #f1f3f6;
-  --c-bg-accent: #f8fafc;
-  --c-surface: #ffffff;
-  --c-surface-2: #ffffff;
-  --c-surface-3: #eef2f7;
-  --c-hairline: rgba(15, 23, 42, 0.08);
-  --c-hairline-strong: rgba(15, 23, 42, 0.16);
-
-  --c-text: #0d0f12;
-  --c-text-2: #334155;
-  --c-text-muted: #64748b;
-  --c-text-faint: #94a3b8;
-
-  --c-primary: #2563eb;
-  --c-primary-soft: rgba(37, 99, 235, 0.10);
-  --c-primary-text: #1d4ed8;
-
-  --c-positive: #059669;
-  --c-positive-soft: rgba(5, 150, 105, 0.10);
-  --c-positive-text: #047857;
-
-  --c-alert: #dc2626;
-  --c-alert-soft: rgba(220, 38, 38, 0.10);
-  --c-alert-text: #b91c1c;
-
-  --c-warning: #d97706;
-  --c-warning-soft: rgba(217, 119, 6, 0.10);
-  --c-warning-text: #b45309;
-
-  --c-stage-awake: #dc2626;
-  --c-stage-rem: #3b82f6;
-  --c-stage-core: #3b5bdb;
-  --c-stage-deep: #4338ca;
-
-  --c-shadow-flyout: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --c-bg: #f5f4f0;
+  --c-bg-accent: #f5f4f0;
+  --c-surface: #fffefa;
+  --c-surface-2: #eeede7;
+  --c-surface-3: #e6e5de;
+  --c-hairline: rgba(28, 28, 25, 0.12);
+  --c-hairline-strong: rgba(28, 28, 25, 0.25);
+  --c-text: #242420;
+  --c-text-2: #484841;
+  --c-text-muted: #696960;
+  --c-text-faint: #74746b;
+  --c-primary: #c9511e;
+  --c-primary-soft: rgba(201, 81, 30, 0.07);
+  --c-primary-text: #a83f14;
+  --c-positive: #347858;
+  --c-positive-soft: rgba(52, 120, 88, 0.07);
+  --c-positive-text: #286344;
+  --c-warning: #a26b12;
+  --c-warning-soft: rgba(162, 107, 18, 0.07);
+  --c-warning-text: #825208;
+  --c-alert: #b73f3f;
+  --c-alert-soft: rgba(183, 63, 63, 0.07);
+  --c-alert-text: #9d3030;
+  --c-stage-awake: #d5d3ca;
+  --c-stage-rem: #aaa89c;
+  --c-stage-core: #74766e;
+  --c-stage-deep: #353b34;
   color-scheme: light;
 }
 
@@ -122,11 +88,12 @@ html.light {
   --color-warningSoft: var(--c-warning-soft);
   --color-warningText: var(--c-warning-text);
 
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans:
+    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --radius-card: 0.5rem;      /* telemetry cards: 8px — design law */
-  --radius-control: 0.25rem;  /* buttons/inputs: 4px — design law */
+  --radius-card: 0.125rem;
+  --radius-control: 0.125rem;
 }
 
 /* ------------------------------------------------ fonts (bundled, zero CDN) */
@@ -153,66 +120,278 @@ html.light {
   font-display: swap;
 }
 
-/* ------------------------------------------------ base styles ------------ */
-
-html, body, #root { height: 100%; }
-
+html,
+body,
+#root {
+  min-height: 100%;
+}
 body {
   margin: 0;
   background: var(--c-bg-accent);
   color: var(--c-text);
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 20px;
-  letter-spacing: -0.005em;
+  line-height: 1.5;
+  letter-spacing: -0.015em;
   -webkit-font-smoothing: antialiased;
 }
-
-/* tabular figures on every numeric element — the anti-jitter law */
-.num, td, .tnum {
-  font-feature-settings: "tnum" 1, "cv03" 1;
-  font-variant-numeric: tabular-nums;
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }
-
-.mono { font-family: var(--font-mono); }
-
-/* label-caps eyebrow */
+button:not(:disabled),
+select {
+  cursor: pointer;
+}
+.num,
+td,
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.mono {
+  font-family: var(--font-mono);
+}
 .eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0;
   color: var(--c-text-muted);
 }
-
-/* hero page title (headline-lg) */
 .page-title {
+  font-size: clamp(30px, 3vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.055em;
+  font-weight: 550;
+}
+.panel {
+  background: var(--c-surface);
+  min-width: 0;
+}
+.stat-pod {
+  min-width: 0;
+  padding: 16px 0;
+}
+.stat-pod .stat-value {
   font-size: 28px;
-  font-weight: 600;
-  line-height: 36px;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.3;
   color: var(--c-text);
 }
-@media (max-width: 767px) {
-  .page-title { font-size: 22px; line-height: 28px; letter-spacing: -0.015em; }
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  padding: 8px 0;
+  border-block: 1px solid var(--c-hairline);
 }
-
-/* scrollbar restraint */
-* { scrollbar-width: thin; scrollbar-color: var(--c-hairline-strong) transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: var(--c-hairline-strong); border-radius: 4px; }
-*::-webkit-scrollbar-track { background: transparent; }
-
-/* focus: 1px primary stroke, no glow ring — design law */
+.section-label {
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.025em;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.text-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.hero-number {
+  font-size: clamp(72px, 7vw, 108px);
+  line-height: 1;
+  font-weight: 450;
+  letter-spacing: -0.08em;
+}
+.tabs {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--c-hairline);
+}
+.tab {
+  flex-shrink: 0;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  padding: 14px 0;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  font-size: 14px;
+}
+.tab[aria-selected="true"] {
+  color: var(--c-text);
+  border-color: var(--c-text);
+  font-weight: 600;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.data-table th {
+  color: var(--c-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 14px 16px;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 18px 16px;
+  white-space: nowrap;
+}
+.data-table tr {
+  border-bottom: 1px solid var(--c-hairline);
+}
+.data-table tbody tr:last-child {
+  border: 0;
+}
+.data-table tbody tr:hover {
+  background: var(--c-surface-2);
+}
+.data-table th:first-child,
+.data-table td:first-child {
+  padding-left: 0;
+}
+.data-table th:last-child,
+.data-table td:last-child {
+  padding-right: 0;
+}
+.data-table .numeric {
+  text-align: right;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.metric-row {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 1.6fr) minmax(90px, 1fr) minmax(100px, 1fr)
+    120px 18px;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid var(--c-hairline);
+  padding: 24px 0;
+}
+.metric-row:last-child {
+  border-bottom: 0;
+}
+.metric-row:hover {
+  background: var(--c-surface-2);
+}
+.auth-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100dvh;
+}
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 64px;
+  background: var(--c-text);
+  color: var(--c-bg);
+}
+.auth-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+.auth-form-inner {
+  width: 100%;
+  max-width: 380px;
+}
 :focus-visible {
-  outline: 1px solid var(--c-primary);
+  outline: 2px solid var(--c-primary);
+  outline-offset: 4px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
   outline-offset: 1px;
 }
-
-::selection { background: var(--c-primary-soft); }
-
-/* reduced-motion respect */
+::selection {
+  background: var(--c-primary-soft);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-hairline-strong) transparent;
+}
+@media (max-width: 767px) {
+  .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 24px;
+  }
+  .metric-row {
+    grid-template-columns: minmax(100px, 1.5fr) 1fr 18px;
+    gap: 16px;
+    padding: 20px 0;
+  }
+  .metric-row .metric-trend {
+    display: none;
+  }
+  .metric-row .metric-status {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+  .metric-row .metric-arrow {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+  .auth-brand {
+    padding: 32px;
+    min-height: 230px;
+  }
+  .auth-brand h1 {
+    font-size: 40px;
+  }
+  .auth-brand .auth-foot {
+    display: none;
+  }
+  .tabs {
+    gap: 24px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.auth-brand .text-muted {
+  color: inherit;
+  opacity: 0.8;
 }

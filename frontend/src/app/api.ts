@@ -22,7 +22,9 @@ export class ApiError extends Error {
 
 function readCookie(name: string): string | null {
   // Synchronous cookie read — the CSRF cookie is non-HttpOnly by design.
-  const match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  const match = document.cookie.match(
+    new RegExp("(?:^|; )" + name + "=([^;]*)"),
+  );
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -34,7 +36,11 @@ function csrfToken(): string | null {
   return readCookie("csrf_token");
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET" && method !== "HEAD") {
     headers["Content-Type"] = "application/json";
@@ -63,10 +69,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     }
   }
   if (!resp.ok) {
-    const detail =
-      parsed && typeof parsed === "object" && "detail" in (parsed as Record<string, unknown>)
-        ? String((parsed as Record<string, unknown>).detail)
+    const raw =
+      parsed && typeof parsed === "object" && "detail" in parsed
+        ? parsed.detail
         : undefined;
+    const detail =
+      typeof raw === "string"
+        ? raw
+        : Array.isArray(raw)
+          ? raw
+              .map((item) => (typeof item?.msg === "string" ? item.msg : ""))
+              .filter(Boolean)
+              .join("; ") || undefined
+          : undefined;
     throw new ApiError(resp.status, parsed, detail);
   }
   return parsed as T;
@@ -74,9 +89,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
-  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>("POST", path, body ?? {}),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body ?? {}),
-  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body ?? {}),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>("PATCH", path, body ?? {}),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
 
@@ -145,7 +162,12 @@ export interface Overview {
     end_time: string;
     total_sleep_s: number | null;
     sleep_score: number | null;
-    stages: { deep_s: number | null; light_s: number | null; rem_s: number | null; awake_s: number | null };
+    stages: {
+      deep_s: number | null;
+      light_s: number | null;
+      rem_s: number | null;
+      awake_s: number | null;
+    };
     respiration_avg: number | null;
     spo2_avg: number | null;
     restlessness: number | null;
@@ -223,7 +245,12 @@ export interface SleepDay {
   date: string;
   session: SleepSessionOut | null;
   biometrics: Record<string, number | null>;
-  hrv_readings: { timestamp: string; hrv_ms: number; reading_type: string; rolling_baseline_ms: number | null }[];
+  hrv_readings: {
+    timestamp: string;
+    hrv_ms: number;
+    reading_type: string;
+    rolling_baseline_ms: number | null;
+  }[];
 }
 
 export interface SleepStages {

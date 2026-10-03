@@ -79,3 +79,7 @@ qa-*.png
 qa-*.jpeg
 qa-*.webp
 uploads/
+
+# Browser verification artifacts
+frontend/test-results/
+frontend/playwright-report/

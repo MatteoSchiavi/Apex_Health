@@ -1,148 +1,210 @@
-/**
- * Biometrics hub — the index of EVERY metric (mockup: HR telemetry's
- * metric-card row aesthetic). Each entry: name, live readout, assessment
- * badge, 60-day sparkline — a link to its own telemetry page
- * (/app/biometrics/{key}), so "every metric has a detailed page" is
- * structural, not aspirational.
- */
-
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowUpRight } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
-import { Badge, Card, ErrorNote, Loading, PageHeader, Sparkline, fmtNum } from "../../components/kit";
+import {
+  Badge,
+  Card,
+  ErrorNote,
+  Loading,
+  PageHeader,
+  Sparkline,
+  fmtNum,
+} from "../../components/kit";
+import { Tabs } from "../../components/Tabs";
+import { assess, METRIC_LABELS, useUnits } from "../../components/data";
+import { LabsPanel } from "./LabsPanel";
 
-/** Grouped catalog — keys mirror the backend CATALOG dict. */
-const GROUPS: { title: string; keys: [string, string][] }[] = [
+const GROUPS = [
   {
-    title: "biometrics.group_cardiac",
+    value: "signals",
+    label: "design.body_signals",
+    keys: ["resting_hr", "hrv_deviation", "spo2", "respiration"],
+  },
+  {
+    value: "recovery",
+    label: "design.recovery_sleep",
     keys: [
-      ["resting_hr", "biometrics.resting_hr"],
-      ["hrv_deviation", "biometrics.hrv"],
-      ["spo2", "biometrics.spo2"],
-      ["respiration", "biometrics.respiration_metric"],
+      "readiness",
+      "recovery",
+      "sleep_score",
+      "sleep_duration",
+      "sleep_deep",
+      "sleep_rem",
+      "sleep_light",
+      "restlessness",
     ],
   },
   {
-    title: "sleep.title",
+    value: "load",
+    label: "design.load_risk",
     keys: [
-      ["sleep_duration", "biometrics.sleep_duration"],
-      ["sleep_deep", "biometrics.sleep_deep_metric"],
-      ["sleep_rem", "biometrics.sleep_rem_metric"],
-      ["sleep_light", "biometrics.sleep_light_metric"],
-      ["sleep_score", "overview.sleep_score"],
-      ["restlessness", "biometrics.restlessness_metric"],
+      "strain",
+      "acwr",
+      "acute_load",
+      "chronic_load",
+      "illness_risk",
+      "injury_risk",
     ],
   },
   {
-    title: "overview.strain_title",
-    keys: [
-      ["readiness", "biometrics.readiness_metric"],
-      ["recovery", "biometrics.recovery_metric"],
-      ["strain", "biometrics.strain_metric"],
-      ["acwr", "biometrics.acwr_metric"],
-      ["acute_load", "biometrics.acute_load_metric"],
-      ["chronic_load", "biometrics.chronic_load_metric"],
-      ["illness_risk", "biometrics.illness_risk"],
-      ["injury_risk", "biometrics.injury_risk"],
-    ],
-  },
-  {
-    title: "biometrics.group_body",
-    keys: [
-      ["weight", "biometrics.weight"],
-      ["body_fat", "biometrics.body_fat"],
-      ["vo2max", "biometrics.vo2max"],
-      ["steps", "biometrics.steps"],
-      ["floors", "biometrics.floors"],
-      ["hydration", "biometrics.hydration"],
-    ],
+    value: "body",
+    label: "design.body_activity",
+    keys: ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
   },
 ];
-
-/** One metric card: 60-day trend + latest readout + assessment badge. */
-function MetricCard({ metricKey, labelKey, unit, direction }: { metricKey: string; labelKey: string; unit: string; direction: string }) {
+function MetricRow({ metricKey, unit }: { metricKey: string; unit: string }) {
   const { t } = useTranslation();
-  const { data } = useQuery({
-    queryKey: ["spark", metricKey],
-    queryFn: () => api.get<MetricTrend>(`/metrics/${metricKey}?days=60`),
+  const units = useUnits();
+  const trend = useQuery({
+    queryKey: ["metric", metricKey, 60],
+    queryFn: () => api.get<MetricTrend>("/metrics/" + metricKey + "?days=60"),
   });
-  const points = data?.points ?? [];
-  const values = points.filter((p) => p.value !== null).map((p) => p.value!);
-  const latest = values.at(-1) ?? null;
-  const mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-  const tone =
-    latest === null || mean === null
-      ? "neutral"
-      : (direction === "down" ? latest <= mean : latest >= mean)
-        ? "positive"
-        : "warning";
-  const toneLabel =
-    tone === "positive" ? t("biometrics.assess_optimal") : tone === "warning" ? t("biometrics.assess_watch") : t("biometrics.assess_no_data");
-
+  const points = trend.data?.points ?? [];
+  const latest = [...points].reverse().find((p) => p.value != null);
+  const status = assess(metricKey, latest?.value ?? null);
+  const label = METRIC_LABELS[metricKey]
+    ? t(METRIC_LABELS[metricKey])
+    : metricKey.replaceAll("_", " ");
   return (
-    <Link to={`/app/biometrics/${metricKey}`} className="group">
-      <Card className="h-full transition-colors group-hover:bg-surface2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="truncate text-[14px] font-semibold text-ink">{t(labelKey)}</div>
-            <div className="num mt-1 flex items-baseline gap-1">
-              <span className="text-[22px] font-bold text-ink">
-                {latest === null ? "—" : fmtNum(latest, latest >= 100 ? 0 : 1)}
-              </span>
-              <span className="text-[10px] font-medium text-muted">{unit}</span>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge tone={tone as "neutral" | "positive" | "warning"}>{toneLabel}</Badge>
-            <ChevronRight size={14} className="text-faint transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </div>
-        <div className="mt-2 -mx-1">
-          <Sparkline
-            points={points.map((p) => p.value)}
-            color={tone === "warning" ? "var(--c-warning)" : "var(--c-primary)"}
-            height={44}
-          />
-        </div>
-        <div className="num mt-1 flex justify-between text-[9px] text-faint">
-          <span>60d</span>
-          <span>{values.length} {t("sleep.readings")}</span>
-        </div>
-      </Card>
+    <Link to={"/app/biometrics/" + metricKey} className="metric-row">
+      <div>
+        <p className="text-[14px] font-medium">{label}</p>
+        <p className="mt-1 text-[12px] text-muted">
+          {latest?.date ?? t("design.no_measurements")}
+        </p>
+      </div>
+      <div className="num whitespace-nowrap text-[24px] font-medium tracking-[-.04em]">
+        {trend.isLoading
+          ? "…"
+          : fmtNum(
+              units.metric(metricKey, latest?.value ?? null),
+              ["steps", "floors"].includes(metricKey) ? 0 : 1,
+            )}
+        <span className="ml-1.5 text-[12px] font-normal tracking-normal text-muted">
+          {units.metricUnit(metricKey, unit)}
+        </span>
+      </div>
+      <div className="metric-status">
+        <Badge tone={trend.isError ? "alert" : status.tone}>
+          {trend.isError
+            ? t("design.unavailable")
+            : trend.isLoading
+              ? t("common.loading")
+              : t(status.key)}
+        </Badge>
+      </div>
+      <div className="metric-trend">
+        <Sparkline
+          points={points.map((p) => p.value)}
+          color="var(--c-text-muted)"
+          height={30}
+        />
+      </div>
+      <ArrowUpRight size={17} className="metric-arrow text-muted" />
     </Link>
   );
 }
-
 export default function BiometricsHubPage() {
   const { t } = useTranslation();
+  const [params, setParams] = useSearchParams();
+  const [search, setSearch] = useState("");
   const catalog = useQuery({
     queryKey: ["metrics-catalog"],
-    queryFn: () => api.get<Record<string, { unit: string; direction: string }>>("/metrics"),
+    queryFn: () =>
+      api.get<Record<string, { unit: string; direction: string }>>("/metrics"),
   });
-
-  if (catalog.isLoading) return <Loading />;
-  if (catalog.isError) return <ErrorNote />;
-
+  const extra = Object.keys(catalog.data ?? {}).filter(
+    (k) => !GROUPS.some((g) => g.keys.includes(k)),
+  );
+  const groups = extra.length
+    ? [
+        ...GROUPS,
+        { value: "other", label: "design.other_metrics", keys: extra },
+      ]
+    : GROUPS;
+  const tab = params.get("tab") ?? "signals";
+  const active = [...groups.map((g) => g.value), "labs"].includes(tab)
+    ? tab
+    : "signals";
+  const selected = groups.find((g) => g.value === active);
+  const keys = (
+    search ? Object.keys(catalog.data ?? {}) : (selected?.keys ?? [])
+  ).filter((key) => {
+    const label = METRIC_LABELS[key]
+      ? t(METRIC_LABELS[key])
+      : key.replaceAll("_", " ");
+    return (
+      catalog.data?.[key] && label.toLowerCase().includes(search.toLowerCase())
+    );
+  });
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title={t("biometrics.title")} subtitle={t("biometrics.subtitle")} />
-
-      {GROUPS.map((group) => (
-        <div key={group.title}>
-          <div className="eyebrow mb-2">{t(group.title)}</div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {group.keys.map(([key, labelKey]) => {
-              const meta = catalog.data?.[key];
-              if (!meta) return null;
-              return (
-                <MetricCard key={key} metricKey={key} labelKey={labelKey} unit={meta.unit} direction={meta.direction} />
-              );
-            })}
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={t("biometrics.title")}
+        subtitle={t("design.metrics_sub")}
+      />
+      <Tabs
+        value={active}
+        onChange={(v) => {
+          setParams({ tab: v });
+          setSearch("");
+        }}
+        label={t("design.metric_groups")}
+        options={[
+          ...groups.map((g) => ({ value: g.value, label: t(g.label) })),
+          { value: "labs", label: t("biometrics.labs") },
+        ]}
+      />
+      {active === "labs" ? (
+        <LabsPanel />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-[13px] text-muted">
+              {t("design.metric_count", { count: keys.length })} ·{" "}
+              {t("design.latest60")}
+            </p>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label={t("design.find_metric")}
+              placeholder={t("design.find_metric")}
+              className="h-10 w-full border-b border-hairline bg-transparent text-[13px] outline-none sm:w-64"
+            />
           </div>
-        </div>
-      ))}
+          {catalog.isLoading ? (
+            <Loading />
+          ) : catalog.isError ? (
+            <ErrorNote />
+          ) : (
+            <Card className="!px-5 !py-0 md:!px-8">
+              <div className="metric-row !py-4 text-[12px] text-muted max-md:hidden">
+                <span>{t("design.metric")}</span>
+                <span>{t("biometrics.latest")}</span>
+                <span>{t("design.status")}</span>
+                <span>{t("biometrics.trend")} · 60d</span>
+                <span />
+              </div>
+              {keys.map((key) => (
+                <MetricRow
+                  key={key}
+                  metricKey={key}
+                  unit={catalog.data![key].unit}
+                />
+              ))}
+              {keys.length === 0 && (
+                <p className="py-12 text-center text-muted">
+                  {t("search.no_results")}
+                </p>
+              )}
+            </Card>
+          )}
+          <p className="text-[12px] text-muted">{t("design.metric_note")}</p>
+        </>
+      )}
     </div>
   );
 }

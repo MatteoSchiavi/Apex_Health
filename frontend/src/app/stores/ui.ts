@@ -10,7 +10,8 @@
 
 import { create } from "zustand";
 import i18next from "../i18n";
-import type { Me } from "../api";
+import { api, type Me } from "../api";
+import { queryClient } from "../query";
 
 export type Theme = "dark" | "light";
 export type Locale = "en" | "it";
@@ -19,6 +20,8 @@ interface UiState {
   theme: Theme;
   locale: Locale;
   me: Me | null;
+  preferenceError: boolean;
+  preferenceSaving: boolean;
   setTheme: (t: Theme, persist?: boolean) => void;
   setLocale: (l: Locale, persist?: boolean) => void;
   setMe: (me: Me | null) => void;
@@ -30,7 +33,9 @@ function applyTheme(t: Theme) {
   root.classList.add(t);
   try {
     localStorage.setItem("apex.theme", t);
-  } catch { /* private mode */ }
+  } catch {
+    /* private mode */
+  }
 }
 
 function applyLocale(l: Locale) {
@@ -41,22 +46,30 @@ function applyLocale(l: Locale) {
   if (i18next.language !== l) void i18next.changeLanguage(l);
   try {
     localStorage.setItem("apex.locale", l);
-  } catch { /* private mode */ }
+  } catch {
+    /* private mode */
+  }
 }
 
 function storedTheme(): Theme {
   try {
     const t = localStorage.getItem("apex.theme");
     if (t === "light" || t === "dark") return t;
-  } catch { /* ignore */ }
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  } catch {
+    /* ignore */
+  }
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
 }
 
 function storedLocale(): Locale {
   try {
     const l = localStorage.getItem("apex.locale");
     if (l === "it" || l === "en") return l;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return navigator.language.toLowerCase().startsWith("it") ? "it" : "en";
 }
 
@@ -64,22 +77,82 @@ export const useUi = create<UiState>((set) => ({
   theme: storedTheme(),
   locale: storedLocale(),
   me: null,
+  preferenceError: false,
+  preferenceSaving: false,
   setTheme: (t, persist = true) => {
+    if (persist && useUi.getState().preferenceSaving) return;
     applyTheme(t);
-    set({ theme: t });
-    if (persist) {
-      import("../api").then(({ api }) => api.put("/me", { theme: t }).catch(() => undefined));
+    set({ theme: t, preferenceError: false });
+    if (persist && useUi.getState().me) {
+      const previous = useUi.getState().me!.theme;
+      const uid = useUi.getState().me!.user_id;
+      set({ preferenceSaving: true });
+      queryClient.setQueryData<Me>(["me"], (old) =>
+        old ? { ...old, theme: t } : old,
+      );
+      api
+        .put<Me>("/me", { theme: t })
+        .then((me) => {
+          if (useUi.getState().me?.user_id !== uid) return;
+          queryClient.setQueryData(["me"], me);
+          set({ me });
+        })
+        .catch(() => {
+          if (
+            useUi.getState().me?.user_id !== uid ||
+            useUi.getState().theme !== t
+          )
+            return;
+          applyTheme(previous);
+          set({ theme: previous, preferenceError: true });
+          queryClient.invalidateQueries({ queryKey: ["me"] });
+        })
+        .finally(() => {
+          if (useUi.getState().me?.user_id === uid)
+            set({ preferenceSaving: false });
+        });
     }
   },
   setLocale: (l, persist = true) => {
+    if (persist && useUi.getState().preferenceSaving) return;
     applyLocale(l);
-    set({ locale: l });
-    if (persist) {
-      import("../api").then(({ api }) => api.put("/me", { locale: l }).catch(() => undefined));
+    set({ locale: l, preferenceError: false });
+    if (persist && useUi.getState().me) {
+      const previous = useUi.getState().me!.locale;
+      const uid = useUi.getState().me!.user_id;
+      set({ preferenceSaving: true });
+      queryClient.setQueryData<Me>(["me"], (old) =>
+        old ? { ...old, locale: l } : old,
+      );
+      api
+        .put<Me>("/me", { locale: l })
+        .then((me) => {
+          if (useUi.getState().me?.user_id !== uid) return;
+          queryClient.setQueryData(["me"], me);
+          set({ me });
+        })
+        .catch(() => {
+          if (
+            useUi.getState().me?.user_id !== uid ||
+            useUi.getState().locale !== l
+          )
+            return;
+          applyLocale(previous);
+          set({ locale: previous, preferenceError: true });
+          queryClient.invalidateQueries({ queryKey: ["me"] });
+        })
+        .finally(() => {
+          if (useUi.getState().me?.user_id === uid)
+            set({ preferenceSaving: false });
+        });
     }
   },
   setMe: (me) => {
-    set({ me });
+    set(
+      me
+        ? { me, theme: me.theme, locale: me.locale }
+        : { me, preferenceError: false, preferenceSaving: false },
+    );
     if (me) {
       applyTheme(me.theme);
       applyLocale(me.locale);
