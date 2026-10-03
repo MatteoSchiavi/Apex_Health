@@ -217,6 +217,7 @@ class ChatSessionDetailOut(ChatSessionOut):
 
 class ChatPostIn(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
+    session_id: int | None = Field(default=None, gt=0)
     tier: Literal["free", "cheap", "powerful", "medical"] | None = None
 
 

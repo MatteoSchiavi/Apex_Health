@@ -68,8 +68,18 @@ prompt
 # Skills directory
 /skills/
 
+# Python runtime and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
 # QA screenshots
 qa-*.png
 qa-*.jpeg
 qa-*.webp
 uploads/
+
+# Browser verification artifacts
+frontend/test-results/
+frontend/playwright-report/

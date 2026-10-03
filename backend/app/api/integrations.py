@@ -60,7 +60,7 @@ from app.connectors.garmin.client import (
 )
 from app.core.encryption import encrypt_json
 from app.core.db import get_session
-from app.core.redis import get_redis
+from app.core.redis import get_redis_dependency
 from app.models.integration import Integration
 from app.models.user import User
 
@@ -96,7 +96,7 @@ async def list_integrations(
 @router.post("/settings/integrations/technogym/authorize")
 async def start_technogym_authorization(
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Mint the single-use state and return the URL the owner must open
     manually. State-changing (Redis write) -> CSRF header required (§22.3)."""
@@ -127,7 +127,7 @@ async def technogym_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Provider browser redirect target. No app session exists here — the
     single-use `state` is the authentication and account binding."""
@@ -155,7 +155,7 @@ async def technogym_oauth_callback(
 @router.post("/settings/integrations/whoop/authorize")
 async def start_whoop_authorization(
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Mint the single-use state and return the Whoop authorization URL.
     State-changing (Redis write) -> CSRF header required (§22.3)."""
@@ -186,7 +186,7 @@ async def whoop_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Whoop's browser redirect target (session-less; single-use state is
     the authentication and account binding)."""
@@ -214,7 +214,7 @@ async def whoop_oauth_callback(
 @router.post("/settings/integrations/strava/authorize")
 async def start_strava_authorization(
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     if not strava_flow_ready():
         raise HTTPException(
@@ -243,7 +243,7 @@ async def strava_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     if error:
         raise HTTPException(
@@ -269,7 +269,7 @@ async def strava_oauth_callback(
 @router.post("/settings/integrations/oura/authorize")
 async def start_oura_authorization(
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Mint the single-use state and return the Oura authorization URL."""
     if not oura_flow_ready():
@@ -300,7 +300,7 @@ async def oura_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     if error:
         raise HTTPException(
@@ -326,7 +326,7 @@ async def oura_oauth_callback(
 @router.post("/settings/integrations/coros/authorize")
 async def start_coros_authorization(
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """COROS gates API access behind a manual developer-portal review — this
     endpoint 400s with the explanation until COROS_CLIENT_ID/SECRET exist."""
@@ -355,7 +355,7 @@ async def coros_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     if error:
         raise HTTPException(
@@ -403,7 +403,7 @@ async def connect_garmin(
     payload: GarminConnectIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
     """Link a Garmin account from the UI.
 
@@ -498,79 +498,63 @@ async def connect_garmin(
     }
 
 
-@router.post("/settings/integrations/garmin/sync")
+@router.post("/settings/integrations/garmin/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_garmin_now(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
-    """'Sync now' — enqueue the incremental Garmin poll immediately instead
-    of waiting for the 6-hourly beat tick, then wait up to 30s for the
-    result so the UI can show fresh data instead of stale cache.
+    """Queue one account's sync; a status resource exposes progress safely."""
+    from uuid import uuid4
+    from starlette.concurrency import run_in_threadpool
+    from app.tasks.garmin_sync import sync_user_garmin
 
-    F-11 audit: scoped to the connecting user (``sync_user_garmin.apply_async(
-    args=[user.id])``) — never a global fan-out that would re-sync every
-    other user's account.
-
-    If Celery is down (broker unreachable, worker crashed), the endpoint
-    falls back to running the per-user sync inline (capped at 30s) so the
-    owner's "Sync now" button still works in single-process dev setups
-    where the worker isn't running.
-    """
-    integration = await session.scalar(
-        select(Integration).where(
-            Integration.user_id == user.id, Integration.provider == "garmin"
-        )
-    )
-    if integration is None or integration.status != "active":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Garmin is not connected — connect it first.",
-        )
-
-    import asyncio
-
-    enqueued = False
-    completed = False
-    sync_result: dict | None = None
-    error: str | None = None
-
-    # Path A — try Celery first and block up to 30s for the result so the
-    # UI's "Sync now" reflects the new data, not the pre-sync cache.
+    integration = await session.scalar(select(Integration).where(
+        Integration.user_id == user.id, Integration.provider == "garmin",
+        Integration.status == "active",
+    ))
+    if integration is None:
+        raise HTTPException(400, "Garmin is not connected — connect it first.")
+    job_id = str(uuid4())
     try:
-        from app.tasks.garmin_sync import sync_user_garmin
+        # Ownership precedes publishing so even a fast worker result is scoped.
+        await redis.set(f"sync:job:{job_id}", str(user.id), ex=7 * 24 * 3600)
+        await run_in_threadpool(sync_user_garmin.apply_async, args=[user.id], task_id=job_id)
+    except Exception:
+        logger.warning("Could not enqueue Garmin sync for user %s", user.id)
+        raise HTTPException(503, "Sync queue unavailable; try again shortly.") from None
+    return {"enqueued": True, "completed": False, "job_id": job_id,
+            "status_url": f"/settings/integrations/garmin/sync/{job_id}"}
 
-        result = sync_user_garmin.apply_async(args=[user.id])
-        enqueued = True
-        try:
-            sync_result = result.get(timeout=30)
-            completed = True
-        except Exception as exc:  # noqa: BLE001 — timeout / result lost
-            logger.warning(
-                "garmin sync-now: result not ready within 30s (%s) — falling back to inline",
-                exc,
-            )
-    except Exception as exc:  # noqa: BLE001 — broker down: inline fallback
-        logger.warning("garmin sync-now: celery unavailable (%s) — running inline", exc)
 
-    # Path B — Celery never delivered a result; run the per-user sync
-    # inline (capped at 30s) so single-process dev without a worker still
-    # gets fresh data on "Sync now".
-    if not completed:
-        try:
-            from app.tasks.garmin_sync import _sync_user_garmin
+@router.get("/settings/integrations/garmin/sync/{job_id}")
+async def garmin_sync_status(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis_dependency),
+) -> dict:
+    from starlette.concurrency import run_in_threadpool
+    from app.tasks.celery_app import celery_app
 
-            sync_result = await asyncio.wait_for(
-                _sync_user_garmin(user.id), timeout=30.0
-            )
-            completed = True
-        except asyncio.TimeoutError:
-            error = "Sync timed out — try again in a moment."
-            logger.warning("garmin sync-now: inline sync exceeded 30s for user %s", user.id)
-        except Exception as exc:  # noqa: BLE001
-            error = f"Sync failed: {exc}"
-            logger.exception("garmin sync-now: inline sync crashed for user %s", user.id)
+    try:
+        owner = await redis.get(f"sync:job:{job_id}")
+    except Exception:
+        raise HTTPException(503, "Sync status unavailable; try again shortly.") from None
+    if owner is None or str(owner.decode() if isinstance(owner, bytes) else owner) != str(user.id):
+        raise HTTPException(404, "Sync job not found")
 
-    payload: dict = {"enqueued": enqueued, "completed": completed, "result": sync_result}
-    if error is not None:
-        payload["error"] = error
-    return payload
+    def read_status():
+        result = celery_app.AsyncResult(job_id)
+        state = result.state
+        payload = {"job_id": job_id, "state": state,
+                   "completed": state in {"SUCCESS", "FAILURE", "REVOKED"}}
+        if state == "SUCCESS" and isinstance(result.result, dict):
+            payload["result"] = {k: v for k, v in result.result.items()
+                                 if k in {"status", "mode", "raw_stored", "unprocessed"}}
+        elif state == "FAILURE":
+            payload["error"] = "Sync failed after retries; retry or reconnect the provider."
+        return payload
+    try:
+        return await run_in_threadpool(read_status)
+    except Exception:
+        raise HTTPException(503, "Sync status unavailable; try again shortly.") from None

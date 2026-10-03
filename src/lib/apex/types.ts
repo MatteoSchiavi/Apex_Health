@@ -40,7 +40,7 @@ export type Discipline =
   | "walking";
 
 export interface ActivityCard {
-  id: number;
+  id: string;
   start_time: string;
   local_date: string;
   discipline: Discipline;
@@ -71,7 +71,7 @@ export interface ActivityLap {
 }
 
 export interface ActivityStream {
-  activity_id: number;
+  activity_id: string;
   t: number[];
   columns: Record<string, (number | null)[]>;
 }

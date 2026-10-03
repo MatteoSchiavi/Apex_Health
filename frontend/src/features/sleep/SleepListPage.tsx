@@ -1,162 +1,208 @@
-/**
- * Sleep list — recent nights with score ring, stage composition bar and
- * headline stats. Header carries the 7-day averages (mockup: "Week at a
- * glance" strip above the grid).
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { api, type SleepList } from "../../app/api";
 import {
+  Badge,
   Card,
   Empty,
   ErrorNote,
   Loading,
   PageHeader,
   StatPod,
+  ZoneBar,
   fmtHours,
   fmtNum,
 } from "../../components/kit";
-
-function stageColor(key: string): string {
-  return {
-    deep: "var(--c-stage-deep)",
-    rem: "var(--c-stage-rem)",
-    core: "var(--c-stage-core)",
-    awake: "var(--c-stage-awake)",
-  }[key] ?? "var(--c-hairline2)";
-}
-
+import { assess } from "../../components/data";
+import { TrendChart } from "../../components/charts/TrendChart";
+import { useUi } from "../../app/stores/ui";
 export default function SleepListPage() {
   const { t } = useTranslation();
-  const { data, isLoading, isError } = useQuery({
+  const timezone = useUi((s) => s.me?.timezone);
+  const query = useQuery({
     queryKey: ["sleep"],
     queryFn: () => api.get<SleepList>("/sleep?limit=42"),
   });
-
-  if (isLoading) return <Loading />;
-  if (isError) return <ErrorNote />;
-  const nights = data?.items ?? [];
-
-  const last7 = nights.slice(0, 7);
-  const avg = (pick: (n: SleepList["items"][number]) => number | null) => {
-    const vals = last7.map(pick).filter((v): v is number => v !== null);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  };
-  const avgScore = avg((n) => n.sleep_score);
-  const avgDur = avg((n) => n.total_sleep_s);
-  const avgDeep = avg((n) => n.deep_s);
-
+  if (query.isLoading) return <Loading />;
+  if (query.isError) return <ErrorNote />;
+  const nights = query.data?.items ?? [],
+    last7 = nights.slice(0, 7);
+  function avg(pick: (n: SleepList["items"][number]) => number | null) {
+    const values = last7.map(pick).filter((v): v is number => v != null);
+    return values.length
+      ? values.reduce((a, b) => a + b, 0) / values.length
+      : null;
+  }
+  const clock = (date: string) =>
+    new Date(date).toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: timezone,
+    });
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title={t("sleep.title")} subtitle={t("sleep.subtitle")} />
-
-      {nights.length === 0 ? (
+    <div className="flex flex-col gap-6">
+      <PageHeader title={t("sleep.title")} subtitle={t("design.sleep_sub")} />
+      {!nights.length ? (
         <Card>
-          <Empty>
-            {t("sleep.no_night")}
-          </Empty>
+          <Empty>{t("sleep.no_night")}</Empty>
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatPod label={t("sleep.avg_score7")} value={fmtNum(avgScore, 0)} unit="/100" tone="primary" />
-            <StatPod label={t("sleep.avg_duration7")} value={fmtHours(avgDur)} />
-            <StatPod label={t("sleep.avg_deep7")} value={fmtHours(avgDeep)} sub={t("sleep.restorative")} />
-            <StatPod label={t("sleep.nights_tracked")} value={String(nights.length)} sub={t("sleep.window42")} />
+          <div className="stat-row">
+            <StatPod
+              label={t("sleep.avg_score7")}
+              value={fmtNum(avg((n) => n.sleep_score))}
+              unit="/100"
+            />
+            <StatPod
+              label={t("sleep.avg_duration7")}
+              value={fmtHours(avg((n) => n.total_sleep_s))}
+            />
+            <StatPod
+              label={t("sleep.avg_deep7")}
+              value={fmtHours(avg((n) => n.deep_s))}
+            />
+            <StatPod
+              label={t("sleep.nights_tracked")}
+              value={String(nights.length)}
+              sub={t("design.recorded_nights")}
+            />
           </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {nights.map((n) => {
-              const total =
-                (n.deep_s ?? 0) + (n.rem_s ?? 0) + (n.light_s ?? 0) + (n.awake_s ?? 0);
-              const parts = [
-                { key: "deep", v: n.deep_s ?? 0 },
-                { key: "rem", v: n.rem_s ?? 0 },
-                { key: "core", v: n.light_s ?? 0 },
-                { key: "awake", v: n.awake_s ?? 0 },
-              ];
-              const date = new Date(n.local_date + "T00:00:00");
-              const score = n.sleep_score === null ? null : Math.round(n.sleep_score);
-              return (
-                <Link key={n.local_date} to={`/app/sleep/${n.local_date}`}>
-                  <Card className="group transition-colors hover:bg-surface2">
-                    <div className="flex items-center justify-between">
-                      <div className="eyebrow">
-                        {date.toLocaleDateString(undefined, {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`num text-[15px] font-bold ${
-                            score !== null && score >= 75
-                              ? "text-positiveText"
-                              : score !== null && score < 50
-                                ? "text-warningText"
-                                : "text-ink"
-                          }`}
-                        >
-                          {fmtNum(n.sleep_score, 0)}
-                        </span>
-                        <span className="text-[10px] font-medium text-muted">/100</span>
-                      </div>
-                    </div>
-                    <div className="num mt-1 flex items-baseline gap-2">
-                      <span className="text-[26px] font-bold leading-8 text-ink">
-                        {fmtHours(n.total_sleep_s)}
-                      </span>
-                      <span className="text-[11px] text-faint">
-                        {new Date(n.start_time).toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}{" "}
-                        →{" "}
-                        {new Date(n.end_time).toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
-                      {total > 0 &&
-                        parts.map((p) => (
-                          <div
-                            key={p.key}
-                            title={t(`stage.${p.key}`)}
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.max(1, (p.v / total) * 100)}%`,
-                              background: stageColor(p.key),
-                            }}
+          <Card>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="section-label">
+                {t("design.sleep_duration_trend")}
+              </h2>
+              <span className="text-[12px] text-muted">h</span>
+            </div>
+            <TrendChart
+              points={[...nights]
+                .reverse()
+                .map((n) => ({
+                  date: n.local_date,
+                  value:
+                    n.total_sleep_s == null ? null : n.total_sleep_s / 3600,
+                }))}
+              label={t("sleep.time_asleep")}
+              unit="h"
+              bar
+              height={180}
+            />
+          </Card>
+          <Card className="!py-0">
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("design.night")}</th>
+                    <th>{t("sleep.time_asleep")}</th>
+                    <th>{t("overview.sleep_score")}</th>
+                    <th>{t("sleep.bed_window")}</th>
+                    <th>{t("sleep.architecture")}</th>
+                    <th className="numeric">{t("sleep.efficiency")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {nights.map((n) => {
+                    const state = assess("sleep_score", n.sleep_score);
+                    const inBed =
+                      (new Date(n.end_time).getTime() -
+                        new Date(n.start_time).getTime()) /
+                      1000;
+                    return (
+                      <tr key={n.local_date}>
+                        <td>
+                          <Link
+                            to={"/app/sleep/" + n.local_date}
+                            className="font-medium"
+                          >
+                            {new Date(
+                              n.local_date + "T12:00:00",
+                            ).toLocaleDateString(undefined, {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </Link>
+                        </td>
+                        <td className="font-medium">
+                          {fmtHours(n.total_sleep_s)}
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <span className="num">{fmtNum(n.sleep_score)}</span>
+                            <Badge tone={state.tone}>{t(state.key)}</Badge>
+                          </div>
+                        </td>
+                        <td className="text-muted">
+                          {clock(n.start_time)} – {clock(n.end_time)}
+                        </td>
+                        <td className="min-w-[160px]">
+                          <ZoneBar
+                            height={8}
+                            parts={[
+                              {
+                                key: "deep",
+                                value: n.deep_s ?? 0,
+                                color: "var(--c-stage-deep)",
+                              },
+                              {
+                                key: "rem",
+                                value: n.rem_s ?? 0,
+                                color: "var(--c-stage-rem)",
+                              },
+                              {
+                                key: "core",
+                                value: n.light_s ?? 0,
+                                color: "var(--c-stage-core)",
+                              },
+                              {
+                                key: "awake",
+                                value: n.awake_s ?? 0,
+                                color: "var(--c-stage-awake)",
+                              },
+                            ]}
                           />
-                        ))}
-                    </div>
-                    <div className="num mt-2 flex items-center justify-between text-[10px] text-muted">
-                      <div className="flex gap-3">
-                        {parts.slice(0, 3).map((p) => (
-                          <span key={p.key} className="flex items-center gap-1">
-                            <span
-                              className="inline-block h-1.5 w-1.5 rounded-full"
-                              style={{ background: stageColor(p.key) }}
-                            />
-                            {fmtHours(p.v)}
-                          </span>
-                        ))}
-                      </div>
-                      <ArrowRight
-                        size={12}
-                        className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primaryText"
-                      />
-                    </div>
-                  </Card>
-                </Link>
-              );
-            })}
+                        </td>
+                        <td className="numeric">
+                          {fmtNum(
+                            inBed > 0 && n.total_sleep_s != null
+                              ? (n.total_sleep_s / inBed) * 100
+                              : null,
+                          )}{" "}
+                          %
+                        </td>
+                        <td>
+                          <Link
+                            to={"/app/sleep/" + n.local_date}
+                            aria-label={t("design.open_night", {
+                              date: n.local_date,
+                            })}
+                          >
+                            <ArrowUpRight size={17} />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <div className="flex flex-wrap gap-6 text-[12px] text-muted">
+            {["deep", "rem", "core", "awake"].map((stage) => (
+              <span key={stage} className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2"
+                  style={{ background: "var(--c-stage-" + stage + ")" }}
+                />
+                {t("stage." + stage)}
+              </span>
+            ))}
           </div>
         </>
       )}

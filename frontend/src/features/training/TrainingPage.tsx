@@ -27,7 +27,10 @@ import {
   PageHeader,
   Select,
 } from "../../components/kit";
-import { EChart, useChartTheme } from "../../components/charts/EChart";
+import { TrendChart } from "../../components/charts/TrendChart";
+import { Tabs } from "../../components/Tabs";
+import { localDay } from "../../components/data";
+import { useUi } from "../../app/stores/ui";
 
 /* ------------------------------------------------------------- event types */
 
@@ -65,7 +68,7 @@ const HIGH_PRIORITY_KINDS: readonly string[] = [
 ];
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDay(useUi.getState().me?.timezone);
 }
 
 function AddEvent({ onDone }: { onDone: () => void }) {
@@ -102,16 +105,31 @@ function AddEvent({ onDone }: { onDone: () => void }) {
       }}
       className="flex flex-col gap-3"
     >
-      <Input label={t("training.event_title")} value={title} onChange={setTitle} required />
+      <Input
+        label={t("training.event_title")}
+        value={title}
+        onChange={setTitle}
+        required
+      />
       <div className="grid grid-cols-2 gap-3">
         <Select
           label={t("training.event_type")}
           value={kind}
           onChange={(v) => setKind(v as EventKind)}
-          options={EVENT_KINDS.map((k) => ({ value: k, label: t(`training.${k}`) }))}
+          options={EVENT_KINDS.map((k) => ({
+            value: k,
+            label: t(`training.${k}`),
+          }))}
         />
-        <Input label={t("training.event_date")} type="date" value={date} onChange={setDate} required />
+        <Input
+          label={t("training.event_date")}
+          type="date"
+          value={date}
+          onChange={setDate}
+          required
+        />
       </div>
+      {create.isError && <ErrorNote />}
       <Input label={t("training.notes")} value={notes} onChange={setNotes} />
       <Button type="submit" disabled={create.isPending} className="self-start">
         {t("training.save")}
@@ -124,7 +142,7 @@ function EventCalendar() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["events"],
     queryFn: () => api.get<EventOut[]>("/events"),
   });
@@ -148,49 +166,64 @@ function EventCalendar() {
       <CardHeader
         eyebrow={t("training.calendar")}
         right={
-          <Button variant="ghost" onClick={() => setAdding((v) => !v)} className="!h-7 !px-2.5 text-[12px]">
+          <Button
+            variant="ghost"
+            onClick={() => setAdding((v) => !v)}
+            className="!h-9 !px-2.5 text-[12px]"
+          >
             {adding ? t("common.cancel") : `+ ${t("training.add_event")}`}
           </Button>
         }
       />
       {adding && (
-        <div className="mb-3 rounded-card border border-hairline bg-surface2 p-3">
+        <div className="mb-3 bg-surface2 p-3">
           <AddEvent onDone={() => setAdding(false)} />
         </div>
       )}
       {isLoading ? (
         <Loading />
+      ) : isError ? (
+        <ErrorNote />
       ) : upcoming.length === 0 ? (
-        <Empty>{t("social.no_data")}</Empty>
+        <Empty>{t("design.no_events")}</Empty>
       ) : (
         <div className="flex flex-col gap-2">
           {upcoming.map((e) => {
             const days = Math.round(
-              (new Date(e.day + "T00:00:00").getTime() - new Date(todayIso() + "T00:00:00").getTime()) / 86400000,
+              (new Date(e.day + "T00:00:00").getTime() -
+                new Date(todayIso() + "T00:00:00").getTime()) /
+                86400000,
             );
             return (
               <div
                 key={e.id}
-                className="flex items-center gap-3 rounded-card border border-hairline bg-surface2 px-3 py-2.5"
+                className="flex items-center gap-4 border-b border-hairline py-5 last:border-0"
               >
-                <div className="num flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-control bg-primarySoft text-primaryText">
-                  <span className="text-[14px] font-bold">{e.day.slice(8)}</span>
-                  <span className="text-[8px] uppercase">{e.day.slice(5, 7)}</span>
+                <div className="num flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-control bg-surface2 text-ink">
+                  <span className="text-[14px] font-bold">
+                    {e.day.slice(8)}
+                  </span>
+                  <span className="text-[12px]">{e.day.slice(5, 7)}</span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-semibold text-ink">{e.title}</span>
-                    {e.priority === 1 && <Badge tone="primary">{t("training.priority")}</Badge>}
+                    <span className="truncate text-[13px] font-semibold text-ink">
+                      {e.title}
+                    </span>
+                    {e.priority === 1 && (
+                      <Badge tone="primary">{t("training.priority")}</Badge>
+                    )}
                   </div>
-                  <div className="num text-[11px] text-muted">
-                    {days === 0 ? t("common.today") : `${days} d`} · {t(`training.${e.kind}`)}
+                  <div className="num text-[12px] text-muted">
+                    {days === 0 ? t("common.today") : `${days} d`} ·{" "}
+                    {t(`training.${e.kind}`)}
                     {e.notes ? ` · ${e.notes}` : ""}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => del.mutate(e.id)}
-                  className="text-[11px] text-muted hover:text-alertText"
+                  className="text-[12px] text-muted hover:text-alertText"
                 >
                   {t("training.delete")}
                 </button>
@@ -199,7 +232,11 @@ function EventCalendar() {
           })}
         </div>
       )}
-      {del.isError && <div className="mt-3"><ErrorNote /></div>}
+      {del.isError && (
+        <div className="mt-3">
+          <ErrorNote />
+        </div>
+      )}
     </Card>
   );
 }
@@ -208,73 +245,45 @@ function EventCalendar() {
 
 function LoadChart() {
   const { t } = useTranslation();
-  const c = useChartTheme();
-  const acute = useQuery({
-    queryKey: ["metric", "acute_load", 56],
-    queryFn: () => api.get<import("../../app/api").MetricTrend>("/metrics/acute_load?days=56"),
+  const [metric, setMetric] = useState("acute_load");
+  const query = useQuery({
+    queryKey: ["metric", metric, 56],
+    queryFn: () =>
+      api.get<import("../../app/api").MetricTrend>(
+        "/metrics/" + metric + "?days=56",
+      ),
   });
-  const chronic = useQuery({
-    queryKey: ["metric", "chronic_load", 56],
-    queryFn: () => api.get<import("../../app/api").MetricTrend>("/metrics/chronic_load?days=56"),
-  });
-
-  if (acute.isLoading || chronic.isLoading) return <Loading />;
-  const pts = acute.data?.points ?? [];
-  const cps = chronic.data?.points ?? [];
-  if (!pts.some((p) => p.value !== null)) return <Empty>{t("biometrics.no_data")}</Empty>;
-
   return (
     <Card>
-      <CardHeader eyebrow={t("training.load_chart")} />
-      <EChart
-        option={{
-          grid: { left: 40, right: 12, top: 24, bottom: 24 },
-          legend: {
-            top: 0,
-            left: 0,
-            icon: "rect",
-            itemWidth: 10,
-            itemHeight: 2,
-            textStyle: { color: c.muted, fontSize: 10 },
-          },
-          tooltip: {
-            trigger: "axis",
-            backgroundColor: c.surface,
-            borderColor: c.hairline,
-            textStyle: { color: c.ink, fontSize: 11 },
-          },
-          xAxis: {
-            type: "time",
-            axisLine: { show: false },
-            axisTick: { show: false },
-            axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-          },
-          yAxis: {
-            type: "value",
-            splitLine: { lineStyle: { color: c.hairline, type: "dashed" } },
-            axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-          },
-          series: [
-            {
-              name: t("overview.acute_load"),
-              type: "bar",
-              data: pts.map((p) => [p.date, p.value]),
-              barMaxWidth: 7,
-              itemStyle: { color: c.hairline, borderRadius: [2, 2, 0, 0] },
-            },
-            {
-              name: t("overview.chronic_load"),
-              type: "line",
-              data: cps.map((p) => [p.date, p.value]),
-              showSymbol: false,
-              smooth: true,
-              lineStyle: { color: c.primary, width: 2 },
-              itemStyle: { color: c.primary },
-            },
-          ],
-        }}
-        height={260}
+      <CardHeader title={t("training.load_chart")} />
+      <Tabs
+        value={metric}
+        onChange={setMetric}
+        label={t("training.load_chart")}
+        options={[
+          { value: "acute_load", label: t("design.acute") },
+          { value: "chronic_load", label: t("design.chronic") },
+          { value: "acwr", label: "ACWR" },
+        ]}
       />
+      <p className="mt-4 text-[12px] text-muted">
+        {metric === "acwr" ? t("design.ratio") : "TSS/d"} · {t("design.days56")}
+      </p>
+      {query.isLoading ? (
+        <Loading />
+      ) : query.isError ? (
+        <ErrorNote />
+      ) : (
+        <TrendChart
+          points={query.data?.points ?? []}
+          start={query.data?.start_date}
+          end={query.data?.end_date}
+          label={t("training.load_chart")}
+          unit={metric === "acwr" ? t("design.ratio") : "TSS/d"}
+          height={280}
+        />
+      )}
+      <p className="mt-4 text-[12px] text-muted">{t("design.load_note")}</p>
     </Card>
   );
 }
@@ -320,6 +329,8 @@ function GymPlan() {
   const qc = useQueryClient();
   const day = todayIso();
   const [rest, setRest] = useState<number | null>(null);
+  const [reps, setReps] = useState("");
+  const [weight, setWeight] = useState("");
 
   const plan = useQuery({
     queryKey: ["gym-plan", day],
@@ -341,21 +352,30 @@ function GymPlan() {
       gym_day_exercise_id: number;
       set_number: number;
       reps_done: number;
+      weight_kg: number | null;
     }) =>
-      api.post<{ rest_seconds: number | null }>(`/gym/session/${payload.plan_id}/log`, {
-        gym_day_exercise_id: payload.gym_day_exercise_id,
-        set_number: payload.set_number,
-        reps_done: payload.reps_done,
-      }),
+      api.post<{ rest_seconds: number | null }>(
+        `/gym/session/${payload.plan_id}/log`,
+        {
+          gym_day_exercise_id: payload.gym_day_exercise_id,
+          set_number: payload.set_number,
+          reps_done: payload.reps_done,
+          weight_kg: payload.weight_kg,
+        },
+      ),
     onSuccess: (resp) => {
       setRest(resp?.rest_seconds ?? 90);
+      setReps("");
       qc.invalidateQueries({ queryKey: ["gym-plan", day] });
     },
   });
 
   useEffect(() => {
     if (rest === null || rest <= 0) return undefined;
-    const timer = setInterval(() => setRest((r) => (r !== null && r > 0 ? r - 1 : 0)), 1000);
+    const timer = setInterval(
+      () => setRest((r) => (r !== null && r > 0 ? r - 1 : 0)),
+      1000,
+    );
     return () => clearInterval(timer);
   }, [rest]);
 
@@ -372,25 +392,40 @@ function GymPlan() {
       plan_id: p.plan_id,
       gym_day_exercise_id: ex.gym_day_exercise_id,
       set_number: ex.sets_done + 1,
-      reps_done: ex.reps_min,
+      reps_done: Number(reps),
+      weight_kg: weight ? Number(weight) : null,
     });
   }
 
   return (
     <Card>
+      {(generate.isError || confirm.isError || logOne.isError) && <ErrorNote />}
       <CardHeader
         eyebrow={t("training.gym_plan")}
-        title={p ? p.title : data?.template?.title ?? undefined}
+        title={p ? p.title : (data?.template?.title ?? undefined)}
         right={
           <div className="flex items-center gap-2">
-            {p && <Badge tone={p.status === "done" ? "positive" : "primary"}>{p.status}</Badge>}
+            {p && (
+              <Badge tone={p.status === "done" ? "positive" : "primary"}>
+                {p.status}
+              </Badge>
+            )}
             {!p && data?.template && (
-              <Button variant="ghost" onClick={() => generate.mutate()} disabled={generate.isPending} className="!h-7 !px-2.5 text-[12px]">
+              <Button
+                variant="ghost"
+                onClick={() => generate.mutate()}
+                disabled={generate.isPending}
+                className="!h-9 !px-2.5 text-[12px]"
+              >
                 {t("training.gym_generate")}
               </Button>
             )}
             {p?.status === "draft" && (
-              <Button onClick={() => confirm.mutate()} disabled={confirm.isPending} className="!h-7 !px-2.5 text-[12px]">
+              <Button
+                onClick={() => confirm.mutate()}
+                disabled={confirm.isPending}
+                className="!h-9 !px-2.5 text-[12px]"
+              >
                 {t("training.gym_confirm")}
               </Button>
             )}
@@ -400,7 +435,9 @@ function GymPlan() {
 
       {p?.adjustment_note && (
         <div className="mb-3 rounded-card bg-primarySoft px-3 py-2 text-[12px] text-ink2">
-          <span className="eyebrow mr-2 text-primaryText">{t("training.gym_advice")}</span>
+          <span className="eyebrow mr-2 text-primaryText">
+            {t("training.gym_advice")}
+          </span>
           {p.adjustment_note}
         </div>
       )}
@@ -414,8 +451,8 @@ function GymPlan() {
       ) : (
         <>
           {/* live session card — the gym-tracker companion to the Connect IQ app */}
-          {nextEx && (
-            <div className="mb-3 rounded-card border border-primary/40 bg-surface2 p-4">
+          {nextEx && p?.status !== "draft" && (
+            <div className="mb-6 bg-surface2 p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="eyebrow">
@@ -425,26 +462,61 @@ function GymPlan() {
                       total: p?.progress.sets_total ?? 0,
                     })}
                   </div>
-                  <div className="mt-0.5 text-[16px] font-semibold text-ink">{nextEx.name}</div>
+                  <div className="mt-0.5 text-[16px] font-semibold text-ink">
+                    {nextEx.name}
+                  </div>
                   <div className="num mt-0.5 text-[12px] text-muted">
-                    {t("training.sets_short", { done: nextEx.sets_done, total: nextEx.sets })} ×{" "}
-                    {nextEx.reps_min}
+                    {t("training.sets_short", {
+                      done: nextEx.sets_done,
+                      total: nextEx.sets,
+                    })}{" "}
+                    × {nextEx.reps_min}
                     {nextEx.reps_max ? `-${nextEx.reps_max}` : ""}
                   </div>
                 </div>
                 {rest !== null && rest > 0 && (
                   <div className="text-right">
                     <div className="eyebrow">{t("training.rest_timer")}</div>
-                    <div className="num text-[28px] font-bold text-primaryText">
-                      {Math.floor(rest / 60)}:{String(rest % 60).padStart(2, "0")}
+                    <div className="num text-[28px] font-medium text-ink">
+                      {Math.floor(rest / 60)}:
+                      {String(rest % 60).padStart(2, "0")}
                     </div>
                   </div>
                 )}
               </div>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-5 flex flex-wrap items-end gap-4">
+                <Input
+                  label={t("training.reps")}
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={reps}
+                  onChange={setReps}
+                  placeholder={String(nextEx.reps_min)}
+                  className="w-24"
+                />
+                <Input
+                  label={t("training.weight") + " (kg)"}
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.5}
+                  value={weight}
+                  onChange={setWeight}
+                  className="w-28"
+                />
                 <Button
                   onClick={() => logSet(nextEx)}
-                  disabled={logOne.isPending}
+                  disabled={
+                    logOne.isPending ||
+                    !reps ||
+                    (reps !== "" &&
+                      (!Number.isInteger(Number(reps)) ||
+                        Number(reps) < 1 ||
+                        Number(reps) > 100)) ||
+                    (weight !== "" &&
+                      (Number(weight) < 0 || Number(weight) > 500))
+                  }
                   className="!h-8 text-[12px]"
                 >
                   {t("training.log_set")}
@@ -454,11 +526,13 @@ function GymPlan() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="data-table">
               <thead>
                 <tr className="border-b border-hairline text-left">
                   <th className="eyebrow py-2 pr-3">#</th>
-                  <th className="eyebrow py-2 pr-3">{t("training.exercise")}</th>
+                  <th className="eyebrow py-2 pr-3">
+                    {t("training.exercise")}
+                  </th>
                   <th className="eyebrow py-2 pr-3">{t("training.sets")}</th>
                   <th className="eyebrow py-2 pr-3">{t("training.reps")}</th>
                   <th className="eyebrow py-2">{t("training.rest_timer")}</th>
@@ -469,7 +543,8 @@ function GymPlan() {
                   <tr
                     key={ex.gym_day_exercise_id}
                     className={`border-b border-hairline last:border-0 ${
-                      nextEx && ex.gym_day_exercise_id === nextEx.gym_day_exercise_id
+                      nextEx &&
+                      ex.gym_day_exercise_id === nextEx.gym_day_exercise_id
                         ? "bg-primarySoft/40"
                         : ""
                     }`}
@@ -484,7 +559,10 @@ function GymPlan() {
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      {t("training.sets_short", { done: ex.sets_done, total: ex.sets })}
+                      {t("training.sets_short", {
+                        done: ex.sets_done,
+                        total: ex.sets,
+                      })}
                     </td>
                     <td className="py-2 pr-3">
                       {ex.reps_min}
@@ -522,6 +600,8 @@ function Feedback() {
   });
   return (
     <div className="mt-4 border-t border-hairline pt-3">
+      {submit.isError && <ErrorNote />}
+      {submit.isSuccess && <Badge tone="positive">{t("settings.saved")}</Badge>}
       <div className="eyebrow mb-2">{t("training.feedback")}</div>
       <div className="flex gap-2">
         <input
@@ -530,7 +610,11 @@ function Feedback() {
           placeholder={t("training.feedback_placeholder")}
           className="h-9 flex-1 rounded-control border border-hairline bg-surface2 px-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
         />
-        <Button onClick={() => submit.mutate()} disabled={!text || submit.isPending} className="!h-9">
+        <Button
+          onClick={() => submit.mutate()}
+          disabled={!text || submit.isPending}
+          className="!h-9"
+        >
           {t("training.submit")}
         </Button>
       </div>
@@ -540,14 +624,26 @@ function Feedback() {
 
 export default function TrainingPage() {
   const { t } = useTranslation();
+  const [tab, setTab] = useState("plan");
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title={t("training.title")} subtitle={t("training.subtitle")} />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <EventCalendar />
-        <LoadChart />
-      </div>
-      <GymPlan />
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={t("training.title")}
+        subtitle={t("training.subtitle")}
+      />
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        label={t("training.title")}
+        options={[
+          { value: "plan", label: t("design.today_plan") },
+          { value: "calendar", label: t("training.calendar") },
+          { value: "load", label: t("design.training_load") },
+        ]}
+      />
+      {tab === "plan" && <GymPlan />}
+      {tab === "calendar" && <EventCalendar />}
+      {tab === "load" && <LoadChart />}
     </div>
   );
 }

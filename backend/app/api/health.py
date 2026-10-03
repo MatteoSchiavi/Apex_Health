@@ -1,5 +1,7 @@
 """Health endpoint (MASTER_SPEC §18, §21): public, checks DB + Redis connectivity."""
 
+import asyncio
+
 from fastapi import APIRouter, Response, status
 from redis.asyncio import Redis
 from sqlalchemy import text
@@ -13,15 +15,7 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health", response_model=HealthResponse)
 async def health(response: Response) -> HealthResponse:
-    db_ok = await _check_db()
-    redis: Redis = get_redis()
-    try:
-        await redis.ping()
-        redis_ok = True
-    except Exception:
-        redis_ok = False
-    finally:
-        await redis.aclose()
+    db_ok, redis_ok = await asyncio.gather(_check_db(), _check_redis())
 
     all_ok = db_ok and redis_ok
     if not all_ok:
@@ -33,10 +27,21 @@ async def health(response: Response) -> HealthResponse:
     )
 
 
+async def _check_redis() -> bool:
+    redis: Redis = get_redis()
+    try:
+        await asyncio.wait_for(redis.ping(), timeout=2)
+        return True
+    except Exception:
+        return False
+    finally:
+        await redis.aclose()
+
 async def _check_db() -> bool:
     try:
-        async with sessionmaker() as session:
-            await session.execute(text("SELECT 1"))
+        async with asyncio.timeout(2):
+            async with sessionmaker() as session:
+                await session.execute(text("SELECT 1"))
         return True
     except Exception:
         return False

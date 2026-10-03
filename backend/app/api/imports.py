@@ -22,7 +22,7 @@ async def upload_csv(
 ) -> dict:
     """Upload one CSV (workouts or daily metrics). Idempotent per file+row:
     re-uploading the same file imports nothing twice."""
-    content = await file.read()
+    content = await file.read(_MAX_BYTES + 1)
     if len(content) > _MAX_BYTES:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="file too large (20 MB cap)"

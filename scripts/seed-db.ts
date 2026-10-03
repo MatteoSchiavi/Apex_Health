@@ -8,6 +8,11 @@
 import { db } from "../src/lib/db";
 
 async function main() {
+  // Never mix fictional measurements into an existing real-account setup.
+  if (process.env.APEX_DEMO_MODE !== "true") {
+    console.log("Demo seeding skipped. Set APEX_DEMO_MODE=true only for a demo database.");
+    return;
+  }
   const email = process.env.GARMIN_EMAIL || "demo@apexhealth.app";
   let user = await db.user.findFirst({ where: { email } });
   if (!user) {
@@ -115,19 +120,7 @@ async function main() {
     console.log("Seeded 7 daily biometrics");
   }
 
-  // Seed integration
-  const existingInt = await db.integration.count({ where: { userId: user.id } });
-  if (existingInt === 0) {
-    await db.integration.create({
-      data: {
-        userId: user.id,
-        provider: "Garmin",
-        status: "active",
-        isMain: true,
-      },
-    });
-    console.log("Seeded Garmin integration");
-  }
+  // Sample data is not a connected device. Connections are created explicitly.
 
   console.log("Seed complete.");
   const counts = {

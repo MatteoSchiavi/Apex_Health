@@ -1,7 +1,7 @@
 """Activity-domain models (MASTER_SPEC §6.4): disciplines, activities,
 activity_source_links, activity_streams.
 
-Idempotency law (§17): syncs upsert keyed on (source, external_id) — that key
+Idempotency law (§17): syncs upsert keyed on (user_id, source, external_id) — that key
 lives on activity_source_links; the activity row it points at is updated in
 place, never duplicated.
 """
@@ -9,7 +9,10 @@ place, never duplicated.
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import (
+    BigInteger, Date, DateTime, ForeignKey, ForeignKeyConstraint,
+    Integer, Numeric, Text, UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +30,7 @@ class Discipline(Base):
 
 class Activity(Base):
     __tablename__ = "activities"
+    __table_args__ = (UniqueConstraint("id", "user_id", name="uq_activity_id_user"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     # F-07 audit: ForeignKey + index added for ORM↔DDL parity and to back the
@@ -78,9 +82,17 @@ class Activity(Base):
 
 class ActivitySourceLink(Base):
     __tablename__ = "activity_source_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "source", "external_id", name="uq_source_link_user_external"),
+        ForeignKeyConstraint(
+            ["activity_id", "user_id"], ["activities.id", "activities.user_id"],
+            name="fk_source_link_activity_owner",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), nullable=False)
+    activity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     external_id: Mapped[str] = mapped_column(Text, nullable=False)
     raw_ingest_id: Mapped[int | None] = mapped_column(

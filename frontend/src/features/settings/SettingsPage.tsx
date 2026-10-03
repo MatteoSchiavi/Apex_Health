@@ -12,6 +12,8 @@
  */
 
 import { Fragment, type FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Tabs } from "../../components/Tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
@@ -38,8 +40,10 @@ function ProfileSection({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [name, setName] = useState(me.name);
   const [dob, setDob] = useState(me.dob ?? "");
-  const [sex, setSex] = useState(me.sex ?? "other");
-  const [height, setHeight] = useState(me.height_cm ? String(me.height_cm) : "");
+  const [sex, setSex] = useState(me.sex ?? "");
+  const [height, setHeight] = useState(
+    me.height_cm ? String(me.height_cm) : "",
+  );
   const [timezone, setTimezone] = useState(me.timezone);
   const [saved, setSaved] = useState(false);
 
@@ -55,7 +59,7 @@ function ProfileSection({ me }: { me: Me }) {
       api.put<Me>("/me", {
         name,
         dob: dob || null,
-        sex,
+        sex: sex || null,
         height_cm: height ? Number(height) : null,
         timezone,
       }),
@@ -69,9 +73,12 @@ function ProfileSection({ me }: { me: Me }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={t("settings.title")}
         title={t("settings.profile")}
-        right={saved ? <Badge tone="positive">{t("settings.saved")}</Badge> : undefined}
+        right={
+          saved ? (
+            <Badge tone="positive">{t("settings.saved")}</Badge>
+          ) : undefined
+        }
       />
       <form
         onSubmit={(e: FormEvent) => {
@@ -80,13 +87,24 @@ function ProfileSection({ me }: { me: Me }) {
         }}
         className="grid grid-cols-1 gap-3 md:grid-cols-2"
       >
-        <Input label={t("settings.name")} value={name} onChange={setName} required />
-        <Input label={t("settings.dob")} value={dob} onChange={setDob} type="date" />
+        <Input
+          label={t("settings.name")}
+          value={name}
+          onChange={setName}
+          required
+        />
+        <Input
+          label={t("settings.dob")}
+          value={dob}
+          onChange={setDob}
+          type="date"
+        />
         <Select
           label={t("settings.sex")}
           value={sex}
           onChange={setSex}
           options={[
+            { value: "", label: t("design.not_specified") },
             { value: "male", label: t("settings.male") },
             { value: "female", label: t("settings.female") },
             { value: "other", label: t("settings.other") },
@@ -113,7 +131,11 @@ function ProfileSection({ me }: { me: Me }) {
           </Button>
         </div>
       </form>
-      {save.isError && <div className="mt-3"><ErrorNote /></div>}
+      {save.isError && (
+        <div className="mt-3">
+          <ErrorNote />
+        </div>
+      )}
     </Card>
   );
 }
@@ -128,19 +150,31 @@ function AppearanceSection() {
   const setLocale = useUi((s) => s.setLocale);
   const me = useUi((s) => s.me);
 
+  const preferenceSaving = useUi((s) => s.preferenceSaving);
+  const qc = useQueryClient();
   const saveUnits = useMutation({
     mutationFn: (units: "metric" | "imperial") => api.put<Me>("/me", { units }),
-    onSuccess: (next) => useUi.getState().setMe({ ...(me as Me), ...next }),
+    onMutate: () =>
+      useUi.setState({ preferenceSaving: true, preferenceError: false }),
+    onSuccess: (next) => {
+      useUi.getState().setMe(next);
+      qc.setQueryData(["me"], next);
+    },
+    onSettled: () => useUi.setState({ preferenceSaving: false }),
   });
   const units = me?.units ?? "metric";
 
   return (
     <Card>
-      <CardHeader eyebrow={t("settings.title")} title={t("settings.theme_section")} />
+      <CardHeader
+        eyebrow={t("settings.title")}
+        title={t("settings.theme_section")}
+      />
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink2">{t("theme.protocol")}</span>
           <Segmented
+            disabled={preferenceSaving}
             value={theme}
             onChange={(v) => setTheme(v)}
             options={[
@@ -150,8 +184,11 @@ function AppearanceSection() {
           />
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[13px] text-ink2">{t("settings.language")}</span>
+          <span className="text-[13px] text-ink2">
+            {t("settings.language")}
+          </span>
           <Segmented
+            disabled={preferenceSaving}
             value={locale}
             onChange={(v) => setLocale(v)}
             options={[
@@ -163,6 +200,7 @@ function AppearanceSection() {
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] text-ink2">{t("settings.units")}</span>
           <Segmented
+            disabled={preferenceSaving}
             value={units}
             onChange={(v) => saveUnits.mutate(v)}
             options={[
@@ -172,6 +210,7 @@ function AppearanceSection() {
           />
         </div>
       </div>
+      {saveUnits.isError && <ErrorNote />}
     </Card>
   );
 }
@@ -179,7 +218,8 @@ function AppearanceSection() {
 /* ------------------------------------------------------------------ devices */
 
 const PROVIDERS: { key: string; name: string; connectable: boolean }[] = [
-  { key: "garmin", name: "Garmin Connect", connectable: false },
+  { key: "garmin", name: "Garmin Connect", connectable: true },
+  { key: "technogym", name: "Technogym", connectable: true },
   { key: "whoop", name: "Whoop", connectable: true },
   { key: "strava", name: "Strava", connectable: true },
   { key: "oura", name: "Oura", connectable: true },
@@ -206,9 +246,7 @@ function GarminConnectForm({ onDone }: { onDone: () => void }) {
     mutationFn: () =>
       api.post<{ connected: boolean; mfa_required: boolean }>(
         "/settings/integrations/garmin/connect",
-        mfaStep
-          ? { email, password, mfa_code: mfaCode }
-          : { email, password },
+        mfaStep ? { email, password, mfa_code: mfaCode } : { email, password },
       ),
     onSuccess: (res) => {
       if (res.mfa_required) {
@@ -231,7 +269,7 @@ function GarminConnectForm({ onDone }: { onDone: () => void }) {
         e.preventDefault();
         connect.mutate();
       }}
-      className="mt-2 rounded-card border border-hairline bg-surface2 p-3"
+      className="mt-2 bg-surface2 p-3"
     >
       <p className="mb-3 text-[12px] leading-relaxed text-muted">
         {t("settings.garmin_connect_hint")}
@@ -272,10 +310,16 @@ function GarminConnectForm({ onDone }: { onDone: () => void }) {
               : t("settings.connect")}
         </Button>
         {mfaStep && (
-          <span className="text-[11px] text-warningText">{t("settings.mfa_sent")}</span>
+          <span className="text-[12px] text-warningText">
+            {t("settings.mfa_sent")}
+          </span>
         )}
       </div>
-      {error && <div className="mt-2"><ErrorNote message={error} /></div>}
+      {error && (
+        <div className="mt-2">
+          <ErrorNote message={error} />
+        </div>
+      )}
     </form>
   );
 }
@@ -298,45 +342,94 @@ function DevicesSection() {
 
   const connect = useMutation({
     mutationFn: (provider: string) =>
-      api.post<{ authorize_url: string }>(`/settings/integrations/${provider}/authorize`),
+      api.post<{ authorize_url: string }>(
+        `/settings/integrations/${provider}/authorize`,
+      ),
     onSuccess: ({ authorize_url }) => {
       setFlowError(null);
-      window.open(authorize_url, "_blank", "noopener");
+      window.location.assign(authorize_url);
     },
-    onError: (err) => setFlowError(err instanceof Error ? err.message : String(err)),
+    onError: (err) =>
+      setFlowError(err instanceof Error ? err.message : String(err)),
   });
 
+  const [job, setJob] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("apex.sync." + useUi.getState().me?.user_id);
+    } catch {
+      return null;
+    }
+  });
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const syncStatus = useQuery({
+    queryKey: ["sync-status", job],
+    queryFn: () =>
+      api.get<{
+        state: string;
+        completed: boolean;
+        result?: { status: string };
+        error?: string;
+      }>("/settings/integrations/garmin/sync/" + job),
+    enabled: !!job,
+    refetchInterval: (query) =>
+      query.state.data?.completed || query.state.status === "error"
+        ? false
+        : 2000,
+    retry: false,
+  });
   const syncNow = useMutation({
     mutationFn: () =>
-      api.post<{
-        enqueued?: boolean;
-        completed?: boolean;
-        result?: { status?: string };
-        note?: string;
-        error?: string;
-      }>("/settings/integrations/garmin/sync"),
+      api.post<{ job_id: string; enqueued: boolean; completed: boolean }>(
+        "/settings/integrations/garmin/sync",
+      ),
     onSuccess: (res) => {
-      // Invalidate ALL data queries so the fresh sync is reflected across
-      // every surface that reads from the backend cache.
-      qc.invalidateQueries({ queryKey: ["devices"] });
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["sleep"] });
-      qc.invalidateQueries({ queryKey: ["activities"] });
-      qc.invalidateQueries({ queryKey: ["metrics"] });
-      qc.invalidateQueries({ queryKey: ["metrics-catalog"] });
-
-      // User-facing feedback for the four possible sync outcomes.
-      if (res.completed && res.result?.status === "ok") {
-        setFlowError(null);
-      } else if (res.completed && res.result?.status === "failed") {
-        setFlowError(
-          "Sync failed — Garmin credentials may have expired. Try reconnecting.",
-        );
-      } else if (res.error) {
-        setFlowError(res.error);
-      }
+      setJob(res.job_id);
+      setSyncMessage(t("design.sync_queued"));
+      setFlowError(null);
     },
+    onError: (err) => setFlowError(err.message),
   });
+  useEffect(() => {
+    try {
+      const key = "apex.sync." + useUi.getState().me?.user_id;
+      if (job) localStorage.setItem(key, job);
+      else localStorage.removeItem(key);
+    } catch {
+      /* unavailable */
+    }
+  }, [job]);
+  useEffect(() => {
+    const result = syncStatus.data;
+    if (!result?.completed) return;
+    if (result.state === "SUCCESS" && result.result?.status === "ok")
+      setSyncMessage(t("design.sync_done"));
+    else if (result.state === "SUCCESS" && result.result?.status === "partial")
+      setSyncMessage(t("design.sync_partial"));
+    else {
+      setSyncMessage(null);
+      setFlowError(result.error ?? t("design.sync_failed"));
+    }
+    // A completed job makes fresh data available; queued work does not.
+    for (const key of [
+      "devices",
+      "overview",
+      "sleep",
+      "sleep-stages",
+      "activities",
+      "activity",
+      "streams",
+      "metric",
+    ])
+      qc.invalidateQueries({ queryKey: [key] });
+    setJob(null);
+  }, [syncStatus.data, qc, t]);
+  useEffect(() => {
+    if (syncStatus.isError) {
+      setFlowError(t("design.sync_status_failed"));
+      setJob(null);
+      setSyncMessage(null);
+    }
+  }, [syncStatus.isError, t]);
 
   const byProvider = new Map((devices.data ?? []).map((d) => [d.provider, d]));
   const garminConnected = byProvider.get("garmin")?.status === "active";
@@ -344,11 +437,10 @@ function DevicesSection() {
   return (
     <Card>
       <CardHeader
-        eyebrow={t("settings.title")}
         title={t("settings.devices")}
         right={
           devices.isLoading ? undefined : (
-            <span className="num text-[11px] text-muted">
+            <span className="num text-[12px] text-muted">
               {devices.data?.length ?? 0}
             </span>
           )
@@ -366,87 +458,102 @@ function DevicesSection() {
             const connected = d?.status === "active";
             return (
               <Fragment key={key}>
-              <div className="flex items-center justify-between gap-3 border-b border-hairline py-3 last:border-0">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-medium text-ink">{name}</span>
-                    {d?.is_main && <Badge tone="primary">{t("settings.main_device")}</Badge>}
-                    {connected ? (
-                      <Badge tone="positive">{t("settings.connected")}</Badge>
-                    ) : d ? (
-                      <Badge tone="warning">{d.status}</Badge>
-                    ) : null}
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-hairline py-5 last:border-0">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-medium text-ink">
+                        {name}
+                      </span>
+                      {d?.is_main && (
+                        <Badge tone="primary">
+                          {t("settings.main_device")}
+                        </Badge>
+                      )}
+                      {connected ? (
+                        <Badge tone="positive">{t("settings.connected")}</Badge>
+                      ) : d ? (
+                        <Badge tone="warning">{d.status}</Badge>
+                      ) : null}
+                    </div>
+                    <div className="num mt-0.5 text-[12px] text-muted">
+                      {connected
+                        ? `${t("settings.connected")} · ${
+                            d?.last_synced_at
+                              ? new Date(d.last_synced_at).toLocaleString()
+                              : t("settings.never")
+                          }`
+                        : key === "garmin"
+                          ? t("settings.garmin_not_connected")
+                          : t("settings.provider_setup")}
+                    </div>
                   </div>
-                  <div className="num mt-0.5 text-[11px] text-muted">
-                    {connected
-                      ? `${t("settings.connected")} · ${
-                          d?.last_synced_at
-                            ? new Date(d.last_synced_at).toLocaleString()
-                            : t("settings.never")
-                        }`
-                      : key === "garmin"
-                        ? t("settings.garmin_not_connected")
-                        : t("settings.provider_setup")}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {connected && !d?.is_main && (
+                      <Button
+                        variant="ghost"
+                        disabled={setMain.isPending}
+                        onClick={() => d && setMain.mutate(d.integration_id)}
+                      >
+                        {t("settings.set_main")}
+                      </Button>
+                    )}
+                    {key === "garmin" && connected && (
+                      <Button
+                        variant="ghost"
+                        disabled={syncNow.isPending || !!job}
+                        onClick={() => syncNow.mutate()}
+                      >
+                        {job
+                          ? t("design.sync_running")
+                          : t("settings.sync_now")}
+                      </Button>
+                    )}
+                    {key === "garmin" && !connected && (
+                      <Button
+                        variant={garminOpen ? "ghost" : "primary"}
+                        onClick={() => setGarminOpen((v) => !v)}
+                      >
+                        {garminOpen ? t("common.close") : t("settings.connect")}
+                      </Button>
+                    )}
+                    {key !== "garmin" && !connected && (
+                      <Button
+                        variant="ghost"
+                        disabled={connect.isPending}
+                        onClick={() => connect.mutate(key)}
+                        icon={<ExternalLink size={12} />}
+                      >
+                        {t("settings.connect")}
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {connected && !d?.is_main && (
-                    <Button
-                      variant="ghost"
-                      disabled={setMain.isPending}
-                      onClick={() => d && setMain.mutate(d.integration_id)}
-                    >
-                      {t("settings.set_main")}
-                    </Button>
-                  )}
-                  {key === "garmin" && connected && (
-                    <Button
-                      variant="ghost"
-                      disabled={syncNow.isPending}
-                      onClick={() => syncNow.mutate()}
-                    >
-                      {t("settings.sync_now")}
-                    </Button>
-                  )}
-                  {key === "garmin" && !connected && (
-                    <Button
-                      variant={garminOpen ? "ghost" : "primary"}
-                      onClick={() => setGarminOpen((v) => !v)}
-                    >
-                      {garminOpen ? t("common.close") : t("settings.connect")}
-                    </Button>
-                  )}
-                  {key !== "garmin" && !connected && (
-                    <Button
-                      variant="ghost"
-                      disabled={connect.isPending}
-                      onClick={() => connect.mutate(key)}
-                      icon={<ExternalLink size={12} />}
-                    >
-                      {t("settings.connect")}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              {key === "garmin" && garminOpen && !garminConnected ? (
-                <GarminConnectForm
-                  onDone={() => {
-                    setGarminOpen(false);
-                    qc.invalidateQueries({ queryKey: ["devices"] });
-                  }}
-                />
-              ) : null}
+                {key === "garmin" && garminOpen && !garminConnected ? (
+                  <GarminConnectForm
+                    onDone={() => {
+                      setGarminOpen(false);
+                      qc.invalidateQueries({ queryKey: ["devices"] });
+                    }}
+                  />
+                ) : null}
               </Fragment>
             );
           })}
         </div>
       )}
+      {syncMessage && (
+        <p role="status" className="mt-4 text-[13px] text-muted">
+          {syncMessage}
+        </p>
+      )}
+      {setMain.isError && <ErrorNote />}
+      {devices.isError && <ErrorNote />}
       {flowError && (
         <div className="mt-3">
           <ErrorNote message={flowError} />
         </div>
       )}
-      <p className="mt-4 border-t border-hairline pt-3 text-[11px] leading-relaxed text-faint">
+      <p className="mt-4 border-t border-hairline pt-3 text-[12px] leading-relaxed text-faint">
         {t("settings.tokens_note")}
       </p>
     </Card>
@@ -463,7 +570,10 @@ function SecuritySection() {
 
   const change = useMutation({
     mutationFn: () =>
-      api.put("/me/password", { current_password: current, new_password: next }),
+      api.put("/me/password", {
+        current_password: current,
+        new_password: next,
+      }),
     onSuccess: () => {
       setDone(true);
       setCurrent("");
@@ -473,7 +583,10 @@ function SecuritySection() {
 
   return (
     <Card>
-      <CardHeader eyebrow={t("settings.account")} title={t("settings.password")} />
+      <CardHeader
+        eyebrow={t("settings.account")}
+        title={t("settings.password")}
+      />
       <form
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
@@ -529,7 +642,7 @@ function InviteCode({ code }: { code: string }) {
   return (
     <button
       type="button"
-      className="mono inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface2 px-2 py-1 text-[11px] text-ink2 hover:bg-surface3"
+      className="mono inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface2 px-2 py-1 text-[12px] text-ink2 hover:bg-surface3"
       onClick={() => {
         navigator.clipboard?.writeText(code).then(
           () => {
@@ -541,7 +654,11 @@ function InviteCode({ code }: { code: string }) {
       }}
       title={t("settings.copy")}
     >
-      {copied ? <Check size={11} className="text-positiveText" /> : <Copy size={11} />}
+      {copied ? (
+        <Check size={11} className="text-positiveText" />
+      ) : (
+        <Copy size={11} />
+      )}
       {code}
     </button>
   );
@@ -566,12 +683,11 @@ function InvitesSection() {
   return (
     <Card>
       <CardHeader
-        eyebrow={t("settings.owner")}
         title={t("settings.invites")}
         right={
           <Button
             variant="ghost"
-            className="!h-7 !px-2.5 text-[12px]"
+            className="!h-9 !px-2.5 text-[12px]"
             disabled={mint.isPending}
             onClick={() => mint.mutate()}
             icon={<Plus size={12} />}
@@ -580,7 +696,9 @@ function InvitesSection() {
           </Button>
         }
       />
-      <p className="mb-3 text-[12px] leading-relaxed text-muted">{t("settings.invites_hint")}</p>
+      <p className="mb-3 text-[12px] leading-relaxed text-muted">
+        {t("settings.invites_hint")}
+      </p>
       {invites.isLoading ? (
         <Loading />
       ) : !invites.data || invites.data.length === 0 ? (
@@ -601,15 +719,16 @@ function InvitesSection() {
                 ) : (
                   <Badge tone="primary">{t("settings.invite_active")}</Badge>
                 )}
-                <span className="num text-[11px] text-muted">
-                  {t("settings.expires")} {new Date(inv.expires_at).toLocaleDateString()}
+                <span className="num text-[12px] text-muted">
+                  {t("settings.expires")}{" "}
+                  {new Date(inv.expires_at).toLocaleDateString()}
                 </span>
               </div>
               {!inv.used_by && !inv.expired && (
                 <button
                   type="button"
                   aria-label={t("settings.revoke")}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-muted hover:bg-alertSoft hover:text-alertText"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-muted hover:bg-alertSoft hover:text-alertText"
                   onClick={() => revoke.mutate(inv.id)}
                 >
                   <Trash2 size={13} />
@@ -619,7 +738,7 @@ function InvitesSection() {
           ))}
         </div>
       )}
-      {revoke.isError && (
+      {(revoke.isError || mint.isError || invites.isError) && (
         <div className="mt-3">
           <ErrorNote />
         </div>
@@ -646,11 +765,15 @@ function AccountSection() {
         </div>
         <div>
           <div className="eyebrow mb-1">{t("settings.ai_tier")}</div>
-          <div className="text-[13px] font-medium text-ink">{me.ai_access_tier}</div>
+          <div className="text-[13px] font-medium text-ink">
+            {me.ai_access_tier}
+          </div>
         </div>
         <div>
           <div className="eyebrow mb-1">{t("settings.email")}</div>
-          <div className="text-[13px] font-medium text-ink truncate">{me.email}</div>
+          <div className="text-[13px] font-medium text-ink truncate">
+            {me.email}
+          </div>
         </div>
       </div>
     </Card>
@@ -662,23 +785,43 @@ function AccountSection() {
 export default function SettingsPage() {
   const { t } = useTranslation();
   const me = useUi((s) => s.me);
-
-  // The session effect populates the ui store AFTER first paint; until me
-  // exists the profile section has nothing to initialize its fields from.
+  const [params, setParams] = useSearchParams();
+  const options = [
+    { value: "profile", label: t("settings.profile") },
+    { value: "appearance", label: t("settings.theme_section") },
+    { value: "devices", label: t("settings.devices") },
+    { value: "account", label: t("settings.account") },
+    ...(me?.role === "owner"
+      ? [{ value: "invites", label: t("settings.invites") }]
+      : []),
+  ];
+  const tab = options.some((o) => o.value === params.get("tab"))
+    ? params.get("tab")!
+    : "profile";
   if (!me) return <Loading />;
-
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title={t("settings.title")} subtitle={t("settings.page_subtitle")} />
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <ProfileSection me={me} />
-        <AppearanceSection />
-        <DevicesSection />
-        <div className="flex flex-col gap-4">
-          <AccountSection />
-          <SecuritySection />
-          {me.role === "owner" && <InvitesSection />}
-        </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={t("settings.title")}
+        subtitle={t("settings.page_subtitle")}
+      />
+      <Tabs
+        value={tab}
+        onChange={(v) => setParams({ tab: v })}
+        options={options}
+        label={t("settings.title")}
+      />
+      <div className="max-w-4xl">
+        {tab === "profile" && <ProfileSection me={me} />}
+        {tab === "appearance" && <AppearanceSection />}
+        {tab === "devices" && <DevicesSection />}
+        {tab === "account" && (
+          <div className="flex flex-col gap-6">
+            <AccountSection />
+            <SecuritySection />
+          </div>
+        )}
+        {tab === "invites" && me.role === "owner" && <InvitesSection />}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.medical import SupplementProtocol
 from app.models.training import PlannedSession, TrainingPlan
+from app.models.user import User
 
 
 async def get_training_plan(
@@ -156,7 +157,9 @@ async def create_plan_draft(
 async def confirm_plan_draft(session: AsyncSession, user_id: int, plan_id: int) -> str:
     """✅ Confirm (Telegram inline button, §8.5): draft → confirmed. Scoped to
     the linked user — a foreign plan id is just 'not found'."""
-    plan = await session.get(TrainingPlan, plan_id)
+    plan = await session.scalar(select(TrainingPlan).where(
+        TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id,
+    ).with_for_update())
     if plan is None or plan.user_id != user_id:
         return "not_found"
     if plan.status != "draft":
@@ -168,7 +171,9 @@ async def confirm_plan_draft(session: AsyncSession, user_id: int, plan_id: int) 
 async def reject_plan_draft(session: AsyncSession, user_id: int, plan_id: int) -> str:
     """❌ Reject (§8.5): the draft has no 'rejected' status in §6.4's CHECK,
     so rejection deletes the draft and its sessions."""
-    plan = await session.get(TrainingPlan, plan_id)
+    plan = await session.scalar(select(TrainingPlan).where(
+        TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id,
+    ).with_for_update())
     if plan is None or plan.user_id != user_id:
         return "not_found"
     if plan.status != "draft":
@@ -205,7 +210,12 @@ async def create_supplement_draft(
 async def confirm_supplement_draft(session: AsyncSession, user_id: int, protocol_id: int) -> str:
     """✅ Confirm: activate the proposed protocol and end any same-name active
     protocol the day before (replacement semantics)."""
-    protocol = await session.get(SupplementProtocol, protocol_id)
+    # Serialize same-account replacements even when they target different
+    # draft rows, so two confirmations cannot leave both protocols active.
+    await session.scalar(select(User.id).where(User.id == user_id).with_for_update())
+    protocol = await session.scalar(select(SupplementProtocol).where(
+        SupplementProtocol.id == protocol_id, SupplementProtocol.user_id == user_id,
+    ).with_for_update())
     if protocol is None or protocol.user_id != user_id:
         return "not_found"
     if protocol.active:
@@ -222,7 +232,7 @@ async def confirm_supplement_draft(session: AsyncSession, user_id: int, protocol
     ).all()
     for old in superseded:
         old.active = False
-        old.end_date = protocol.start_date or date.today() - timedelta(days=1)
+        old.end_date = (protocol.start_date or date.today()) - timedelta(days=1)
     protocol.active = True
     if protocol.start_date is None:
         protocol.start_date = date.today()
@@ -230,7 +240,9 @@ async def confirm_supplement_draft(session: AsyncSession, user_id: int, protocol
 
 
 async def reject_supplement_draft(session: AsyncSession, user_id: int, protocol_id: int) -> str:
-    protocol = await session.get(SupplementProtocol, protocol_id)
+    protocol = await session.scalar(select(SupplementProtocol).where(
+        SupplementProtocol.id == protocol_id, SupplementProtocol.user_id == user_id,
+    ).with_for_update())
     if protocol is None or protocol.user_id != user_id:
         return "not_found"
     if protocol.active:

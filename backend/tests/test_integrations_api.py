@@ -19,8 +19,8 @@ from sqlalchemy import select
 
 from app.core.encryption import decrypt_json
 from app.models.integration import Integration
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "technogym"
@@ -55,7 +55,7 @@ def fake_flow_settings(monkeypatch):
 
 async def _login(client: AsyncClient) -> None:
     login = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert login.status_code == 200
 
@@ -80,14 +80,14 @@ async def test_authorize_endpoint_requires_configured_client(
     monkeypatch.setattr(
         "app.connectors.technogym.flow.get_settings", lambda: stripped
     )
-    resp = await client.post("/settings/integrations/technogym/authorize", headers=CSRF)
+    resp = await client.post("/settings/integrations/technogym/authorize", headers=csrf_headers(client))
     assert resp.status_code == 400
     assert "developer.technogym.com" in resp.json()["detail"]  # §24 pointer
 
 
 async def test_authorize_mints_single_use_state_and_url(client: AsyncClient):
     await _login(client)
-    resp = await client.post("/settings/integrations/technogym/authorize", headers=CSRF)
+    resp = await client.post("/settings/integrations/technogym/authorize", headers=csrf_headers(client))
     assert resp.status_code == 200
     body = resp.json()
 
@@ -104,7 +104,7 @@ async def test_manual_connection_flow_completes_and_stores_encrypted_tokens(
     authorize -> provider callback -> tokens stored app-layer-encrypted."""
     await _login(client)
     minted = (
-        await client.post("/settings/integrations/technogym/authorize", headers=CSRF)
+        await client.post("/settings/integrations/technogym/authorize", headers=csrf_headers(client))
     ).json()
 
     captured: list[httpx.Request] = []
@@ -177,7 +177,7 @@ async def test_callback_requires_code_and_state(client: AsyncClient):
 async def test_state_is_single_use(client: AsyncClient, db_session, monkeypatch):
     await _login(client)
     minted = (
-        await client.post("/settings/integrations/technogym/authorize", headers=CSRF)
+        await client.post("/settings/integrations/technogym/authorize", headers=csrf_headers(client))
     ).json()
 
     captured: list[httpx.Request] = []

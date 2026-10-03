@@ -1,29 +1,15 @@
-"""CSRF middleware (MASTER_SPEC §22.3) + reverse-proxy header handling (§15).
+"""Session-bound signed double-submit CSRF and trusted proxy handling.
 
-F-04 audit: TRUE double-submit CSRF is now enforced. The server issues a
-non-HttpOnly ``csrf_token`` cookie (per session, signed with SESSION_SECRET)
-and the SPA reads it and sends the same value back in the ``X-CSRF-Token``
-header on every unsafe method. The middleware verifies the two match with
-``hmac.compare_digest`` — a cross-origin attacker can neither read the cookie
-(SameSite=Lax + cross-origin cookie blocking) nor forge the matching header.
-
-This replaces the previous presence-only check, which the SPA satisfied with
-a self-minted token and which therefore added zero origin-proof beyond
-SameSite=Lax. The defense-in-depth claim in §22.3 is now real.
-
-Only /health is exempt, matching §17's reachable-without-session rule
-(GET /health is safe anyway — the exemption is belt-and-braces).
-
-ProxyHeadersMiddleware: for the Tailscale Funnel / Caddy deployment (§15,
-infra/tailscale-funnel-setup.md) the TLS terminator forwards the request to
-the app over plain HTTP and records the real scheme/client in
-X-Forwarded-*. When TRUST_PROXY_HEADERS=true the app adopts those values —
-but only from loopback connections (the funnel/serve proxy runs on the same
-host), so a random client cannot lie to us about its own address.
+Login and invite redemption mint a new CSRF cookie. Bootstrap requests and
+all other writes reject browser cross-origin requests. Authenticated writes
+also require a matching signed token bound to the current session cookie.
 """
-
+import hashlib
 import hmac
 import secrets
+from urllib.parse import urlsplit
+
+from app.core.config import get_settings
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -31,59 +17,72 @@ from starlette.responses import JSONResponse, Response
 
 CSRF_HEADER = "X-CSRF-Token"
 CSRF_COOKIE = "csrf_token"
-# F-04 audit: auth bootstrap endpoints are CSRF-exempt because they MINT
-# the CSRF cookie — they cannot possibly send a matching cookie+header
-# before the cookie exists. Login/redeem are protected by argon2id +
-# lockout + invite-code single-use instead. All OTHER state-changing
-# endpoints (the entire app surface behind a session) require the matching
-# cookie+header pair.
-_EXEMPT_PATHS = {"/health", "/auth/login", "/auth/invite/redeem", "/auth/logout"}
+_EXEMPT_PATHS = {"/auth/login", "/auth/invite/redeem"}
 
 
-def _csrf_cookie_value(token: str) -> str:
-    """Format the CSRF cookie value (the token itself — double-submit).
+def _signature(nonce: str, session_token: str) -> str:
+    message = f"{session_token}:{nonce}".encode()
+    return hmac.new(get_settings().session_secret.encode(), message, hashlib.sha256).hexdigest()
 
-    The token is 256-bit random; no signing is needed because the
-    double-submit invariant (cookie == header) is the auth check. An
-    attacker who can read the cookie can already send the matching header,
-    but SameSite=Lax + cross-origin cookie blocking prevents that read.
-    """
-    return token
+
+def mint_csrf_token(session_token: str = "") -> str:
+    nonce = secrets.token_urlsafe(32)
+    return f"{nonce}.{_signature(nonce, session_token)}"
+
+
+def valid_csrf_token(token: str, session_token: str) -> bool:
+    try:
+        nonce, signature = token.split(".")
+        return len(nonce) == 43 and hmac.compare_digest(
+            signature.encode(), _signature(nonce, session_token).encode()
+        )
+    except (ValueError, UnicodeError):
+        return False
+
+
+def _same_origin(request: Request) -> bool:
+    # Non-browser API clients may omit Origin; browsers' explicit cross-site
+    # metadata must never bypass the check, including bootstrap endpoints.
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        return False
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    try:
+        parsed = urlsplit(origin)
+        expected = request.url
+        return (
+            parsed.scheme in {"http", "https"}
+            and parsed.scheme == expected.scheme
+            and parsed.hostname == expected.hostname
+            and (parsed.port or (443 if parsed.scheme == "https" else 80))
+            == (expected.port or (443 if expected.scheme == "https" else 80))
+            and not parsed.username and not parsed.password
+            and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment
+        )
+    except ValueError:
+        return False
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    """F-04 audit: true double-submit CSRF.
-
-    On every unsafe method (POST/PUT/PATCH/DELETE) the middleware checks
-    that the ``X-CSRF-Token`` header value matches the ``csrf_token`` cookie
-    value with ``hmac.compare_digest``. Mismatches (or missing either side)
-    return 403.
-
-    The cookie is set lazily on the first response after a successful login
-    (the auth endpoint sets it explicitly); if no cookie is present on an
-    unsafe request, the request is rejected. The SPA reads the cookie and
-    sends the same value back in the header (see frontend/src/app/api.ts).
-    """
-
     async def dispatch(self, request: Request, call_next):
-        if request.method in {"GET", "HEAD", "OPTIONS"} or request.url.path in _EXEMPT_PATHS:
-            response = await call_next(request)
-            return response
-        header_value = request.headers.get(CSRF_HEADER)
-        cookie_value = request.cookies.get(CSRF_COOKIE)
-        if not header_value or not cookie_value or not hmac.compare_digest(
-            str(header_value), str(cookie_value)
-        ):
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            return await call_next(request)
+        if not _same_origin(request):
+            return JSONResponse(status_code=403, content={"detail": "Cross-origin request rejected."})
+        if request.url.path in _EXEMPT_PATHS:
+            return await call_next(request)
+        header = request.headers.get(CSRF_HEADER, "")
+        cookie = request.cookies.get(CSRF_COOKIE, "")
+        session_token = request.cookies.get("hcc_session", "")
+        if not header or not cookie or not hmac.compare_digest(
+            header.encode(), cookie.encode()
+        ) or not valid_csrf_token(cookie, session_token):
             return JSONResponse(
                 status_code=403,
                 content={"detail": "CSRF token mismatch — refresh the page and retry."},
             )
         return await call_next(request)
-
-
-def mint_csrf_token() -> str:
-    """Mint a fresh CSRF token for double-submit (called at login)."""
-    return secrets.token_urlsafe(32)
 
 
 def set_csrf_cookie(response: Response, token: str, *, secure: bool = True) -> None:
@@ -117,14 +116,15 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
     building see the truth through the tunnel.
     """
 
-    def __init__(self, app, trusted: bool = False):
+    def __init__(self, app, trusted: bool = False, trusted_ips: str = "127.0.0.1,::1"):
         super().__init__(app)
         self._trusted = trusted
+        self._trusted_ips = {ip.strip() for ip in trusted_ips.split(",") if ip.strip()}
 
     async def dispatch(self, request: Request, call_next):
         if self._trusted:
             client = request.client
-            peer_is_local = client is not None and client.host in {"127.0.0.1", "::1"}
+            peer_is_local = client is not None and client.host in self._trusted_ips
             if peer_is_local:
                 proto = request.headers.get("x-forwarded-proto")
                 if proto in {"https", "http"}:

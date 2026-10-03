@@ -1,21 +1,12 @@
-/**
- * Metric detail — the generic per-metric telemetry page (mockup
- * "heart_rate_telemetry_analysis" pattern): hero stat + delta, range
- * segmented control, full trend chart with range band, stats table.
- *
- * The route param is the metric KEY (same catalog as GET /metrics), so the
- * page renders itself for any metric — no per-metric bespoke code.
- */
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
 import {
+  Badge,
   Card,
-  CardHeader,
-  DeltaChip,
   Empty,
   ErrorNote,
   Loading,
@@ -24,177 +15,142 @@ import {
   StatPod,
   fmtNum,
 } from "../../components/kit";
-import { EChart, useChartTheme } from "../../components/charts/EChart";
-
-const LABEL_KEYS: Record<string, string> = {
-  readiness: "biometrics.readiness_metric",
-  recovery: "biometrics.recovery_metric",
-  strain: "biometrics.strain_metric",
-  sleep_score: "biometrics.readiness_metric",
-  acwr: "biometrics.acwr_metric",
-  acute_load: "biometrics.acute_load_metric",
-  chronic_load: "biometrics.chronic_load_metric",
-  hrv_deviation: "biometrics.hrv",
-  illness_risk: "biometrics.illness_risk",
-  injury_risk: "biometrics.injury_risk",
-  resting_hr: "biometrics.resting_hr",
-  weight: "biometrics.weight",
-  body_fat: "biometrics.body_fat",
-  vo2max: "biometrics.vo2max",
-  steps: "biometrics.steps",
-  floors: "biometrics.floors",
-  spo2: "biometrics.spo2",
-  hydration: "biometrics.hydration",
-  sleep_duration: "biometrics.sleep_duration",
-  sleep_deep: "biometrics.sleep_deep_metric",
-  sleep_rem: "biometrics.sleep_rem_metric",
-  sleep_light: "biometrics.sleep_light_metric",
-  respiration: "biometrics.respiration_metric",
-  restlessness: "biometrics.restlessness_metric",
-};
-
-const RANGES = ["7d", "30d", "90d", "180d", "365d"] as const;
-type Range = (typeof RANGES)[number];
-
-const RANGE_DAYS: Record<Range, number> = {
-  "7d": 7,
-  "30d": 30,
-  "90d": 90,
-  "180d": 180,
-  "365d": 365,
-};
-
+import { TrendChart } from "../../components/charts/TrendChart";
+import { assess, METRIC_LABELS, useUnits } from "../../components/data";
 export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
-  const c = useChartTheme();
-  const [range, setRange] = useState<Range>("90d");
-
-  const catalog = useQuery({
-    queryKey: ["metrics-catalog"],
-    queryFn: () => api.get<Record<string, { unit: string; direction: string }>>("/metrics"),
-  });
+  const units = useUnits();
+  const [range, setRange] = useState("90");
   const trend = useQuery({
     queryKey: ["metric", key, range],
-    queryFn: () => api.get<MetricTrend>(`/metrics/${key}?days=${RANGE_DAYS[range]}`),
+    queryFn: () =>
+      api.get<MetricTrend>(
+        "/metrics/" + encodeURIComponent(key) + "?days=" + range,
+      ),
     enabled: !!key,
   });
-
-  if (trend.isLoading || catalog.isLoading) return <Loading />;
+  if (trend.isLoading) return <Loading />;
   if (trend.isError || !trend.data) return <ErrorNote />;
   const data = trend.data;
-  const meta = catalog.data?.[key];
-  const goodWhen = meta?.direction ?? "up";
-  const labelKey = LABEL_KEYS[key] ?? "biometrics.title";
-
-  const points = data.points;
-  const hasData = points.some((p) => p.value !== null);
-  const values = points.filter((p) => p.value !== null).map((p) => p.value!) as number[];
-  const latest = values.at(-1) ?? null;
-
-  const stats = data.stats ?? {};
-  const delta = stats.delta_30d as number | null | undefined;
-
-  const option = {
-    grid: { left: 42, right: 12, top: 20, bottom: 26 },
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: c.surface,
-      borderColor: c.hairline,
-      textStyle: { color: c.ink, fontSize: 11 },
-    },
-    xAxis: {
-      type: "time",
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-    },
-    yAxis: {
-      type: "value",
-      scale: true,
-      splitLine: { lineStyle: { color: c.hairline, type: "dashed" } },
-      axisLabel: { color: c.muted, fontSize: 10, fontFamily: "JetBrains Mono" },
-    },
-    series: [
-      {
-        type: "line",
-        data: points.map((p) => [p.date, p.value]),
-        showSymbol: false,
-        smooth: true,
-        lineStyle: { color: c.primary, width: 2 },
-        itemStyle: { color: c.primary },
-        areaStyle: { color: c.primary, opacity: 0.08 },
-        markArea:
-          stats.min != null && stats.max != null
-            ? {
-                silent: true,
-                itemStyle: { color: c.primary, opacity: 0.04 },
-                data: [[{ yAxis: stats.min }, { yAxis: stats.max }]],
-              }
-            : undefined,
-        markLine:
-          stats.mean != null
-            ? {
-                silent: true,
-                symbol: "none",
-                lineStyle: { color: c.muted, type: "dashed", width: 1 },
-                label: { show: false },
-                data: [{ yAxis: stats.mean }],
-              }
-            : undefined,
-      },
-    ],
-  };
-
+  const latest = [...data.points].reverse().find((p) => p.value != null);
+  const label = METRIC_LABELS[key]
+    ? t(METRIC_LABELS[key])
+    : key.replaceAll("_", " ");
+  const status = assess(key, latest?.value ?? null);
+  const unit = units.metricUnit(key, data.unit);
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
+      <Link className="text-link text-muted" to="/app/biometrics">
+        <ArrowLeft size={16} />
+        {t("biometrics.title")}
+      </Link>
       <PageHeader
-        title={t(labelKey)}
-        subtitle={t("biometrics.page_subtitle", { unit: data.unit })}
+        title={label}
+        subtitle={t("design.metric_detail_sub")}
         actions={
           <Segmented
             value={range}
             onChange={setRange}
-            options={RANGES.map((r) => ({ value: r, label: t(`biometrics.${r}`) }))}
+            options={[7, 30, 90, 180, 365].map((r) => ({
+              value: String(r),
+              label: t("biometrics." + r + "d"),
+            }))}
           />
         }
       />
-
-      {!hasData ? (
-        <Empty>{t("biometrics.no_data")}</Empty>
+      {!latest ? (
+        <Card>
+          <Empty>{t("biometrics.no_data")}</Empty>
+        </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <StatPod
-              label={t("biometrics.latest")}
-              value={fmtNum(latest, 1)}
-              unit={data.unit}
-              right={
-                <DeltaChip
-                  delta={delta}
-                  unit=""
-                  goodWhen={goodWhen === "down" ? "down" : "up"}
-                  compact
-                />
-              }
-            />
-            <StatPod label={t("biometrics.mean")} value={fmtNum(stats.mean as number, 1)} unit={data.unit} />
-            <StatPod label={t("biometrics.min")} value={fmtNum(stats.min as number, 1)} unit={data.unit} />
-            <StatPod label={t("biometrics.max")} value={fmtNum(stats.max as number, 1)} unit={data.unit} />
-            <StatPod label={t("biometrics.count")} value={fmtNum(stats.count as number, 0)} unit="" />
-          </div>
-
-          <Card>
-            <CardHeader
-              eyebrow={t("biometrics.trend")}
-              right={
-                <span className="num text-[11px] text-faint">
-                  {data.start_date} → {data.end_date}
+          <Card className="!p-6 md:!p-8">
+            <div className="mb-8 flex flex-wrap items-end justify-between gap-6">
+              <div>
+                <div className="mb-5 flex items-center gap-4">
+                  <span className="text-[13px] text-muted">
+                    {t("biometrics.latest")} · {latest.date}
+                  </span>
+                  <Badge tone={status.tone}>{t(status.key)}</Badge>
+                </div>
+                <span className="num hero-number">
+                  {fmtNum(
+                    units.metric(key, latest.value),
+                    ["steps", "floors"].includes(key) ? 0 : 1,
+                  )}
                 </span>
-              }
+                <span className="ml-4 text-[18px] text-muted">{unit}</span>
+              </div>
+              <p className="text-[12px] text-muted">
+                {data.start_date} – {data.end_date}
+              </p>
+            </div>
+            <TrendChart
+              label={label}
+              unit={unit}
+              points={data.points.map((p) => ({
+                ...p,
+                value: units.metric(key, p.value),
+              }))}
+              start={data.start_date}
+              end={data.end_date}
+              height={300}
+              bar={["steps", "floors", "hydration"].includes(key)}
+              reference={units.metric(key, data.stats.mean ?? null)}
             />
-            <EChart option={option} height={320} />
+            <div className="mt-6 grid grid-cols-2 gap-4 border-t border-hairline pt-3 md:grid-cols-4">
+              <StatPod
+                label={t("biometrics.mean")}
+                value={fmtNum(units.metric(key, data.stats.mean ?? null), 1)}
+                unit={unit}
+              />
+              <StatPod
+                label={t("biometrics.min")}
+                value={fmtNum(units.metric(key, data.stats.min ?? null), 1)}
+                unit={unit}
+              />
+              <StatPod
+                label={t("biometrics.max")}
+                value={fmtNum(units.metric(key, data.stats.max ?? null), 1)}
+                unit={unit}
+              />
+              <StatPod
+                label={t("biometrics.count")}
+                value={fmtNum(data.stats.count)}
+              />
+            </div>
+            <p className="mt-3 text-[12px] text-muted">
+              {t("design.chart_note")}
+            </p>
           </Card>
+          <details className="border-y border-hairline py-5">
+            <summary className="cursor-pointer text-[14px] font-medium">
+              {t("design.show_measurements")}
+            </summary>
+            <div className="table-scroll mt-4 max-h-96">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("training.event_date")}</th>
+                    <th className="numeric">
+                      {label} · {unit}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data.points].reverse().map((p) => (
+                    <tr key={p.date}>
+                      <td>{p.date}</td>
+                      <td className="numeric">
+                        {fmtNum(units.metric(key, p.value), 2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </>
       )}
     </div>

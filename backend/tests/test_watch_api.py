@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.features import DailyFeature
 from app.models.user import User
 from tests.conftest import reset_owner_auth_state
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -28,7 +28,7 @@ OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
     await reset_owner_auth_state(db_session)
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
     cookies = dict(resp.cookies)
@@ -38,7 +38,7 @@ async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
 
 async def _mint_token(client: AsyncClient, cookies: dict, name: str = "fenix") -> dict:
     resp = await client.post(
-        "/watch/tokens", json={"name": name}, headers=CSRF, cookies=cookies
+        "/watch/tokens", json={"name": name}, headers=csrf_headers(client, cookies), cookies=cookies
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -93,7 +93,7 @@ async def test_mint_list_revoke_lifecycle(client: AsyncClient, db_session):
     assert minted["token"] not in hashes
 
     revoked = await client.delete(
-        f"/watch/tokens/{minted['id']}", headers=CSRF, cookies=owner
+        f"/watch/tokens/{minted['id']}", headers=csrf_headers(client, owner), cookies=owner
     )
     assert revoked.status_code == 204
     listed = (await client.get("/watch/tokens", cookies=owner)).json()
@@ -184,7 +184,7 @@ async def test_bad_missing_and_revoked_tokens_are_401(client: AsyncClient, db_se
         await client.get("/watch/today", headers={"Authorization": "Bearer nope"})
     ).status_code == 401
 
-    await client.delete(f"/watch/tokens/{minted['id']}", headers=CSRF, cookies=owner)
+    await client.delete(f"/watch/tokens/{minted['id']}", headers=csrf_headers(client, owner), cookies=owner)
     revoked = await client.get(
         "/watch/today", headers={"Authorization": f"Bearer {minted['token']}"}
     )
@@ -196,7 +196,7 @@ async def test_friend_watch_token_sees_only_friend_data(client: AsyncClient, db_
     daily_features, and prove the token resolves the friend's row only."""
     owner = await _owner_login(client, db_session)
     invite = (
-        await client.post("/settings/invites", json={}, headers=CSRF, cookies=owner)
+        await client.post("/settings/invites", json={}, headers=csrf_headers(client, owner), cookies=owner)
     ).json()["code"]
     redeem = await client.post(
         "/auth/invite/redeem",
@@ -204,7 +204,7 @@ async def test_friend_watch_token_sees_only_friend_data(client: AsyncClient, db_
             "code": invite, "name": "Watch Friend",
             "email": "watch@friend.example", "password": "a-strong-password-w",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert redeem.status_code == 201
     friend_id = redeem.json()["user_id"]
@@ -213,7 +213,7 @@ async def test_friend_watch_token_sees_only_friend_data(client: AsyncClient, db_
 
     # Friend mints their OWN token with their OWN session.
     friend_mint = await client.post(
-        "/watch/tokens", json={"name": "watch"}, headers=CSRF,
+        "/watch/tokens", json={"name": "watch"}, headers=csrf_headers(client, dict(redeem.cookies)),
         cookies=dict(redeem.cookies),
     )
     assert friend_mint.status_code == 201
@@ -242,7 +242,7 @@ async def test_tokens_are_per_user_listing_and_revocation(client: AsyncClient, d
 
     owner = await _owner_login(client, db_session)
     invite = (
-        await client.post("/settings/invites", json={}, headers=CSRF, cookies=owner)
+        await client.post("/settings/invites", json={}, headers=csrf_headers(client, owner), cookies=owner)
     ).json()["code"]
     redeem = await client.post(
         "/auth/invite/redeem",
@@ -250,7 +250,7 @@ async def test_tokens_are_per_user_listing_and_revocation(client: AsyncClient, d
             "code": invite, "name": "List Friend",
             "email": "list@friend.example", "password": "a-strong-password-l",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     friend_cookies = dict(redeem.cookies)
     client.cookies.clear()
@@ -264,6 +264,6 @@ async def test_tokens_are_per_user_listing_and_revocation(client: AsyncClient, d
 
     # Friend cannot revoke (or even see) the owner's token — 404, not 403.
     resp = await client.delete(
-        f"/watch/tokens/{owner_token['id']}", headers=CSRF, cookies=friend_cookies
+        f"/watch/tokens/{owner_token['id']}", headers=csrf_headers(client, friend_cookies), cookies=friend_cookies
     )
     assert resp.status_code == 404

@@ -30,8 +30,8 @@ from tests.helpers.telegram import (
     FixtureTelegramClient,
     clean_bot_tables,  # noqa: F401 — autouse per-test truncate
 )
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -233,7 +233,7 @@ async def test_labs_api_endpoints(client: AsyncClient, db_session):
 
     login = await client.post(
         "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert login.status_code == 200
 
@@ -247,7 +247,7 @@ async def test_labs_api_endpoints(client: AsyncClient, db_session):
             "notes": "private note",
             "reference_ranges": {"ferritin": [30.0, 400.0]},
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 201
     body = resp.json()

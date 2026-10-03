@@ -12,13 +12,13 @@ All tasks are memory-bounded: stream pruning uses ``DELETE ... USING`` (no
 Python-side materialization); raw_ingest pruning uses keyset pagination.
 """
 
-import asyncio
 import logging
 
 from sqlalchemy import text
 
 from app.core.db import sessionmaker
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.maintenance")
 
@@ -35,7 +35,7 @@ def purge_sessions() -> dict:
 
     Bounded by ``idx_sessions_expires_at`` (migration 0008). Runs nightly.
     """
-    return asyncio.run(_purge_sessions())
+    return run_async(_purge_sessions())
 
 
 async def _purge_sessions() -> dict:
@@ -65,7 +65,7 @@ def prune_streams() -> dict:
     window. Older rows are deleted oldest-first in batches of
     RAW_INGEST_PRUNE_BATCH to keep WAL churn bounded.
     """
-    return asyncio.run(_prune_streams())
+    return run_async(_prune_streams())
 
 
 async def _prune_streams() -> dict:
@@ -144,7 +144,7 @@ def vacuum_analyze() -> dict:
     stream pruning); ANALYZE refreshes planner statistics so the indexes
     added in migration 0008 are actually used.
     """
-    return asyncio.run(_vacuum_analyze())
+    return run_async(_vacuum_analyze())
 
 
 async def _vacuum_analyze() -> dict:

@@ -127,6 +127,8 @@ async def sync_user_whoop(
         )
     if errors:
         report.notes.append("collection errors: " + "; ".join(errors))
+        await session.commit()
+        raise RuntimeError("Some Whoop collections could not be fetched")
 
     integration.last_synced_at = now
     return report

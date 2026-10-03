@@ -25,10 +25,10 @@ from app.services.device_merge import (
     should_write_vitals,
 )
 from app.services.fit_enrichment import upsert_laps
+from tests.conftest import csrf_headers
 
 pytestmark = pytest.mark.asyncio
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 TODAY = date(2026, 9, 22)
 
@@ -50,7 +50,7 @@ async def clean_ui_tables(db_session):
 
 async def _login(client: AsyncClient) -> None:
     resp = await client.post(
-        "/auth/login", json={"email": OWNER[0], "password": OWNER[1]}, headers=CSRF
+        "/auth/login", json={"email": OWNER[0], "password": OWNER[1]}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
 
@@ -143,13 +143,13 @@ async def test_me_roundtrip_and_validation(client: AsyncClient, db_session):
     upd = await client.put(
         "/me",
         json={"locale": "it", "theme": "light", "units": "imperial"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert upd.status_code == 200
     assert upd.json()["locale"] == "it"
     assert upd.json()["theme"] == "light"
 
-    bad = await client.put("/me", json={"locale": "fr"}, headers=CSRF)
+    bad = await client.put("/me", json={"locale": "fr"}, headers=csrf_headers(client))
     assert bad.status_code == 422  # CHECK-compatible schema rejects
 
 
@@ -159,7 +159,7 @@ async def test_me_password_change(client: AsyncClient):
     bad = await client.put(
         "/me/password",
         json={"current_password": "nope", "new_password": "another-pass-1"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert bad.status_code == 401
 
@@ -301,7 +301,7 @@ async def test_devices_main_device_flow(client: AsyncClient, db_session):
     set_main = await client.put(
         "/settings/devices/main",
         json={"integration_id": w.id},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert set_main.status_code == 200
     devices = set_main.json()
@@ -319,7 +319,7 @@ async def test_devices_main_device_flow(client: AsyncClient, db_session):
     steal = await client.put(
         "/settings/devices/main",
         json={"integration_id": foreign.id},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert steal.status_code == 422
 
@@ -402,7 +402,7 @@ async def test_activity_same_effort_resolution(db_session):
     db_session.add(main_act)
     await db_session.flush()
     db_session.add(
-        ActivitySourceLink(activity_id=main_act.id, source="garmin", external_id="g1")
+        ActivitySourceLink(user_id=main_act.user_id, activity_id=main_act.id, source="garmin", external_id="g1")
     )
     await db_session.commit()
 
@@ -640,7 +640,7 @@ async def test_garmin_connect_mfa_then_success(
     resp = await client.post(
         "/settings/integrations/garmin/connect",
         json={"email": "a@b.c", "password": "pw"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 200
     assert resp.json()["mfa_required"] is True
@@ -650,7 +650,7 @@ async def test_garmin_connect_mfa_then_success(
     resp = await client.post(
         "/settings/integrations/garmin/connect",
         json={"email": "a@b.c", "password": "pw", "mfa_code": "123456"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -684,7 +684,7 @@ async def test_garmin_connect_bad_credentials_400(client: AsyncClient, monkeypat
     resp = await client.post(
         "/settings/integrations/garmin/connect",
         json={"email": "a@b.c", "password": "pw"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 400
     assert "Garmin connect failed" in resp.json()["detail"]
@@ -692,5 +692,48 @@ async def test_garmin_connect_bad_credentials_400(client: AsyncClient, monkeypat
 
 async def test_garmin_sync_now_requires_connection(client: AsyncClient):
     await _login(client)
-    resp = await client.post("/settings/integrations/garmin/sync", headers=CSRF)
+    resp = await client.post("/settings/integrations/garmin/sync", headers=csrf_headers(client))
     assert resp.status_code == 400
+
+
+async def test_me_can_clear_optional_fields_without_clearing_omitted_fields(client, db_session):
+    await _login(client)
+    populated = await client.put(
+        "/me", json={"dob": "1990-06-15", "sex": "male", "height_cm": 180}, headers=csrf_headers(client)
+    )
+    assert populated.status_code == 200
+    unchanged = await client.put("/me", json={"units": "metric"}, headers=csrf_headers(client))
+    assert unchanged.json()["dob"] == "1990-06-15"
+    assert unchanged.json()["height_cm"] == 180
+    cleared = await client.put(
+        "/me", json={"dob": None, "sex": None, "height_cm": None}, headers=csrf_headers(client)
+    )
+    assert cleared.status_code == 200
+    reread = (await client.get("/me")).json()
+    assert all(reread[key] is None for key in ("dob", "sex", "height_cm"))
+
+
+@pytest.mark.parametrize("samples,budget", [(1, 100), (100, 100), (199, 100), (201, 100), (2401, 1200)])
+async def test_activity_stream_budget_and_alignment(client, db_session, samples, budget):
+    from app.models.activity import ActivityStream
+
+    await _login(client)
+    user = await _owner_user(db_session)
+    await _seed_day(db_session, user.id)
+    activity = await db_session.scalar(select(Activity).where(Activity.user_id == user.id))
+    db_session.add_all([
+        ActivityStream(activity_id=activity.id, t_offset_s=i, hr=100 + i % 80, power=i)
+        for i in range(samples)
+    ])
+    await db_session.commit()
+    response = await client.get(f"/activities/{activity.id}/streams?max_points={budget}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["t"]) == min(samples, budget)
+    assert data["t"][0] == 0
+    assert data["t"][-1] == samples - 1
+    assert data["t"] == sorted(set(data["t"]))
+    for column in data["columns"].values():
+        assert len(column) == len(data["t"])
+    assert data["columns"]["power"] == data["t"]
+    assert data["columns"]["hr"] == [100 + i % 80 for i in data["t"]]

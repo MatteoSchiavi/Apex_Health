@@ -6,6 +6,7 @@ still require the CSRF header (§22.3).
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import CREDENTIALS_EXCEPTION, get_current_session
@@ -16,14 +17,13 @@ from app.auth.service import (
     cookie_max_age_seconds,
     create_session,
     destroy_session,
-    get_auth_credential,
     session_cookie_name,
 )
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.middleware import mint_csrf_token, set_csrf_cookie
-from app.core.redis import get_redis
-from app.models.user import AuthCredential, User, UserSession
+from app.core.redis import get_redis_dependency
+from app.models.user import User, UserSession
 from app.schemas.auth import LoginRequest, LoginResponse, RedeemInviteRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,14 +35,9 @@ async def login(
     response: Response,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> LoginResponse:
     email = payload.email.lower()
-    cred: AuthCredential | None = await get_auth_credential(session, email)
-    if cred is None:
-        # Uniform 401 for unknown emails: no account-existence oracle.
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
-
     try:
         cred = await authenticate(session, redis, email, payload.password)
     except AuthError as exc:
@@ -54,6 +49,8 @@ async def login(
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Invalid email or password"
         ) from exc
+    except RedisError:
+        raise HTTPException(503, "Authentication temporarily unavailable; try again shortly.") from None
 
     user = await session.get(User, cred.user_id)
     assert user is not None  # FK guarantees existence
@@ -69,23 +66,7 @@ async def login(
         samesite="lax",
         path="/",
     )
-    # F-04 audit: mint a CSRF double-submit token and set it as a non-HttpOnly
-    # cookie. The SPA reads this cookie and mirrors the value in the
-    # X-CSRF-Token header on every unsafe method; the middleware verifies
-    # the two match with hmac.compare_digest.
-    #
-    # If the request already carries a csrf_token cookie (e.g. the test
-    # suite's pre-set sentinel), re-set the SAME value so the response
-    # cookies include it (test helpers extract resp.cookies and pass them
-    # to subsequent requests). If the request carries an X-CSRF-Token
-    # header but no cookie (e.g. a test that cleared the jar), use the
-    # header value as the cookie value so the double-submit invariant
-    # holds on subsequent requests. Production logins get a fresh random
-    # token because neither cookie nor header exists before the first login.
-    existing_csrf = request.cookies.get("csrf_token")
-    header_csrf = request.headers.get("X-CSRF-Token")
-    csrf_token = existing_csrf or header_csrf or mint_csrf_token()
-    set_csrf_cookie(response, csrf_token, secure=settings.cookie_secure)
+    set_csrf_cookie(response, mint_csrf_token(token), secure=settings.cookie_secure)
     return LoginResponse(
         user_id=user.id,
         email=cred.email,
@@ -106,6 +87,7 @@ async def logout(
         raise CREDENTIALS_EXCEPTION
     await destroy_session(session, token)
     response.delete_cookie(key=session_cookie_name(), path="/")
+    response.delete_cookie(key="csrf_token", path="/")
 
 
 @router.post("/invite/redeem", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
@@ -154,14 +136,7 @@ async def redeem(
         samesite="lax",
         path="/",
     )
-    # F-04 audit: CSRF double-submit token (same path as login). Re-set the
-    # existing cookie value if present; else use the X-CSRF-Token header
-    # value if present (test pattern: cleared jar, header only); else mint
-    # a fresh random token.
-    existing_csrf = request.cookies.get("csrf_token")
-    header_csrf = request.headers.get("X-CSRF-Token")
-    csrf_token = existing_csrf or header_csrf or mint_csrf_token()
-    set_csrf_cookie(response, csrf_token, secure=settings.cookie_secure)
+    set_csrf_cookie(response, mint_csrf_token(token), secure=settings.cookie_secure)
     return LoginResponse(
         user_id=user.id,
         email=cred.email,

@@ -6,8 +6,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 
 from tests.conftest import reset_owner_auth_state
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -51,7 +51,7 @@ async def test_csrf_match_accepted_past_middleware(client: AsyncClient):
     resp = await client.post(
         "/settings/integrations/garmin/connect",
         json={"email": "x@y.z", "password": "anything"},
-        headers={"X-CSRF-Token": "test"},  # matches the conftest cookie
+        headers=csrf_headers(client),  # mirrors the server-issued cookie
     )
     # 401 (no session) or 400 (bad creds) — NOT 403 (CSRF passed).
     assert resp.status_code != 403
@@ -62,7 +62,7 @@ async def test_unknown_email_is_uniform_401(client: AsyncClient):
     resp = await client.post(
         "/auth/login",
         json={"email": "nobody@apexhealth.dev", "password": "whatever"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 401
 
@@ -76,7 +76,7 @@ async def test_lockout_after_five_failures(client: AsyncClient, db_session):
         resp = await client.post(
             "/auth/login",
             json={"email": OWNER_EMAIL, "password": f"wrong-{i}"},
-            headers=CSRF,
+            headers=csrf_headers(client),
         )
         assert resp.status_code == 401, f"attempt {i}"
 
@@ -94,7 +94,7 @@ async def test_lockout_after_five_failures(client: AsyncClient, db_session):
     locked = await client.post(
         "/auth/login",
         json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert locked.status_code == 429
 
@@ -102,12 +102,12 @@ async def test_lockout_after_five_failures(client: AsyncClient, db_session):
 async def test_successful_login_resets_counters(client: AsyncClient, db_session):
     await reset_owner_auth_state(db_session)
     await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": "wrong"}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": "wrong"}, headers=csrf_headers(client)
     )
     ok = await client.post(
         "/auth/login",
         json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert ok.status_code == 200
 

@@ -11,9 +11,9 @@
 
 import { GarminConnect } from "garmin-connect";
 import { db } from "@/lib/db";
+import { createHash } from "node:crypto";
 
-let garminClient: GarminConnect | null = null;
-let cachedCredsHash: string | null = null;
+const clients = new Map<number, { fingerprint: string; client: GarminConnect }>();
 
 /** Read Garmin credentials — prefers the Integration table, falls back to env. */
 async function getGarminCredentials(userId: number): Promise<{ email: string; password: string } | null> {
@@ -21,13 +21,18 @@ async function getGarminCredentials(userId: number): Promise<{ email: string; pa
   const integration = await db.integration.findFirst({
     where: { userId, provider: "Garmin" },
   });
+  // Disconnect must take precedence over environment-variable fallbacks.
+  if (integration?.status === "paused") {
+    clients.delete(userId);
+    return null;
+  }
   if (integration?.garminEmail && integration?.garminPassword) {
     return { email: integration.garminEmail, password: integration.garminPassword };
   }
   // 2. Fall back to env vars
   const envEmail = process.env.GARMIN_EMAIL || "";
   const envPass = process.env.GARMIN_PASSWORD || "";
-  if (envEmail && envPass) {
+  if (envEmail && envPass && envEmail !== "demo@apexhealth.app") {
     return { email: envEmail, password: envPass };
   }
   return null;
@@ -38,16 +43,16 @@ async function getGarminClient(userId: number): Promise<GarminConnect> {
   if (!creds || !creds.email || !creds.password) {
     throw new Error("No Garmin credentials connected. Use Settings > Connect Garmin to add them, or set GARMIN_EMAIL/GARMIN_PASSWORD in .env.");
   }
-  // Re-login if credentials changed (compare a simple hash)
-  const hash = `${creds.email}:${creds.password.slice(0, 2)}`;
-  if (garminClient && cachedCredsHash === hash) return garminClient;
+  // Scope cached sessions to the user and compare the complete credentials.
+  const fingerprint = createHash("sha256").update(JSON.stringify(creds)).digest("hex");
+  const cached = clients.get(userId);
+  if (cached?.fingerprint === fingerprint) return cached.client;
   const client = new GarminConnect({
     username: creds.email,
     password: creds.password,
   });
   await client.login();
-  garminClient = client;
-  cachedCredsHash = hash;
+  clients.set(userId, { fingerprint, client });
   return client;
 }
 
@@ -154,8 +159,10 @@ export async function syncGarminData(userId: number): Promise<SyncReport> {
             }
             report.sleepSessions++;
           }
-        } catch {
-          // Individual day might not have sleep data — skip
+        } catch (e) {
+          // Missing data is an empty payload; transport/database failures are
+          // failed work and must not be reported as a successful sync.
+          report.errors.push(`Sleep ${dateStr}: ${e instanceof Error ? e.message : "unknown"}`);
         }
       }
     } catch (e) {
@@ -186,7 +193,9 @@ export async function syncGarminData(userId: number): Promise<SyncReport> {
             },
           });
           report.dailyStats++;
-        } catch { /* skip */ }
+        } catch (e) {
+          report.errors.push(`Daily stats ${dateStr}: ${e instanceof Error ? e.message : "unknown"}`);
+        }
       }
     } catch (e) {
       report.errors.push(`Daily stats: ${e instanceof Error ? e.message : "unknown"}`);

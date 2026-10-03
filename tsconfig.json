@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2017",
+    "types": ["bun-types", "react", "react-dom"],
     "lib": [
       "dom",
       "dom.iterable",
@@ -31,8 +32,12 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "next.config.ts",
+    "tailwind.config.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],

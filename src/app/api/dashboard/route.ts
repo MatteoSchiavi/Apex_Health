@@ -14,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readinessFromRecovery, trainingLoadSummary } from "@/lib/apex/healthMath";
 
 /** local YYYY-MM-DD using en-CA (ISO-style) anchored to the user's timezone. */
 function localToday(timezone: string): string {
@@ -73,9 +74,9 @@ export async function GET() {
     // ----- core reads ----------------------------------------------------
     const [sleep, bio, last7Bio, last30Bio, last7Sleep, last30Hrv, todayActivities] =
       await Promise.all([
-        // Most recent sleep session (today if present, else latest)
+        // Today's sleep only: old measurements cannot stand in for today.
         db.sleepSession.findFirst({
-          where: { userId: user.id },
+          where: { userId: user.id, localDate: today },
           orderBy: { localDate: "desc" },
         }),
         // Today's biometric snapshot
@@ -239,19 +240,7 @@ export async function GET() {
 
     // ----- readiness (0-100): synthesis of recovery + sleep + (100 - strain) -
     // Today's strain pulls readiness DOWN when it exceeds recovery.
-    let readiness: number | null = null;
-    if (recovery !== null) {
-      let r = recovery;
-      if (strain !== null) {
-        // strain above 60 starts to drag readiness down; below 30 boosts it.
-        const strainPenalty = Math.max(-15, Math.min(15, (strain - 50) * 0.4));
-        r += strainPenalty;
-      }
-      readiness = Math.max(0, Math.min(100, Math.round(r)));
-    } else if (sleepScore !== null) {
-      // Fallback when recovery couldn't be computed (no HRV / RHR).
-      readiness = Math.max(0, Math.min(100, Math.round(sleepScore)));
-    }
+    const readiness = readinessFromRecovery(recovery, strain);
 
     // readiness.delta_7d = today vs mean of previous 6 sleep scores
     const readinessDelta7d =
@@ -260,9 +249,9 @@ export async function GET() {
         : null;
 
     // ----- data_completeness (for the "estimated" tag on Readiness) --------
-    // "full" requires today's sleep AND today's bio to both exist.
+    // "full" requires the actual inputs, not just rows with nullable values.
     let dataCompleteness: "full" | "partial" | "missing" = "missing";
-    if (sleep && bio) dataCompleteness = "full";
+    if (sleepScore !== null && hrvMs !== null && restingHr !== null) dataCompleteness = "full";
     else if (sleep || bio) dataCompleteness = "partial";
 
     // ----- acute / chronic load + ACWR (real, from activity training load) -
@@ -283,23 +272,18 @@ export async function GET() {
           : 0;
       loadByDate.set(a.localDate, (loadByDate.get(a.localDate) ?? 0) + tl);
     }
-    // acute = sum of last 7 days; chronic = mean of last 28 days.
+    // acute = 7-day total; chronic = 28-day total / 4 (weekly units).
     let acuteSum = 0;
     for (let i = 0; i < 7; i++) {
       const d = addDays(today, -i);
       acuteSum += loadByDate.get(d) ?? 0;
     }
     let chronicSum = 0;
-    let chronicCount = 0;
     for (let i = 0; i < 28; i++) {
       const d = addDays(today, -i);
       chronicSum += loadByDate.get(d) ?? 0;
-      chronicCount++;
     }
-    const chronicMean = chronicCount > 0 ? chronicSum / chronicCount : 0;
-    const acuteLoad = Math.round(acuteSum * 10) / 10;
-    const chronicLoad = Math.round(chronicMean * 10) / 10;
-    const acwr = chronicMean > 0 ? Math.round((acuteSum / chronicMean) * 100) / 100 : null;
+    const { acute: acuteLoad, chronic: chronicLoad, acwr } = trainingLoadSummary(acuteSum, chronicSum);
 
     // ----- gear_due (Gear items at/above 80% of service interval) ---------
     const allGear = await db.gear.findMany({
@@ -392,7 +376,7 @@ export async function GET() {
         acwr,
         training_load_7d: acuteLoad, // 7-day acute sum (same thing)
         activities: recentActivities.map((a) => ({
-          id: Number(a.id),
+          id: a.id,
           // Normalise SQLite's space-separated "YYYY-MM-DD HH:MM:SS" to ISO
           // "YYYY-MM-DDTHH:MM:SS" so client `new Date(iso)` parses deterministically.
           start_time: a.startTime.includes(" ") ? a.startTime.replace(" ", "T") : a.startTime,

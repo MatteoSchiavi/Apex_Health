@@ -202,6 +202,7 @@ class Settings(BaseSettings):
     # plain HTTP. On (and only from loopback peers) the app adopts them —
     # see infra/tailscale-funnel-setup.md.
     trust_proxy_headers: bool = False
+    trusted_proxy_ips: str = "127.0.0.1,::1"
     # §22: session cookies are short-lived with sliding expiry.
     session_ttl_minutes: int = 720
     # §22.2 / STACK.md: Secure-flagged cookie for the TLS paths (Cloudflare

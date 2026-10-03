@@ -45,6 +45,9 @@ class LiveOpenAIEmbeddingClient:
         self._model = model
         self._client = httpx.AsyncClient(timeout=60.0)
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def embed(self, texts: list[str]) -> EmbeddingResult:
         if not texts:
             return EmbeddingResult(vectors=[], model=self._model)

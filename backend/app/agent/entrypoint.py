@@ -163,6 +163,14 @@ async def run_agent_turn(
         system = _system_block(snapshot)
         if tier is None:
             tier = (await resolve_tier(session, user_id, text, llm)).tier
+        else:
+            # An explicit model preference is still subject to the account's
+            # entitlement. The browser must not bypass a cheap-only cap by
+            # passing tier="powerful" or tier="medical" in its request.
+            from app.models.user import AuthCredential
+            credential = await session.get(AuthCredential, user_id)
+            if credential is None or credential.ai_access_tier != "full":
+                tier = "cheap"
         await session.commit()  # persist session + user message before the loop runs
 
     async def _run(selected_tier: str) -> AgentLoopResult:
@@ -196,7 +204,7 @@ async def run_agent_turn(
                             "turn. Tap retry, or rephrase the question."
                         ),
                         model_tier=tier,
-                        referenced_data={"error": str(exc)[:200]},
+                        referenced_data={"error": "provider_unavailable"},
                     )
                 )
                 await err_session.commit()

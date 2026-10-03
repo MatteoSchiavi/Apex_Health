@@ -12,14 +12,14 @@ from sqlalchemy import select
 from app.models.coach import SessionFeedback, UserContextDoc, UserEvent
 from app.models.gym_detail import GymDayPlan, GymExercise, GymSetLog
 from app.models.user import User
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 
 
 async def _login(client: AsyncClient, email: str, password: str) -> None:
     resp = await client.post(
-        "/auth/login", json={"email": email, "password": password}, headers=CSRF
+        "/auth/login", json={"email": email, "password": password}, headers=csrf_headers(client)
     )
     assert resp.status_code == 200
 
@@ -75,7 +75,7 @@ async def clean_coach_tables(db_session):
 
 async def test_event_crud_roundtrip(client: AsyncClient):
     await _login(client, *OWNER)
-    created = await client.post("/events", json=_event_payload(), headers=CSRF)
+    created = await client.post("/events", json=_event_payload(), headers=csrf_headers(client))
     assert created.status_code == 201
     event_id = created.json()["id"]
 
@@ -84,36 +84,36 @@ async def test_event_crud_roundtrip(client: AsyncClient):
     assert ski["kind"] == "ski" and ski["priority"] == 1
 
     updated = await client.patch(
-        f"/events/{event_id}", json=_event_payload(title="Ski week moved"), headers=CSRF
+        f"/events/{event_id}", json=_event_payload(title="Ski week moved"), headers=csrf_headers(client)
     )
     assert updated.status_code == 200
     assert updated.json()["title"] == "Ski week moved"
 
-    deleted = await client.delete(f"/events/{event_id}", headers=CSRF)
+    deleted = await client.delete(f"/events/{event_id}", headers=csrf_headers(client))
     assert deleted.status_code == 204
     assert (await client.get("/events")).json() == []
 
 
 async def test_event_rejects_unknown_kind(client: AsyncClient):
     await _login(client, *OWNER)
-    resp = await client.post("/events", json=_event_payload(kind="quidditch"), headers=CSRF)
+    resp = await client.post("/events", json=_event_payload(kind="quidditch"), headers=csrf_headers(client))
     assert resp.status_code == 422
 
 
 async def test_events_are_user_scoped(client: AsyncClient, db_session):
     """Foreign event ids answer 404, never leak (§22 isolation law)."""
     await _login(client, *OWNER)
-    event_id = (await client.post("/events", json=_event_payload(), headers=CSRF)).json()["id"]
+    event_id = (await client.post("/events", json=_event_payload(), headers=csrf_headers(client))).json()["id"]
 
     friend, email, password = await _make_friend(client, db_session, 1)
     client.cookies.clear()
     await _login(client, email, password)
     assert (await client.get("/events")).json() == []
     foreign = await client.patch(
-        f"/events/{event_id}", json=_event_payload(title="hijack"), headers=CSRF
+        f"/events/{event_id}", json=_event_payload(title="hijack"), headers=csrf_headers(client)
     )
     assert foreign.status_code == 404
-    foreign_delete = await client.delete(f"/events/{event_id}", headers=CSRF)
+    foreign_delete = await client.delete(f"/events/{event_id}", headers=csrf_headers(client))
     assert foreign_delete.status_code == 404
 
 
@@ -125,21 +125,21 @@ async def test_context_doc_put_and_get(client: AsyncClient):
     put = await client.put(
         "/context-docs/injuries",
         json={"content": "Left knee aches after long skis. Prefer low impact when sore."},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert put.status_code == 200
     docs = (await client.get("/context-docs")).json()
     assert docs[0]["doc_kind"] == "injuries"
     assert "Left knee" in docs[0]["content"]
     # upsert replaces content
-    await client.put("/context-docs/injuries", json={"content": "updated"}, headers=CSRF)
+    await client.put("/context-docs/injuries", json={"content": "updated"}, headers=csrf_headers(client))
     docs = (await client.get("/context-docs")).json()
     assert len(docs) == 1 and docs[0]["content"] == "updated"
 
 
 async def test_context_doc_rejects_unknown_kind(client: AsyncClient):
     await _login(client, *OWNER)
-    resp = await client.put("/context-docs/secret", json={"content": "x"}, headers=CSRF)
+    resp = await client.put("/context-docs/secret", json={"content": "x"}, headers=csrf_headers(client))
     assert resp.status_code == 422
 
 
@@ -151,9 +151,9 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     today; then the in-gym tracker (next exercise, set logging, rest timer)."""
     await _login(client, *OWNER)
     # priority-1 ski event in 2 days, inside its taper window
-    await client.post("/events", json=_event_payload(), headers=CSRF)
+    await client.post("/events", json=_event_payload(), headers=csrf_headers(client))
 
-    generated = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=CSRF)
+    generated = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     assert generated.status_code == 200
     body = generated.json()
     assert body["source"] == "ai"  # advisor adjusted something
@@ -167,7 +167,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     assert leg_heavy == []  # no high-impact leg work inside the taper window
 
     plan_id = body["plan_id"]
-    confirm = await client.post(f"/gym/plan/{date.today().isoformat()}/confirm", headers=CSRF)
+    confirm = await client.post(f"/gym/plan/{date.today().isoformat()}/confirm", headers=csrf_headers(client))
     assert confirm.status_code == 200
     assert confirm.json()["status"] == "confirmed"
 
@@ -188,7 +188,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
                 "reps_done": 10,
                 "weight_kg": 60.0,
             },
-            headers=CSRF,
+            headers=csrf_headers(client),
         )
         assert logged.status_code == 200
         assert logged.json()["rest_seconds"] == target["rest_seconds"]
@@ -205,15 +205,15 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
 
 async def test_generate_is_idempotent_per_day(client: AsyncClient):
     await _login(client, *OWNER)
-    first = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=CSRF)
-    second = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=CSRF)
+    first = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
+    second = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     assert first.json()["plan_id"] == second.json()["plan_id"]
 
 
 async def test_plan_endpoints_are_user_scoped(client: AsyncClient, db_session):
     await _login(client, *OWNER)
     plan_id = (
-        await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=CSRF)
+        await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     ).json()["plan_id"]
 
     friend, email, password = await _make_friend(client, db_session, 2)
@@ -223,7 +223,7 @@ async def test_plan_endpoints_are_user_scoped(client: AsyncClient, db_session):
     log = await client.post(
         f"/gym/session/{plan_id}/log",
         json={"gym_day_exercise_id": 1, "set_number": 1, "reps_done": 10},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert log.status_code == 404
 
@@ -244,14 +244,14 @@ async def test_feedback_roundtrip_drives_soreness_rules(client: AsyncClient):
             "injury_flag": False,
             "notes": "knees a little achy",
         },
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert posted.status_code == 201
     listed = (await client.get("/gym/feedback")).json()
     assert listed and listed[0]["soreness"] == ["knees"]
 
     # generate today's plan -> the advisor must reflect the knee note
-    generated = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=CSRF)
+    generated = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     note = generated.json()["adjustment_note"]
     assert "knees" in note
     exercises = generated.json()["exercises"]
@@ -266,7 +266,7 @@ async def test_feedback_roundtrip_drives_soreness_rules(client: AsyncClient):
 
 async def test_context_docs_are_user_scoped(client: AsyncClient, db_session):
     await _login(client, *OWNER)
-    await client.put("/context-docs/goals", json={"content": "Sub-40 10k this year"}, headers=CSRF)
+    await client.put("/context-docs/goals", json={"content": "Sub-40 10k this year"}, headers=csrf_headers(client))
     friend, email, password = await _make_friend(client, db_session, 3)
     client.cookies.clear()
     await _login(client, email, password)

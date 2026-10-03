@@ -57,6 +57,7 @@ class SyncReport:
     activities_seen: int = 0
     new_activities: int = 0
     streams_fetched: int = 0
+    streams_failed: int = 0
     wellness_days: int = 0
     raw_rows_stored: int = 0
     raw_rows_unprocessed: int = 0
@@ -116,6 +117,7 @@ async def fetch_activities(
                 select(ActivitySourceLink).where(
                     ActivitySourceLink.source == SOURCE,
                     ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == user_id,
                 )
             )
             if link is not None:
@@ -189,8 +191,9 @@ async def fetch_streams(
             samples = await client.get_activity_samples(int(external_id))
         except Exception as exc:
             logger.warning(
-                "garmin streams fetch failed for activity %s: %s", external_id, exc
+                "garmin streams fetch failed for activity %s (error=%s)", external_id, type(exc).__name__
             )
+            report.streams_failed += 1
             await _pace(delay_s)
             continue
         if not samples:
@@ -300,7 +303,7 @@ async def fetch_wellness(
                         DailyBiometric.date == day,
                     )
                 )
-            if already is not None:
+            if already is not None and day != from_day:
                 # A prior checkpoint pass normalized this day — skip it. The
                 # day had data, so it must not count toward the empty gap.
                 consecutive_empty = 0
@@ -403,9 +406,9 @@ async def normalize_pending(
                 row.payload_type,
                 exc,
             )
-            report.raw_rows_unprocessed += 1
             totals.unprocessed.append(row.id)
     report.stats = totals
+    report.raw_rows_unprocessed = len(totals.unprocessed)
     if totals.discipline_fallbacks:
         report.notes.append(
             "discipline fallback used for: " + ", ".join(sorted(totals.discipline_fallbacks))
@@ -483,7 +486,7 @@ async def sync_user_garmin(
                 f"resume: fetching streams for {len(recovered)} activities "
                 "from an interrupted pass"
             )
-            new_ids = new_ids + recovered
+            new_ids = list(dict.fromkeys(new_ids + recovered))
     await fetch_streams(
         session, user.id, client, new_ids, page_delay_s, report,
         tz=tz, discipline_index=discipline_index, checkpoint=checkpoint,
@@ -496,7 +499,7 @@ async def sync_user_garmin(
             user.id,
             client,
             tz,
-            from_day=local_today - timedelta(days=1),
+            from_day=local_today,
             to_day=local_today - timedelta(days=36500),  # loop stops at the gap
             delay_s=page_delay_s,
             empty_gap_days=empty_gap_days,
@@ -524,6 +527,11 @@ async def sync_user_garmin(
     await normalize_pending(session, user.id, tz, discipline_index, report)
 
     integration.last_synced_at = now
+    if report.streams_failed:
+        # Keep successfully normalized data, but retry the account job rather
+        # than marking a partially fetched provider response as full success.
+        await session.commit()
+        raise RuntimeError("Some activity streams could not be fetched")
     return report
 
 

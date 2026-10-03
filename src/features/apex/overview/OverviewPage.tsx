@@ -141,10 +141,11 @@ function scoreWord(tone: "positive" | "warning" | "alert" | "muted"): string {
   return "—";
 }
 
-function acwrWord(tone: "positive" | "warning" | "alert" | "muted"): string {
+function acwrWord(tone: "positive" | "warning" | "alert" | "muted", value: number | null): string {
+  if (value !== null && value < 0.8) return "Low load";
   if (tone === "positive") return "Optimal";
   if (tone === "warning") return "Elevated";
-  if (tone === "alert") return "High risk";
+  if (tone === "alert") return "High load";
   return "—";
 }
 
@@ -454,7 +455,7 @@ export function OverviewPage() {
               <div>
                 <StatusDot
                   tone={acwrT === "positive" ? "ok" : acwrT === "warning" ? "watch" : acwrT === "alert" ? "alert" : "neutral"}
-                  label={acwrWord(acwrT)}
+                  label={acwrWord(acwrT, data.acwr)}
                 />
                 <div className="mt-1 text-[14px] text-ink2">
                   Acute {fmtNum(data.acute_load, 0)} · Chronic {fmtNum(data.chronic_load, 0)}
@@ -465,8 +466,8 @@ export function OverviewPage() {
               text={
                 <span>
                   <strong className="text-ink2">Acute load</strong> = 7-day training load (fatigue).{" "}
-                  <strong className="text-ink2">Chronic load</strong> = 28-day average (fitness base).{" "}
-                  <strong className="text-ink2">ACWR</strong> = acute ÷ chronic. 0.8–1.3 optimal; above 1.5 high injury-risk.
+                  <strong className="text-ink2">Chronic load</strong> = 28-day total ÷ 4 (weekly average).{" "}
+                  <strong className="text-ink2">ACWR</strong> = acute ÷ chronic. A steady workload gives a ratio near 1; interpret changes alongside your recovery and training history.
                 </span>
               }
             />

@@ -25,8 +25,8 @@ from app.models.activity import Activity, ActivitySourceLink
 from app.models.integration import Integration, RawIngest
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
@@ -185,7 +185,7 @@ async def make_whoop_user(session, tz: str = "Europe/Rome"):
 
 async def _login(client: AsyncClient) -> None:
     login = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=CSRF
+        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
     )
     assert login.status_code == 200
 
@@ -239,14 +239,14 @@ async def test_authorize_requires_configured_client(client: AsyncClient, monkeyp
         **{**SETTINGS.__dict__, "whoop_client_id": "", "whoop_client_secret": ""}
     )
     monkeypatch.setattr("app.connectors.whoop.flow.get_settings", lambda: stripped)
-    resp = await client.post("/settings/integrations/whoop/authorize", headers=CSRF)
+    resp = await client.post("/settings/integrations/whoop/authorize", headers=csrf_headers(client))
     assert resp.status_code == 400
     assert "developer.whoop.com" in resp.json()["detail"]
 
 
 async def test_authorize_mints_state_and_whoop_url(client: AsyncClient):
     await _login(client)
-    resp = await client.post("/settings/integrations/whoop/authorize", headers=CSRF)
+    resp = await client.post("/settings/integrations/whoop/authorize", headers=csrf_headers(client))
     assert resp.status_code == 200
     body = resp.json()
     assert body["authorize_url"].startswith(SETTINGS.whoop_oauth_authorize_url)
@@ -257,7 +257,7 @@ async def test_authorize_mints_state_and_whoop_url(client: AsyncClient):
 async def test_full_flow_stores_encrypted_tokens(client: AsyncClient, db_session, monkeypatch):
     await _login(client)
     minted = (
-        await client.post("/settings/integrations/whoop/authorize", headers=CSRF)
+        await client.post("/settings/integrations/whoop/authorize", headers=csrf_headers(client))
     ).json()
 
     captured: list[httpx.Request] = []
@@ -297,7 +297,7 @@ async def test_full_flow_stores_encrypted_tokens(client: AsyncClient, db_session
 async def test_state_single_use(client: AsyncClient, monkeypatch):
     await _login(client)
     minted = (
-        await client.post("/settings/integrations/whoop/authorize", headers=CSRF)
+        await client.post("/settings/integrations/whoop/authorize", headers=csrf_headers(client))
     ).json()
     from app.connectors.whoop.client import WhoopOAuth
 

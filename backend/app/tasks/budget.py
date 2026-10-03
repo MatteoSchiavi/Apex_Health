@@ -12,7 +12,6 @@ fixes the cadence (1×/day) but not the wall clock, and the sums are defined
 on UTC days, so the check runs as late in that day as practical.
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -25,6 +24,7 @@ from app.models.alert import Alert
 from app.models.user import User
 from app.queries.usage import day_spend_by_user
 from app.tasks.celery_app import celery_app
+from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.budget")
 
@@ -90,4 +90,4 @@ async def _daily_check(now_iso: str | None = None) -> dict:
 @celery_app.task(name="budget.daily_check")
 def daily_budget_check(now_iso: str | None = None) -> dict:
     """§19: 1×/day — 23:45 UTC, near the close of the accounting day."""
-    return asyncio.run(_daily_check(now_iso))
+    return run_async(_daily_check(now_iso))

@@ -1,7 +1,7 @@
 """Normalizer/ETL (§3 stage 3): typed, idempotent upserts from raw JSON.
 
 Keyed per §17 "all sync/ingest operations are idempotent upserts":
-- activities       -> activity_source_links UNIQUE (source, external_id)
+- activities       -> activity_source_links UNIQUE (user_id, source, external_id)
 - activity_streams -> PK (activity_id, t_offset_s), insert-or-ignore (immutable)
 - sleep_sessions   -> natural key (user_id, start_time)
 - hrv_readings     -> natural key (user_id, timestamp, reading_type)
@@ -235,6 +235,7 @@ async def _upsert_activity(
         select(ActivitySourceLink).where(
             ActivitySourceLink.source == fetch.SOURCE,
             ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == raw.user_id,
         )
     )
     if link is not None:
@@ -273,6 +274,7 @@ async def _upsert_activity(
             await session.flush()
             session.add(
                 ActivitySourceLink(
+                    user_id=raw.user_id,
                     activity_id=activity.id,
                     source=fetch.SOURCE,
                     external_id=external_id,
@@ -322,6 +324,7 @@ async def _upsert_streams(
         select(ActivitySourceLink).where(
             ActivitySourceLink.source == fetch.SOURCE,
             ActivitySourceLink.external_id == external_id,
+                ActivitySourceLink.user_id == raw.user_id,
         )
     )
     if link is None:

@@ -26,7 +26,9 @@ self-DoS / runaway-bill hole immediately.
 
 import asyncio
 import logging
+import secrets
 from decimal import Decimal
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
@@ -39,7 +41,8 @@ from app.core.config import get_settings
 from app.core.db import get_session, sessionmaker as app_sessionmaker
 from app.core.embeddings import build_embedding_client
 from app.core.llm import build_llm_client
-from app.core.redis import get_redis
+from app.core.redis import get_redis_dependency
+from app.core.llm import LLMError, LLMUnavailableError
 from app.models.chat import AiChatMessage, AiChatSession
 from app.models.user import User
 from app.queries.usage import user_day_spend
@@ -67,7 +70,8 @@ _AGENT_LOCK_TTL_S = AGENT_TURN_TIMEOUT_S + 30  # auto-expire after the wall cap
 
 def _title_from(text: str) -> str:
     """Local, zero-token fallback title: first line, trimmed."""
-    line = text.strip().splitlines()[0].strip()
+    lines = text.strip().splitlines()
+    line = lines[0].strip() if lines else ""
     if len(line) > MAX_TITLE_LEN:
         line = line[: MAX_TITLE_LEN - 1].rstrip() + "…"
     return line or "New conversation"
@@ -150,7 +154,7 @@ async def post_message(
     payload: ChatPostIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis_dependency),
 ) -> ChatSessionDetailOut:
     chat: AiChatSession | None = None
     if payload.session_id is not None:
@@ -159,15 +163,12 @@ async def post_message(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "chat not found")
 
     settings = get_settings()
-    llm = build_llm_client()
-    embeddings = build_embedding_client() if settings.openai_api_key else None
 
     # F-18 audit: pre-turn cost gate — hard-stop a user who has already
     # crossed 2× the daily_token_budget_usd threshold TODAY. The nightly
     # budget task at 23:45 UTC is informational-only; without this gate a
     # scripted user could drive unlimited spend between checks.
     if settings.daily_token_budget_usd > 0:
-        from datetime import UTC, datetime
         async with app_sessionmaker() as cost_session:
             spent = await user_day_spend(cost_session, user.id, datetime.now(UTC))
         if spent > Decimal(str(settings.daily_token_budget_usd)) * 2:
@@ -182,14 +183,28 @@ async def post_message(
     # the single-flight primitive: only the first acquirer wins; subsequent
     # attempts get a 429 until the lock expires or is released.
     lock_key = _AGENT_LOCK_KEY.format(user_id=user.id)
-    acquired = await redis.set(lock_key, "1", ex=_AGENT_LOCK_TTL_S, nx=True)
+    lock_token = secrets.token_urlsafe(24)
+    acquired = await redis.set(lock_key, lock_token, ex=_AGENT_LOCK_TTL_S, nx=True)
     if not acquired:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "An agent turn is already running for your account — wait for it "
             "to finish before sending another message.",
         )
+    llm = None
+    embeddings = None
     try:
+        llm = build_llm_client()
+        embeddings = build_embedding_client() if settings.openai_api_key else None
+        if chat is None:
+            # The web contract says omitted session_id starts a NEW chat.
+            # The bot's idle-window session resolver must not merge it into
+            # an unrelated conversation created a few minutes earlier.
+            now = datetime.now(UTC)
+            chat = AiChatSession(user_id=user.id, title=_title_from(payload.text),
+                                 started_at=now, last_activity_at=now)
+            session.add(chat)
+            await session.commit()
         # F-01 audit: hard wall-clock cap. asyncio.wait_for cancels the
         # underlying task on timeout — the LLM client's httpx call is
         # cancellation-aware (any in-flight HTTP request is aborted).
@@ -215,10 +230,23 @@ async def post_message(
                 status.HTTP_504_GATEWAY_TIMEOUT,
                 "The agent turn exceeded the time budget — try a narrower question.",
             ) from exc
+        except LLMUnavailableError:
+            raise HTTPException(503, "The AI provider is not configured.") from None
+        except LLMError:
+            raise HTTPException(502, "The AI provider could not finish this turn; try again shortly.") from None
     finally:
         # Always release the lock — a crash between acquire and release
         # still auto-expires via the TTL.
-        await redis.delete(lock_key)
+        await redis.eval("""
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+        """, 1, lock_key, lock_token)
+        for resource in (llm, embeddings):
+            close = getattr(resource, "aclose", None)
+            if close is not None:
+                await close()
 
     # Title: the first exchange names the conversation (local truncation —
     # no extra LLM call; the cheap model budget goes to the answer).

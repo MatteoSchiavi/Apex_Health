@@ -903,40 +903,15 @@ export function CoachPage() {
 
   async function confirmDiscardDraft(draftId: string, action: "confirm" | "discard") {
     if (currentId === null) return;
-    // Optimistic: update the draft status in the local messages list.
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!m.drafts) return m;
-        const newDrafts = m.drafts.map((d) =>
-          d.id === draftId
-            ? { ...d, status: (action === "confirm" ? "confirmed" : "discarded") as CoachDraft["status"] }
-            : d,
-        );
-        return { ...m, drafts: newDrafts };
-      }),
-    );
     try {
       const r = await fetch(`/api/coach/chats/${currentId}/drafts/${encodeURIComponent(draftId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
       const j = await r.json();
-      if (!j?.ok) {
-        // Revert
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (!m.drafts) return m;
-            const newDrafts = m.drafts.map((d) =>
-              d.id === draftId ? { ...d, status: "pending" as CoachDraft["status"] } : d,
-            );
-            return { ...m, drafts: newDrafts };
-          }),
-        );
-        toast({ title: "Draft update failed", description: j?.error ?? "" });
-      }
-    } catch {
-      /* ignore — toast would be too noisy */
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Draft update failed");
+      setMessages((prev) => prev.map((m) => m.drafts?.some((d) => d.id === draftId) ? { ...m, drafts: j.drafts } : m));
+    } catch (error) {
+      toast({ title: "Draft update failed", description: error instanceof Error ? error.message : "Network error" });
     }
   }
 

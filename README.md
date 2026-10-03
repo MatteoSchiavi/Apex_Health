@@ -1,28 +1,16 @@
 # ⚡ Apex Health — Personal Health & Performance Control Center
 
-> ## 🚀 Quick Start (Web UI)
->
-> The web UI is a **Next.js 16 app** at the repository root. It auto-configures
-> on first run — no manual `.env` setup or database creation needed.
->
-> ```bash
-> bun install          # install dependencies
-> bun run dev          # start dev server (auto-creates .env + DB + seeds demo data)
-> ```
->
-> Then open **http://localhost:3000** and sign in (any password works for the
-> demo). The app comes with 30 real activities, 13 sleep sessions, and 7 days
-> of biometrics pre-seeded.
->
-> **To sync your real Garmin data**: edit `.env` (auto-created on first run)
-> and fill in your `GARMIN_EMAIL` + `GARMIN_PASSWORD`, then call
-> `POST /api/garmin/sync`.
->
-> ---
->
-> The sections below describe the original Python backend architecture.
-> The Next.js web UI at the root is the current active frontend — the
-> `frontend/` directory contains the legacy Vite SPA (not used anymore).
+Backend release work uses the authenticated **FastAPI + PostgreSQL + Redis/Celery**
+platform in `backend/`. Docker serves the redesigned, authenticated Vite SPA
+from `frontend/`. See the [UI redesign and screenshots](docs/UI_REDESIGN.md).
+
+Start with the [installation guide](docs/INSTALL.md) and the
+[backend release checklist](docs/BACKEND_RELEASE.md). The
+[alpha audit](docs/ALPHA_READINESS_AUDIT.md) tracks the earlier fixes.
+
+The root Next.js app remains a separate prototype with simulated login and
+SQLite APIs. It is unsuitable for hosting private health data and is not the
+backend deployment path.
 
 ![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -30,7 +18,6 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-TimescaleDB_·_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Celery_broker-DC382D?logo=redis&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-long_polling-26A5E4?logo=telegram&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-315_green-73BF69)
 
 A self-hosted backend that unifies **Garmin biometrics**, **blood-donation
 lab panels**, **subjective journaling via
@@ -43,8 +30,9 @@ your explicit confirmation.
 Single source of truth for product decisions:
 [`MASTER_SPEC.md`](./MASTER_SPEC.md) (§ references throughout this README
 point there). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
-Data currently surfaces via the REST API and the Telegram bot; the real
-full web UI is the next work item (spec Appendix A).
+Data surfaces through the authenticated web UI, REST API and Telegram bot.
+The web UI includes overview, health metrics, labs, activities, sleep, training,
+coach, challenges and account management.
 
 ---
 
@@ -626,7 +614,8 @@ docs/             INSTALL.md — full installation guide
 cd backend
 uv sync
 uv run alembic upgrade head        # dev DB must be reachable (see .env)
-uv run pytest -q                   # 315 tests, fixtures only — no live APIs
+# Use disposable PostgreSQL/Redis services: the suite erases both stores.
+APEX_TEST_DATABASE_RESET=1 uv run pytest -q
 ```
 
 The suite covers: golden-dataset feature math (incl. EU DST day), connector

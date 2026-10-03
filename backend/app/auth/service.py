@@ -6,11 +6,13 @@ the TTL has passed, a valid request extends the session to a full TTL from now.
 """
 
 import logging
+from functools import lru_cache
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.rate_limit import LoginRateLimiter
 from app.core.config import get_settings
@@ -62,7 +64,7 @@ async def ensure_owner(session: AsyncSession) -> None:
     session.add(
         AuthCredential(
             user_id=user.id,
-            email=settings.owner_email,
+            email=settings.owner_email.strip().lower(),
             password_hash=hash_password(settings.owner_password),
             role="owner",
             ai_access_tier="full",
@@ -75,6 +77,12 @@ async def get_auth_credential(session: AsyncSession, email: str) -> AuthCredenti
     return await session.scalar(
         select(AuthCredential).where(AuthCredential.email == email.lower())
     )
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """Pay the same Argon2 cost for an unknown account as a wrong password."""
+    return hash_password(new_session_token())
 
 
 async def authenticate(
@@ -91,7 +99,9 @@ async def authenticate(
     """
     settings = get_settings()
     limiter = LoginRateLimiter(redis, settings)
-    cred = await get_auth_credential(session, email)
+    cred = await session.scalar(select(AuthCredential).where(
+        AuthCredential.email == email.lower(),
+    ).with_for_update())
 
     def _locked() -> bool:
         return cred is not None and cred.locked_until is not None and cred.locked_until > datetime.now(UTC)
@@ -99,9 +109,11 @@ async def authenticate(
     if await limiter.is_locked(email) or _locked():
         raise AuthError("locked")
 
-    if cred is None or not verify_password(cred.password_hash, password):
+    password_hash = cred.password_hash if cred else await run_in_threadpool(_dummy_password_hash)
+    valid = await run_in_threadpool(verify_password, password_hash, password)
+    if cred is None or not valid:
+        failures = await limiter.record_failure(email)
         if cred is not None:
-            failures = await limiter.record_failure(email)
             # F-05: atomic SQL increment — concurrent failures no longer
             # race on the read-modify-write cycle.
             await session.execute(
@@ -136,9 +148,11 @@ async def authenticate(
         await session.execute(
             update(AuthCredential)
             .where(AuthCredential.user_id == cred.user_id)
-            .values(password_hash=hash_password(password))
+            .values(password_hash=await run_in_threadpool(hash_password, password))
         )
-    await session.commit()
+    # Keep the credential row locked through create_session's commit. This
+    # prevents a concurrent password change from completing between password
+    # verification and issuance of a new session using the old password.
     # Refresh the in-memory cred so the caller sees the updated counters.
     await session.refresh(cred)
     return cred
@@ -194,9 +208,7 @@ async def resolve_session(
     # Sliding expiry: past half the TTL, extend to a full TTL from now (§22.2).
     # F-21: the extension is capped by absolute_expires_at — sliding refresh
     # cannot push the session past the absolute lifetime.
-    half_life = row.created_at + timedelta(
-        minutes=settings.session_ttl_minutes // 2
-    )
+    half_life = row.expires_at - timedelta(minutes=settings.session_ttl_minutes / 2)
     if datetime.now(UTC) > half_life:
         new_expiry = min(
             datetime.now(UTC) + timedelta(minutes=settings.session_ttl_minutes),

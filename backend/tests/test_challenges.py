@@ -13,8 +13,8 @@ from app.models.challenge import Challenge, ChallengeMember
 from app.models.user import User
 from app.models.wellness import DailyBiometric, SleepSession
 from app.queries.rankings import compute_metric, global_records, leaderboard
+from tests.conftest import csrf_headers
 
-CSRF = {"X-CSRF-Token": "test"}
 OWNER = (os.environ["OWNER_EMAIL"], os.environ["OWNER_PASSWORD"])
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
@@ -24,7 +24,7 @@ async def _login(client: AsyncClient) -> None:
     resp = await client.post(
         "/auth/login",
         json={"email": OWNER[0], "password": OWNER[1]},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 200
 
@@ -167,7 +167,7 @@ async def test_challenge_api_flow(client: AsyncClient, db_session):
     created = await client.post(
         "/challenges",
         json={"name": "September steps", "metric": "steps", "period": "monthly"},
-        headers=CSRF,
+        headers=csrf_headers(client),
     )
     assert created.status_code == 201
     challenge_id = created.json()["id"]
@@ -183,16 +183,16 @@ async def test_challenge_api_flow(client: AsyncClient, db_session):
     assert detail.status_code == 200
     assert detail.json()["metric"] == "steps"
 
-    left = await client.post(f"/challenges/{challenge_id}/leave", headers=CSRF)
+    left = await client.post(f"/challenges/{challenge_id}/leave", headers=csrf_headers(client))
     assert left.status_code == 200
-    joined = await client.post(f"/challenges/{challenge_id}/join", headers=CSRF)
+    joined = await client.post(f"/challenges/{challenge_id}/join", headers=csrf_headers(client))
     assert joined.status_code == 200
 
 
 async def test_challenge_api_rejects_unknown_metric(client: AsyncClient):
     await _login(client)
     resp = await client.post(
-        "/challenges", json={"name": "x", "metric": "vibes"}, headers=CSRF
+        "/challenges", json={"name": "x", "metric": "vibes"}, headers=csrf_headers(client)
     )
     assert resp.status_code == 422
 

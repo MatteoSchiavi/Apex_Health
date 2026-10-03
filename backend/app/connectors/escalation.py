@@ -10,6 +10,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration import Integration
@@ -29,31 +30,41 @@ async def run_sync_with_escalation(
 ) -> Any | None:
     """Run one sync pass with §21 bookkeeping. `source_label` names the
     provider in the alert message (e.g. "Garmin", "Technogym")."""
+    integration_id, user_id = integration.id, user.id
     try:
         report = await sync_fn(session, user, integration, *args, **kwargs)
     except Exception as exc:
-        integration.consecutive_failures = (integration.consecutive_failures or 0) + 1
-        if integration.consecutive_failures % 3 == 0:
+        # SQL failures leave the session unusable until rollback. Checkpoints
+        # already committed by the connector survive; unfinished writes do not.
+        await session.rollback()
+        failures = await session.scalar(
+            update(Integration).where(Integration.id == integration_id)
+            .values(consecutive_failures=Integration.consecutive_failures + 1)
+            .returning(Integration.consecutive_failures)
+        )
+        if failures and failures % 3 == 0:
             from app.models.alert import Alert
 
             session.add(
                 Alert(
-                    user_id=user.id,
+                    user_id=user_id,
                     type="sync_failure",
                     severity="warning",
                     message=(
                         f"{source_label} sync failed "
-                        f"{integration.consecutive_failures} consecutive times: {exc}"
+                        f"{failures} consecutive times. Retry or reconnect the provider."
                     ),
                 )
             )
         await session.commit()
+        await session.refresh(integration)
+        await session.refresh(user)
         logger.error(
-            "%s sync failed for user %s (consecutive=%s): %s",
+            "%s sync failed for user %s (consecutive=%s, error=%s)",
             source_label,
-            user.id,
-            integration.consecutive_failures,
-            exc,
+            user_id,
+            failures,
+            type(exc).__name__,
         )
         return None
     integration.consecutive_failures = 0

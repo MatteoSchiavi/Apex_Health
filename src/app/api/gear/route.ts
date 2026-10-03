@@ -76,85 +76,6 @@ function shape(g: GearRow, defaultFor: string[]) {
   };
 }
 
-/**
- * Seed 3 demo gear items if the user has none (plan §6 + Overview spec).
- * Demo data is coordinated with the Overview agent's expected names.
- */
-async function seedDemoGear(userId: number): Promise<GearRow[]> {
-  const now = new Date();
-  const iso = (offsetDays: number) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - offsetDays);
-    return d.toISOString().slice(0, 10);
-  };
-
-  // Create without defaultFor (the DB column has @default("[]")); set it via
-  // raw SQL immediately after so the cached Prisma client doesn't reject it.
-  const seeded: GearRow[] = [];
-  const items = [
-    {
-      name: "Specialized Kenevo (eMTB)",
-      gearType: "emtb",
-      brand: "Specialized",
-      serviceIntervalHours: 15,
-      serviceIntervalKm: null,
-      hoursSinceService: 12.6,
-      kmSinceService: 0,
-      usagePct: 0,
-      lastServiceType: "Suspension service",
-      lastServiceAt: iso(50),
-      defaultFor: serializeDefaultFor(["cycling", "hiking"]),
-    },
-    {
-      name: "Tarmac SL7 (Road)",
-      gearType: "bike",
-      brand: "Specialized",
-      serviceIntervalHours: null,
-      serviceIntervalKm: 2000,
-      hoursSinceService: 0,
-      kmSinceService: 1610,
-      usagePct: 0,
-      lastServiceType: "Drivetrain check",
-      lastServiceAt: iso(90),
-      defaultFor: serializeDefaultFor(["cycling"]),
-    },
-    {
-      name: "Endorphin Pro 3",
-      gearType: "shoes",
-      brand: "Saucony",
-      serviceIntervalHours: 500,
-      serviceIntervalKm: null,
-      hoursSinceService: 264,
-      kmSinceService: 0,
-      usagePct: 0,
-      lastServiceType: "New",
-      lastServiceAt: iso(130),
-      defaultFor: serializeDefaultFor(["running", "walking"]),
-    },
-  ];
-
-  for (const it of items) {
-    const created = await db.gear.create({
-      data: {
-        userId,
-        name: it.name,
-        gearType: it.gearType,
-        brand: it.brand,
-        serviceIntervalHours: it.serviceIntervalHours,
-        serviceIntervalKm: it.serviceIntervalKm,
-        hoursSinceService: it.hoursSinceService,
-        kmSinceService: it.kmSinceService,
-        usagePct: it.usagePct,
-        lastServiceType: it.lastServiceType,
-        lastServiceAt: it.lastServiceAt,
-      },
-    });
-    await setDefaultFor(created.id, it.defaultFor);
-    seeded.push(created);
-  }
-  return seeded;
-}
-
 /** Merge defaultFor (read via raw SQL) into each gear row before shaping. */
 async function withDefaults(rows: GearRow[]): Promise<
   { row: GearRow; defaults: string[] }[]
@@ -171,10 +92,7 @@ export async function GET() {
   try {
     const user = await ensureUser();
 
-    let gear: GearRow[] = await db.gear.findMany({ where: { userId: user.id } });
-    if (gear.length === 0) {
-      gear = await seedDemoGear(user.id);
-    }
+    const gear: GearRow[] = await db.gear.findMany({ where: { userId: user.id } });
 
     const enriched = await withDefaults(gear);
     const shaped = enriched

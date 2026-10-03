@@ -5,14 +5,14 @@ paint and reconciles on load."""
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import CREDENTIALS_EXCEPTION, get_current_user
+from app.auth.deps import CREDENTIALS_EXCEPTION, get_current_user, get_current_session
 from app.core.security import hash_password, verify_password
 from app.core.db import get_session
 from app.models.integration import Integration
-from app.models.user import AuthCredential, User
+from app.models.user import AuthCredential, User, UserSession
 from app.schemas.ui import MeOut, PasswordChange, ProfileUpdate
 
 logger = logging.getLogger("app.api.me")
@@ -60,11 +60,11 @@ async def update_me(
 
     if payload.name is not None:
         user.name = payload.name
-    if payload.dob is not None:
+    if "dob" in payload.model_fields_set:
         user.dob = payload.dob
-    if payload.sex is not None:
+    if "sex" in payload.model_fields_set:
         user.sex = payload.sex
-    if payload.height_cm is not None:
+    if "height_cm" in payload.model_fields_set:
         user.height_cm = payload.height_cm
     if payload.timezone is not None:
         try:
@@ -100,10 +100,13 @@ async def update_me(
 @router.put("/password", status_code=status.HTTP_204_NO_CONTENT)
 async def change_password(
     payload: PasswordChange,
-    user: User = Depends(get_current_user),
+    principal: tuple[User, UserSession] = Depends(get_current_session),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    cred = await session.get(AuthCredential, user.id)
+    user, current_session = principal
+    cred = await session.scalar(
+        select(AuthCredential).where(AuthCredential.user_id == user.id).with_for_update()
+    )
     if cred is None:
         raise CREDENTIALS_EXCEPTION
     if not verify_password(cred.password_hash, payload.current_password):
@@ -111,5 +114,8 @@ async def change_password(
             status.HTTP_401_UNAUTHORIZED, "current password is incorrect"
         )
     cred.password_hash = hash_password(payload.new_password)
+    await session.execute(delete(UserSession).where(
+        UserSession.user_id == user.id, UserSession.id != current_session.id,
+    ))
     await session.commit()
     logger.info("password changed for user %s", user.id)

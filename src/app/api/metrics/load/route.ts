@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { trainingLoadSummary } from "@/lib/apex/healthMath";
 
 /**
  * Training Load / ACWR API (plan §2 Load card)
@@ -11,7 +12,7 @@ import { db } from "@/lib/db";
  *     without trainingLoad contribute a duration-derived estimate so the
  *     chart doesn't have zero gaps for disciplines like hiking/sailing)
  *   - rolling 7-day acute load (sum of last 7 days, ending on that day)
- *   - rolling 28-day chronic load (mean of last 28 days)
+ *   - rolling chronic load (28-day total / 4, in weekly units)
  *   - ACWR = acute / chronic
  *   - events on each day (so the UI can draw vertical lines + taper windows)
  */
@@ -128,16 +129,10 @@ export async function GET(req: NextRequest) {
       const acuteRaw = allLoads
         .slice(Math.max(0, idx - 6), idx + 1)
         .reduce((s, v) => s + v, 0);
-      // chronic = mean of last 28 days ending today
+      // chronic = 28-day total / 4, matching the 7-day numerator's units.
       const chronicSlice = allLoads.slice(Math.max(0, idx - 27), idx + 1);
-      const chronicRaw =
-        chronicSlice.length > 0
-          ? chronicSlice.reduce((s, v) => s + v, 0) / chronicSlice.length
-          : 0;
-
-      const acute = Math.round(acuteRaw * 10) / 10;
-      const chronic = Math.round(chronicRaw * 10) / 10;
-      const acwr = chronicRaw > 0 ? Math.round((acuteRaw / chronicRaw) * 100) / 100 : null;
+      const chronicTotal = chronicSlice.reduce((s, v) => s + v, 0);
+      const { acute, chronic, acwr } = trainingLoadSummary(acuteRaw, chronicTotal);
 
       const dayEvents = events
         .filter((e) => e.date === d)

@@ -569,7 +569,7 @@ export function ChartInfoBadge({ text }: { text: string | ReactNode }) {
       aria-label="chart info"
     >
       <span className="text-[12px] font-bold">i</span>
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 w-52 -translate-x-1/2 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[12px] text-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+      <span className="pointer-events-none absolute bottom-full right-0 z-40 mb-1 w-52 rounded-[var(--radius-control)] border border-hairline bg-surface px-2.5 py-1.5 text-[12px] text-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
         {text}
       </span>
     </span>

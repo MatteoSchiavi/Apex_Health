@@ -6,6 +6,8 @@ The window is a Redis ZSET of failure timestamps; the DB-side counters
 auth service so lockout state survives a Redis flush.
 """
 
+import hashlib
+import secrets
 import time
 
 from redis.asyncio import Redis
@@ -19,7 +21,8 @@ class LoginRateLimiter:
         self._settings = settings
 
     def _key(self, email: str) -> str:
-        return f"login:fails:{email.lower()}"
+        digest = hashlib.sha256(email.strip().lower().encode()).hexdigest()
+        return f"login:fails:{digest}"
 
     def _window_seconds(self) -> int:
         return self._settings.login_window_minutes * 60
@@ -38,9 +41,15 @@ class LoginRateLimiter:
         """Record a failure; returns the updated window count."""
         key = self._key(email)
         now = time.time()
-        await self._redis.zremrangebyscore(key, 0, now - self._window_seconds())
-        await self._redis.zadd(key, {str(now): now})
-        return int(await self._redis.zcard(key))
+        # Atomic updates, distinct members even within one clock tick, and a
+        # bounded lifetime for both known and unknown account identifiers.
+        return int(await self._redis.eval("""
+            redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3])
+            redis.call('EXPIRE', KEYS[1], ARGV[4])
+            return redis.call('ZCARD', KEYS[1])
+        """, 1, key, now - self._window_seconds(), now,
+            secrets.token_urlsafe(16), self._window_seconds()))
 
     async def reset(self, email: str) -> None:
         await self._redis.delete(self._key(email))

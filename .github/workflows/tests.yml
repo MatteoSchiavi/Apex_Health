@@ -1,8 +1,8 @@
 # §20 Testing Strategy: "CI: GitHub Actions runs pytest on every push."
 #
 # The suite is hermetic: connector tests run against recorded fixtures, the
-# restore-drill unit tests use a fake pg_dump (the LIVE drill is a host-side
-# phase demo), and the schema is rebuilt from the Alembic chain per session
+# backup unit tests use a fake pg_dump; the backend-release job also restores
+# a real TimescaleDB dump. The schema is rebuilt from the Alembic chain per session
 # (tests/conftest.py) — which is why the service container must have BOTH
 # TimescaleDB and pgvector: migration 0001 creates those extensions.
 # timescale/timescaledb-ha ships both.
@@ -15,6 +15,57 @@ on:
   workflow_dispatch:
 
 jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Install web dependencies
+        run: bun install --frozen-lockfile
+      - name: Set up the isolated demo database
+        run: bun run setup
+      - name: Type check
+        run: bun run typecheck
+      - name: Web regression tests (fixture providers only)
+        run: bun run test
+      - name: Lint
+        run: bun run lint
+      - name: Production build
+        run: bun run build
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install authenticated UI dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Check locales and build
+        working-directory: frontend
+        run: |
+          npm run check:i18n
+          npm run build
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Exercise UI data contracts and responsive layouts
+        working-directory: frontend
+        run: npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-browser-failures
+          path: frontend/test-results/
+          retention-days: 7
+
   pytest:
     runs-on: ubuntu-latest
 
@@ -59,8 +110,69 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://hcc:hcc@localhost:5433/hcc
           REDIS_URL: redis://localhost:6380/0
+          APEX_TEST_DATABASE_RESET: "1"
           SESSION_SECRET: ci-session-secret
           ENCRYPTION_KEY: ci-encryption-key
           OWNER_EMAIL: owner@apexhealth.dev
           OWNER_PASSWORD: ci-owner-password
         run: uv run python -m pytest -q
+
+  backend-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create isolated release configuration
+        run: |
+          python3 - <<'PY'
+          import base64, os, secrets
+          values = {
+              "DATABASE_URL": "postgresql+asyncpg://unused@db:5432/hcc",
+              "REDIS_URL": "redis://redis:6379/0",
+              "POSTGRES_PASSWORD": secrets.token_urlsafe(32),
+              "SESSION_SECRET": secrets.token_urlsafe(48),
+              "ENCRYPTION_KEY": base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(),
+              "BACKUP_ENCRYPTION_KEY": secrets.token_urlsafe(48),
+              "OWNER_EMAIL": "owner@example.com",
+              "OWNER_PASSWORD": secrets.token_urlsafe(24) + "aA1!",
+              "ENVIRONMENT": "prod",
+              "COOKIE_SECURE": "false",  # loopback HTTP test only
+          }
+          fd = os.open(".env", os.O_CREAT | os.O_WRONLY, 0o600)
+          with os.fdopen(fd, "w") as env:
+              env.write("".join(f"{key}={value}\n" for key, value in values.items()))
+          PY
+      - name: Build and start the production stack
+        run: docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait --wait-timeout 180
+      - name: Exercise deployed API contracts
+        run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/release_smoke.py --allow-test-writes
+      - name: Exercise repeated worker jobs and loop cleanup
+        run: |
+          docker compose --env-file .env -f infra/docker-compose.yml exec -T api python - <<'PY'
+          from app.tasks.health_tasks import ping
+          for _ in range(4):
+              assert ping.delay().get(timeout=30) == {"status": "ok", "db": "ok"}
+          print("Worker round trips passed")
+          PY
+      - name: Verify pending jobs survive a queue restart
+        run: |
+          docker compose --env-file .env -f infra/docker-compose.yml stop worker
+          release_job_id="$(docker compose --env-file .env -f infra/docker-compose.yml exec -T api python -c 'from app.tasks.health_tasks import ping; print(ping.delay().id)')"
+          docker compose --env-file .env -f infra/docker-compose.yml restart redis
+          docker compose --env-file .env -f infra/docker-compose.yml up -d --no-build --wait --wait-timeout 90
+          docker compose --env-file .env -f infra/docker-compose.yml exec -T -e RELEASE_JOB_ID="$release_job_id" api python - <<'PY'
+          import os
+          from app.tasks.celery_app import celery_app
+          assert celery_app.AsyncResult(os.environ["RELEASE_JOB_ID"]).get(timeout=30) == {"status": "ok", "db": "ok"}
+          print("Pending job survived Redis and worker restart")
+          PY
+      - name: Verify a real encrypted backup and restore
+        run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/restore_drill.py
+      - name: Verify failed restores are atomic
+        run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/check_restore_atomicity.py
+      - name: Capture failures
+        if: failure()
+        run: docker compose --env-file .env -f infra/docker-compose.yml logs --tail=100
+      - name: Remove disposable release services
+        if: always()
+        run: docker compose --env-file .env -f infra/docker-compose.yml down -v

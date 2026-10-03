@@ -16,8 +16,6 @@
 
 import type {
   ActivityCard,
-  ActivityDetail,
-  ActivityStream,
   Challenge,
   ChatSession,
   ChatSessionDetail,
@@ -152,7 +150,7 @@ export const overview: Overview = {
   training_load_7d: 180,
   activities: [
     {
-      id: 24505012960,
+      id: "24505012960",
       start_time: "2026-09-26T10:59:22",
       local_date: "2026-09-26",
       discipline: "cycling",
@@ -211,143 +209,37 @@ export const overview: Overview = {
 // 30 activities spanning Jul–Sep 2026, including mountain biking, sailing,
 // open water swimming, hiking, and boating (fictional demo data).
 export const activities: ActivityCard[] = [
-  { id: 24505012960, start_time: "2026-09-26T10:59:22", local_date: "2026-09-26", discipline: "cycling", title: "Mountain bike ride", duration_s: 13523, distance_m: 66050, elevation_gain_m: 2333, avg_hr: 113, max_hr: 162, avg_power: null, np_power: null, avg_speed_mps: 4.88, calories: 986, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24433776396, start_time: "2026-09-20T12:53:36", local_date: "2026-09-20", discipline: "boating", title: "Lake boating trip", duration_s: 13929, distance_m: 29118, elevation_gain_m: 50, avg_hr: 97, max_hr: 124, avg_power: null, np_power: null, avg_speed_mps: 2.09, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24422820122, start_time: "2026-09-19T13:01:46", local_date: "2026-09-19", discipline: "boating", title: "Lake boating trip", duration_s: 20222, distance_m: 39950, elevation_gain_m: 80, avg_hr: 93, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.98, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24347545480, start_time: "2026-09-13T12:52:21", local_date: "2026-09-13", discipline: "boating", title: "Lake boating trip", duration_s: 11159, distance_m: 24399, elevation_gain_m: 43, avg_hr: 103, max_hr: 133, avg_power: null, np_power: null, avg_speed_mps: 2.19, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24335442417, start_time: "2026-09-12T13:25:51", local_date: "2026-09-12", discipline: "boating", title: "Lake boating trip", duration_s: 11436, distance_m: 22222, elevation_gain_m: 151, avg_hr: 111, max_hr: 137, avg_power: null, np_power: null, avg_speed_mps: 1.94, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24215710935, start_time: "2026-09-02T16:52:47", local_date: "2026-09-02", discipline: "sailing", title: "Coastal sailing trip", duration_s: 14584, distance_m: 41483, elevation_gain_m: null, avg_hr: 74, max_hr: 151, avg_power: null, np_power: null, avg_speed_mps: 2.84, calories: 424, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24205585888, start_time: "2026-09-02T07:20:05", local_date: "2026-09-02", discipline: "swimming", title: "Open water swim", duration_s: 892, distance_m: 376, elevation_gain_m: null, avg_hr: 146, max_hr: 181, avg_power: null, np_power: null, avg_speed_mps: 0.42, calories: 153, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24149802595, start_time: "2026-08-28T13:53:20", local_date: "2026-08-28", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4872, distance_m: 11838, elevation_gain_m: null, avg_hr: 125, max_hr: 166, avg_power: null, np_power: null, avg_speed_mps: 2.43, calories: 495, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24146299897, start_time: "2026-08-28T10:38:44", local_date: "2026-08-28", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4689, distance_m: 7907, elevation_gain_m: null, avg_hr: 92, max_hr: 141, avg_power: null, np_power: null, avg_speed_mps: 1.69, calories: 239, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24138520501, start_time: "2026-08-27T14:59:54", local_date: "2026-08-27", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4528, distance_m: 10971, elevation_gain_m: null, avg_hr: 124, max_hr: 167, avg_power: null, np_power: null, avg_speed_mps: 2.42, calories: 422, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24134684319, start_time: "2026-08-27T10:43:06", local_date: "2026-08-27", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6770, distance_m: 9397, elevation_gain_m: null, avg_hr: 91, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 1.39, calories: 332, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24125434774, start_time: "2026-08-26T14:31:57", local_date: "2026-08-26", discipline: "sailing", title: "Coastal sailing trip", duration_s: 9933, distance_m: 22084, elevation_gain_m: null, avg_hr: 95, max_hr: 146, avg_power: null, np_power: null, avg_speed_mps: 2.22, calories: 531, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24121568727, start_time: "2026-08-26T10:14:05", local_date: "2026-08-26", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6854, distance_m: 12740, elevation_gain_m: null, avg_hr: 90, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.86, calories: 325, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24112479007, start_time: "2026-08-25T15:32:56", local_date: "2026-08-25", discipline: "sailing", title: "Coastal sailing trip", duration_s: 2835, distance_m: 7267, elevation_gain_m: null, avg_hr: 125, max_hr: 173, avg_power: null, np_power: null, avg_speed_mps: 2.56, calories: 298, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24109698388, start_time: "2026-08-25T10:44:26", local_date: "2026-08-25", discipline: "sailing", title: "Coastal sailing trip", duration_s: 3727, distance_m: 5783, elevation_gain_m: null, avg_hr: 119, max_hr: 159, avg_power: null, np_power: null, avg_speed_mps: 1.55, calories: 352, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24098561005, start_time: "2026-08-24T15:04:28", local_date: "2026-08-24", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6595, distance_m: 17367, elevation_gain_m: null, avg_hr: 104, max_hr: 157, avg_power: null, np_power: null, avg_speed_mps: 2.63, calories: 430, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24095376062, start_time: "2026-08-24T10:11:25", local_date: "2026-08-24", discipline: "sailing", title: "Coastal sailing trip", duration_s: 8180, distance_m: 20493, elevation_gain_m: null, avg_hr: 101, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 2.51, calories: 502, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24088283831, start_time: "2026-08-23T15:15:18", local_date: "2026-08-23", discipline: "sailing", title: "Navigazione a vela", duration_s: 10190, distance_m: 24293, elevation_gain_m: null, avg_hr: 115, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: 2.38, calories: 787, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24083899248, start_time: "2026-08-23T10:43:03", local_date: "2026-08-23", discipline: "sailing", title: "Coastal sailing trip", duration_s: 8319, distance_m: 18782, elevation_gain_m: null, avg_hr: 94, max_hr: 136, avg_power: null, np_power: null, avg_speed_mps: 2.26, calories: 444, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24075764175, start_time: "2026-08-22T17:41:51", local_date: "2026-08-22", discipline: "sailing", title: "Coastal sailing trip", duration_s: 845, distance_m: 1866, elevation_gain_m: null, avg_hr: 91, max_hr: 128, avg_power: null, np_power: null, avg_speed_mps: 2.21, calories: 46, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24037042138, start_time: "2026-08-19T10:47:59", local_date: "2026-08-19", discipline: "hiking", title: "Peio Escursionismo", duration_s: 13208, distance_m: 19017, elevation_gain_m: 1312, avg_hr: 147, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.44, calories: 1711, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24023504056, start_time: "2026-08-18T14:04:14", local_date: "2026-08-18", discipline: "cycling", title: "Commezzadura Mountain bike", duration_s: 7423, distance_m: 31129, elevation_gain_m: 2825, avg_hr: 112, max_hr: 172, avg_power: null, np_power: null, avg_speed_mps: 4.19, calories: 581, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 24010349394, start_time: "2026-08-17T08:56:28", local_date: "2026-08-17", discipline: "hiking", title: "Commezzadura Escursionismo", duration_s: 16008, distance_m: 20222, elevation_gain_m: 1329, avg_hr: 153, max_hr: 199, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2271, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23998395298, start_time: "2026-08-16T11:44:57", local_date: "2026-08-16", discipline: "hiking", title: "Pellizzano Escursionismo", duration_s: 5997, distance_m: 6408, elevation_gain_m: 345, avg_hr: 126, max_hr: 177, avg_power: null, np_power: null, avg_speed_mps: 1.07, calories: 629, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23995891204, start_time: "2026-08-16T10:59:14", local_date: "2026-08-16", discipline: "cycling", title: "Mezzana Escursionismo", duration_s: 1720, distance_m: 3363, elevation_gain_m: 274, avg_hr: 173, max_hr: 205, avg_power: null, np_power: null, avg_speed_mps: 1.96, calories: 350, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23975993736, start_time: "2026-08-14T08:59:32", local_date: "2026-08-14", discipline: "hiking", title: "Mezzana Escursionismo", duration_s: 15899, distance_m: 20063, elevation_gain_m: 1517, avg_hr: 156, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2451, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23874722355, start_time: "2026-08-06T16:23:02", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 2021, distance_m: 17654, elevation_gain_m: 46, avg_hr: 65, max_hr: 97, avg_power: null, np_power: null, avg_speed_mps: 8.73, calories: 64, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23874721694, start_time: "2026-08-06T12:28:03", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 1827, distance_m: 16930, elevation_gain_m: 102, avg_hr: 60, max_hr: 74, avg_power: null, np_power: null, avg_speed_mps: 9.27, calories: 33, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23845543059, start_time: "2026-08-04T08:58:58", local_date: "2026-08-04", discipline: "hiking", title: "Al Hamra Escursionismo", duration_s: 8759, distance_m: 8008, elevation_gain_m: 318, avg_hr: 108, max_hr: 168, avg_power: null, np_power: null, avg_speed_mps: 0.91, calories: 648, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
-  { id: 23750560959, start_time: "2026-07-27T13:58:01", local_date: "2026-07-27", discipline: "cycling", title: "Ciclismo indoor", duration_s: 7245, distance_m: null, elevation_gain_m: null, avg_hr: 150, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: null, calories: 1085, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24505012960", start_time: "2026-09-26T10:59:22", local_date: "2026-09-26", discipline: "cycling", title: "Mountain bike ride", duration_s: 13523, distance_m: 66050, elevation_gain_m: 2333, avg_hr: 113, max_hr: 162, avg_power: null, np_power: null, avg_speed_mps: 4.88, calories: 986, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24433776396", start_time: "2026-09-20T12:53:36", local_date: "2026-09-20", discipline: "boating", title: "Lake boating trip", duration_s: 13929, distance_m: 29118, elevation_gain_m: 50, avg_hr: 97, max_hr: 124, avg_power: null, np_power: null, avg_speed_mps: 2.09, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24422820122", start_time: "2026-09-19T13:01:46", local_date: "2026-09-19", discipline: "boating", title: "Lake boating trip", duration_s: 20222, distance_m: 39950, elevation_gain_m: 80, avg_hr: 93, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.98, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24347545480", start_time: "2026-09-13T12:52:21", local_date: "2026-09-13", discipline: "boating", title: "Lake boating trip", duration_s: 11159, distance_m: 24399, elevation_gain_m: 43, avg_hr: 103, max_hr: 133, avg_power: null, np_power: null, avg_speed_mps: 2.19, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24335442417", start_time: "2026-09-12T13:25:51", local_date: "2026-09-12", discipline: "boating", title: "Lake boating trip", duration_s: 11436, distance_m: 22222, elevation_gain_m: 151, avg_hr: 111, max_hr: 137, avg_power: null, np_power: null, avg_speed_mps: 1.94, calories: null, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24215710935", start_time: "2026-09-02T16:52:47", local_date: "2026-09-02", discipline: "sailing", title: "Coastal sailing trip", duration_s: 14584, distance_m: 41483, elevation_gain_m: null, avg_hr: 74, max_hr: 151, avg_power: null, np_power: null, avg_speed_mps: 2.84, calories: 424, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24205585888", start_time: "2026-09-02T07:20:05", local_date: "2026-09-02", discipline: "swimming", title: "Open water swim", duration_s: 892, distance_m: 376, elevation_gain_m: null, avg_hr: 146, max_hr: 181, avg_power: null, np_power: null, avg_speed_mps: 0.42, calories: 153, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24149802595", start_time: "2026-08-28T13:53:20", local_date: "2026-08-28", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4872, distance_m: 11838, elevation_gain_m: null, avg_hr: 125, max_hr: 166, avg_power: null, np_power: null, avg_speed_mps: 2.43, calories: 495, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24146299897", start_time: "2026-08-28T10:38:44", local_date: "2026-08-28", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4689, distance_m: 7907, elevation_gain_m: null, avg_hr: 92, max_hr: 141, avg_power: null, np_power: null, avg_speed_mps: 1.69, calories: 239, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24138520501", start_time: "2026-08-27T14:59:54", local_date: "2026-08-27", discipline: "sailing", title: "Coastal sailing trip", duration_s: 4528, distance_m: 10971, elevation_gain_m: null, avg_hr: 124, max_hr: 167, avg_power: null, np_power: null, avg_speed_mps: 2.42, calories: 422, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24134684319", start_time: "2026-08-27T10:43:06", local_date: "2026-08-27", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6770, distance_m: 9397, elevation_gain_m: null, avg_hr: 91, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 1.39, calories: 332, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24125434774", start_time: "2026-08-26T14:31:57", local_date: "2026-08-26", discipline: "sailing", title: "Coastal sailing trip", duration_s: 9933, distance_m: 22084, elevation_gain_m: null, avg_hr: 95, max_hr: 146, avg_power: null, np_power: null, avg_speed_mps: 2.22, calories: 531, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24121568727", start_time: "2026-08-26T10:14:05", local_date: "2026-08-26", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6854, distance_m: 12740, elevation_gain_m: null, avg_hr: 90, max_hr: 131, avg_power: null, np_power: null, avg_speed_mps: 1.86, calories: 325, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24112479007", start_time: "2026-08-25T15:32:56", local_date: "2026-08-25", discipline: "sailing", title: "Coastal sailing trip", duration_s: 2835, distance_m: 7267, elevation_gain_m: null, avg_hr: 125, max_hr: 173, avg_power: null, np_power: null, avg_speed_mps: 2.56, calories: 298, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24109698388", start_time: "2026-08-25T10:44:26", local_date: "2026-08-25", discipline: "sailing", title: "Coastal sailing trip", duration_s: 3727, distance_m: 5783, elevation_gain_m: null, avg_hr: 119, max_hr: 159, avg_power: null, np_power: null, avg_speed_mps: 1.55, calories: 352, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24098561005", start_time: "2026-08-24T15:04:28", local_date: "2026-08-24", discipline: "sailing", title: "Coastal sailing trip", duration_s: 6595, distance_m: 17367, elevation_gain_m: null, avg_hr: 104, max_hr: 157, avg_power: null, np_power: null, avg_speed_mps: 2.63, calories: 430, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24095376062", start_time: "2026-08-24T10:11:25", local_date: "2026-08-24", discipline: "sailing", title: "Coastal sailing trip", duration_s: 8180, distance_m: 20493, elevation_gain_m: null, avg_hr: 101, max_hr: 143, avg_power: null, np_power: null, avg_speed_mps: 2.51, calories: 502, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24088283831", start_time: "2026-08-23T15:15:18", local_date: "2026-08-23", discipline: "sailing", title: "Navigazione a vela", duration_s: 10190, distance_m: 24293, elevation_gain_m: null, avg_hr: 115, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: 2.38, calories: 787, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24083899248", start_time: "2026-08-23T10:43:03", local_date: "2026-08-23", discipline: "sailing", title: "Coastal sailing trip", duration_s: 8319, distance_m: 18782, elevation_gain_m: null, avg_hr: 94, max_hr: 136, avg_power: null, np_power: null, avg_speed_mps: 2.26, calories: 444, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24075764175", start_time: "2026-08-22T17:41:51", local_date: "2026-08-22", discipline: "sailing", title: "Coastal sailing trip", duration_s: 845, distance_m: 1866, elevation_gain_m: null, avg_hr: 91, max_hr: 128, avg_power: null, np_power: null, avg_speed_mps: 2.21, calories: 46, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24037042138", start_time: "2026-08-19T10:47:59", local_date: "2026-08-19", discipline: "hiking", title: "Peio Escursionismo", duration_s: 13208, distance_m: 19017, elevation_gain_m: 1312, avg_hr: 147, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.44, calories: 1711, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24023504056", start_time: "2026-08-18T14:04:14", local_date: "2026-08-18", discipline: "cycling", title: "Commezzadura Mountain bike", duration_s: 7423, distance_m: 31129, elevation_gain_m: 2825, avg_hr: 112, max_hr: 172, avg_power: null, np_power: null, avg_speed_mps: 4.19, calories: 581, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "24010349394", start_time: "2026-08-17T08:56:28", local_date: "2026-08-17", discipline: "hiking", title: "Commezzadura Escursionismo", duration_s: 16008, distance_m: 20222, elevation_gain_m: 1329, avg_hr: 153, max_hr: 199, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2271, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23998395298", start_time: "2026-08-16T11:44:57", local_date: "2026-08-16", discipline: "hiking", title: "Pellizzano Escursionismo", duration_s: 5997, distance_m: 6408, elevation_gain_m: 345, avg_hr: 126, max_hr: 177, avg_power: null, np_power: null, avg_speed_mps: 1.07, calories: 629, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23995891204", start_time: "2026-08-16T10:59:14", local_date: "2026-08-16", discipline: "cycling", title: "Mezzana Escursionismo", duration_s: 1720, distance_m: 3363, elevation_gain_m: 274, avg_hr: 173, max_hr: 205, avg_power: null, np_power: null, avg_speed_mps: 1.96, calories: 350, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23975993736", start_time: "2026-08-14T08:59:32", local_date: "2026-08-14", discipline: "hiking", title: "Mezzana Escursionismo", duration_s: 15899, distance_m: 20063, elevation_gain_m: 1517, avg_hr: 156, max_hr: 195, avg_power: null, np_power: null, avg_speed_mps: 1.26, calories: 2451, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23874722355", start_time: "2026-08-06T16:23:02", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 2021, distance_m: 17654, elevation_gain_m: 46, avg_hr: 65, max_hr: 97, avg_power: null, np_power: null, avg_speed_mps: 8.73, calories: 64, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23874721694", start_time: "2026-08-06T12:28:03", local_date: "2026-08-06", discipline: "cycling", title: "Mahawt Quad", duration_s: 1827, distance_m: 16930, elevation_gain_m: 102, avg_hr: 60, max_hr: 74, avg_power: null, np_power: null, avg_speed_mps: 9.27, calories: 33, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23845543059", start_time: "2026-08-04T08:58:58", local_date: "2026-08-04", discipline: "hiking", title: "Al Hamra Escursionismo", duration_s: 8759, distance_m: 8008, elevation_gain_m: 318, avg_hr: 108, max_hr: 168, avg_power: null, np_power: null, avg_speed_mps: 0.91, calories: 648, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
+  { id: "23750560959", start_time: "2026-07-27T13:58:01", local_date: "2026-07-27", discipline: "cycling", title: "Ciclismo indoor", duration_s: 7245, distance_m: null, elevation_gain_m: null, avg_hr: 150, max_hr: 164, avg_power: null, np_power: null, avg_speed_mps: null, calories: 1085, training_load: null, data_completeness: "complete", sources: ["Garmin"] },
 ];
-
-/* --------------------------------------------------------------- activity detail */
-
-function genRoute(): ActivityDetail["route"] {
-  const route: { lat: number; lng: number; ele: number | null }[] = [];
-  const baseLat = 45.4386;
-  const baseLng = 11.0;
-  for (let i = 0; i < 240; i++) {
-    const t = i / 240;
-    const seed = mulberry32(i * 7 + 13);
-    const lat = baseLat + Math.sin(t * Math.PI * 3) * 0.04 + (seed() - 0.5) * 0.005;
-    const lng = baseLng + t * 0.08 + Math.cos(t * Math.PI * 2) * 0.03 + (seed() - 0.5) * 0.005;
-    const ele = 80 + Math.sin(t * Math.PI * 5) * 40 + t * 180 + (seed() - 0.5) * 8;
-    route.push({ lat, lng, ele: round(ele, 1) });
-  }
-  return route;
-}
-
-function genStream(tCount: number, type: "hr" | "power" | "speed" | "alt" | "cadence"): (number | null)[] {
-  const out: (number | null)[] = [];
-  const seed = mulberry32(type.length * 31 + 7);
-  let base = type === "hr" ? 150 : type === "power" ? 240 : type === "speed" ? 6.5 : type === "alt" ? 80 : 90;
-  for (let i = 0; i < tCount; i++) {
-    const phase = i / tCount;
-    const drift = Math.sin(phase * Math.PI * 6) * (type === "hr" ? 18 : type === "power" ? 40 : type === "speed" ? 1.4 : type === "alt" ? 60 : 6);
-    const noise = (seed() - 0.5) * (type === "hr" ? 6 : type === "power" ? 18 : 0.6);
-    if (seed() < 0.012) out.push(null);
-    else out.push(round(Math.max(0, base + drift + noise), type === "speed" || type === "alt" ? 1 : 0));
-    if (i % 40 === 0) base += (seed() - 0.5) * 4;
-  }
-  return out;
-}
-
-export function getActivityDetail(id: number): ActivityDetail {
-  const card = activities.find((a) => a.id === id) ?? activities[0];
-  const tCount = 240;
-  const t: number[] = Array.from({ length: tCount }, (_, i) => Math.round((card.duration_s * i) / (tCount - 1)));
-  const route = card.discipline === "cycling" || card.discipline === "running" || card.discipline === "hiking" ? genRoute() : null;
-  return {
-    ...card,
-    has_streams: true,
-    stream_types: ["hr", "power", "speed", "alt", "cadence"],
-    laps: Array.from({ length: 8 }, (_, i) => {
-      const lapDur = Math.round(card.duration_s / 8);
-      return {
-        lap_index: i + 1,
-        start_time: new Date(new Date(card.start_time).getTime() + lapDur * 1000 * i).toISOString(),
-        duration_s: lapDur,
-        distance_m: card.distance_m === null ? null : Math.round((card.distance_m / 8) * (0.94 + mulberry32(i + 1)() * 0.12)),
-        avg_hr: card.avg_hr === null ? null : Math.round(card.avg_hr + (mulberry32(i + 1)() - 0.5) * 12),
-        max_hr: card.max_hr === null ? null : card.max_hr - Math.round(mulberry32(i + 2)() * 6),
-        avg_power: card.avg_power === null ? null : Math.round(card.avg_power + (mulberry32(i + 3)() - 0.5) * 22),
-        calories: Math.round((card.calories ?? 0) / 8),
-      };
-    }),
-    route,
-    weather: {
-      temp_c: 14,
-      wind_kph: 9,
-      humidity_pct: 62,
-      conditions: "Partly cloudy",
-    },
-    gear: card.discipline === "cycling"
-      ? [
-          { id: 1, name: "Pinarello Dogma F", type: "bike" },
-          { id: 2, name: "Shimano Ultegra Di2", type: "groupset" },
-          { id: 3, name: "Garmin Edge 1040", type: "computer" },
-          { id: 4, name: "Assioma Duo Pedals", type: "power_meter" },
-        ]
-      : card.discipline === "running"
-        ? [
-            { id: 5, name: "Nike ZoomX Vaporfly", type: "shoes" },
-            { id: 6, name: "Garmin Forerunner 965", type: "watch" },
-          ]
-        : card.discipline === "strength"
-          ? [
-              { id: 7, name: "SBD Belt", type: "belt" },
-              { id: 8, name: "Knee Sleeves", type: "sleeves" },
-            ]
-          : [],
-    source_metrics: {
-      heart_rate: "Garmin",
-      power: "Assioma Duo",
-      location: "Garmin Edge 1040",
-      cadence: "Garmin",
-      elevation: "Barometric (Garmin Edge)",
-    },
-  };
-}
-
-export function getActivityStreams(id: number): ActivityStream {
-  const card = activities.find((a) => a.id === id) ?? activities[0];
-  const tCount = 240;
-  const t: number[] = Array.from({ length: tCount }, (_, i) => Math.round((card.duration_s * i) / (tCount - 1)));
-  return {
-    activity_id: id,
-    t,
-    columns: {
-      hr: genStream(tCount, "hr"),
-      power: card.avg_power === null ? new Array(tCount).fill(null) : genStream(tCount, "power"),
-      speed: card.avg_speed_mps === null ? new Array(tCount).fill(null) : genStream(tCount, "speed"),
-      alt: genStream(tCount, "alt"),
-      cadence: genStream(tCount, "cadence"),
-    },
-  };
-}
 
 /* --------------------------------------------------------------- sleep */
 
@@ -682,6 +574,6 @@ export const challenges: Challenge[] = [
 
 /* --------------------------------------------------------------- helpers */
 
-export function findActivity(id: number): ActivityCard | undefined {
+export function findActivity(id: string): ActivityCard | undefined {
   return activities.find((a) => a.id === id);
 }

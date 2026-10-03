@@ -1,27 +1,12 @@
 "use client";
 
-/**
- * Apex Health — Activity Comparison modal.
- *
- * Lets the user compare 2-3 activities side-by-side on key metrics:
- *   - Distance / Duration / Elevation / Avg HR / Max HR / Avg Power / NP / Calories / Load
- *
- * Visual law: monochrome table with semantic tones for "best" values per row
- * (e.g. longest distance, highest power, lowest HR for recovery rides).
- * Each activity column shows a colored header bar with the discipline.
- *
- * Behavior:
- *   - Selectable activities are limited to those with avg_hr != null (data-rich)
- *   - User can pick 2 or 3 (3rd is optional)
- *   - When closed, selection is cleared
- *   - "Best" cells in each row are tinted primarySoft/positiveSoft depending on metric
- */
+/** Compare the current period's loaded records using the chosen units.
+ * Quantities are neutral: more load or a lower heart rate is not universally better. */
 
 import { useEffect, useMemo, useState } from "react";
 import { X, GitCompare, ChevronRight, Check } from "lucide-react";
 import { useT } from "@/lib/apex/i18nContext";
-import { activities } from "@/lib/apex/data";
-import { ApexButton, Eyebrow, Hairline, SportIcon, Badge } from "@/components/apex/kit";
+import { ApexButton, Eyebrow, SportIcon, Badge } from "@/components/apex/kit";
 import {
   fmtClock,
   fmtDate,
@@ -30,7 +15,8 @@ import {
   fmtElevation,
   friendlyDiscipline,
 } from "@/lib/apex/format";
-import type { ActivityCard, Locale } from "@/lib/apex/types";
+import { useApexUi } from "@/lib/apex/store";
+import type { ActivityCard, Units } from "@/lib/apex/types";
 
 interface MetricRow {
   key: string;
@@ -39,54 +25,34 @@ interface MetricRow {
   value: (a: ActivityCard) => number | null;
   /** renders the value as a string */
   format: (v: number) => string;
-  /** "high" = higher is better, "low" = lower is better, "none" = neutral */
-  best: "high" | "low" | "none";
 }
 
-const METRICS: MetricRow[] = [
-  { key: "distance", label: "Distance", value: (a) => a.distance_m, format: (v) => fmtDistance(v, "metric", 1) + " km", best: "high" },
-  { key: "duration", label: "Duration", value: (a) => a.duration_s, format: (v) => fmtDuration(v), best: "none" },
-  { key: "elevation", label: "Elevation", value: (a) => a.elevation_gain_m, format: (v) => fmtElevation(v) + " m", best: "high" },
-  { key: "avg_hr", label: "Avg HR", value: (a) => a.avg_hr, format: (v) => `${v} bpm`, best: "low" },
-  { key: "max_hr", label: "Max HR", value: (a) => a.max_hr, format: (v) => `${v} bpm`, best: "none" },
-  { key: "avg_power", label: "Avg Power", value: (a) => a.avg_power, format: (v) => `${v} W`, best: "high" },
-  { key: "np_power", label: "Norm Power", value: (a) => a.np_power, format: (v) => `${v} W`, best: "high" },
-  { key: "calories", label: "Calories", value: (a) => a.calories, format: (v) => `${v} kcal`, best: "none" },
-  { key: "load", label: "Strain & Load", value: (a) => a.training_load, format: (v) => `${v} TSS`, best: "high" },
+const metricsFor = (units: Units): MetricRow[] => [
+  { key: "distance", label: "Distance", value: (a) => a.distance_m, format: (v) => fmtDistance(v, units, 1) + (units === "imperial" ? " mi" : " km") },
+  { key: "duration", label: "Duration", value: (a) => a.duration_s, format: (v) => fmtDuration(v) },
+  { key: "elevation", label: "Elevation", value: (a) => a.elevation_gain_m, format: (v) => fmtElevation(v, units) + (units === "imperial" ? " ft" : " m") },
+  { key: "avg_hr", label: "Avg HR", value: (a) => a.avg_hr, format: (v) => `${v} bpm` },
+  { key: "max_hr", label: "Max HR", value: (a) => a.max_hr, format: (v) => `${v} bpm` },
+  { key: "avg_power", label: "Avg Power", value: (a) => a.avg_power, format: (v) => `${v} W` },
+  { key: "np_power", label: "Norm Power", value: (a) => a.np_power, format: (v) => `${v} W` },
+  { key: "calories", label: "Calories", value: (a) => a.calories, format: (v) => `${v} kcal` },
+  { key: "load", label: "Strain & Load", value: (a) => a.training_load, format: (v) => `${v}` },
 ];
 
 export function ActivityCompareModal({
   open,
   onOpenChange,
+  activities,
 }: {
+  activities: ActivityCard[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
   const t = useT();
-  const [selected, setSelected] = useState<number[]>([]); // activity ids
+  const units = useApexUi((state) => state.units);
+  const metrics = metricsFor(units);
+  const [selected, setSelected] = useState<string[]>([]); // activity ids
   const [search, setSearch] = useState("");
-
-  // Load persisted selection from localStorage on mount
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("apex-compare-activities");
-      if (raw) {
-        const ids = JSON.parse(raw);
-        if (Array.isArray(ids)) setSelected(ids.slice(0, 3));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  // Persist selection whenever it changes
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("apex-compare-activities", JSON.stringify(selected));
-    } catch {
-      /* ignore */
-    }
-  }, [selected]);
 
   // Close on Esc
   useEffect(() => {
@@ -98,11 +64,10 @@ export function ActivityCompareModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
 
-  // Clear search when reopening (selection is preserved)
+  // Each comparison starts with the current loaded records.
   useEffect(() => {
-    if (open) {
-      setSearch("");
-    }
+    setSearch("");
+    setSelected([]);
   }, [open]);
 
   // Pickable activities (sorted by date desc, with avg_hr data)
@@ -119,14 +84,14 @@ export function ActivityCompareModal({
         );
       })
       .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-  }, [search]);
+  }, [activities, search]);
 
   const selectedActivities = useMemo(
     () => selected.map((id) => activities.find((a) => a.id === id)).filter((a): a is ActivityCard => !!a),
-    [selected]
+    [selected, activities]
   );
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: string) => {
     setSelected((cur) => {
       if (cur.includes(id)) return cur.filter((x) => x !== id);
       if (cur.length >= 3) return cur; // max 3
@@ -250,39 +215,23 @@ export function ActivityCompareModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {METRICS.map((metric) => {
-                    const values = selectedActivities.map((a) => metric.value(a));
-                    const maxV = Math.max(...values.filter((v): v is number => v !== null) as number[], -Infinity);
-                    const minV = Math.min(...values.filter((v): v is number => v !== null) as number[], Infinity);
+                  {metrics.map((metric) => {
                     return (
                       <tr key={metric.key} className="border-b border-hairline/60 last:border-b-0">
                         <td className="eyebrow !text-[12px] px-3 py-2.5">{metric.label}</td>
-                        {selectedActivities.map((a, i) => {
-                          const v = values[i];
+                        {selectedActivities.map((a) => {
+                          const v = metric.value(a);
                           if (v === null || v === undefined || !Number.isFinite(v)) {
                             return (
                               <td key={a.id} className="num px-3 py-2.5 text-right text-faint">—</td>
                             );
                           }
-                          // Determine if this is the "best"
-                          let isBest = false;
-                          if (metric.best === "high" && maxV !== -Infinity) {
-                            isBest = v === maxV && selectedActivities.length > 1;
-                          } else if (metric.best === "low" && minV !== Infinity) {
-                            isBest = v === minV && selectedActivities.length > 1;
-                          }
-                          const cellCls = isBest
-                            ? metric.best === "high"
-                              ? "text-positiveText bg-positiveSoft/40"
-                              : "text-primaryText bg-primarySoft/40"
-                            : "text-ink2";
                           return (
                             <td
                               key={a.id}
-                              className={`num px-3 py-2.5 text-right font-medium ${cellCls} ${isBest ? "rounded-[var(--radius-control)]" : ""}`}
+                              className="num px-3 py-2.5 text-right font-medium text-ink2"
                             >
                               {metric.format(v)}
-                              {isBest && <span className="ml-1 text-[12px] opacity-80">★</span>}
                             </td>
                           );
                         })}
@@ -333,7 +282,7 @@ export function ActivityCompareModal({
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-hairline px-5 py-3">
           <div className="num text-[12px] text-faint">
-            ★ = best value for this metric (higher is better where applicable)
+            Comparing loaded activities in the selected period.
           </div>
           <div className="flex items-center gap-2">
             <ApexButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>

@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ApexThemeProvider } from "@/components/apex/ApexThemeProvider";
 
-const geistSans = Geist({
+const geistSans = localFont({
+  src: "../assets/fonts/Geist-Variable.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "../assets/fonts/JetBrainsMono-Variable.woff2",
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
   display: "swap",
 });
 
