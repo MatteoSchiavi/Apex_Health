@@ -78,6 +78,8 @@ async def test_free_text_gets_real_agent_reply():
             [classification("lookup"), final_reply(REPLY)]
         )
         owner = await _link_chat(ctx, CHAT)
+        async with ctx.sessionmaker() as session:
+            credential=await session.get(AuthCredential,owner);credential.ai_access_tier="full";await session.commit()
         await _seed_feature(ctx, owner, datetime(2025, 3, 9).date())
 
         await handle_update(ctx, load_update("text_free"))
@@ -85,7 +87,8 @@ async def test_free_text_gets_real_agent_reply():
         assert sent_texts(client) == [REPLY]
         prompt = llm.calls[1]["messages"][0]["content"]
         assert "recovery looking" in prompt  # the user's question
-        assert '"readiness": 71.0' in llm.calls[1]["system"]  # grounded via the §8.4 system block
+        assert '"readiness": 71.0' not in llm.calls[1]["system"]
+        assert '"source_policy": "ai_eligible_v1"' in llm.calls[1]["system"]  # grounded via the §8.4 system block
         assert [c["tier"] for c in llm.calls] == ["free", "cheap"]  # §9.2 routing sequence
 
         async with ctx.sessionmaker() as session:
@@ -94,7 +97,7 @@ async def test_free_text_gets_real_agent_reply():
             ).all()
             assert [m.role for m in messages] == ["user", "assistant"]
             assert messages[1].model_tier == "cheap"
-            assert messages[1].referenced_data["latest"]["readiness"] == 71.0
+            assert messages[1].referenced_data["harness_version"] == "apex-harness-v4"
             sessions = (await session.scalars(select(AiChatSession))).all()
             assert len(sessions) == 1
 
@@ -112,8 +115,8 @@ async def test_agent_without_data_says_what_it_can():
         # with "status": "no_feature_row". The old empty-list assertion
         # (trend_14d: []) is replaced by a check that the gap marker is
         # present when no feature rows exist.
-        assert '"trend_14d":' in system
-        assert '"no_feature_row"' in system or '"status": "no_feature_row"' in system
+        assert '"coverage":' in system
+        assert '"availability": "not_measured"' in system
 
 
 async def test_session_boundary_after_30_minutes():

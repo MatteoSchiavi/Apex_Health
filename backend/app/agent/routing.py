@@ -29,22 +29,42 @@ logger = logging.getLogger("app.agent.routing")
 
 CLASSIFY_SYSTEM_PROMPT = (
     "You classify one message from an athlete for routing. Reply with ONLY a "
-    "JSON object, no prose: {\"category\": \"lookup\"} or "
-    "{\"category\": \"strategic\"} or {\"category\": \"medical\"}.\n"
-    "\"lookup\" = simple data questions answerable from stored metrics or "
+    'JSON object, no prose: {"category": "lookup"} or '
+    '{"category": "strategic"} or {"category": "medical"}.\n'
+    '"lookup" = simple data questions answerable from stored metrics or '
     "tools (statuses, trends, facts, schedules).\n"
-    "\"strategic\" = planning, periodization, plan generation, multi-step "
+    '"strategic" = planning, periodization, plan generation, multi-step '
     "analysis, open-ended coaching advice.\n"
-    "\"medical\" = questions about lab results, blood panels, medical "
+    '"medical" = questions about lab results, blood panels, medical '
     "reports, symptoms, medications, or clinical interpretation of vitals."
 )
 
 MEDICAL_INTENT_MARKERS = (
-    "blood work", "blood test", "blood panel", "lab result", "ferritin",
-    "hemoglobin", "ferritina", "esame del sangue", "analisi", "cholesterol",
-    "colesterolo", "thyroid", "tiroide", "vitamin d", "vitamina d",
-    "testosterone", "symptom", "sintomo", "medication", "medicinale",
-    "farmaco", "injury diagnosis", "doctor", "medico", "medicale",
+    "blood work",
+    "blood test",
+    "blood panel",
+    "lab result",
+    "ferritin",
+    "hemoglobin",
+    "ferritina",
+    "esame del sangue",
+    "analisi",
+    "cholesterol",
+    "colesterolo",
+    "thyroid",
+    "tiroide",
+    "vitamin d",
+    "vitamina d",
+    "testosterone",
+    "symptom",
+    "sintomo",
+    "medication",
+    "medicinale",
+    "farmaco",
+    "injury diagnosis",
+    "doctor",
+    "medico",
+    "medicale",
 )
 
 MEDICAL_DISCLAIMER_EN = (
@@ -107,6 +127,8 @@ async def resolve_tier(
     if is_medical_intent(text):
         classification = "medical"
     else:
+        # End the credential read transaction before any remote model call.
+        await session.commit()
         classification = await _classify(session, user_id, text, llm)
     if classification == "medical":
         # Medical tier requires BOTH an owner-enabled MedGemma endpoint and a
@@ -115,13 +137,17 @@ async def resolve_tier(
         from app.core.config import get_settings
 
         if get_settings().medical_tier_enabled:
-            return RoutingDecision(tier="medical", classification=classification, cap=cap)
+            return RoutingDecision(
+                tier="medical", classification=classification, cap=cap
+            )
         return RoutingDecision(tier="powerful", classification=classification, cap=cap)
     tier = "cheap" if classification == "lookup" else "powerful"
     return RoutingDecision(tier=tier, classification=classification, cap=cap)
 
 
-async def _classify(session: AsyncSession, user_id: int, text: str, llm: LLMClient) -> str:
+async def _classify(
+    session: AsyncSession, user_id: int, text: str, llm: LLMClient
+) -> str:
     """Free-tier classification (§9.2 step 2). Any failure → 'lookup'."""
     try:
         response = await llm.complete(
@@ -144,8 +170,10 @@ async def _classify(session: AsyncSession, user_id: int, text: str, llm: LLMClie
     )
     try:
         category = extract_json_object(response.content).get("category")
-    except (LLMError, ValueError) as exc:
-        logger.warning("unparsable classification %r — defaulting to lookup", response.content)
+    except (LLMError, ValueError):
+        logger.warning(
+            "unparsable classification %r — defaulting to lookup", response.content
+        )
         return "lookup"
     if category not in ("lookup", "strategic", "medical"):
         return "lookup"

@@ -25,7 +25,8 @@ async def upload_csv(
     content = await file.read(_MAX_BYTES + 1)
     if len(content) > _MAX_BYTES:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="file too large (20 MB cap)"
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="file too large (20 MB cap)",
         )
     if not content.strip():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty file")
@@ -34,3 +35,29 @@ async def upload_csv(
     )
     await session.commit()
     return {"filename": file.filename, **report.as_dict()}
+
+
+@router.post("/imports/fit", status_code=201)
+async def upload_fit(
+    file: UploadFile,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    import asyncio
+    from app.services.fit_import import parse_original, import_original
+
+    content = await file.read(_MAX_BYTES + 1)
+    if len(content) > _MAX_BYTES:
+        raise HTTPException(413, "File exceeds 20 MB")
+    await session.commit()  # No database transaction while parsing an untrusted file.
+    try:
+        parsed = await asyncio.wait_for(
+            asyncio.to_thread(parse_original, content), timeout=20
+        )
+    except TimeoutError:
+        raise HTTPException(422, "FIT parsing exceeded the time limit") from None
+    result = await import_original(
+        session, user, file.filename or "original.fit", content, parsed
+    )
+    await session.commit()
+    return result

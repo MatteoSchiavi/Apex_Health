@@ -15,7 +15,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, Text
+from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,7 +27,9 @@ class AiReport(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    report_type: Mapped[str] = mapped_column(Text, nullable=False)  # daily|weekly|monthly
+    report_type: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # daily|weekly|monthly|quarterly
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(
@@ -63,6 +65,9 @@ class AgentToolCall(Base):
     __tablename__ = "agent_tool_calls"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     session_id: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True
     )  # NULL = scheduled/report-originated (§8.2)

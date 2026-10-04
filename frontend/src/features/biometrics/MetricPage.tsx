@@ -16,7 +16,12 @@ import {
   fmtNum,
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
-import { assess, METRIC_LABELS, useUnits } from "../../components/data";
+import {
+  assess,
+  LEGACY_HEURISTICS,
+  METRIC_LABELS,
+  useUnits,
+} from "../../components/data";
 export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
@@ -59,6 +64,14 @@ export default function MetricPage() {
           />
         }
       />
+      {LEGACY_HEURISTICS.includes(key) && (
+        <p className="text-[13px] text-muted">
+          {t("lab.legacy_metric_note")}{" "}
+          <Link className="text-link" to="/app/lab">
+            {t("lab.baselines")} ↗
+          </Link>
+        </p>
+      )}
       {!latest ? (
         <Card>
           <Empty>{t("biometrics.no_data")}</Empty>

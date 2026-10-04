@@ -39,14 +39,18 @@ from app.agent.entrypoint import AgentTurnResult, run_agent_turn
 from app.auth.deps import get_current_user
 from app.core.config import get_settings
 from app.core.db import get_session, sessionmaker as app_sessionmaker
-from app.core.embeddings import build_embedding_client
 from app.core.llm import build_llm_client
 from app.core.redis import get_redis_dependency
 from app.core.llm import LLMError, LLMUnavailableError
 from app.models.chat import AiChatMessage, AiChatSession
 from app.models.user import User
 from app.queries.usage import user_day_spend
-from app.schemas.ui import ChatMessageOut, ChatPostIn, ChatSessionDetailOut, ChatSessionOut
+from app.schemas.ui import (
+    ChatMessageOut,
+    ChatPostIn,
+    ChatSessionDetailOut,
+    ChatSessionOut,
+)
 
 logger = logging.getLogger("api.chats")
 
@@ -149,7 +153,9 @@ async def chat_detail(
     )
 
 
-@router.post("", response_model=ChatSessionDetailOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ChatSessionDetailOut, status_code=status.HTTP_201_CREATED
+)
 async def post_message(
     payload: ChatPostIn,
     user: User = Depends(get_current_user),
@@ -165,13 +171,13 @@ async def post_message(
     settings = get_settings()
 
     # F-18 audit: pre-turn cost gate — hard-stop a user who has already
-    # crossed 2× the daily_token_budget_usd threshold TODAY. The nightly
+    # crossed the estimated daily_token_budget_usd threshold TODAY. The nightly
     # budget task at 23:45 UTC is informational-only; without this gate a
     # scripted user could drive unlimited spend between checks.
     if settings.daily_token_budget_usd > 0:
         async with app_sessionmaker() as cost_session:
             spent = await user_day_spend(cost_session, user.id, datetime.now(UTC))
-        if spent > Decimal(str(settings.daily_token_budget_usd)) * 2:
+        if spent >= Decimal(str(settings.daily_token_budget_usd)):
             raise HTTPException(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 f"Daily AI budget exceeded (${spent:.2f} spent today, limit "
@@ -195,14 +201,18 @@ async def post_message(
     embeddings = None
     try:
         llm = build_llm_client()
-        embeddings = build_embedding_client() if settings.openai_api_key else None
+        embeddings = None  # Private context search is local and bounded.
         if chat is None:
             # The web contract says omitted session_id starts a NEW chat.
             # The bot's idle-window session resolver must not merge it into
             # an unrelated conversation created a few minutes earlier.
             now = datetime.now(UTC)
-            chat = AiChatSession(user_id=user.id, title=_title_from(payload.text),
-                                 started_at=now, last_activity_at=now)
+            chat = AiChatSession(
+                user_id=user.id,
+                title=_title_from(payload.text),
+                started_at=now,
+                last_activity_at=now,
+            )
             session.add(chat)
             await session.commit()
         # F-01 audit: hard wall-clock cap. asyncio.wait_for cancels the
@@ -224,7 +234,8 @@ async def post_message(
         except asyncio.TimeoutError as exc:
             logger.warning(
                 "agent turn timed out for user %s after %ss",
-                user.id, AGENT_TURN_TIMEOUT_S,
+                user.id,
+                AGENT_TURN_TIMEOUT_S,
             )
             raise HTTPException(
                 status.HTTP_504_GATEWAY_TIMEOUT,
@@ -233,16 +244,23 @@ async def post_message(
         except LLMUnavailableError:
             raise HTTPException(503, "The AI provider is not configured.") from None
         except LLMError:
-            raise HTTPException(502, "The AI provider could not finish this turn; try again shortly.") from None
+            raise HTTPException(
+                502, "The AI provider could not finish this turn; try again shortly."
+            ) from None
     finally:
         # Always release the lock — a crash between acquire and release
         # still auto-expires via the TTL.
-        await redis.eval("""
+        await redis.eval(
+            """
             if redis.call('GET', KEYS[1]) == ARGV[1] then
                 return redis.call('DEL', KEYS[1])
             end
             return 0
-        """, 1, lock_key, lock_token)
+        """,
+            1,
+            lock_key,
+            lock_token,
+        )
         for resource in (llm, embeddings):
             close = getattr(resource, "aclose", None)
             if close is not None:

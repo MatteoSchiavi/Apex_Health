@@ -4,11 +4,11 @@ in-gym session tracker, and session feedback (owner feature batch).
 Every route is `get_current_user`-scoped; foreign ids answer 404 (the
 isolation law used across the whole API, §22)."""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,6 @@ from app.models.user import User
 from app.queries.gym_detail import (
     NotPlanOwnerError,
     PlanNotFoundError,
-    get_owned_plan,
     log_set,
     next_up,
     plan_for_date,
@@ -52,6 +51,30 @@ class EventIn(BaseModel):
     taper_days: int = Field(default=3, ge=0, le=21)
     notes: str | None = Field(default=None, max_length=2000)
 
+    @model_validator(mode="after")
+    def valid_event(self):
+        if self.kind not in (
+            "race",
+            "run",
+            "ride",
+            "ski",
+            "enduro",
+            "sailing",
+            "competition",
+            "trip",
+            "training_camp",
+            "gym",
+            "other",
+        ):
+            raise ValueError("Unknown event kind")
+        if self.starts_at.tzinfo is None or (
+            self.ends_at and self.ends_at.tzinfo is None
+        ):
+            raise ValueError("Event timestamps require a timezone")
+        if self.ends_at and self.ends_at < self.starts_at:
+            raise ValueError("Event end must follow its start")
+        return self
+
 
 @router.get("/events")
 async def list_events(
@@ -60,21 +83,21 @@ async def list_events(
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     today = datetime.now(_tz(user)).date()
-    rows = await upcoming_events(session, user.id, today, horizon_days=max(horizon_days, 1))
-    past = (
-        (
-            await session.scalars(
-                select(UserEvent)
-                .where(
-                    UserEvent.user_id == user.id,
-                    UserEvent.starts_at < datetime.combine(today, datetime.min.time()),
-                )
-                .order_by(UserEvent.starts_at.desc())
-                .limit(20)
-            )
-        )
-        .all()
+    rows = await upcoming_events(
+        session, user.id, today, horizon_days=min(max(horizon_days, 1), 366)
     )
+    past = (
+        await session.scalars(
+            select(UserEvent)
+            .where(
+                UserEvent.user_id == user.id,
+                UserEvent.starts_at
+                < datetime.combine(today, datetime.min.time(), tzinfo=_tz(user)),
+            )
+            .order_by(UserEvent.starts_at.desc())
+            .limit(20)
+        )
+    ).all()
     return [_event_dict(e, "upcoming") for e in rows] + [
         _event_dict(e, "past") for e in past
     ]
@@ -86,11 +109,25 @@ async def create_event(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user.id, "changes")
     if payload.kind not in (
-        "race", "run", "ride", "ski", "enduro", "sailing", "competition",
-        "trip", "training_camp", "gym", "other",
+        "race",
+        "run",
+        "ride",
+        "ski",
+        "enduro",
+        "sailing",
+        "competition",
+        "trip",
+        "training_camp",
+        "gym",
+        "other",
     ):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown event kind")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown event kind"
+        )
     event = UserEvent(user_id=user.id, **payload.model_dump())
     session.add(event)
     await session.commit()
@@ -104,6 +141,9 @@ async def update_event(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user.id, "changes")
     event = await session.get(UserEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="event not found")
@@ -119,6 +159,9 @@ async def delete_event(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> None:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user.id, "changes")
     event = await session.get(UserEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="event not found")
@@ -175,6 +218,9 @@ async def put_context_doc(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user.id, "changes")
     if kind not in _DOC_KINDS:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -191,6 +237,7 @@ async def put_context_doc(
     else:
         doc.content = payload.content
         doc.updated_by = "user"
+    doc.updated_at = datetime.now(UTC)
     await session.commit()
     return {"doc_kind": kind, "content": doc.content, "updated_by": doc.updated_by}
 
@@ -265,7 +312,9 @@ async def get_next_exercise(
     try:
         return await next_up(session, user.id, plan_id)
     except (PlanNotFoundError, NotPlanOwnerError):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="plan not found") from None
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="plan not found"
+        ) from None
 
 
 class SetLogIn(BaseModel):
@@ -293,7 +342,9 @@ async def post_log_set(
             payload.weight_kg,
         )
     except (PlanNotFoundError, NotPlanOwnerError):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="plan not found") from None
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="plan not found"
+        ) from None
     await session.commit()
     return result
 

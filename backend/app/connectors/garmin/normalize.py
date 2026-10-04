@@ -170,6 +170,8 @@ async def normalize_raw_row(
         await _upsert_biometrics(session, raw, payload, kind, stats)
     else:
         raise NormalizationError(f"unknown payload_type {raw.payload_type!r}")
+    from app.services.evidence import index_garmin_payload
+    await index_garmin_payload(session, raw, tz)
     raw.processed = True
     return stats
 
@@ -399,6 +401,8 @@ async def _upsert_sleep(
     score = None
     if isinstance(payload.get("sleepScore"), dict):
         score = _num(payload["sleepScore"].get("value"))
+    if score is None:
+        score = _num(((dto.get("sleepScores") or {}).get("overall") or {}).get("value"))
 
     values = dict(
         user_id=raw.user_id,

@@ -130,3 +130,7 @@ or the intended server. Before calling the backend production-ready:
 Technogym requires an eligible partner API account and remains optional.
 Unconfigured providers are not evidence of a successful live integration.
 UI redesign follows this acceptance boundary.
+
+## Performance lab upgrade
+
+Migration `0010_performance_lab` adds the canonical evidence ledger, changes, decisions, notifications, documents, jobs and analysis results. Read [PERFORMANCE_LAB.md](PERFORMANCE_LAB.md) before enabling live credentials. Start with a scoped reindex of stored Garmin raw history; coverage remains honestly incomplete until actual observations are indexed. The new harness exposes proposal authority only; approval and execution belong to authenticated application endpoints.

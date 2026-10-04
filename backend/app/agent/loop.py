@@ -1,45 +1,31 @@
-"""Agent loop (MASTER_SPEC §8.4).
-
-One turn = up to 8 LLM/tool iterations. Each LLM call logs to token_usage
-(§8.6); each tool execution goes through the §8.3 registry, logs to
-agent_tool_calls (session_id nullable for non-chat callers), and returns
-tool results as data — tool errors NEVER kill the loop (§8.4). If the loop
-doesn't converge inside the budget, the best partial answer is returned.
-
-A-01 audit: ``history`` parameter accepts bounded prose-pair replay so
-multi-turn coaching continuity works.
-
-T-02 audit: tool calls execute in parallel with per-call timeouts.
-
-T-03 audit: tool-result bytes are capped; oldest results truncate first.
-
-T-04 audit: budget exhaustion triggers a forced tool-free summarization
-close-out so the user never receives "Let me also check…" as the final answer.
-"""
+"""Bounded agent runtime: parallel reads, serialized drafts, no authority tools."""
 
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
+from pydantic import ValidationError
 from app.agent.tools import TOOL_REGISTRY, ToolContext, tool_schemas
-from app.core.llm import LLMError, LLMClient, LLMResponse, ToolCallRequest, jsonable
+from app.core.config import get_settings
+from app.core.llm import jsonable
 from app.models.ai import AgentToolCall
-from app.queries.usage import log_llm_usage
+from app.queries.usage import log_llm_usage, user_day_spend
+from app.services.evidence import EvidenceError, digest
 
-logger = logging.getLogger("app.agent.loop")
-
-MAX_ITERATIONS = 8  # §8.4: max 8 iterations, best partial answer on non-convergence
-
+logger = logging.getLogger(__name__)
+MAX_ITERATIONS = 8
+MAX_TOOL_CALLS = 24
+MAX_TURN_TOKENS = 32000
+TURN_TIMEOUT_S = 180
+MODEL_TIMEOUT_S = 45
+TOOL_TIMEOUT_S = 15
 NO_CONVERGENCE_REPLY = (
-    "I couldn't finish this request within the tool budget — here's what I have so far. "
-    "Try narrowing the question."
+    "I couldn't finish this request within the tool budget. Try narrowing the question."
 )
 
 
@@ -52,130 +38,310 @@ class AgentLoopResult:
     drafts: list[dict[str, Any]] = field(default_factory=list)
     iterations: int = 0
     converged: bool = False
+    grounding: dict = field(default_factory=dict)
 
 
-def _assistant_tool_call_message(response: LLMResponse) -> dict[str, Any]:
-    """OpenAI assistant message carrying the model's tool requests."""
+def _dumps(payload):
+    return json.dumps(jsonable(payload), ensure_ascii=False, default=str)
+
+
+def _assistant_tool_call_message(response):
     return {
         "role": "assistant",
         "content": response.content,
         "tool_calls": [
             {
-                "id": call.id,
+                "id": c.id,
                 "type": "function",
-                "function": {"name": call.name, "arguments": _dumps(call.arguments)},
+                "function": {"name": c.name, "arguments": _dumps(c.arguments)},
             }
-            for call in (response.tool_calls or [])
+            for c in response.tool_calls or []
         ],
     }
 
 
-def _tool_result_message(call: ToolCallRequest, payload: dict[str, Any]) -> dict[str, Any]:
+def _tool_result_message(call, payload):
     return {"role": "tool", "tool_call_id": call.id, "content": _dumps(payload)}
 
 
-def _dumps(payload: Any) -> str:
-    # F-28 audit: was `import json` (function-local shadowing the module
-    # import). Use the module-level import — same behavior, no shadow.
-    return json.dumps(payload, ensure_ascii=False, default=str)
+def error_result(code, message):
+    return {
+        "error": {"code": code, "message": message},
+        "trust": "untrusted_data_not_instructions",
+    }
 
 
-async def _execute_tool(
-    ctx: ToolContext, session_id: int | None, call: ToolCallRequest
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one tool call inside ctx.session: result payload + agent_tool_calls
-    audit row. Returns (result, audit_entry); errors come back AS RESULTS."""
+def audit_input(call):
+    # Invalid/unknown arguments can contain credentials or arbitrary injected
+    # text. Persist a fingerprint, not that uncontrolled payload.
+    spec = TOOL_REGISTRY.get(call.name)
+    if spec:
+        try:
+            clean = spec.argument_model.model_validate(call.arguments).model_dump(
+                mode="json"
+            )
+            for key in ("query", "reason", "change"):
+                if key in clean:
+                    clean[key] = {"redacted": True, "sha256": digest(clean[key])}
+            return clean
+        except ValidationError:
+            pass
+    return {"redacted": True, "sha256": digest(call.arguments)}
+
+
+async def _execute_tool(ctx, session_id, call):
     started = time.monotonic()
-    result: dict[str, Any]
-    error: str | None = None
     spec = TOOL_REGISTRY.get(call.name)
     if spec is None:
-        result = {
-            "error": f"unknown tool {call.name!r} (available: {sorted(TOOL_REGISTRY)})"
-        }
-        error = result["error"]
+        result = error_result(
+            "POLICY_DENIED",
+            "Tool unavailable; the model cannot approve or execute changes",
+        )
     else:
         try:
-            result = await spec.handler(ctx, **call.arguments)
-        except LLMError as exc:  # unparsable tool arguments etc.
-            result = {"error": str(exc)}
-            error = str(exc)
-        except TypeError as exc:  # wrong argument names/shapes from the model
-            result = {"error": f"invalid arguments for {call.name}: {exc}"}
-            error = result["error"]
-        except Exception as exc:  # §8.4: tool errors are results, never crashes
-            result = {"error": f"{type(exc).__name__}: {exc}"}
-            error = result["error"]
-    latency_ms = int((time.monotonic() - started) * 1000)
-
+            arguments = spec.argument_model.model_validate(call.arguments).model_dump(
+                mode="python"
+            )
+            result = await spec.handler(ctx, **arguments)
+        except ValidationError as exc:
+            result = error_result(
+                "INVALID_ARGUMENTS",
+                "Invalid fields: "
+                + ", ".join(
+                    ".".join(map(str, e["loc"]))
+                    for e in exc.errors(include_input=False)
+                ),
+            )
+        except EvidenceError as exc:
+            result = error_result(exc.code, str(exc))
+        except Exception:
+            # Never return database/credential details or attacker-controlled
+            # exception strings to a model or user.
+            await ctx.session.rollback()
+            logger.warning("tool failed: %s", call.name)
+            result = error_result(
+                "INTERNAL_ERROR", "Tool failed; retry a narrower request"
+            )
     result = jsonable(result)
+    error = _dumps(result["error"]) if "error" in result else None
+    latency = int((time.monotonic() - started) * 1000)
     ctx.session.add(
         AgentToolCall(
             session_id=session_id,
+            user_id=ctx.user_id,
             tool_name=call.name,
-            input_json=call.arguments,
+            input_json=audit_input(call),
             output_json=None if error else result,
             error=error,
-            latency_ms=latency_ms,
+            latency_ms=latency,
         )
     )
-    audit = {
+    return result, {
         "tool": call.name,
-        "input": call.arguments,
+        "input": audit_input(call),
         "output": result,
         "error": error,
-        "latency_ms": latency_ms,
+        "latency_ms": latency,
     }
-    return result, audit
+
+
+async def _execute_tool_bounded(
+    sessionmaker,
+    user_id,
+    today,
+    session_id,
+    call,
+    embedding_client=None,
+    timeout_s=TOOL_TIMEOUT_S,
+):
+    # This same wrapper runs for one call and for a batch. A cancellation rolls
+    # back the tool transaction before the timeout receipt is recorded.
+    started = time.monotonic()
+    try:
+        async with asyncio.timeout(timeout_s):
+            async with sessionmaker() as session:
+                result, audit = await _execute_tool(
+                    ToolContext(session, user_id, today, embedding_client),
+                    session_id,
+                    call,
+                )
+                await session.commit()
+                return result, audit
+    except Exception as exc:
+        code = "TIMEOUT" if isinstance(exc, TimeoutError) else "INTERNAL_ERROR"
+        result = error_result(
+            code,
+            "Tool exceeded its time budget"
+            if code == "TIMEOUT"
+            else "Tool unavailable",
+        )
+        error = _dumps(result["error"])
+        latency = int((time.monotonic() - started) * 1000)
+        try:
+            async with asyncio.timeout(3):
+                async with sessionmaker() as session:
+                    session.add(
+                        AgentToolCall(
+                            user_id=user_id,
+                            session_id=session_id,
+                            tool_name=call.name,
+                            input_json=audit_input(call),
+                            output_json=None,
+                            error=error,
+                            latency_ms=latency,
+                        )
+                    )
+                    await session.commit()
+        except Exception:
+            logger.warning("timeout audit unavailable")
+        return result, {
+            "tool": call.name,
+            "input": audit_input(call),
+            "output": result,
+            "error": error,
+            "latency_ms": latency,
+        }
+
+
+def validate_answer(content, evidence_objects):
+    """Validate explicit measured claims, never label prose as calibrated proof."""
+    try:
+        answer = json.loads(content or "")
+    except (ValueError, TypeError):
+        if re.search(r"(?<!\w)\d+(?:[.,]\d+)?", content or ""):
+            return (
+                "I could not verify the measured values in this answer. Please request an evidence-backed analysis.",
+                {"status": "invalid", "verified_claims": []},
+            )
+        return content or "", {
+            "status": "narrative_only",
+            "verified_claims": [],
+            "note": "No structured measurement claims were verified.",
+        }
+    if (
+        not isinstance(answer, dict)
+        or not isinstance(answer.get("answer"), str)
+        or not isinstance(answer.get("claims", []), list)
+    ):
+        return (
+            "The analysis did not return a valid evidence-backed answer. Try a narrower question.",
+            {"status": "invalid"},
+        )
+    indexed = {}
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            if isinstance(obj.get("id"), str) and obj["id"].startswith("observation:"):
+                indexed[obj["id"]] = obj
+            if isinstance(obj.get("handle"), str) and obj["handle"].startswith(
+                "analysis:"
+            ):
+                indexed[obj["handle"]] = obj.get("data", {})
+            if len(obj.get("evidence_refs", [])) == 1 and obj["evidence_refs"][
+                0
+            ].startswith("analysis:"):
+                indexed[obj["evidence_refs"][0]] = obj.get("data", {})
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+
+    walk(evidence_objects)
+    valid = []
+    for claim in answer.get("claims", []):
+        if not isinstance(claim, dict):
+            return (
+                "I could not verify the measured claims in this answer. Please request a fresh analysis.",
+                {"status": "invalid"},
+            )
+        row = indexed.get(claim.get("evidence_id"))
+        if row is not None and str(claim.get("evidence_id", "")).startswith(
+            "analysis:"
+        ):
+            value = row
+            for part in str(claim.get("metric", "")).split("."):
+                value = value.get(part) if isinstance(value, dict) else None
+            matches = (
+                value is not None
+                and isinstance(value, bool) == isinstance(claim.get("value"), bool)
+                and value == claim.get("value")
+                and not isinstance(value, (dict, list))
+            )
+        else:
+            matches = (
+                row is not None
+                and row.get("metric") == claim.get("metric")
+                and isinstance(row.get("value"), bool)
+                == isinstance(claim.get("value"), bool)
+                and row.get("value") == claim.get("value")
+                and ("unit" not in claim or claim["unit"] == row.get("unit"))
+            )
+        if not matches:
+            return (
+                "I could not verify the measured claims in this answer. Please request a fresh analysis.",
+                {"status": "invalid"},
+            )
+        valid.append(claim)
+    numbers = re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?", answer["answer"])
+    claimed = {
+        float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float))
+    }
+    if any(float(n) not in claimed for n in numbers):
+        return (
+            "I could not verify all numeric claims in this answer. Please request a fresh analysis.",
+            {"status": "invalid", "verified_claims": []},
+        )
+    return answer["answer"], {
+        "status": "structured",
+        "verified_claims": valid,
+        "limitations": answer.get("limitations", []),
+    }
 
 
 async def run_agent_loop(
-    sessionmaker: async_sessionmaker,
-    llm: LLMClient,
+    sessionmaker,
+    llm,
     *,
-    user_id: int,
-    session_id: int | None,
-    text: str,
-    system: str,
-    tier: str,
-    today: date,
-    embedding_client: Any | None = None,
-    history: list[dict[str, Any]] | None = None,
-    max_iterations: int = MAX_ITERATIONS,
-    tool_budget_chars: int = 12_000,
-) -> AgentLoopResult:
-    """One agent turn (§8.4). Call_type for token_usage is 'chat' — scheduled
-    report generation calls this with session_id=None if it ever needs the
-    loop; direct one-shot completions log their own usage.
+    user_id,
+    session_id,
+    text,
+    system,
+    tier,
+    today,
+    embedding_client=None,
+    history=None,
+    max_iterations=MAX_ITERATIONS,
+    tool_budget_chars=12000,
+    initial_evidence=None,
+):
+    messages = list(history or []) + [{"role": "user", "content": text}]
+    audit, drafts, evidence_objects = [], [], list(initial_evidence or [])
+    repeated, calls, tokens, last_model, iteration = {}, 0, 0, "unknown", 0
+    semaphore = asyncio.Semaphore(4)
 
-    A-01 audit: ``history`` carries the bounded prose-pair replay from the
-    caller (the entrypoint loads the last N user+assistant messages from
-    the same chat session). When provided, it is prepended to the messages
-    list so multi-turn coaching continuity works.
-
-    T-03 audit: ``tool_budget_chars`` caps the total bytes of tool-result
-    messages in the running list — when exceeded, the oldest tool results
-    are truncated to a ``{truncated: true}`` envelope so the loop cannot
-    blow the provider context window with big tool payloads.
-    """
-    # A-01: prepend history (oldest-first prose pairs).
-    base_messages: list[dict[str, Any]] = list(history or [])
-    base_messages.append({"role": "user", "content": text})
-    messages: list[dict[str, Any]] = list(base_messages)
-    audit: list[dict[str, Any]] = []
-    drafts: list[dict[str, Any]] = []
-    best_partial: str | None = None
-    last_model = "unknown"
-
-    for iteration in range(1, max_iterations + 1):
+    async def complete(*, closing=False):
+        nonlocal tokens, last_model
+        # Fetch budget and end the transaction BEFORE contacting the model.
         async with sessionmaker() as session:
-            response = await llm.complete(
+            spent = await user_day_spend(session, user_id, datetime.now(UTC))
+        budget = get_settings().daily_token_budget_usd
+        if budget > 0 and spent >= Decimal(str(budget)):
+            raise EvidenceError("BUDGET_EXCEEDED", "Daily AI budget reached")
+        if tokens >= MAX_TURN_TOKENS:
+            raise EvidenceError("BUDGET_EXCEEDED", "Turn token budget reached")
+        response = await asyncio.wait_for(
+            llm.complete(
                 messages=messages,
                 system=system,
                 tier=tier,
-                tools=tool_schemas(),
-            )
-            last_model = response.model
+                tools=None if closing else tool_schemas(),
+            ),
+            timeout=MODEL_TIMEOUT_S,
+        )
+        tokens += response.tokens_in + response.tokens_out
+        last_model = response.model
+        async with sessionmaker() as session:
             await log_llm_usage(
                 session,
                 user_id=user_id,
@@ -186,203 +352,137 @@ async def run_agent_loop(
                 tokens_out=response.tokens_out,
                 cached_tokens=response.cached_tokens,
             )
-            if not response.wants_tools:
-                await session.commit()
-                return AgentLoopResult(
-                    reply=response.content or "",
-                    tier=tier,
-                    model=response.model,
-                    tool_audit=audit,
-                    drafts=drafts,
-                    iterations=iteration,
-                    converged=True,
-                )
             await session.commit()
+        return response
 
-        if response.content:  # remember the best prose seen so far
-            best_partial = response.content
-
-        messages.append(_assistant_tool_call_message(response))
-        # T-02 audit: execute tool calls in parallel with per-call timeouts.
-        tool_calls = response.tool_calls or []
-        if len(tool_calls) > 1:
-            tool_results = await asyncio.gather(
-                *(
-                    _execute_tool_bounded(sessionmaker, user_id, today, session_id, call, embedding_client)
-                    for call in tool_calls
-                ),
-                return_exceptions=True,
+    async def execute(call):
+        nonlocal calls
+        calls += 1
+        spec = TOOL_REGISTRY.get(call.name)
+        signature = digest([call.name, call.arguments])
+        repeated[signature] = repeated.get(signature, 0) + 1
+        ceiling = 1 if spec and spec.kind == "write" else 2
+        if calls > MAX_TOOL_CALLS or repeated[signature] > ceiling:
+            result = error_result(
+                "BUDGET_EXCEEDED", "Repeated tool call or tool budget exceeded"
             )
-            for call, outcome in zip(tool_calls, tool_results):
-                if isinstance(outcome, BaseException):
-                    result = {"error": f"{type(outcome).__name__}: {outcome}"}
-                    entry = {
-                        "tool": call.name,
-                        "input": call.arguments,
-                        "output": result,
-                        "error": result["error"],
-                        "latency_ms": 0,
-                    }
-                    audit.append(entry)
-                    messages.append(_tool_result_message(call, result))
-                    continue
-                result, entry = outcome
-                audit.append(entry)
-                if "plan_id" in result:
-                    drafts.append({"type": "training_plan", "id": result["plan_id"]})
-                elif "protocol_id" in result:
-                    drafts.append({"type": "supplement", "id": result["protocol_id"]})
-                messages.append(_tool_result_message(call, result))
-        else:
-            for call in tool_calls:
-                async with sessionmaker() as session:
-                    ctx = ToolContext(
-                        session=session,
-                        user_id=user_id,
-                        today=today,
-                        embedding_client=embedding_client,
+            return result, {
+                "tool": call.name,
+                "input": call.arguments,
+                "output": result,
+                "error": _dumps(result["error"]),
+                "latency_ms": 0,
+            }
+        async with semaphore:
+            return await _execute_tool_bounded(
+                sessionmaker, user_id, today, session_id, call, embedding_client
+            )
+
+    def record(call, outcome):
+        result, entry = outcome
+        audit.append(entry)
+        evidence_objects.append(result)
+        if call.name == "changes_propose" and "error" not in result:
+            draft = result["data"]
+            drafts.append(
+                {
+                    "type": "change",
+                    "id": draft["id"],
+                    "payload_hash": draft["payload_hash"],
+                }
+            )
+        messages.append(_tool_result_message(call, result))
+
+    try:
+        async with asyncio.timeout(TURN_TIMEOUT_S):
+            for iteration in range(1, min(max_iterations, MAX_ITERATIONS) + 1):
+                response = await complete()
+                if not response.wants_tools:
+                    reply, grounding = validate_answer(
+                        response.content, evidence_objects
                     )
-                    result, entry = await _execute_tool(ctx, session_id, call)
-                    await session.commit()
-                audit.append(entry)
-                if "plan_id" in result:
-                    drafts.append({"type": "training_plan", "id": result["plan_id"]})
-                elif "protocol_id" in result:
-                    drafts.append({"type": "supplement", "id": result["protocol_id"]})
-                messages.append(_tool_result_message(call, result))
-
-        # T-03 audit: cap total tool-result bytes — truncate oldest first.
-        messages = _enforce_tool_budget(messages, tool_budget_chars)
-
-    # T-04 audit: budget exhausted → ALWAYS attempt a forced tool-free
-    # summarization close-out so the user never receives "Let me also check…"
-    # as the final answer. The previous conservative check (only when
-    # best_partial trailed off) still left mid-sentence partials as the
-    # final reply. Now we always try; on LLMError we fall back to the
-    # best partial.
-    try:
-        async with sessionmaker() as session:
-            final = await llm.complete(
-                messages=messages
-                + [
-                    {
-                        "role": "user",
-                        "content": (
-                            "Tool budget exhausted. Summarize the findings so far "
-                            "in a complete, self-contained answer — no tool calls. "
-                            "If you have enough to answer, answer now; if not, say "
-                            "what you'd need next."
-                        ),
-                    }
-                ],
-                system=system,
-                tier=tier,
-                tools=None,
+                    return AgentLoopResult(
+                        reply,
+                        tier,
+                        response.model,
+                        audit,
+                        drafts,
+                        iteration,
+                        True,
+                        grounding,
+                    )
+                messages.append(_assistant_tool_call_message(response))
+                batch = response.tool_calls or []
+                # Preserve model-declared ordering across read/write boundaries.
+                # Independent consecutive reads run in parallel; every draft or
+                # maintenance write finishes before subsequent calls begin.
+                pending = []
+                for call in batch:
+                    spec = TOOL_REGISTRY.get(call.name)
+                    if spec is not None and spec.kind == "read":
+                        pending.append(call)
+                        continue
+                    if pending:
+                        outcomes = await asyncio.gather(*(execute(c) for c in pending))
+                        for c, outcome in zip(pending, outcomes):
+                            record(c, outcome)
+                        pending = []
+                    record(call, await execute(call))
+                if pending:
+                    outcomes = await asyncio.gather(*(execute(c) for c in pending))
+                    for c, outcome in zip(pending, outcomes):
+                        record(c, outcome)
+                messages = _enforce_tool_budget(messages, tool_budget_chars)
+                if calls >= MAX_TOOL_CALLS:
+                    break
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Tool budget exhausted. Return a complete answer using verified findings so far; disclose missing evidence. No further tools.",
+                }
             )
-            await log_llm_usage(
-                session,
-                user_id=user_id,
-                call_type="chat",
-                tier=tier,
-                model=final.model,
-                tokens_in=final.tokens_in,
-                tokens_out=final.tokens_out,
-                cached_tokens=final.cached_tokens,
-            )
-            await session.commit()
-        if final.content and final.content.strip():
+            response = await complete(closing=True)
+            reply, grounding = validate_answer(response.content, evidence_objects)
             return AgentLoopResult(
-                reply=final.content,
-                tier=tier,
-                model=final.model,
-                tool_audit=audit,
-                drafts=drafts,
-                iterations=max_iterations,
-                converged=False,
+                reply, tier, response.model, audit, drafts, iteration, False, grounding
             )
-    except LLMError:
-        pass  # fall through to best_partial
-
-    # Budget exhausted → §8.4 best partial answer.
-    return AgentLoopResult(
-        reply=best_partial or NO_CONVERGENCE_REPLY,
-        tier=tier,
-        model=last_model,
-        tool_audit=audit,
-        drafts=drafts,
-        iterations=max_iterations,
-        converged=False,
-    )
+    except (TimeoutError, EvidenceError):
+        return AgentLoopResult(
+            NO_CONVERGENCE_REPLY,
+            tier,
+            last_model,
+            audit,
+            drafts,
+            iteration,
+            False,
+            {"status": "incomplete", "verified_claims": []},
+        )
 
 
-async def _execute_tool_bounded(
-    sessionmaker: async_sessionmaker,
-    user_id: int,
-    today: date,
-    session_id: int | None,
-    call: ToolCallRequest,
-    embedding_client: Any | None,
-    timeout_s: float = 15.0,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """T-02 audit: execute one tool call with a per-call timeout.
-
-    On timeout the tool result is an error envelope (the loop converts it
-    to a tool-result message) — the loop itself never crashes.
-    """
-    try:
-        async with asyncio.timeout(timeout_s):
-            async with sessionmaker() as session:
-                ctx = ToolContext(
-                    session=session,
-                    user_id=user_id,
-                    today=today,
-                    embedding_client=embedding_client,
-                )
-                result, entry = await _execute_tool(ctx, session_id, call)
-                await session.commit()
-            return result, entry
-    except (asyncio.TimeoutError, Exception) as exc:
-        result = {"error": f"tool {call.name} timed out or crashed: {type(exc).__name__}: {exc}"}
-        entry = {
-            "tool": call.name,
-            "input": call.arguments,
-            "output": result,
-            "error": result["error"],
-            "latency_ms": int(timeout_s * 1000),
-        }
-        return result, entry
-
-
-def _enforce_tool_budget(
-    messages: list[dict[str, Any]], budget_chars: int
-) -> list[dict[str, Any]]:
-    """T-03 audit: cap total tool-result bytes — truncate oldest first.
-
-    Tool result messages (role='tool') are the only unbounded payload source.
-    When their cumulative size exceeds ``budget_chars``, the oldest tool
-    results are replaced with a ``{truncated: true, original_chars: N}``
-    envelope so the loop cannot blow the provider context window.
-    """
-    tool_indices = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
-    if not tool_indices:
-        return messages
-    total = sum(len(m.get("content", "")) for i, m in enumerate(messages) if i in tool_indices)
-    if total <= budget_chars:
-        return messages
-    # Truncate oldest tool results until under budget.
-    for i in tool_indices:
+def _enforce_tool_budget(messages, budget_chars):
+    indices = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    total = sum(len(messages[i].get("content", "")) for i in indices)
+    for i in indices:
         if total <= budget_chars:
             break
         content = messages[i].get("content", "")
         if len(content) <= 100:
             continue
-        original_chars = len(content)
-        messages[i] = {
-            **messages[i],
-            "content": json.dumps(
-                {"truncated": True, "original_chars": original_chars, "note": "payload capped to fit context budget"},
-                ensure_ascii=False,
-            ),
-        }
-        total -= original_chars - len(messages[i]["content"])
+        try:
+            payload = json.loads(content)
+            refs = payload.get("evidence_refs", [])
+            version = payload.get("formula_version")
+        except ValueError:
+            refs, version = [], None
+        capped = _dumps(
+            {
+                "truncated": True,
+                "original_chars": len(content),
+                "evidence_refs": refs[:30],
+                "formula_version": version,
+                "note": "Expand specific evidence handles; approval authority remains in the application.",
+            }
+        )
+        messages[i] = {**messages[i], "content": capped}
+        total -= len(content) - len(capped)
     return messages

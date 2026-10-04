@@ -37,6 +37,13 @@ const MetricPage = lazy(() => import("../features/biometrics/MetricPage"));
 const TrainingPage = lazy(() => import("../features/training/TrainingPage"));
 const CoachPage = lazy(() => import("../features/coach/CoachPage"));
 const SocialPage = lazy(() => import("../features/social/SocialPage"));
+const LabPage = lazy(() => import("../features/lab/LabPage"));
+const DataHealthPage = lazy(() => import("../features/lab/DataHealthPage"));
+const CalendarPage = lazy(() => import("../features/lab/CalendarPage"));
+const NotificationsPage = lazy(
+  () => import("../features/lab/NotificationsPage"),
+);
+const GearPage = lazy(() => import("../features/lab/GearPage"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage"));
 
 import { queryClient } from "./query";
@@ -177,6 +184,46 @@ export default function App() {
             element={
               <Protected>
                 <SettingsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/lab"
+            element={
+              <Protected>
+                <LabPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/data-health"
+            element={
+              <Protected>
+                <DataHealthPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/calendar"
+            element={
+              <Protected>
+                <CalendarPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/notifications"
+            element={
+              <Protected>
+                <NotificationsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/app/gear"
+            element={
+              <Protected>
+                <GearPage />
               </Protected>
             }
           />

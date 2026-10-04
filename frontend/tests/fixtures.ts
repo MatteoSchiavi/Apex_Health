@@ -176,13 +176,99 @@ export async function installApi(
     ),
   };
   let syncPolls = 0;
+  let labDrafts = options.empty
+    ? []
+    : [
+        {
+          id: 41,
+          kind: "context_patch",
+          status: "draft",
+          before: {
+            exists: true,
+            doc_kind: "goals",
+            content: "Finish the sailing season",
+          },
+          after: {
+            exists: true,
+            doc_kind: "goals",
+            content: "Finish the sailing season\n\nPrepare for the regatta",
+          },
+          payload_hash: "a".repeat(64),
+          snapshot_revision: "b".repeat(64),
+          evidence_ids: ["observation:1:1"],
+          reason: "Preserve the priority event goal",
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          receipt: null as null | {
+            state: string;
+            external_delivery: string;
+            undo_available: boolean;
+          },
+        },
+      ];
+  const labMetrics = [
+    "hrv_overnight_rmssd",
+    "resting_hr",
+    "sleep_duration",
+    "sleep_score",
+  ].map((metric, i) => ({
+    metric,
+    unit: ["ms", "bpm", "h", "/100"][i],
+    availability: options.empty ? "not_measured" : "available",
+    sample_days_7d: options.empty ? 0 : 7,
+    coverage_pct: options.empty ? 0 : 100,
+    latest: options.empty
+      ? null
+      : {
+          id: `observation:${i + 1}:1`,
+          metric,
+          value: [62, 52, 7.5, 84][i],
+          unit: ["ms", "bpm", "h", "/100"][i],
+          origin: "garmin",
+          measured_at: today + "T06:00:00Z",
+          local_date: today,
+          fetched_at: today + "T07:00:00Z",
+          revision: 1,
+          availability: "available",
+          acquisition: "unofficial_adapter",
+          timezone: "Europe/Rome",
+          quality_flags: [],
+        },
+  }));
+  const labDecision = {
+    id: 12,
+    date: today,
+    action: options.empty ? "collect_more_data" : "train_normally",
+    reasons: [
+      options.empty
+        ? "Current measurements are missing."
+        : "No conservative adjustment rule fired.",
+    ],
+    evidence: labMetrics.flatMap((m) => (m.latest ? [m.latest] : [])),
+    data_completeness: {
+      coverage_pct: options.empty ? 0 : 100,
+      missing: options.empty ? ["hrv_overnight_rmssd"] : [],
+    },
+    confidence: options.empty ? "limited" : "supported_by_coverage",
+    alternatives: [
+      {
+        action: "reduce_volume",
+        reason: "Keep the planned focus with less volume.",
+      },
+    ],
+    counterfactual:
+      "A symptom note or new measurement can change the decision.",
+    next_step: "Review a small session change.",
+    formula_version: "daily-decision-v1",
+    limitations: ["Planning rules are not a diagnosis."],
+    outcome: null as null | { state: string },
+  };
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   await page.route("**/*", async (route) => {
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname;
     if (
-      !/^\/(me|auth|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs)(\/|$)/.test(
+      !/^\/(me|auth|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs|lab|gear|imports)(\/|$)/.test(
         path,
       )
     )
@@ -194,9 +280,51 @@ export async function installApi(
       });
     let data: unknown;
     if (req.method() !== "GET") {
-      const body = req.postDataJSON() ?? {};
+      const body = req.headers()["content-type"]?.includes("application/json")
+        ? (req.postDataJSON() ?? {})
+        : {};
       writes.push({ path, body });
-      if (path === "/me") {
+      if (path.match(/^\/lab\/changes\/41\/(approve|undo|reject)$/)) {
+        const action = path.split("/").at(-1);
+        labDrafts = labDrafts.map((d) => ({
+          ...d,
+          status:
+            action === "approve"
+              ? "applied_locally"
+              : action === "undo"
+                ? "undone"
+                : "rejected",
+          receipt:
+            action === "reject"
+              ? null
+              : {
+                  state: action === "approve" ? "applied_locally" : "undone",
+                  external_delivery: "not_requested",
+                  undo_available: action === "approve",
+                },
+        }));
+        data = labDrafts[0];
+      } else if (path === "/lab/decision/12/outcome") {
+        labDecision.outcome = { state: body.state };
+        data = labDecision;
+      } else if (path === "/lab/replan") data = { state: "no_change" };
+      else if (path === "/lab/analytics")
+        data = {
+          handle: "analysis:21",
+          recipe: body.recipe,
+          formula_version: "median-mad-v1",
+          data: {
+            state: "available",
+            sample_count: 24,
+            median: 62,
+            mad: 3,
+            unit: "ms",
+            missing_days: 4,
+            empirical_range: [57, 67],
+            evidence_ids: ["observation:1:1"],
+          },
+        };
+      else if (path === "/me") {
         me = { ...me, ...body };
         data = me;
       } else if (path === "/coach/chats")
@@ -215,7 +343,91 @@ export async function installApi(
         };
       else if (path === "/auth/login") data = { ok: true };
       else data = { ok: true };
-    } else if (path === "/me") data = me;
+    } else if (path === "/lab/coverage")
+      data = {
+        timezone: "Europe/Rome",
+        local_date: today,
+        metrics: labMetrics,
+        integrations: [],
+      };
+    else if (path === "/lab/decision") data = labDecision;
+    else if (path === "/lab/changes") data = labDrafts;
+    else if (path === "/lab/constraints")
+      data = {
+        date: today,
+        events: [],
+        sessions: options.empty
+          ? []
+          : [
+              {
+                id: 1,
+                date: today,
+                session_type: "easy ride",
+                description: "Keep the ride conversational.",
+                duration_min: 45,
+              },
+            ],
+      };
+    else if (path === "/lab/notifications")
+      data = {
+        quiet_hours_active: false,
+        preferences: {
+          quiet_start_hour: 22,
+          quiet_end_hour: 7,
+          daily_cap: 5,
+          muted_classes: [],
+        },
+        items: options.empty
+          ? []
+          : [
+              {
+                id: 4,
+                category: "data_quality",
+                severity: "watch",
+                state: "created",
+                payload: {
+                  title: "Evidence needs attention",
+                  why: "A measurement arrived late.",
+                  action: "Review data coverage",
+                  href: "/app/data-health",
+                },
+                expires_at: today + "T23:59:59Z",
+                snoozed_until: null,
+              },
+            ],
+      };
+    else if (path === "/lab/observations")
+      data = options.empty
+        ? []
+        : Array.from({ length: 24 }, (_, i) => ({
+            ...labMetrics[0].latest,
+            local_date: new Date(
+              Date.parse(today + "T12:00:00Z") - i * 86400000,
+            )
+              .toISOString()
+              .slice(0, 10),
+            measured_at:
+              new Date(Date.parse(today + "T12:00:00Z") - i * 86400000)
+                .toISOString()
+                .slice(0, 10) + "T06:00:00Z",
+            value: 62 + Math.sin(i) * 3,
+          }));
+    else if (path.startsWith("/lab/evidence/"))
+      data = { ...labMetrics[0].latest, current: true, raw_ingest_id: 22 };
+    else if (
+      [
+        "/lab/entries",
+        "/lab/jobs",
+        "/lab/documents",
+        "/lab/reports",
+        "/lab/analyses",
+        "/lab/audit",
+        "/lab/decisions",
+        "/gear",
+      ].includes(path)
+    )
+      data = [];
+    else if (path === "/me") data = me;
     else if (path === "/settings/devices")
       data = options.empty
         ? []

@@ -23,7 +23,8 @@ import {
   friendlyDiscipline,
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
-import { assess, localDay, shiftDay, useUnits } from "../../components/data";
+import { localDay, shiftDay, useUnits } from "../../components/data";
+import { DecisionCard } from "../lab/DecisionCard";
 import { useState } from "react";
 
 function More({ to, children }: { to: string; children: string }) {
@@ -52,12 +53,12 @@ function LoadPanel({ o }: { o: Overview }) {
         <StatPod
           label={t("design.acute")}
           value={fmtNum(o.acute_load, 1)}
-          unit="TSS/d"
+          unit={t("lab.legacy_load_unit")}
         />
         <StatPod
           label={t("design.chronic")}
           value={fmtNum(o.chronic_load, 1)}
-          unit="TSS/d"
+          unit={t("lab.legacy_load_unit")}
         />
         <StatPod
           label="ACWR"
@@ -85,7 +86,7 @@ function LoadPanel({ o }: { o: Overview }) {
           points={trend.data?.points ?? []}
           start={trend.data?.start_date}
           end={o.date}
-          unit="TSS/d"
+          unit={t("lab.legacy_load_unit")}
           label={t("design.training_load")}
         />
       )}
@@ -119,7 +120,7 @@ export default function OverviewPage() {
   });
   if (overview.isLoading) return <Loading />;
   if (overview.isError || !o) return <ErrorNote />;
-  const state = assess("readiness", o.readiness.value);
+
   const hasData =
     [
       o.readiness.value,
@@ -239,6 +240,7 @@ export default function OverviewPage() {
           </div>
         }
       />
+      {!date && <DecisionCard />}
       {!o.anchor_is_today && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning bg-warningSoft px-4 py-3 text-[13px]">
           <span>{t("overview.history_notice", { date: o.date })}</span>
@@ -283,8 +285,8 @@ export default function OverviewPage() {
           <div className="grid gap-6 xl:grid-cols-[1.65fr_1fr]">
             <Card className="!p-6 md:!p-8">
               <CardHeader
-                title={t("overview.readiness_label")}
-                right={<Badge tone={state.tone}>{t(state.key)}</Badge>}
+                title={t("lab.legacy_readiness")}
+                right={<Badge>{t("lab.heuristic")}</Badge>}
               />
               <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
                 <div className="flex items-baseline gap-3">
@@ -324,7 +326,7 @@ export default function OverviewPage() {
                   start={readiness.data?.start_date}
                   end={o.date}
                   unit="/100"
-                  label={t("overview.readiness_label")}
+                  label={t("lab.legacy_readiness")}
                   height={180}
                 />
               )}
@@ -368,7 +370,6 @@ export default function OverviewPage() {
                   unit: "",
                 },
               ].map((s) => {
-                const a = assess(s.k, s.v);
                 return (
                   <Link
                     key={s.k}
@@ -378,7 +379,7 @@ export default function OverviewPage() {
                     <div>
                       <span className="text-[14px]">{s.label}</span>
                       <div className="mt-1">
-                        <Badge tone={a.tone}>{t(a.key)}</Badge>
+                        <Badge>{t("lab.heuristic")}</Badge>
                       </div>
                     </div>
                     <div className="num text-[28px] font-medium tracking-[-.04em]">

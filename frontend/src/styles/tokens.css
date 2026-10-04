@@ -395,3 +395,11 @@ select:focus-visible {
   color: inherit;
   opacity: 0.8;
 }
+
+/* Density changes spacing while preserving type and semantic hierarchy. */
+[data-density="compact"] main .panel.p-6 {
+  padding: 1rem;
+}
+[data-density="compact"] main > .flex.flex-col {
+  gap: 1rem;
+}

@@ -26,6 +26,8 @@ from app.api import (
     sleep,
     watch,
     weather,
+    performance_lab,
+    lab_assets,
 )
 from app.auth.service import ensure_owner
 from app.core.config import get_settings
@@ -52,16 +54,40 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="Health Control Center", lifespan=lifespan)
 
+    from app.services.evidence import EvidenceError
+
+    @app.exception_handler(EvidenceError)
+    async def evidence_error(request, exc):
+        codes = {
+            "NOT_FOUND": 404,
+            "AUTH_REQUIRED": 409,
+            "POLICY_DENIED": 403,
+            "CONFLICT": 409,
+            "STALE_DATA": 409,
+            "RATE_LIMITED": 429,
+        }
+        return JSONResponse(
+            status_code=codes.get(exc.code, 422),
+            content={"detail": str(exc), "code": exc.code},
+        )
+
     @app.exception_handler(RedisError)
     async def redis_unavailable(request, exc):
-        return JSONResponse(status_code=503, content={
-            "detail": "Service temporarily unavailable; try again shortly.",
-        })
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Service temporarily unavailable; try again shortly.",
+            },
+        )
+
     app.add_middleware(CSRFMiddleware)
     # §15: behind Tailscale Funnel/Caddy, honor X-Forwarded-* from the local
     # terminator when configured to (infra/tailscale-funnel-setup.md).
-    app.add_middleware(ProxyHeadersMiddleware, trusted=get_settings().trust_proxy_headers,
-                       trusted_ips=get_settings().trusted_proxy_ips)
+    app.add_middleware(
+        ProxyHeadersMiddleware,
+        trusted=get_settings().trust_proxy_headers,
+        trusted_ips=get_settings().trusted_proxy_ips,
+    )
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(labs.router)
@@ -82,6 +108,8 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router)
     app.include_router(chats.router)
     app.include_router(devices.router)
+    app.include_router(performance_lab.router)
+    app.include_router(lab_assets.router)
     _mount_spa(app)
     return app
 
@@ -101,8 +129,10 @@ def _mount_spa(app: FastAPI) -> None:
     from fastapi.staticfiles import StaticFiles
 
     env_dir = os.environ.get("SPA_DIST_DIR", "")
-    dist = Path(env_dir) if env_dir else (
-        Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    dist = (
+        Path(env_dir)
+        if env_dir
+        else (Path(__file__).resolve().parents[2] / "frontend" / "dist")
     )
     if not (dist / "index.html").exists():
         return

@@ -267,7 +267,7 @@ function LoadChart() {
         ]}
       />
       <p className="mt-4 text-[12px] text-muted">
-        {metric === "acwr" ? t("design.ratio") : "TSS/d"} · {t("design.days56")}
+        {metric === "acwr" ? t("design.ratio") : t("lab.legacy_load_unit")} · {t("design.days56")}
       </p>
       {query.isLoading ? (
         <Loading />
@@ -279,7 +279,7 @@ function LoadChart() {
           start={query.data?.start_date}
           end={query.data?.end_date}
           label={t("training.load_chart")}
-          unit={metric === "acwr" ? t("design.ratio") : "TSS/d"}
+          unit={metric === "acwr" ? t("design.ratio") : t("lab.legacy_load_unit")}
           height={280}
         />
       )}

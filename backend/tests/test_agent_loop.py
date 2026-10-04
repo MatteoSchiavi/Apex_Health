@@ -77,6 +77,9 @@ async def _seed_data(ctx, owner: int) -> None:
                 ),
             ]
         )
+        from app.services.evidence import record_observation
+        await record_observation(session,user_id=owner,metric="resting_hr",value=52,unit="bpm",origin="garmin",source_record_id="loop-test",
+            measured_at=datetime(2025,3,10,6,tzinfo=UTC),fetched_at=datetime(2025,3,10,8,tzinfo=UTC),timezone="Europe/Rome")
         await session.commit()
 
 
@@ -126,10 +129,10 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
     async with bot_context(client, llm_factory=lambda: llm) as ctx:
         llm = FixtureAgentLLMClient(
             [
-                tool_request("c1", "get_metric_trend", metric="recovery",
+                tool_request("c1", "data_query", resource="observations", metric="resting_hr",
                              start_date="2025-03-01", end_date="2025-03-10"),
-                tool_request("c2", "get_lab_trend", marker="ferritin"),
-                final("Recovery is low (42) and ferritin is 21 µg/L — both point at iron."),
+                tool_request("c2", "data_query",resource="labs",start_date="2025-03-01",end_date="2025-03-10"),
+                final("Resting heart rate was recorded; discuss lab results with your clinician."),
             ]
         )
         owner = await _link_chat(ctx, CHAT)
@@ -140,18 +143,18 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
 
         # correct final answer, grounded in both tool results
         assert sent_texts(client) == [
-            "Recovery is low (42) and ferritin is 21 µg/L — both point at iron."
+            "Resting heart rate was recorded; discuss lab results with your clinician."
         ]
         # both tool calls logged with session linkage, inputs, outputs, latency
         async with ctx.sessionmaker() as session:
             rows = (
                 await session.scalars(select(AgentToolCall).order_by(AgentToolCall.id))
             ).all()
-            assert [r.tool_name for r in rows] == ["get_metric_trend", "get_lab_trend"]
+            assert [r.tool_name for r in rows] == ["data_query", "data_query"]
             assert all(r.session_id is not None for r in rows)
-            assert rows[0].input_json["metric"] == "recovery"
-            assert rows[0].output_json["rows"][0]["value"] == 42.0
-            assert rows[1].output_json["rows"][0]["value"] == 21.0
+            assert rows[0].input_json["metric"] == "resting_hr"
+            assert rows[0].output_json["data"][0]["value"] == 52.0
+            assert rows[1].output_json["data"][0]["value"] == 21.0
             assert all(r.error is None and r.latency_ms is not None for r in rows)
 
             # final chat message carries the audit trail + tier
@@ -162,7 +165,7 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
             ).all()
             assert messages[-1].model_tier == "cheap"
             audit = messages[-1].referenced_data["tool_calls"]
-            assert [a["tool"] for a in audit] == ["get_metric_trend", "get_lab_trend"]
+            assert [a["tool"] for a in audit] == ["data_query", "data_query"]
 
             # every LLM call logged to token_usage (§8.6)
             usage = (await session.scalars(select(TokenUsage))).all()
@@ -171,7 +174,7 @@ async def test_two_tool_query_answers_and_logs_to_agent_tool_calls():
         # the model saw the tool schemas (§8.4 request build). 18 tools
         # after the audit fixes added get_raw_biometrics, get_score_components,
         # get_integration_health, and confirm_draft (W-01/W-05/A-06).
-        assert len(llm.calls[0]["tools"]) == 18
+        assert len(llm.calls[0]["tools"]) == 10
 
 
 async def test_tool_error_returns_as_result_and_loop_continues():
@@ -181,11 +184,11 @@ async def test_tool_error_returns_as_result_and_loop_continues():
     async with bot_context(client, llm_factory=lambda: llm) as ctx:
         llm = FixtureAgentLLMClient(
             [
-                tool_request("c1", "get_metric_trend", metric="nope",
+                tool_request("c1", "data_query", resource="observations", metric="nope",
                              start_date="2025-03-01", end_date="2025-03-10"),
-                tool_request("c2", "get_metric_trend", metric="recovery",
+                tool_request("c2", "data_query", resource="observations", metric="resting_hr",
                              start_date="2025-03-01", end_date="2025-03-10"),
-                final("That metric doesn't exist; recovery is 42."),
+                final("That metric is unavailable; resting heart rate was recorded."),
             ]
         )
         owner = await _cheap_owner(ctx)
@@ -195,16 +198,16 @@ async def test_tool_error_returns_as_result_and_loop_continues():
             ctx.sessionmaker, llm, owner, "how is recovery?", now=datetime(2025, 3, 10, 8, 0, tzinfo=UTC)
         )
 
-        assert result.reply == "That metric doesn't exist; recovery is 42."
+        assert result.reply == "That metric is unavailable; resting heart rate was recorded."
         async with ctx.sessionmaker() as session:
             rows = (
                 await session.scalars(select(AgentToolCall).order_by(AgentToolCall.id))
             ).all()
             assert rows[0].error is not None
-            assert "unknown metric" in rows[0].error  # error rides the error column
+            assert "UNSUPPORTED_METRIC" in rows[0].error  # error rides the error column
             assert rows[0].output_json is None
             assert rows[1].error is None
-            assert rows[1].output_json["rows"][0]["value"] == 42.0
+            assert rows[1].output_json["data"][0]["value"] == 52.0
 
 
 async def test_loop_gives_best_partial_after_eight_iterations():
@@ -212,7 +215,7 @@ async def test_loop_gives_best_partial_after_eight_iterations():
     client = FixtureTelegramClient()
     async with bot_context(client, llm_factory=lambda: llm) as ctx:
         llm = FixtureAgentLLMClient(
-            [tool_request(f"c{i}", "get_donation_status") for i in range(8)]
+            [tool_request(f"c{i}", "data_get_coverage") for i in range(8)]
             + [final("never reached")]
         )
         owner = await _cheap_owner(ctx)
@@ -254,7 +257,7 @@ async def test_unknown_tool_name_is_a_readable_error():
         assert result.reply == "I don't actually have that tool."
         async with ctx.sessionmaker() as session:
             row = (await session.scalars(select(AgentToolCall))).one()
-            assert "unknown tool" in row.error
+            assert "POLICY_DENIED" in row.error
 
 
 async def test_plain_completion_still_works_without_tools():

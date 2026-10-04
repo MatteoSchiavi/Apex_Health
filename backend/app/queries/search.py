@@ -63,7 +63,10 @@ async def search_context(
     """pgvector cosine search (§8.3), scoped to the caller via the source
     rows. Returns [{source_table, source_id, snippet, distance}]."""
     journal_ids = select(JournalEntry.id).where(JournalEntry.user_id == user_id)
-    report_ids = select(AiReport.id).where(AiReport.user_id == user_id)
+    # Legacy reports may contain restricted provider derivatives. They are not
+    # eligible merely because an embedding already exists.
+    report_ids = select(AiReport.id).where(AiReport.user_id == user_id,
+                   AiReport.source_feature_ids.contains(["policy:ai_eligible_v1"]))
 
     rows = (
         await session.execute(

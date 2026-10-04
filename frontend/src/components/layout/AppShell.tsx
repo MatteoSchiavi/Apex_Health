@@ -10,6 +10,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
+  Bell,
+  CalendarDays,
+  FlaskConical,
+  Database,
+  Wrench,
   ArrowUpRight,
   BarChart3,
   Bot,
@@ -24,6 +29,7 @@ import {
 } from "lucide-react";
 import { api, type DeviceOut } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
+import { useLab } from "../../features/lab/shared";
 import { ErrorNote, timeAgo } from "../kit";
 
 const NAV = [
@@ -38,6 +44,21 @@ const NAV = [
   { to: "/app/sleep", icon: Moon, key: "nav.sleep", end: false },
   { to: "/app/training", icon: Trophy, key: "nav.training", end: false },
   { to: "/app/coach", icon: Bot, key: "nav.coach", end: false },
+  { to: "/app/lab", icon: FlaskConical, key: "lab.nav", end: false },
+  { to: "/app/calendar", icon: CalendarDays, key: "lab.calendar", end: false },
+  {
+    to: "/app/data-health",
+    icon: Database,
+    key: "lab.data_health",
+    end: false,
+  },
+  {
+    to: "/app/notifications",
+    icon: Bell,
+    key: "lab.notifications",
+    end: false,
+  },
+  { to: "/app/gear", icon: Wrench, key: "lab.gear", end: false },
   { to: "/app/social", icon: Users, key: "nav.social", end: false },
   { to: "/app/settings", icon: Settings, key: "nav.settings", end: false },
 ];
@@ -119,7 +140,7 @@ function SearchDialog({
             <X size={18} />
           </button>
         </div>
-        <div className="pt-3">
+        <div className="max-h-[60vh] overflow-y-auto pt-3">
           {NAV.filter((n) =>
             t(n.key).toLowerCase().includes(q.toLowerCase()),
           ).map((n) => (
@@ -147,6 +168,9 @@ function SearchDialog({
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const me = useUi((s) => s.me);
+  const preferences = useLab<{ payload: { density: string } }[]>(
+    "/lab/entries?kind=privacy_preferences",
+  );
   const theme = useUi((s) => s.theme);
   const setTheme = useUi((s) => s.setTheme);
   const navigate = useNavigate();
@@ -200,7 +224,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }
   return (
-    <div className="flex min-h-dvh bg-canvas">
+    <div
+      className="flex min-h-dvh bg-canvas"
+      data-density={preferences.data?.[0]?.payload.density ?? "comfortable"}
+    >
       <a
         href="#main"
         className="absolute -top-20 left-4 z-50 bg-ink px-4 py-3 text-canvas focus:top-4"
@@ -214,7 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         />
       )}
       <aside className="sticky top-0 hidden h-dvh w-[224px] shrink-0 flex-col border-r border-hairline px-6 py-8 lg:flex">
-        <NavLink to="/app" className="mb-14" aria-label="Apex Health">
+        <NavLink to="/app" className="mb-8 shrink-0" aria-label="Apex Health">
           <Logo />
         </NavLink>
         <div className="mb-4 text-[12px] text-muted">
@@ -222,7 +249,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <nav
           aria-label={t("design.navigation")}
-          className="flex flex-col gap-1"
+          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
         >
           {NAV.map(({ to, icon: Icon, key, end }) => (
             <NavLink
@@ -230,7 +257,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               to={to}
               end={end}
               className={({ isActive }) =>
-                "flex items-center gap-3 px-3 py-3 text-[14px] transition-colors " +
+                "flex items-center gap-3 px-3 py-2.5 text-[14px] transition-colors " +
                 (isActive
                   ? "bg-ink font-medium text-canvas"
                   : "text-muted hover:bg-surface2 hover:text-ink")
@@ -241,7 +268,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto pt-10">
+        <div className="shrink-0 pt-6">
           <NavLink
             to="/app/settings?tab=devices"
             className="block border-b border-hairline pb-5"

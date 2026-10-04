@@ -37,7 +37,7 @@ async def _isolate_report_tables():
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE ai_reports, agent_tool_calls, token_usage, telegram_links "
+                "TRUNCATE lab_observations, lab_feed_states, ai_reports, agent_tool_calls, token_usage, telegram_links "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -61,7 +61,10 @@ async def _seed_user_and_data(db_session, owner: int) -> None:
             DailyFeature.user_id == owner, DailyFeature.date == datetime(2025, 3, 9).date()
         )
     )
+    from app.services.evidence import record_observation
+    await record_observation(db_session,user_id=owner,metric="resting_hr",value=52,unit="bpm",origin="garmin",source_record_id="report-test",measured_at=datetime(2025,3,9,6,tzinfo=UTC),fetched_at=datetime(2025,3,9,8,tzinfo=UTC),timezone="Europe/Rome")
     if existing:
+        await db_session.commit()
         return
     db_session.add_all(
         [
@@ -176,13 +179,7 @@ async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
     assert llm.calls[0]["tier"] == "powerful"  # §9.2: hardcoded, never classified
 
     tool_calls = (await db_session.scalars(select(AgentToolCall))).all()
-    assert {t.tool_name for t in tool_calls} >= {
-        "get_metric_trend",
-        "get_activity_summary",
-        "get_journal_entries",
-        "get_gear_status",
-        "get_donation_status",
-    }
+    assert {t.tool_name for t in tool_calls} == {"data_query"}
     assert all(t.session_id is None for t in tool_calls)  # §6.4: non-chat callers
 
     usage = (
@@ -232,7 +229,7 @@ async def test_weekly_task_dispatch_and_push(db_session, monkeypatch):
 
     # the report content was embedded into the search corpus (§6.2/§8.3)
     report_rows = (await db_session.scalars(select(Embedding))).all()
-    assert len(report_rows) == 1 and report_rows[0].source_table == "ai_reports"
+    assert report_rows == []  # Private lexical context search does not need remote embeddings.
 
     # monthly on the 1st: 2025-04-01 06:00 Rome = 04:00 UTC → March
     llm2 = FixtureAgentLLMClient(

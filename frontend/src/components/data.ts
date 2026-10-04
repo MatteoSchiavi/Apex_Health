@@ -31,15 +31,18 @@ export type Assessment = {
 };
 // Only scored metrics and a measured deviation have interpretable thresholds.
 // Absolute body values and arbitrary means are not health reference ranges.
+export const LEGACY_HEURISTICS = [
+  "readiness",
+  "recovery",
+  "strain",
+  "sleep_score",
+  "illness_risk",
+  "injury_risk",
+];
 export function assess(key: string, value: number | null): Assessment {
   if (value === null) return { tone: "neutral", key: "design.no_data" };
-  if (["readiness", "recovery", "sleep_score"].includes(key)) {
-    return value >= 75
-      ? { tone: "positive", key: "design.good" }
-      : value >= 50
-        ? { tone: "warning", key: "design.moderate" }
-        : { tone: "alert", key: "design.low" };
-  }
+  if (LEGACY_HEURISTICS.includes(key))
+    return { tone: "neutral", key: "lab.heuristic" };
   if (key === "hrv_deviation")
     return value < -20
       ? { tone: "warning", key: "design.below_baseline" }

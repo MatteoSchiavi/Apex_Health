@@ -37,6 +37,7 @@ celery_app = Celery(
         "app.tasks.telegram_voice",
         "app.tasks.backups",
         "app.tasks.maintenance",
+        "app.tasks.lab_tasks",
     ],
 )
 
@@ -81,6 +82,8 @@ celery_app.conf.update(
     # so every timezone is served from this single UTC schedule; DST
     # fall-back double-runs are harmless (the engine upserts idempotently).
     beat_schedule={
+        "lab-retention-daily": {"task":"lab.prune_retained_data","schedule":crontab(hour=2,minute=10)},
+        "lab-outbox-every-minute": {"task": "lab.dispatch_jobs", "schedule": crontab(minute="*")},
         "garmin-sync-every-6h": {
             "task": "garmin.sync_all",
             "schedule": crontab(minute=0, hour="*/6"),
@@ -153,6 +156,7 @@ celery_app.conf.update(
             "task": "reports.weekly",
             "schedule": crontab(minute=0),
         },
+        "quarterly-report-hourly-dispatch": {"task":"reports.quarterly","schedule":crontab(minute=0)},
         "monthly-report-hourly-dispatch": {
             "task": "reports.monthly",
             "schedule": crontab(minute=0),

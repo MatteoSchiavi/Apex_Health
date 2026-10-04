@@ -43,7 +43,7 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET" && method !== "HEAD") {
-    headers["Content-Type"] = "application/json";
+    if (!(body instanceof FormData)) headers["Content-Type"] = "application/json";
     // F-04 audit: double-submit — the header value MUST match the cookie.
     // If no cookie is present (pre-login, or cookie expired), the request
     // will 403 with a clear message; the SPA re-authenticates and retries.
@@ -56,7 +56,7 @@ async function request<T>(
     method,
     headers,
     credentials: "same-origin",
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
   if (resp.status === 204) return undefined as T;
   const text = await resp.text();

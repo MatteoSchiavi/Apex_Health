@@ -272,3 +272,5 @@ async def _handle_free_text(ctx, message: dict, chat_id: int, text: str, user_id
     )
     keyboard = keyboard_for_drafts(result.drafts)
     await ctx.telegram.send_message(chat_id, result.reply, reply_markup=keyboard)
+    if any(d["type"] == "change" for d in result.drafts):
+        await ctx.telegram.send_message(chat_id, "A change is drafted. Open Coach → Changes in Apex Health to review the exact diff, approve or reject it, and view its receipt.")

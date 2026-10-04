@@ -100,7 +100,7 @@ async def clean_bot_tables(db_session):
     between tests so nothing leaks. Same convention as the sync suite."""
     await db_session.execute(
         text(
-            "TRUNCATE activities, activity_source_links, activity_streams, "
+            "TRUNCATE lab_observations, lab_feed_states, change_drafts, decision_records, lab_notifications, athlete_entries, analysis_results, lab_jobs, lab_documents, change_audit, activities, activity_source_links, activity_streams, "
             "activity_gear_links, alerts, ai_chat_messages, ai_chat_sessions, "
             "daily_biometrics, daily_features, discipline_features, "
             "discipline_gear_defaults, gear, gear_service_logs, hrv_readings, "

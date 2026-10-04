@@ -38,4 +38,5 @@ class LabPanelOut(BaseModel):
     plt: float | None
     next_eligible_date: date | None
     source: str | None
+    markers: list[dict[str, Any]] = Field(default_factory=list)
     notes: str | None  # decrypted here, never at rest (§17)

@@ -22,7 +22,7 @@ from app.medical.labs import (
     evaluate_ferritin_alert,
     record_lab_panel,
 )
-from app.models.medical import LabPanel
+from app.models.medical import LabPanel, LabMetric
 from app.models.user import User
 from app.schemas.labs import LabPanelIn, LabPanelOut
 
@@ -31,21 +31,37 @@ logger = logging.getLogger("api.labs")
 router = APIRouter(prefix="/labs", tags=["labs"])
 
 
-def _to_out(panel: LabPanel) -> LabPanelOut:
+def _to_out(panel: LabPanel, markers=None) -> LabPanelOut:
     return LabPanelOut(
         id=panel.id,
         panel_date=panel.date,
         panel_type=panel.panel_type,
         donation_type=panel.donation_type,
-        hemoglobin=float(panel.hemoglobin_g_dl) if panel.hemoglobin_g_dl is not None else None,
-        hematocrit=float(panel.hematocrit_pct) if panel.hematocrit_pct is not None else None,
-        ferritin=float(panel.ferritin_ng_ml) if panel.ferritin_ng_ml is not None else None,
+        hemoglobin=float(panel.hemoglobin_g_dl)
+        if panel.hemoglobin_g_dl is not None
+        else None,
+        hematocrit=float(panel.hematocrit_pct)
+        if panel.hematocrit_pct is not None
+        else None,
+        ferritin=float(panel.ferritin_ng_ml)
+        if panel.ferritin_ng_ml is not None
+        else None,
         iron=float(panel.iron) if panel.iron is not None else None,
         wbc=float(panel.wbc) if panel.wbc is not None else None,
         plt=float(panel.plt) if panel.plt is not None else None,
         next_eligible_date=panel.next_eligible_date,
         source=panel.source,
         notes=decrypt_notes(panel),
+        markers=[
+            {
+                "marker": r.metric_name,
+                "value": float(r.value),
+                "unit": r.unit,
+                "ref_low": float(r.ref_low) if r.ref_low is not None else None,
+                "ref_high": float(r.ref_high) if r.ref_high is not None else None,
+            }
+            for r in markers or []
+        ],
     )
 
 
@@ -62,7 +78,21 @@ async def list_panels(
             .limit(100)
         )
     ).all()
-    return [_to_out(p) for p in panels]
+    markers = (
+        (
+            await session.scalars(
+                select(LabMetric).where(
+                    LabMetric.lab_panel_id.in_([p.id for p in panels])
+                )
+            )
+        ).all()
+        if panels
+        else []
+    )
+    by_panel = {}
+    for r in markers:
+        by_panel.setdefault(r.lab_panel_id, []).append(r)
+    return [_to_out(p, by_panel.get(p.id)) for p in panels]
 
 
 @router.get("/{panel_id}", response_model=LabPanelOut)
@@ -74,7 +104,12 @@ async def get_panel(
     panel = await session.get(LabPanel, panel_id)
     if panel is None or panel.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Panel not found")
-    return _to_out(panel)
+    markers = (
+        await session.scalars(
+            select(LabMetric).where(LabMetric.lab_panel_id == panel.id)
+        )
+    ).all()
+    return _to_out(panel, markers)
 
 
 @router.post("", response_model=LabPanelOut, status_code=status.HTTP_201_CREATED)
@@ -113,4 +148,9 @@ async def create_panel(
             # The alert row is committed and user-visible via /alerts; a
             # transport failure must not fail the ingestion request.
             logger.exception("low_ferritin alert push failed for panel %s", panel.id)
-    return _to_out(panel)
+    markers = (
+        await session.scalars(
+            select(LabMetric).where(LabMetric.lab_panel_id == panel.id)
+        )
+    ).all()
+    return _to_out(panel, markers)

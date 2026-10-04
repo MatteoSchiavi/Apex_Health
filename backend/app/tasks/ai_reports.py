@@ -33,7 +33,9 @@ DAILY_LOCAL_HOUR = 3
 REPORT_LOCAL_HOUR = 6
 
 
-def is_report_local_time(now: datetime, tz: ZoneInfo, weekday: int | None, day: int | None) -> bool:
+def is_report_local_time(
+    now: datetime, tz: ZoneInfo, weekday: int | None, day: int | None
+) -> bool:
     local = now.astimezone(tz)
     if local.hour != REPORT_LOCAL_HOUR:
         return False
@@ -44,7 +46,14 @@ def is_report_local_time(now: datetime, tz: ZoneInfo, weekday: int | None, day: 
     return True
 
 
-async def _users_at(session, now: datetime, *, hour: int, weekday: int | None = None, day_of_month: int | None = None) -> list[tuple[User, datetime]]:
+async def _users_at(
+    session,
+    now: datetime,
+    *,
+    hour: int,
+    weekday: int | None = None,
+    day_of_month: int | None = None,
+) -> list[tuple[User, datetime]]:
     """Users whose local wall clock currently matches the dispatch window,
     with their local `now` for downstream day math."""
     matches: list[tuple[User, datetime]] = []
@@ -71,7 +80,9 @@ async def _dispatch_daily(now_iso: str | None = None) -> dict:
         target_day = local_now.date() - timedelta(days=1)  # the just-computed local day
         try:
             row = await upsert_daily_report(sessionmaker, user, target_day)
-            results[str(user.id)] = f"daily:{row.period_start.isoformat() if row else 'skipped'}"
+            results[str(user.id)] = (
+                f"daily:{row.period_start.isoformat() if row else 'skipped'}"
+            )
         except ValueError:
             results[str(user.id)] = "no-data"
         except Exception:
@@ -90,6 +101,10 @@ def _period_for(report_type: str, local_now: datetime) -> tuple[date, date]:
         end = today - timedelta(days=1)
         start = end - timedelta(days=6)
         return start, end
+    if report_type == "quarterly":
+        first = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        end = first - timedelta(days=1)
+        return end.replace(month=end.month - 2, day=1), end
     # monthly: previous calendar month
     first_of_this_month = today.replace(day=1)
     end = first_of_this_month - timedelta(days=1)
@@ -114,7 +129,13 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
         weekday, day_of_month = None, 1  # 1st of month
 
     async with sessionmaker() as session:
-        targets = await _users_at(session, now, hour=REPORT_LOCAL_HOUR, weekday=weekday, day_of_month=day_of_month)
+        targets = await _users_at(
+            session,
+            now,
+            hour=REPORT_LOCAL_HOUR,
+            weekday=weekday,
+            day_of_month=day_of_month,
+        )
 
     results: dict[str, str] = {}
     from app.connectors.telegram.alerts import notify_user
@@ -126,16 +147,20 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
         telegram = LiveTelegramClient(settings.telegram_bot_token)
 
     embeddings_client = None
-    if settings.openai_api_key:
-        from app.core.embeddings import build_embedding_client
-
-        embeddings_client = build_embedding_client()
 
     for user, local_now in targets:
+        if report_type == "quarterly" and local_now.month not in (1, 4, 7, 10):
+            continue
         start, end = _period_for(report_type, local_now)
         try:
             row = await upsert_periodic_report(
-                sessionmaker, llm, user, report_type, start, end, embeddings_client=embeddings_client
+                sessionmaker,
+                llm,
+                user,
+                report_type,
+                start,
+                end,
+                embeddings_client=embeddings_client,
             )
             if row is None:
                 results[str(user.id)] = "no-data"
@@ -143,7 +168,9 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
             results[str(user.id)] = f"{report_type}:{row.period_start.isoformat()}"
             if telegram is not None:
                 header = f"📊 Your {report_type} report ({start.isoformat()} — {end.isoformat()}):\n\n"
-                await notify_user(sessionmaker, telegram, user.id, header + row.content_md)
+                await notify_user(
+                    sessionmaker, telegram, user.id, header + row.content_md
+                )
         except Exception:
             logger.exception("%s report failed for user %s", report_type, user.id)
             results[str(user.id)] = "failed"
@@ -168,3 +195,8 @@ def weekly_reports(now_iso: str | None = None) -> dict:
 @celery_app.task(name="reports.monthly")
 def monthly_reports(now_iso: str | None = None) -> dict:
     return run_async(_dispatch_periodic("monthly", now_iso))
+
+
+@celery_app.task(name="reports.quarterly")
+def quarterly_reports(now_iso: str | None = None) -> dict:
+    return run_async(_dispatch_periodic("quarterly", now_iso))

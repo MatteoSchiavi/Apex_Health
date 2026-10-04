@@ -182,7 +182,7 @@ def test_cost_estimates_match_section_9_1_rates():
     # embeddings: $0.02/M on the pinned model
     assert estimate_embedding_cost_usd(1_000_000) == Decimal("0.020000")
     # unknown tier fails closed at zero cost
-    assert estimate_llm_cost_usd("mystery", 5_000_000, 5_000_000) == Decimal("0.000000")
+    assert estimate_llm_cost_usd("mystery", 5_000_000, 5_000_000) == Decimal("29.0")
 
 
 async def test_usage_rows_and_day_spend(db_session):

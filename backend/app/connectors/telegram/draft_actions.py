@@ -50,6 +50,11 @@ def keyboard_for_drafts(drafts: list[dict]) -> dict | None:
     """One keyboard for the first actionable draft of the turn (multi-draft
     turns are rare; each confirm message links its own draft anyway)."""
     for draft in drafts:
+        if draft["type"] == "change":
+            # Full diff, exact hash and conflict/undo handling are reviewed in
+            # the authenticated app; a model-written Telegram reply cannot
+            # silently substitute a different payload under a confirm button.
+            return None
         if draft["type"] == "training_plan":
             return plan_keyboard(draft["id"])
         if draft["type"] == "supplement":

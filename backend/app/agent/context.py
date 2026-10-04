@@ -5,8 +5,7 @@ to give AI as much context as possible while still keeping it lightweight
 to not waste tokens."
 
 Design: the user's context docs (profile, goals, injuries, equipment,
-preferences, season_plan) are self-contained markdown the user (or the
-agent, via the update_context_doc tool) maintains. They are NOT re-derived
+preferences, season_plan) are self-contained markdown the user maintains through the application approval boundary. They are NOT re-derived
 per request — they persist, and the snapshot embeds them with a hard
 character budget. Live quantities (metrics, events, today's gym plan) stay
 compact and structured. Everything that changes at most daily stays in the
@@ -33,7 +32,12 @@ logger = logging.getLogger("app.agent.context")
 # --- token budget knobs (documented judgment calls, not spec constants) ----
 _DOC_CHAR_BUDGET = 3500  # all docs together
 _DOC_KIND_ORDER = (
-    "profile", "injuries", "goals", "season_plan", "equipment", "preferences",
+    "profile",
+    "injuries",
+    "goals",
+    "season_plan",
+    "equipment",
+    "preferences",
 )
 _DOC_KIND_CHAR_BUDGET = 1200  # single-doc cap
 
@@ -48,13 +52,16 @@ def _truncate(text: str, cap: int) -> str:
     return text[:cap] + " …[truncated]"
 
 
-async def context_docs_compact(
-    session: AsyncSession, user_id: int
-) -> list[dict]:
+async def context_docs_compact(session: AsyncSession, user_id: int) -> list[dict]:
     """Context docs under a shared char budget; priority order first."""
     rows = (
         await session.scalars(
-            select(UserContextDoc).where(UserContextDoc.user_id == user_id)
+            select(UserContextDoc).where(
+                UserContextDoc.user_id == user_id,
+                UserContextDoc.updated_by.in_(
+                    ("user", "user_approved_ai", "user_undo")
+                ),
+            )
         )
     ).all()
     by_kind = {r.doc_kind: r for r in rows}
@@ -66,9 +73,7 @@ async def context_docs_compact(
             continue
         budget = min(_DOC_KIND_CHAR_BUDGET, remaining)
         if budget <= 200:
-            out.append(
-                {"kind": kind, "content": "…[omitted: context budget spent]"}
-            )
+            out.append({"kind": kind, "content": "…[omitted: context budget spent]"})
             continue
         out.append(
             {
@@ -91,9 +96,11 @@ async def upcoming_events_compact(
     The past window is shorter than the future window because past events
     age out of recovery relevance quickly.
     """
-    horizon_start = datetime.combine(today - timedelta(days=3), datetime.min.time())
+    horizon_start = datetime.combine(
+        today - timedelta(days=3), datetime.min.time(), tzinfo=tz
+    )
     horizon_end = datetime.combine(
-        today + timedelta(days=_EVENT_HORIZON_DAYS), datetime.min.time()
+        today + timedelta(days=_EVENT_HORIZON_DAYS), datetime.min.time(), tzinfo=tz
     )
     rows = (
         await session.scalars(
@@ -104,6 +111,7 @@ async def upcoming_events_compact(
                 UserEvent.starts_at < horizon_end,
             )
             .order_by(UserEvent.starts_at)
+            .limit(50)
         )
     ).all()
     return [
@@ -137,15 +145,15 @@ async def today_gym_compact(
     }
 
 
-async def coach_context(
-    session: AsyncSession, user_id: int, now: datetime
-) -> dict:
+async def coach_context(session: AsyncSession, user_id: int, now: datetime) -> dict:
     """The coach layer of the snapshot: docs + events + today's gym plan."""
     user = await session.get(User, user_id)
     tz = ZoneInfo(user.timezone) if user else ZoneInfo("UTC")
     local_today = now.astimezone(tz).date()
     return {
         "context_docs": await context_docs_compact(session, user_id),
-        "upcoming_events": await upcoming_events_compact(session, user_id, local_today, tz),
+        "upcoming_events": await upcoming_events_compact(
+            session, user_id, local_today, tz
+        ),
         "gym_today": await today_gym_compact(session, user_id, local_today),
     }

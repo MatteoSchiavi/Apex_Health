@@ -2,13 +2,13 @@
 
 The production FastAPI SPA in frontend/ now uses a Swiss modern visual system:
 warm monochrome surfaces, sharp controls, locally bundled Geist, a strong
-readiness hierarchy, neutral numbers and restrained status colors.
+decision-first hierarchy, neutral numbers and restrained status colors.
 
 ## Screen coverage
 
 | Screen | Presentation |
 |---|---|
-| Overview | Readiness hero and calendar trend, recovery/strain/sleep/steps, body signals, training load, alerts, sessions and last night |
+| Overview | Evidence-backed daily decision, outcomes, coverage, labeled legacy readiness and calendar trend, recovery/strain/sleep/steps, body signals, training load, alerts, sessions and last night |
 | Health metrics | Four metric-group tabs, all 24 catalog metrics, search, latest date/value/status/sparkline; additional catalog keys remain discoverable |
 | Metric detail | Single-unit chart, calendar gaps, exact tooltip, latest point, period average, summary and every recorded value |
 | Labs | Recorded panels and marker values, panel creation, notes and donation eligibility |
@@ -16,7 +16,11 @@ readiness hierarchy, neutral numbers and restrained status colors.
 | Activity detail | Session/lap/source tabs, GPS map, individually scaled recording channels, power, heart rate, elevation, conditions and gear |
 | Sleep | Recorded-night averages, duration history and stage composition; night detail, measured epochs and overnight HRV/baseline |
 | Training | Today’s gym plan, draft confirmation, explicit reps/weight set logging, rest timer, feedback, upcoming events and load history |
-| Coach | Account-scoped drafts, saved conversations, honest provider errors and draft recovery |
+| Coach | Analysis/Changes tabs, grounded answer labels, exact-diff approval, receipts, conflicts and undo |
+| Calendar | Events, availability, constraints, minimal replanning and workout export |
+| Performance lab | Baselines, registered analyses, experiments, nutrition, labs, reviewed documents, outcomes and reports |
+| Data health | Source coverage/provenance, annotations, repair/reindex progress, original FIT import, export/deletion and density/retention |
+| Notifications / gear | Durable notification preferences/history and equipment maintenance |
 | Challenges | Separate challenge and ranking tabs with visible request errors |
 | Settings | Profile, preferences, device connections, queued-sync progress, account security and owner-only invites |
 | Sign-in/onboarding | Matching visual identity, real session authentication, invite redemption and first-use preferences |
@@ -77,3 +81,5 @@ The screenshots below use synthetic browser-test fixtures.
 ![Health metrics](ui/metrics.png)
 
 ![Overview, mobile](ui/overview-mobile.png)
+
+See [PERFORMANCE_LAB.md](PERFORMANCE_LAB.md) for the evidence/approval contract and feature boundaries.

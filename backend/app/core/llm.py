@@ -149,7 +149,7 @@ class LiveGLMClient:
         if system:
             payload_messages.append({"role": "system", "content": system})
         payload_messages.extend(messages)
-        payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages}
+        payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages, "max_tokens": 4096}
         if tools:
             payload["tools"] = tools
         try:

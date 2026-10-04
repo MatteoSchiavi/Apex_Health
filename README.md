@@ -4,6 +4,11 @@ Backend release work uses the authenticated **FastAPI + PostgreSQL + Redis/Celer
 platform in `backend/`. Docker serves the redesigned, authenticated Vite SPA
 from `frontend/`. See the [UI redesign and screenshots](docs/UI_REDESIGN.md).
 
+The [performance lab and agent redesign](docs/PERFORMANCE_LAB.md) adds source-aware
+evidence, daily decisions, registered analyses, experiments, reviewable changes,
+data repair and privacy controls. It records the implemented scope and remaining
+live-provider/calibration work.
+
 Start with the [installation guide](docs/INSTALL.md) and the
 [backend release checklist](docs/BACKEND_RELEASE.md). The
 [alpha audit](docs/ALPHA_READINESS_AUDIT.md) tracks the earlier fixes.
@@ -27,9 +32,10 @@ load, ACWR, risk scores), and serves it all through a **Telegram bot with a
 tiered, tool-using AI coach** that can read your data and *draft* plans for
 your explicit confirmation.
 
-Single source of truth for product decisions:
+Original domain specification:
 [`MASTER_SPEC.md`](./MASTER_SPEC.md) (§ references throughout this README
-point there). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
+point there). The current redesign contract and implementation boundaries are in
+[`docs/PERFORMANCE_LAB.md`](docs/PERFORMANCE_LAB.md). Installation guide: **[`docs/INSTALL.md`](./docs/INSTALL.md)**.
 Data surfaces through the authenticated web UI, REST API and Telegram bot.
 The web UI includes overview, health metrics, labs, activities, sleep, training,
 coach, challenges and account management.

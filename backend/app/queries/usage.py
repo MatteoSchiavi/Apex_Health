@@ -20,6 +20,7 @@ from app.models.ai import TokenUsage
 # §9.1 rates, USD per 1M tokens: (input, output, cached_input).
 TIER_RATES_PER_MTOK: dict[str, tuple[float, float, float]] = {
     "free": (0.0, 0.0, 0.0),
+    "medical": (1.40, 4.40, 0.26),  # Conservative estimate pending configured vendor billing.
     "cheap": (1.00, 5.00, 1.00),  # no separate cached price published — in-rate
     "powerful": (1.40, 4.40, 0.26),
 }
@@ -30,9 +31,8 @@ EMBEDDING_USD_PER_MTOK = 0.02
 def estimate_llm_cost_usd(
     tier: str, tokens_in: int, tokens_out: int, cached_tokens: int = 0
 ) -> Decimal:
-    """§9.1 rate table → estimated cost. Unknown tiers cost 0 — a surprise
-    tier is a routing bug, not a billing event."""
-    in_rate, out_rate, cached_rate = TIER_RATES_PER_MTOK.get(tier, (0.0, 0.0, 0.0))
+    """§9.1 rate table → estimated cost. Unknown tiers use the conservative paid estimate; they must not bypass budgets."""
+    in_rate, out_rate, cached_rate = TIER_RATES_PER_MTOK.get(tier, TIER_RATES_PER_MTOK["medical"])
     billable_in = max(tokens_in - cached_tokens, 0)
     cost = (
         billable_in / 1_000_000 * in_rate
