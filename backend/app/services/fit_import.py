@@ -247,7 +247,7 @@ async def import_original(session, user, filename, content, parsed):
                 if (
                     isinstance(value, (int, float))
                     and math.isfinite(value)
-                    and value >= 0
+                    and (dest == "altitude" or value >= 0)
                 ):
                     row[dest] = value
             for src, dest in (("position_lat", "lat"), ("position_long", "lon")):

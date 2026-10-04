@@ -412,7 +412,13 @@ async def test_fit_overlap_keeps_one_activity_and_all_recorded_channels(
     await db_session.commit()
     user = await db_session.get(User, 1)
     sessions, records, laps = parse_original(content)
-    records.append({"timestamp": stamp + timedelta(seconds=2), "power": 200})
+    records.append(
+        {
+            "timestamp": stamp + timedelta(seconds=2),
+            "power": 200,
+            "enhanced_altitude": -5,
+        }
+    )
     result = await import_original(
         db_session, user, "overlap.fit", content, (sessions, records, laps)
     )
@@ -435,6 +441,7 @@ async def test_fit_overlap_keeps_one_activity_and_all_recorded_channels(
     ).all()
     assert samples[0].hr == 120 and samples[0].power is None
     assert samples[1].hr is None and samples[1].power == 200
+    assert samples[1].altitude == -5
 
 
 async def test_source_erasure_cannot_race_provider_import(client):
