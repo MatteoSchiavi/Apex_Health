@@ -28,7 +28,9 @@ OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
     await reset_owner_auth_state(db_session)
     resp = await client.post(
-        "/auth/login", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}, headers=csrf_headers(client)
+        "/auth/login",
+        json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD},
+        headers=csrf_headers(client),
     )
     assert resp.status_code == 200
     cookies = dict(resp.cookies)
@@ -42,7 +44,9 @@ async def _create_friend_with_data(
     """Redeem an invite into a friend account and seed one lab panel + one
     gear item owned by that friend. Returns (cookies, user_id)."""
     owner = await _owner_login(client, db_session)
-    mint = await client.post("/settings/invites", json={}, headers=csrf_headers(client, owner), cookies=owner)
+    mint = await client.post(
+        "/settings/invites", json={}, headers=csrf_headers(client, owner), cookies=owner
+    )
     assert mint.status_code == 201
     code = mint.json()["code"]
 
@@ -71,7 +75,9 @@ async def _create_friend_with_data(
         )
     )
     session.add(
-        Gear(user_id=user_id, name=f"{label}'s road bike", gear_type="bike", active=True)
+        Gear(
+            user_id=user_id, name=f"{label}'s road bike", gear_type="bike", active=True
+        )
     )
     await session.commit()
     return friend_cookies, user_id
@@ -138,6 +144,9 @@ async def test_friend_sees_only_their_own_data(client: AsyncClient, db_session):
     assert (
         await client.get(f"/gear/{owner_gear_id}", cookies=friend_cookies)
     ).status_code == 404
+    own_gear = await client.get(f"/gear/{gear[0]['gear_id']}", cookies=friend_cookies)
+    assert own_gear.status_code == 200
+    assert own_gear.json()["gear_id"] == gear[0]["gear_id"]
     assert (
         await client.post(
             f"/gear/{owner_gear_id}/service",
@@ -166,7 +175,9 @@ async def test_friend_sees_only_their_own_data(client: AsyncClient, db_session):
     ).status_code == 404
 
 
-async def test_two_friends_are_isolated_from_each_other(client: AsyncClient, db_session):
+async def test_two_friends_are_isolated_from_each_other(
+    client: AsyncClient, db_session
+):
     alice_cookies, _ = await _create_friend_with_data(client, db_session, "bob1")
     carol_cookies, _ = await _create_friend_with_data(client, db_session, "carol")
 
@@ -195,7 +206,12 @@ async def test_sessions_are_per_account_logging_out_does_not_kill_the_other(
     client: AsyncClient, db_session
 ):
     owner_cookies = await _owner_login(client, db_session)
-    mint = await client.post("/settings/invites", json={}, headers=csrf_headers(client, owner_cookies), cookies=owner_cookies)
+    mint = await client.post(
+        "/settings/invites",
+        json={},
+        headers=csrf_headers(client, owner_cookies),
+        cookies=owner_cookies,
+    )
     code = mint.json()["code"]
     friend = await client.post(
         "/auth/invite/redeem",
@@ -214,6 +230,10 @@ async def test_sessions_are_per_account_logging_out_does_not_kill_the_other(
     assert (await client.get("/labs", cookies=friend_cookies)).status_code == 200
 
     # Friend logs out; owner's session is unaffected.
-    await client.post("/auth/logout", headers=csrf_headers(client, friend_cookies), cookies=friend_cookies)
+    await client.post(
+        "/auth/logout",
+        headers=csrf_headers(client, friend_cookies),
+        cookies=friend_cookies,
+    )
     assert (await client.get("/labs", cookies=friend_cookies)).status_code == 401
     assert (await client.get("/labs", cookies=owner_cookies)).status_code == 200

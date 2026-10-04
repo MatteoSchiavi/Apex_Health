@@ -35,6 +35,18 @@ async def list_gear(
     return await gear_overview(session, user.id)
 
 
+@router.get("/{gear_id}")
+async def get_gear(
+    gear_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict:
+    rows = await gear_overview(session, user.id, gear_id=gear_id)
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Equipment not found")
+    return rows[0]
+
+
 @router.post("/{gear_id}/service", status_code=status.HTTP_200_OK)
 async def record_service(
     gear_id: int,
