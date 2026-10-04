@@ -1,12 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Apex Day — Connect IQ manifest (Phase 10 v2, the rethought watch app).
-     The app surfaces what ONLY Apex knows (gym schedule, supplements,
-     alerts, journal streak) — readiness/recovery/strain stay native on the
-     device (Training Readiness / Recovery Time / Body Battery).
-     Glances need Connect IQ 4.0 (minApiVersion); every product listed below
-     ships it. Communications permission covers makeWebRequest to the Funnel
-     URL; Background powers the 30-minute temporal refresh so the glance is
-     instant and radio-quiet on the wrist. -->
+<!-- Apex Day — Connect IQ manifest (v3 watch app, battery-first companion).
+
+     The app surfaces ONLY what Apex knows and Garmin does not: the AI-coach
+     safety verdict, today's workout + where to find it, the gym plan with a
+     set logger + rest timer, post-workout feedback, supplements, Apex alerts,
+     gear/donation/event upkeep, weather window, mood journal and the week.
+     Readiness / recovery / Body Battery / HR / sleep stay native on the watch.
+
+     Target device (owner-confirmed): fenix7pro — 260x260 round MIP,
+     768 KB app memory, 64 KB background, 64 KB glance, CIQ 4.x.
+     Add one <iq:product> line per additional device; the code is
+     device-agnostic (relative layout, round-safe insets, touch + buttons).
+
+     Notes:
+     * Glances require Connect IQ 4.0 => minSdkVersion="4.0.0" (manifest v3
+       has NO minApiVersion attribute; minSdkVersion is the v3 way).
+     * <iq:language> (NOT <iq:display-language>) per the manifest XSD;
+       eng + ita ship, with resources-ita holding the Italian strings.
+     * Permissions: Communications (makeWebRequest to the Apex server over
+       HTTPS, bearer device token) and Background (60-min temporal refresh
+       for the glance; registration happens in the foreground app only). -->
 <iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
     <iq:application
         entry="ApexApp"
@@ -14,23 +27,21 @@
         name="@Strings.AppName"
         type="watch-app"
         launcherIcon="@Drawables.LauncherIcon"
-        minApiVersion="4.0.0"
         minSdkVersion="4.0.0">
         <iq:products>
-            <iq:product id="fr965"/>
-            <iq:product id="fenix7x"/>
-            <iq:product id="epix2"/>
+            <iq:product id="fenix7pro"/>
         </iq:products>
         <iq:permissions>
             <iq:uses-permission id="Communications"/>
             <iq:uses-permission id="Background"/>
         </iq:permissions>
         <iq:languages>
-            <iq:display-language>eng</iq:display-language>
+            <iq:language>eng</iq:language>
+            <iq:language>ita</iq:language>
         </iq:languages>
         <iq:barrels/>
-        <iq:glances>
-            <iq:glance entry="ApexGlanceView"/>
-        </iq:glances>
+        <!-- Manifest v3 has NO <iq:glances> element (removed in the v3 XSD):
+             glance support is implicit via AppBase.getGlanceView() in code
+             plus minSdkVersion >= 4.0.0. -->
     </iq:application>
 </iq:manifest>

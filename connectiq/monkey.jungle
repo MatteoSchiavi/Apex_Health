@@ -1,7 +1,19 @@
-# Apex Health glance — Connect IQ build configuration.
-# Build:  monkeyc -f monkey.jungle -y developer_key.pem -w -o bin/apexhealth.prg -d fr965
+# Apex Day — Connect IQ build configuration (Connect IQ SDK >= 6 grammar).
+#
+# SDK 6+ derives source/, resources/ and the launcher icon from the manifest
+# location (this folder), so the jungle only pins the manifest and enables
+# strict typechecking. Legacy keys (project.sourcePath / project.resources /
+# project.type / project.baseIcon) are REJECTED by the current jungle parser.
+#
+# NOTE: no project.typecheck override — the official SDK samples compile at
+# the default (gradual) level; strict adds a cross-build-scope diagnostic that
+# false-positives on the canonical AppBase entry-method pattern used by
+# Garmin's own BackgroundTimer sample (verified against SDK 9.2.0).
+#
+# Build one command per device (key first: java -jar <SDK>/bin/monkeybrains.jar -a -o devkey.pem
+# or `openssl genrsa -traditional -out devkey.pem 2048`):
+#   monkeyc -f monkey.jungle -y devkey.pem -w -o bin/ApexDay-fenix7pro.prg -d fenix7pro
+# Unit tests (simulator):
+#   monkeyc -f monkey.jungle -y devkey.pem -w -o bin/ApexDay-test.prg -d fenix7pro --unit-test
+#   monkeydo bin/ApexDay-test.prg fenix7pro -t
 project.manifest = manifest.xml
-project.type = watch-app
-project.sourcePath = source
-project.resources = resources
-project.baseIcon = resources/drawables/launcher_icon.png

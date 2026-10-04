@@ -1,277 +1,269 @@
-// Apex Day — TODAY view (Phase 10 v2): everything Apex knows about today
-// that the watch itself cannot show.
+// Apex Day — TODAY view: everything Apex knows about today that the watch
+// itself does NOT show (spec 6.6 #1):
+//   * safety verdict + first reason + intensity ceiling (Apex-only)
+//   * workout card: title, minutes, status, "find it" hint
+//   * next supplement due
+//   * gear due / event countdown / weather window (v3 blocks when present)
+//   * open alerts count, journal streak
 //
-//   GYM         today's sessions — recurring routine and/or AI-planned
-//               session (marked PLAN), with the exercises block wrapped
-//   SUPPLEMENTS active protocols (name — dose)
-//   ALERTS      open alert count + the newest few, severity-colored
-//   footer      journal streak + last sync state
+// Readiness / recovery / Body Battery / HR / sleep are deliberately absent —
+// the device shows those natively.
 //
-// Live refresh on open, 15-minute timer while open, manual refresh on
-// SELECT, scroll on UP/DOWN. Renders from the Storage cache first so the
-// view is instant; the fetch updates it in place when the radio answers.
+// Battery: fetch on open + on SELECT only. No timers while the view is open
+// (the old 15-minute repeating timer is gone — defect 6.2.5).
 
-using Toybox.Application;
 using Toybox.Graphics;
 using Toybox.Lang;
 using Toybox.System;
-using Toybox.Timer;
 using Toybox.WatchUi;
 
-class ApexTodayView extends WatchUi.View {
-
-    var _timer;
-    var _fetching;
-    var _scroll;    // pixels scrolled up
-    var _maxScroll; // computed on every paint
-    var _syncedAt;  // "HH:MM" of the last successful fetch
+class ApexTodayView extends ApexBaseView {
 
     function initialize() {
-        View.initialize();
-        _fetching = false;
-        _scroll = 0;
-        _maxScroll = 0;
-        _syncedAt = null;
-    }
-
-    // Called by the delegate for scrolling.
-    function page(direction as Number) as Void {
-        var step = 120; // ~half a small screen; clamped by _maxScroll
-        _scroll = _scroll + direction * step;
-        if (_scroll < 0) {
-            _scroll = 0;
-        }
-        if (_scroll > _maxScroll) {
-            _scroll = _maxScroll;
-        }
+        ApexBaseView.initialize();
     }
 
     function onShow() as Void {
         View.onShow();
-        _refresh();
-        _timer = new Timer.Timer();
-        _timer.start(method(:_refresh), 15 * 60 * 1000, true);
+        refresh();
     }
 
     function onHide() as Void {
-        // F-29 audit: stop timers defensively and null the callback so the
-        // view can be GC'd even if onShow ran without a matching onHide
-        // (known edge on some low-RAM SDK versions). The previous code only
-        // stopped the timer; the callback closure retained the view, delaying
-        // GC on watch-class RAM.
-        if (_timer != null) {
-            _timer.stop();
-            _timer = null;
-        }
-        _fetching = false;
+        setFetching(false);
         View.onHide();
     }
 
-    // F-29 audit: defensive teardown for the case where the view is destroyed
-    // without onHide (firmware edge). Called from onGetInitialLayout's
-    // teardown path when the system signals view disposal.
-    function _defensiveTeardown() as Void {
-        if (_timer != null) {
-            _timer.stop();
-            _timer = null;
-        }
-        _fetching = false;
+    //! Manual refresh (SELECT) — the only radio use besides onShow.
+    function refresh() as Void {
+        _refresh();
     }
 
-    function _refresh() as Void {
-        _fetching = true;
-        var service = new ApexDayService();
-        service.fetchDay(method(:_onFetched));
+    private function _refresh() as Void {
+        setFetching(true);
+        var net = new ApexNet();
+        net.fetchDay(method(:_onFetched));
     }
 
-    function _onFetched(responseCode as Number, data as Dictionary or Null) as Void {
-        _fetching = false;
+    function _onFetched(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or Null) as Void {
+        setFetching(false);
         if (responseCode == 200) {
-            var clock = System.getClockTime();
-            var minute = (clock.min < 10 ? "0" : "") + clock.min;
-            _syncedAt = clock.hour + ":" + minute;
-            _scroll = 0;
-        } else if (responseCode == 401) {
-            WatchUi.showToast("Apex: token invalid — check settings");
-        } else {
-            WatchUi.showToast("Apex: sync failed (" + responseCode + ")");
+            setSyncedAt(ApexBaseView.clockStamp());
+            resetScroll();
+        } else if (responseCode == 401 || responseCode == 403) {
+            WatchUi.showToast(WatchUi.loadResource(Rez.Strings.TokenInvalidHint), null);
+        } else if (responseCode >= 0) {
+            WatchUi.showToast(Lang.format(
+                WatchUi.loadResource(Rez.Strings.SyncFailedCode).toString(), [responseCode]), null);
         }
         WatchUi.requestUpdate();
     }
 
-    function onUpdate(dc as Dc) as Void {
+    function onUpdate(dc as Graphics.Dc) as Void {
         View.onUpdate(dc);
-
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var pad = w / 16;
-        var cached = ApexDayService.cachedDay();
-
-        // Pre-build the line list: { :text, :font, :color, :gap, :indent } —
-        // then paint from _scroll. Rebuilt every paint (wrap is dc-dependent);
-        // the day payload is small enough that this is well under a frame.
         var lines = [];
-        lines.add(_line("TODAY", Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY, 6, 0));
+        var day = ApexStore.loadDay();
 
-        if (ApexDayService.authError() && cached == null) {
-            lines.add(_line("Token invalid —", Graphics.FONT_TINY, Graphics.COLOR_RED, 8, 0));
-            lines.add(_line("re-check settings", Graphics.FONT_TINY, Graphics.COLOR_RED, 8, 0));
-            _paint(dc, lines, h, pad);
+        lines.add(ApexBaseView.line("APEX", Graphics.FONT_XTINY,
+                 Graphics.COLOR_DK_GRAY, 4, 0));
+
+        if (ApexStore.metaBool("authError") && day == null) {
+            lines.add(ApexBaseView.line(
+                WatchUi.loadResource(Rez.Strings.TokenInvalid).toString(),
+                Graphics.FONT_SMALL, Graphics.COLOR_RED, 6, 0));
+            lines.add(ApexBaseView.line(
+                WatchUi.loadResource(Rez.Strings.CheckSettings).toString(),
+                Graphics.FONT_TINY, Graphics.COLOR_LT_GRAY, 4, 0));
+            paintLines(dc, lines);
             return;
         }
 
-        // ---- gym
-        var sessions = (cached == null) ? null : cached.get("sessions");
-        if (sessions == null || sessions.size() == 0) {
-            lines.add(_line("Rest day", Graphics.FONT_MEDIUM, Graphics.COLOR_WHITE, 10, 0));
+        if (day == null) {
+            lines.add(ApexBaseView.line(
+                fetchingLabel(), Graphics.FONT_SMALL, Graphics.COLOR_LT_GRAY, 6, 0));
+            lines.add(footerLine());
+            paintLines(dc, lines);
+            return;
+        }
+
+        // ---- verdict banner
+        var verdict = ApexPayload.verdictOf(day);
+        if (!verdict.equals("")) {
+            lines.add(ApexBaseView.line(ApexFormat.verdictLabel(verdict),
+                     Graphics.FONT_MEDIUM, ApexFormat.verdictColor(verdict), 4, 0));
+            var reasons = ApexPayload.verdictReasons(day);
+            if (reasons != null && reasons.size() > 0) {
+                lines.add(ApexBaseView.line(ApexFormat.text(reasons[0]),
+                         Graphics.FONT_TINY, Graphics.COLOR_DK_GRAY, 4, 8));
+            }
+            var ceiling = ApexPayload.verdictCeiling(day);
+            if (!ceiling.equals("")) {
+                lines.add(ApexBaseView.line(Lang.format(
+                    WatchUi.loadResource(Rez.Strings.Ceiling).toString(), [ceiling]),
+                    Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY, 6, 8));
+            }
+        }
+
+        // ---- workout card (published workout wins, gym plan is fallback)
+        var title = "";
+        var minutes = 0;
+        var wo = ApexPayload.workoutBlock(day);
+        if (wo != null) {
+            title = ApexPayload.strAt(wo, "t");
+            minutes = ApexPayload.numAt(wo, "min");
+        }
+        if (title.equals("")) {
+            var gym = ApexPayload.gymBlock(day);
+            if (gym != null) {
+                title = ApexPayload.strAt(gym, "title");
+            }
+        }
+        if (title.equals("")) {
+            var sessions = ApexPayload.arrAt(day, "sessions");
+            if (sessions != null && sessions.size() > 0) {
+                var first = ApexPayload.asDict(sessions[0]);
+                if (first != null) {
+                    title = ApexPayload.strAt(first, "title");
+                    minutes = ApexPayload.numAt(first, "duration");
+                }
+            }
+        }
+        if (title.equals("")) {
+            lines.add(ApexBaseView.line(
+                WatchUi.loadResource(Rez.Strings.GymRestDay).toString(),
+                Graphics.FONT_SMALL, Graphics.COLOR_WHITE, 8, 0));
         } else {
-            for (var i = 0; i < sessions.size(); i += 1) {
-                var s = sessions[i];
-                var isPlan = s.get("source").toString().equals("plan");
-                var head = ApexFormat.sessionTitle(s);
-                var start = ApexFormat.startLabel(s.get("start"));
-                if (!start.equals("")) {
-                    head = start + "  " + head;
+            var head = title;
+            if (minutes > 0) {
+                head = head + " · " + minutes + " " +
+                    WatchUi.loadResource(Rez.Strings.MinShortLabel).toString();
+            }
+            lines.add(ApexBaseView.line(head, Graphics.FONT_SMALL,
+                     Graphics.COLOR_YELLOW, 4, 0));
+            if (wo != null) {
+                lines.add(ApexBaseView.line(
+                    WatchUi.loadResource(_statusResId(ApexPayload.strAt(wo, "st"))).toString(),
+                    Graphics.FONT_XTINY, Graphics.COLOR_WHITE, 4, 8));
+            }
+            lines.add(ApexBaseView.line(
+                WatchUi.loadResource(Rez.Strings.WoFindIt).toString() + " " +
+                WatchUi.loadResource(Rez.Strings.WoFindHint).toString(),
+                Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY, 6, 8));
+        }
+
+        // ---- next supplement
+        var sup = ApexPayload.supplementList(day);
+        if (sup != null && sup.size() > 0) {
+            var s0 = ApexPayload.asDict(sup[0]);
+            if (s0 != null) {
+                var dose = ApexPayload.supplementDose(s0);
+                var name = ApexPayload.supplementName(s0);
+                var supLine = (dose.equals("")) ? name : name + " — " + dose;
+                if (sup.size() > 1) {
+                    supLine = supLine + " (+" + (sup.size() - 1) + ")";
                 }
-                var duration = ApexFormat.durationLabel(s.get("duration"));
-                if (!duration.equals("")) {
-                    head = head + " · " + duration;
-                }
-                lines.add(_line(head, Graphics.FONT_SMALL, Graphics.COLOR_YELLOW, 10, 0));
-                if (isPlan) {
-                    lines.add(_line("PLANNED SESSION", Graphics.FONT_XTINY,
-                                    Graphics.COLOR_BLUE, 4, 8));
-                }
-                var notes = s.get("notes");
-                if (notes != null) {
-                    var wrapped = ApexFormat.wrap(dc, notes.toString(),
-                                                  Graphics.FONT_TINY, w - pad * 2 - 8);
-                    for (var j = 0; j < wrapped.size(); j += 1) {
-                        lines.add(_line(wrapped[j], Graphics.FONT_TINY,
-                                        Graphics.COLOR_LT_GRAY, 4, 8));
-                    }
-                }
+                lines.add(ApexBaseView.line(supLine, Graphics.FONT_TINY,
+                         Graphics.COLOR_WHITE, 6, 0));
             }
         }
 
-        // ---- supplements
-        var supplements = (cached == null) ? null : cached.get("supplements");
-        if (supplements != null && supplements.size() > 0) {
-            lines.add(_line("SUPPLEMENTS", Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY, 14, 0));
-            for (var i = 0; i < supplements.size(); i += 1) {
-                var supp = supplements[i];
-                var name = ApexFormat.text(supp.get("name"));
-                var dose = ApexFormat.text(supp.get("dose"));
-                var lineTxt = (dose.equals("")) ? name : name + " — " + dose;
-                lines.add(_line(lineTxt, Graphics.FONT_TINY, Graphics.COLOR_WHITE, 4, 8));
+        // ---- gear due (v3)
+        var gear = ApexPayload.arrAt(day, "gear");
+        if (gear != null && gear.size() > 0) {
+            var g0 = ApexPayload.asDict(gear[0]);
+            if (g0 != null) {
+                var hours = ApexPayload.numAt(g0, "h");
+                var lim = ApexPayload.numAt(g0, "lim");
+                var over = (lim > 0 && hours >= lim * 9 / 10);
+                lines.add(ApexBaseView.line(
+                    ApexPayload.strAt(g0, "n") + " " + hours + "/" + lim + "h",
+                    Graphics.FONT_XTINY, over ? Graphics.COLOR_RED : Graphics.COLOR_WHITE,
+                    4, 0));
             }
         }
 
-        // ---- alerts
-        var alerts = (cached == null) ? null : cached.get("alerts");
-        var alertCount = 0;
-        var alertItems = null;
-        if (alerts != null) {
-            if (alerts.get("count") != null) {
-                alertCount = alerts.get("count").toNumber();
-            }
-            alertItems = alerts.get("items");
-        }
-        lines.add(_line("ALERTS " + alertCount, Graphics.FONT_XTINY,
-                        Graphics.COLOR_DK_GRAY, 14, 0));
-        if (alertCount == 0) {
-            lines.add(_line("Nothing open", Graphics.FONT_TINY,
-                            Graphics.COLOR_LT_GRAY, 4, 8));
-        } else if (alertItems != null) {
-            for (var i = 0; i < alertItems.size(); i += 1) {
-                var alert = alertItems[i];
-                var msg = ApexFormat.text(alert.get("message"));
-                var wrapped = ApexFormat.wrap(dc, msg, Graphics.FONT_TINY, w - pad * 2 - 8);
-                var color = ApexFormat.severityColor(alert.get("severity"));
-                for (var j = 0; j < wrapped.size(); j += 1) {
-                    lines.add(_line(wrapped[j], Graphics.FONT_TINY, color, 4, 8));
+        // ---- event countdown (v3)
+        var ev = ApexPayload.dictAt(day, "ev");
+        if (ev != null) {
+            var evName = ApexPayload.strAt(ev, "t");
+            var evDays = ApexPayload.numAt(ev, "days");
+            if (!evName.equals("")) {
+                var evLine = Lang.format(
+                    WatchUi.loadResource(Rez.Strings.EventIn).toString(),
+                    [evDays, evName]);
+                var taper = ApexPayload.numAt(ev, "taper");
+                if (taper > 0 && evDays <= taper) {
+                    evLine = evLine + " · " + Lang.format(
+                        WatchUi.loadResource(Rez.Strings.TaperLabel).toString(), [taper]);
                 }
+                lines.add(ApexBaseView.line(evLine, Graphics.FONT_XTINY,
+                         Graphics.COLOR_WHITE, 4, 0));
             }
         }
 
-        // ---- footer
-        var streak = (cached == null) ? null : cached.get("journal_streak");
-        var footer = "streak " + ((streak == null) ? "0" : streak.toString()) + "d";
-        if (_syncedAt != null) {
-            footer = footer + " · synced " + _syncedAt;
-        } else if (_fetching) {
-            footer = footer + " · syncing...";
+        // ---- weather window (v3)
+        var wx = ApexPayload.dictAt(day, "wx");
+        if (wx != null) {
+            var tmin = ApexPayload.numAt(wx, "tmin");
+            var tmax = ApexPayload.numAt(wx, "tmax");
+            var wind = ApexPayload.numAt(wx, "wind");
+            var rain = ApexPayload.numAt(wx, "rain");
+            lines.add(ApexBaseView.line(
+                Lang.format(WatchUi.loadResource(Rez.Strings.CondTemp).toString(), [tmin, tmax])
+                + " · " + Lang.format(WatchUi.loadResource(Rez.Strings.CondWind).toString(), [wind])
+                + " · " + Lang.format(WatchUi.loadResource(Rez.Strings.CondRain).toString(), [rain]),
+                Graphics.FONT_XTINY, Graphics.COLOR_WHITE, 4, 0));
         }
-        lines.add(_line(footer, Graphics.FONT_XTINY, Graphics.COLOR_DK_GRAY, 16, 0));
 
-        _paint(dc, lines, h, pad);
+        // ---- alerts + streak + footer
+        var alertCount = ApexPayload.alertCount(day);
+        if (alertCount > 0) {
+            lines.add(ApexBaseView.line(Lang.format(
+                WatchUi.loadResource(Rez.Strings.AlertsOpen).toString(), [alertCount]),
+                Graphics.FONT_XTINY, Graphics.COLOR_YELLOW, 4, 0));
+        }
+        var streak = ApexPayload.streak(day);
+        if (streak > 0) {
+            lines.add(ApexBaseView.line(streak + "d", Graphics.FONT_XTINY,
+                     Graphics.COLOR_DK_GRAY, 6, 0));
+        }
+        lines.add(footerLine());
+        paintLines(dc, lines);
     }
 
-    private function _line(text, font, color, gap, indent) as Dictionary {
-        return { :text => text, :font => font, :color => color,
-                 :gap => gap, :indent => indent };
+    private function _statusResId(status as Lang.String) as Lang.ResourceId {
+        if (status.equals("scheduled") || status.equals("published") || status.equals("on_watch")) {
+            return Rez.Strings.WoPublished;
+        }
+        if (status.equals("removed")) {
+            return Rez.Strings.WoRemoved;
+        }
+        if (status.equals("held")) {
+            return Rez.Strings.WoHeld;
+        }
+        if (status.equals("failed")) {
+            return Rez.Strings.WoFailed;
+        }
+        return Rez.Strings.WoUnknown;
     }
 
-    private function _paint(dc as Dc, lines as Array, h as Number, pad as Number) as Void {
-        dc.clear();
-        // Approximate vertical advance: one XTINY line + breathing room per
-        // entry keeps spacing even across round/rect MIP sizes.
-        var lineHeight = h / 14;
-        var y = pad - _scroll;
-        for (var i = 0; i < lines.size(); i += 1) {
-            var line = lines[i];
-            if (y + lineHeight > 0 && y < h) {
-                dc.setColor(line.get("color"), Graphics.COLOR_TRANSPARENT);
-                dc.drawText(pad + line.get("indent").toNumber(), y,
-                            line.get("font"), line.get("text"),
-                            Graphics.TEXT_JUSTIFY_LEFT);
-            }
-            y += lineHeight + line.get("gap").toNumber();
-        }
-        _maxScroll = (y > h) ? (y - h) : 0;
-        if (_scroll > _maxScroll) {
-            _scroll = _maxScroll;
-        }
+    private function fetchingLabel() as Lang.String {
+        return (_fetching)
+            ? WatchUi.loadResource(Rez.Strings.Syncing).toString()
+            : WatchUi.loadResource(Rez.Strings.NoDataYet).toString();
     }
 }
 
-// Delegate is constructed with ITS view so page() has a target without any
-// global view lookup.
-class ApexTodayDelegate extends WatchUi.BehaviorDelegate {
-
-    var _view;
+class ApexTodayDelegate extends ApexDelegate {
 
     function initialize(view as ApexTodayView) {
-        BehaviorDelegate.initialize();
-        _view = view;
+        ApexDelegate.initialize(view);
     }
 
-    function onBack() as Boolean {
-        // Back to the menu, not out of the app.
-        WatchUi.switchToView(new ApexMainMenu(), new ApexMenuDelegate(),
-                             WatchUi.SLIDE_IMMEDIATE);
+    function onSelect() as Lang.Boolean {
+        var todayView = _view as ApexTodayView;
+        if (todayView != null) {
+            todayView.refresh();
+        }
         return true;
-    }
-
-    function onNextPage() as Boolean {
-        _view.page(1);
-        WatchUi.requestUpdate();
-        return true;
-    }
-
-    function onPreviousPage() as Boolean {
-        _view.page(-1);
-        WatchUi.requestUpdate();
-        return true;
-    }
-
-    function onSelect() as Boolean {
-        var service = new ApexDayService();
-        service.fetchDay(method(:_noop));
-        return true;
-    }
-
-    function _noop(responseCode as Number, data as Dictionary or Null) as Void {
-        WatchUi.requestUpdate();
     }
 }

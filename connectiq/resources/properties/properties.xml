@@ -1,4 +1,27 @@
 <properties>
+    <!-- Apex Day — persisted app properties (editable in the Connect IQ phone
+         settings). Background processes may READ properties but not write them
+         (platform rule), so all runtime state lives in Application.Storage. -->
+
+    <!-- Base URL of the Apex server (HTTPS only). Trailing '/' is tolerated
+         and trimmed by the app. -->
     <property id="server_url" type="string">https://your-host.your-tailnet.ts.net</property>
+
+    <!-- Per-user device token (minted via POST /watch/tokens in the web UI).
+         Never logged; a 401 wipes all cached data. -->
     <property id="api_token" type="string"></property>
+
+    <!-- Background refresh interval in MINUTES: 60 (default) / 120 / 240.
+         Hard battery policy: never below the platform minimum (5 min) and
+         never below 60 by default. -->
+    <property id="refresh_interval" type="number">60</property>
+
+    <!-- Active hours in minutes from midnight (user-local). Background
+         syncs outside the window exit immediately without touching the
+         radio. Defaults: 05:00 (300) .. 23:30 (1410). -->
+    <property id="active_start_min" type="number">300</property>
+    <property id="active_end_min" type="number">1410</property>
+
+    <!-- false = metric (kg), true = imperial (lb) for the gym tracker. -->
+    <property id="imperial" type="boolean">false</property>
 </properties>

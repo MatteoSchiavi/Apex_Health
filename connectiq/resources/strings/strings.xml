@@ -1,10 +1,171 @@
 <strings>
+    <!-- Apex Day — English (base) strings.
+         Every user-visible string lives here; Italian overrides in
+         resources-ita/strings/strings.xml. Referenced from code via
+         WatchUi.loadResource(Rez.Strings.X) and from settings via @Strings.X.
+         Dynamic strings use $1$ / $2$ placeholders filled with Lang.format(). -->
+
+    <!-- app -->
     <string id="AppName">Apex Day</string>
     <string id="AppTitle">Apex Day</string>
+
+    <!-- Connect IQ phone settings -->
     <string id="ServerUrlTitle">Server URL</string>
-    <string id="ServerUrlPrompt">Full Funnel URL, e.g. https://host.tailnet.ts.net</string>
+    <string id="ServerUrlPrompt">Full HTTPS URL, e.g. https://host.ts.net</string>
     <string id="TokenTitle">API token</string>
-    <string id="TokenPrompt">Mint with POST /watch/tokens (see repo docs)</string>
-    <string id="NoData">No data yet</string>
-    <string id="Syncing">Syncing...</string>
+    <string id="TokenPrompt">Device token from Apex web settings</string>
+    <string id="RefreshTitle">Background refresh</string>
+    <string id="RefreshPrompt">Minutes between background syncs</string>
+    <string id="Refresh60">60 minutes (recommended)</string>
+    <string id="Refresh120">120 minutes</string>
+    <string id="Refresh240">240 minutes</string>
+    <string id="ActiveStartTitle">Active from (min)</string>
+    <string id="ActiveStartPrompt">Minutes after midnight; syncs skipped before</string>
+    <string id="ActiveEndTitle">Active until (min)</string>
+    <string id="ActiveEndPrompt">Minutes after midnight; syncs skipped after</string>
+    <string id="ImperialTitle">Imperial units</string>
+    <string id="ImperialPrompt">Show weight in lb instead of kg</string>
+
+    <!-- shared / states -->
+    <string id="NoDataYet">No data yet</string>
+    <string id="Syncing">Syncing…</string>
+    <string id="Synced">Synced</string>
+    <string id="SyncFailed">Sync failed</string>
+    <string id="TokenInvalid">Token invalid</string>
+    <string id="TokenInvalidHint">Token invalid — check settings</string>
+    <string id="CheckSettings">Check server + token in settings</string>
+    <string id="NoPhone">No phone connection</string>
+    <string id="Cached">cached</string>
+    <string id="Never">never</string>
+    <string id="MinShort">m</string>
+    <string id="HourShort">h</string>
+    <string id="DayShort">d</string>
+    <string id="Wd0">Mon</string>
+    <string id="Wd1">Tue</string>
+    <string id="Wd2">Wed</string>
+    <string id="Wd3">Thu</string>
+    <string id="Wd4">Fri</string>
+    <string id="Wd5">Sat</string>
+    <string id="Wd6">Sun</string>
+    <string id="SyncedAge">Synced $1$ ago</string>
+    <string id="SyncFailedCode">Sync failed ($1$)</string>
+
+    <!-- main menu -->
+    <string id="MenuToday">Today</string>
+    <string id="SubToday">verdict · workout · next</string>
+    <string id="MenuWorkout">Workout status</string>
+    <string id="SubWorkout">did it reach the watch?</string>
+    <string id="MenuGym">Gym session</string>
+    <string id="SubGym">log sets · rest timer</string>
+    <string id="MenuFeedback">Feedback</string>
+    <string id="SubFeedback">post-session check-in</string>
+    <string id="MenuSupplements">Supplements</string>
+    <string id="SubSupplements">one-tap adherence</string>
+    <string id="MenuAlerts">Alerts</string>
+    <string id="SubAlerts">newest Apex alerts</string>
+    <string id="MenuBody">Body &amp; upkeep</string>
+    <string id="SubBody">gear · donation · events</string>
+    <string id="MenuConditions">Conditions</string>
+    <string id="SubConditions">today's weather window</string>
+    <string id="MenuMood">Quick mood</string>
+    <string id="SubMood">journal in 3 taps</string>
+    <string id="MenuWeek">Week</string>
+    <string id="SubWeek">7-day plan</string>
+
+    <!-- glance -->
+    <string id="GlanceCounts">sup $1$ · al $2$ · $3$d</string>
+
+    <!-- safety verdict -->
+    <string id="VerdictGo">GO</string>
+    <string id="VerdictModify">MODIFY</string>
+    <string id="VerdictRest">REST</string>
+    <string id="Ceiling">Ceiling: $1$</string>
+
+    <!-- workout status -->
+    <string id="WoTitle">Today's workout</string>
+    <string id="WoFindIt">Find it:</string>
+    <string id="WoFindHint">Activity › Training › Workouts</string>
+    <string id="WoPublished">On the watch</string>
+    <string id="WoScheduled">Published</string>
+    <string id="WoNotPublished">Not published</string>
+    <string id="WoRemoved">Removed</string>
+    <string id="WoHeld">Held by safety</string>
+    <string id="WoFailed">Publish failed</string>
+    <string id="WoReauth">Server needs re-auth</string>
+    <string id="WoUnknown">Status unknown</string>
+    <string id="WoUnknownHint">Publish status needs Apex server v3</string>
+    <string id="WoNone">No structured workout today</string>
+    <string id="MinShortLabel">min</string>
+
+    <!-- gym -->
+    <string id="GymNoPlan">No gym plan today</string>
+    <string id="GymRestDay">Rest day</string>
+    <string id="GymProgress">$1$/$2$ sets</string>
+    <string id="GymComplete">Complete</string>
+    <string id="GymTarget">$1$ × $2$</string>
+    <string id="GymReps">reps</string>
+    <string id="GymWeight">weight</string>
+    <string id="GymLogSet">LOG SET</string>
+    <string id="GymRestLabel">Rest $1$s</string>
+    <string id="GymRestDone">Rest done</string>
+    <string id="GymRestSkip">SELECT: skip</string>
+    <string id="GymNext">Next: $1$</string>
+    <string id="GymSetsLeft">$1$ left</string>
+    <string id="GymKg">kg</string>
+    <string id="GymLb">lb</string>
+    <string id="GymLogged">Set queued</string>
+    <string id="GymExerciseOf">$1$ of $2$</string>
+    <string id="GymFieldMenu">MENU: switch field</string>
+
+    <!-- feedback -->
+    <string id="FbRpe">Effort 1–10</string>
+    <string id="FbSoreness">Soreness 1–5</string>
+    <string id="FbInjury">Pain or injury?</string>
+    <string id="FbYes">Yes</string>
+    <string id="FbNo">No</string>
+    <string id="FbConfirm">Send feedback</string>
+    <string id="FbQueued">Feedback queued</string>
+
+    <!-- supplements -->
+    <string id="SupNone">No active supplements</string>
+    <string id="SupTaken">taken</string>
+    <string id="SupMarkHint">SELECT: mark taken</string>
+    <string id="SupMarked">Marked $1$</string>
+
+    <!-- alerts -->
+    <string id="AlertsNone">Nothing open</string>
+    <string id="AlertsOpen">$1$ open</string>
+    <string id="AlertsAck">Acknowledge in web / Telegram</string>
+
+    <!-- body & upkeep -->
+    <string id="BodyNone">Needs Apex server v3</string>
+    <string id="GearLabel">Gear</string>
+    <string id="GearHours">$1$ / $2$ h</string>
+    <string id="GearDue">Service due!</string>
+    <string id="DonLabel">Donation</string>
+    <string id="DonDays">Eligible in $1$ d</string>
+    <string id="DonReady">Eligible now</string>
+    <string id="EventIn">$1$ d: $2$</string>
+    <string id="TaperLabel">Taper $1$ d</string>
+
+    <!-- conditions -->
+    <string id="CondNone">Needs Apex server v3</string>
+    <string id="CondWind">Wind $1$ km/h</string>
+    <string id="CondRain">Rain $1$%</string>
+    <string id="CondTemp">$1$–$2$°</string>
+
+    <!-- mood -->
+    <string id="MoodMood">Mood</string>
+    <string id="MoodEnergy">Energy</string>
+    <string id="MoodStress">Stress</string>
+    <string id="MoodSave">Save mood</string>
+    <string id="MoodQueued">Mood queued</string>
+
+    <!-- week -->
+    <string id="WeekRest">rest</string>
+
+    <!-- event queue -->
+    <string id="QueuePending">$1$ queued</string>
+    <string id="QueueFull">Queue full — oldest dropped</string>
+    <string id="QueueSent">$1$ events sent</string>
 </strings>
