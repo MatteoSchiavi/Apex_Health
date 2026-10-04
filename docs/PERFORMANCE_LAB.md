@@ -1,6 +1,7 @@
 # Performance lab and agent runtime
 
-The redesign runs in the existing authenticated FastAPI/PostgreSQL/Timescale/Celery platform and the bundled React/Vite UI. The supplied master review described the older Next/SQLite prototype; that prototype is not the production authority. The services below extend the working runtime rather than creating another application.
+The redesign runs in the authenticated FastAPI/PostgreSQL/Timescale/Celery
+platform and the bundled React/Vite UI. This is the only supported runtime.
 
 ## What ships
 
@@ -59,7 +60,7 @@ Observation and tool-audit retention are opt-in preferences for those two stores
 
 | Master review area | Implemented boundary | Remaining work |
 | --- | --- | --- |
-| Canonical runtime | One authenticated service layer and bundled SPA | Retire the root prototype in a separate compatibility decision |
+| Canonical runtime | One authenticated service layer and bundled SPA | One supported runtime and deployment path |
 | Reliable ingestion | Existing durable connectors; source-aware Garmin observations; FIT CRC/originals/overlap reconciliation; scoped repair/reindex | Official Garmin program approval, OAuth adapter and device-specific production validation |
 | Provider metrics | Recorded available metrics with original units and honest missing states | Optional training-readiness/status/recovery feeds are `not_exposed` unless actually acquired; no proprietary reconstruction |
 | Daily decisions/baselines | Coverage, robust baselines, subjective/event constraints, alternatives and outcomes | Prospective calibration, thresholds and patient/athlete-specific validation |

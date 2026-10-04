@@ -1,9 +1,7 @@
 # Backend release acceptance
 
 The release backend is `backend/`: FastAPI, PostgreSQL 16 with TimescaleDB
-and pgvector, Redis and Celery. Docker serves the existing `frontend/` Vite
-bundle. The root Next.js/SQLite prototype is outside this deployment and
-still needs its own authentication replacement before any production use.
+and pgvector, Redis and Celery. Docker serves the `frontend/` Vite bundle.
 
 ## What this release fixes
 

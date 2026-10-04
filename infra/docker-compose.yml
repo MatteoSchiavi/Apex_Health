@@ -1,12 +1,11 @@
-# Health Control Center — local/staging/homeserver deployment (MASTER_SPEC §2, §16, §21)
+# Apex Health — local, staging and home-server deployment
 #
 # Services: db (PostgreSQL 16 + TimescaleDB + pgvector), redis, api (uvicorn),
 # worker (Celery worker + embedded beat — beat_schedule lives in
 # app/tasks/celery_app.py, §19: Garmin/Whoop/Strava/Technogym syncs every 6h,
 # nightly feature engine 03:00 user-local, gear accumulation, AI budget
 # check, nightly encrypted backup, reports), bot (Telegram long polling, §10.1).
-# The web UI is the next work item (real full UI, spec Appendix A) — the
-# temporary Grafana dashboards were removed by owner decision.
+# The production web UI is built from frontend/ into the API image.
 #
 # Sizing: memory limits are tuned for the owner's 8 GB homeserver (multi-user
 # friends deployment) with ~3.5 GB headroom for the OS/page cache. Remove

@@ -40,6 +40,28 @@
     "invite_error": "Codice invito non valido (sconosciuto, già usato o scaduto)",
     "welcome": "Benvenuto in Apex"
   },
+  "landing": {
+    "eyebrow": "SISTEMA PRIVATO PER LA PERFORMANCE",
+    "title": "Dati sulla salute, nel loro contesto.",
+    "body": "Apex Health riunisce allenamento, recupero, sonno e osservazioni di laboratorio in uno spazio basato sulle evidenze, progettato per decisioni chiare.",
+    "open": "Apri il tuo spazio",
+    "sign_in": "Accedi",
+    "invite": "Riscatta un invito",
+    "language": "Cambia lingua",
+    "note": "I tuoi dati restano sotto il tuo controllo. Fonti, copertura e ogni modifica proposta rimangono visibili e verificabili.",
+    "data": {
+      "title": "Un'unica fonte affidabile",
+      "body": "Riunisci attività, sonno, dati corporei e laboratorio senza nascondere l'origine di ogni valore."
+    },
+    "evidence": {
+      "title": "Decisioni basate sulle evidenze",
+      "body": "Usa baseline personali, copertura dei dati e limiti chiari per capire cosa i dati possono sostenere."
+    },
+    "control": {
+      "title": "Il controllo resta a te",
+      "body": "Il coach può preparare una modifica, ma nulla viene applicato finché non approvi la proposta esatta."
+    }
+  },
   "overview": {
     "title": "Panoramica",
     "adaptive_readiness": "Preparazione",

@@ -40,6 +40,28 @@
     "invite_error": "Invite code is not valid (unknown, already used, or expired)",
     "welcome": "Welcome to Apex"
   },
+  "landing": {
+    "eyebrow": "PRIVATE PERFORMANCE SYSTEM",
+    "title": "Health data, in context.",
+    "body": "Apex Health brings your training, recovery, sleep and laboratory observations into one evidence-aware workspace designed for clear decisions.",
+    "open": "Open your workspace",
+    "sign_in": "Sign in",
+    "invite": "Redeem an invite",
+    "language": "Change language",
+    "note": "Your data stays under your control. Sources, coverage and every proposed change remain visible and reviewable.",
+    "data": {
+      "title": "One source of truth",
+      "body": "Bring activity, sleep, body and lab observations together without hiding where each value came from."
+    },
+    "evidence": {
+      "title": "Decisions with evidence",
+      "body": "Use personal baselines, data coverage and clear limits to understand what the data can and cannot support."
+    },
+    "control": {
+      "title": "You keep control",
+      "body": "The coach can prepare a change, but nothing is applied until you review and approve the exact proposal."
+    }
+  },
   "overview": {
     "title": "Overview",
     "adaptive_readiness": "Readiness",

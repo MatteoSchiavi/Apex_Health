@@ -11,7 +11,6 @@ backend/.venv
 backups
 connectiq
 docs
-ui-language
 scripts
 my-project
 *.log

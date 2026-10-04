@@ -1,6 +1,6 @@
 # Chapter 3 — First-run configuration
 
-*Link devices, seed history, invite your friends.*
+*Link devices, import history, invite your friends.*
 
 ## 3.1 — Connect Garmin (the UI way)
 
@@ -27,14 +27,11 @@ Whoop (official API v2, a first-class primary device) and Strava (GPS companion)
 
 After filling `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` (or the Strava pair) in `.env`, restart with `docker compose -f infra/docker-compose.yml up -d` so the API picks the values up. Beat syncs Whoop at :05, Strava at :07, every 6 hours; first sync is a full backfill to the origin of the account.
 
-## 3.3 — Demo data (optional, exploratory)
+## 3.3 — Add data
 
-Before trusting it with real data you can flood every surface with 240 days of deterministic synthetic data — dashboards, hypnograms, GPS routes, chats, challenges. **This wipes existing user data**, so use it on a fresh install only:
-
-```powershell
-docker compose -f infra/docker-compose.yml exec api env PYTHONPATH=/app python tools/seed_demo_data.py --days 240
-# owner login afterwards: owner@apexhealth.dev / demo-owner-1234
-```
+Start with an empty account, then import an original FIT/CSV file from **Data
+Health** or connect a provider from **Settings**. The application never creates
+sample health records during normal use.
 
 ## 3.4 — Invite your friends
 

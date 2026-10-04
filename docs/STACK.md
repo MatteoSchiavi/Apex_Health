@@ -46,17 +46,13 @@ client-side interactivity — scrubbing, live rest timers, chart hover sync).
 
 ### 2.2 Tailwind CSS v4 as the design-token carrier
 
-Both approved design specs (`ui-language/apex_precision_*/DESIGN.md`) are
-token-first: color scales, type ramp, radii, spacing. Tailwind v4 reads design
-tokens as **CSS custom properties** (`@theme`), so the Apex Precision palette is
-declared once and every component consumes semantic classes
-(`bg-surface-1`, `text-muted`, `rounded-lg`) that automatically flip under the
-`.light` / `.dark` root class. Light and dark themes are therefore **guaranteed
-coherent** because they are the same tokens resolved against two palettes — there
-is no second styling path to drift.
-
-The four approved mockups are Tailwind-authored; class names in the product code
-stay recognizable against them.
+The UI system is token-first: color scales, type ramp, radii and spacing live
+in `frontend/src/styles/tokens.css`. Tailwind v4 reads the tokens as **CSS
+custom properties** (`@theme`), so the Apex Precision palette is declared once
+and every component consumes semantic classes (`bg-surface-1`, `text-muted`,
+`rounded-lg`) that automatically flip under the `.light` / `.dark` root class.
+Light and dark themes therefore share one visual system instead of drifting
+through separate styling paths.
 
 ### 2.3 ECharts for every chart class in the design
 

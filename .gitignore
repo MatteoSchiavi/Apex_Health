@@ -1,85 +1,32 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+backend/.env*
 *.pem
 
-# debug
+# JavaScript and browser artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+coverage/
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-.env-backup-LOCAL-ONLY/
-
-# backend local envs
-backend/.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-local-*
-.claude
-.z-ai-config
-
-# logs
-*.log
-dev.log
-dev.out.log
-server.log
-
-# runtime artifacts
-.zscripts/dev.pid
-db/*.db
-db/*.db-journal
-
-# uploads / tool artifacts
-/upload/
-/tool-results/
-prompt
-test
-prompt
-
-# Skills directory
-/skills/
-
-# Python runtime and test output
+# Python artifacts
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 .venv/
+backend/.venv/
 
-# QA screenshots
-qa-*.png
-qa-*.jpeg
-qa-*.webp
+# Runtime data and generated files
+backups/
 uploads/
-
-# Browser verification artifacts
-frontend/test-results/
-frontend/playwright-report/
+upload/
+tool-results/
+*.log
+*.tsbuildinfo
+.DS_Store

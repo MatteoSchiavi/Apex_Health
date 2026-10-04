@@ -1,18 +1,23 @@
-# Legacy Frontend (Vite SPA)
+# Apex Health web application
 
-> ⚠️ **This is the legacy Vite SPA. It is no longer the active frontend.**
->
-> The current web UI is the **Next.js 16 app at the repository root**.
-> To run the app:
->
-> ```bash
-> # From the repository root (NOT this directory):
-> bun install
-> bun run dev
-> ```
->
-> This `frontend/` directory contains the original Vite + React SPA that was
-> built for the Python FastAPI backend. It is kept for reference but is not
-> maintained. The Next.js app at the root supersedes it and includes all the
-> latest UI redesigns (Overview, Coach, Training, Activities, Sleep,
-> Biometrics, Gear, Labs, Documents, Challenges, Settings).
+This is the production React/Vite interface for Apex Health. Docker builds it
+into the FastAPI image, where it is served with the authenticated API.
+
+For local UI development:
+
+```sh
+npm ci
+npm run dev
+```
+
+The Vite development server proxies API requests to the backend on port 8000.
+Use the commands below before opening a frontend pull request:
+
+```sh
+npm run check:i18n
+npm run build
+npm run test:ui
+```
+
+See the root [installation guide](../docs/INSTALL.md) for the full local stack
+and [UI system documentation](../docs/UI_REDESIGN.md) for the product design.

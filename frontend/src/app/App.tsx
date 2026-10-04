@@ -21,6 +21,7 @@ import { PageBoundary } from "../components/PageBoundary";
 import { AppShell } from "../components/layout/AppShell";
 import Login from "../features/auth/Login";
 import Join from "../features/auth/Join";
+import WelcomePage from "../features/landing/WelcomePage";
 const OverviewPage = lazy(() => import("../features/overview/OverviewPage"));
 const ActivitiesPage = lazy(
   () => import("../features/activities/ActivitiesPage"),
@@ -97,6 +98,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<WelcomePage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/join" element={<Join />} />
           <Route

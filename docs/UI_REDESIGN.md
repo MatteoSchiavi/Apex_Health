@@ -25,9 +25,8 @@ decision-first hierarchy, neutral numbers and restrained status colors.
 | Settings | Profile, preferences, device connections, queued-sync progress, account security and owner-only invites |
 | Sign-in/onboarding | Matching visual identity, real session authentication, invite redemption and first-use preferences |
 
-The existing root Next.js prototype is not the production UI. No data is
-fabricated by the redesigned SPA. Screenshots and browser fixtures use
-synthetic verification records, not the owner’s health data.
+No data is fabricated by the production SPA. Screenshots and browser fixtures
+use synthetic verification records, not the owner’s health data.
 
 ## Reliability changes accompanying the design
 
