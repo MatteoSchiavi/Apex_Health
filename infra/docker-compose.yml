@@ -96,6 +96,8 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args: &app_build_args
+        APEX_COMMIT: ${APEX_COMMIT:-development}
     command: alembic upgrade head
     env_file: ../.env
     environment:
@@ -127,6 +129,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args: *app_build_args
     env_file: ../.env
     environment:
       # Container-network URLs override host-side .env values.
@@ -167,6 +170,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args: *app_build_args
     # --beat: the embedded beat runs the §19 schedule (Garmin/Whoop/Oura syncs
     # every 6h, nightly feature engine 03:00 user-local, gear accumulation,
     # AI budget check 23:45 UTC, nightly encrypted backup 02:00 UTC, reports).
@@ -199,6 +203,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args: *app_build_args
     command: python -m app.connectors.telegram.polling
     profiles: ["telegram"]
     env_file: ../.env

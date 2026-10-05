@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""Pull tested app images, back up, migrate and check a local Compose stack.
+
+Only the application services change. Database/Redis images, volumes, .env,
+and the host checkout are never replaced. Requires Python 3.10+ and Compose v2.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+DEFAULT_IMAGE = "ghcr.io/matteoschiavi/apex_health:main"
+SOURCE = "https://github.com/MatteoSchiavi/Apex_Health"
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
+REVISION = re.compile(r"[0-9a-f]{40}\Z")
+
+# These run inside the existing image without printing keys or health data.
+BACKUP_READY = "from app.core.config import get_settings; assert get_settings().backup_encryption_key, 'Set BACKUP_ENCRYPTION_KEY before enabling automatic updates'"
+BACKUP = """import json, os
+from app.core.config import get_settings
+from app.core.backups import create_backup, iter_backup
+s = get_settings()
+r = create_backup(backup_encryption_key=s.backup_encryption_key,
+    database_url=s.database_url, backup_dir=os.path.join(s.backup_dir, 'deployments', os.environ['APEX_DEPLOYMENT']), pg_dump_bin=s.pg_dump_bin)
+assert sum(len(chunk) for chunk in iter_backup(r['path'], s.backup_encryption_key)) > 0
+print(json.dumps(r))
+"""
+API_PROBE = """import json, urllib.request
+with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5) as r:
+    assert json.load(r) == {'status':'ok', 'db':'ok', 'redis':'ok'}
+"""
+WORKER_PROBE = "from app.tasks.health_tasks import ping; assert ping.delay().get(timeout=45) == {'status':'ok', 'db':'ok'}"
+SCHEMA = 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version ORDER BY version_num"'
+
+
+class UpdateError(RuntimeError):
+    pass
+
+
+class Docker:
+    def run(self, *args: str) -> str:
+        result = subprocess.run(["docker", *args], text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=1800)
+        if result.returncode:
+            # Docker errors can contain deployment details: keep the journal private.
+            raise UpdateError(f"docker {' '.join(args[:3])} failed: {result.stderr[-2000:].strip()}")
+        return result.stdout.strip()
+
+
+def write_json(path: Path, value: dict) -> None:
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".state-")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(value, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+class Updater:
+    def __init__(self, repo: Path, state_dir: Path, *, image=DEFAULT_IMAGE,
+                 compose_files=(), project=None, docker=None):
+        self.repo = repo.resolve()
+        self.directory = state_dir.resolve()
+        self.image = image
+        self.docker = docker or Docker()
+        self.base = ["compose", "--env-file", str(self.repo / ".env")]
+        if project:
+            self.base += ["--project-name", project]
+        for file in compose_files or (self.repo / "infra/docker-compose.yml",):
+            self.base += ["-f", str(Path(file).resolve())]
+        self.state_path = self.directory / "state.json"
+        self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
+
+    def save(self):
+        write_json(self.state_path, self.state)
+
+    def compose(self, *args, override=None):
+        extra = ["-f", str(override)] if override else []
+        return self.docker.run(*self.base, *extra, *args)
+
+    def override(self, name, image_id):
+        if not IMAGE_ID.fullmatch(image_id):
+            raise UpdateError("Expected an immutable local Docker image ID")
+        path = self.directory / (name + ".compose.yml")
+        # JSON is valid YAML and avoids interpolating configuration as shell code.
+        write_json(path, {"services": {service: {"image": image_id, "pull_policy": "never"}
+                                     for service in ("api", "worker", "migrate", "bot")}})
+        return path
+
+    def image_info(self, reference):
+        info = json.loads(self.docker.run("image", "inspect", reference))[0]
+        return info["Id"], (info.get("Config", {}).get("Labels") or {})
+
+    def service_image(self, service, required=True):
+        ids = self.compose("ps", "-q", service).splitlines()
+        if len(ids) != 1:
+            if not required and not ids:
+                return None
+            raise UpdateError(f"Expected one running {service} container; start the existing stack first")
+        info = json.loads(self.docker.run("container", "inspect", ids[0]))[0]
+        if not info["State"].get("Running"):
+            raise UpdateError(f"{service} is not running")
+        return info["Image"]
+
+    def schema(self):
+        return self.compose("exec", "-T", "db", "sh", "-c", SCHEMA).splitlines()
+
+    def probe(self):
+        self.compose("exec", "-T", "api", "python", "-c", API_PROBE)
+        self.compose("exec", "-T", "api", "python", "-c", WORKER_PROBE)
+
+    def running(self):
+        current = self.service_image("api")
+        if self.service_image("worker") != current:
+            raise UpdateError("API and worker use different images; repair the existing stack first")
+        bot = self.service_image("bot", required=False)
+        if bot and bot != current:
+            raise UpdateError("Telegram bot uses a different image; repair the existing stack first")
+        self.probe()
+        _, labels = self.image_info(current)
+        return {"image": current, "revision": labels.get("org.opencontainers.image.revision"),
+                "schema": self.schema(), "bot": bool(bot)}
+
+    def start(self, image_id, bot):
+        override = self.override("active", image_id)
+        common = ("up", "-d", "--no-build", "--pull", "never", "--no-deps",
+                  "--force-recreate", "--wait", "--wait-timeout", "120")
+        self.compose(*common, "api", override=override)
+        self.compose(*common, "worker", *( ["bot"] if bot else [] ), override=override)
+        self.probe()
+
+    def stop(self, bot):
+        self.compose("stop", "-t", "120", "worker", *( ["bot"] if bot else [] ))
+        self.compose("stop", "-t", "60", "api")
+
+    def resume(self):
+        # Also adopts a manually repaired, healthy deployment. This does not
+        # alter data or start services that were stopped after migration failure.
+        current = self.running()
+        self.state.update(current=current, paused=False, in_progress=None, failed_image=None)
+        self.save()
+        print("Healthy running deployment adopted; automatic updates resumed")
+
+    def rollback(self):
+        if self.state.get("in_progress"):
+            raise UpdateError("Interrupted update: inspect the deployment and use resume after recovery")
+        previous = self.state.get("previous")
+        if not previous:
+            raise UpdateError("No previous application image is recorded")
+        if self.schema() != previous["schema"]:
+            raise UpdateError("Database schema changed: restore/recover manually; no database rewind was attempted")
+        current = self.running()
+        self.state.update(paused=True, in_progress="rollback")
+        self.save()
+        self.stop(current["bot"])
+        try:
+            self.start(previous["image"], previous["bot"])
+        except Exception:
+            self.save()
+            raise
+        self.state.update(current=previous, previous=current, in_progress=None)
+        self.save()
+        print("Previous application restored; updates paused until resume")
+
+    def update(self, retry=False):
+        if self.state.get("paused") or self.state.get("in_progress"):
+            raise UpdateError("Updates paused/interrupted. Run status and follow docs/AUTO_UPDATES.md")
+        self.docker.run("pull", self.image)
+        candidate, labels = self.image_info(self.image)
+        revision = labels.get("org.opencontainers.image.revision", "")
+        if not REVISION.fullmatch(revision) or labels.get("org.opencontainers.image.source", "").lower() != SOURCE.lower():
+            raise UpdateError("Image lacks the expected Apex repository and full Git commit labels")
+        if candidate == self.state.get("failed_image") and not retry:
+            print("Skipping the previously failed image; wait for a new tested commit or use --retry")
+            return
+        current = self.running()
+        self.state["current"] = current
+        self.save()
+        # Check before downtime, including an already-current installation
+        # during timer setup. No unencrypted health backups are ever created.
+        self.compose("exec", "-T", "api", "python", "-c", BACKUP_READY)
+        if current["image"] == candidate:
+            print(f"Already running tested commit {revision[:12]}")
+            return
+        self.docker.run("image", "tag", current["image"], "apex-health-rollback:" + current["image"].split(":")[1][:12])
+        deployment = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + revision[:12]
+        old = self.override("previous", current["image"])
+        new = self.override("candidate", candidate)
+        phase = "stopping"
+        self.state.update(in_progress=phase, candidate={"image": candidate, "revision": revision})
+        self.save()
+        try:
+            self.stop(current["bot"])
+            phase = "backup"
+            self.state["in_progress"] = phase
+            self.save()
+            raw = self.compose("run", "--rm", "--no-deps", "-e", "APEX_DEPLOYMENT=" + deployment,
+                               "api", "python", "-c", BACKUP, override=old)
+            backup = json.loads(raw.splitlines()[-1])
+            if not backup.get("size") or not backup.get("sha256") or not backup.get("path"):
+                raise UpdateError("Backup verification did not return a valid artifact")
+            self.state["backup"] = backup
+            phase = "migrating"
+            self.state["in_progress"] = phase
+            self.save()
+            self.compose("run", "--rm", "--no-deps", "migrate", override=new)
+            schema = self.schema()
+            phase = "starting"
+            self.state.update(in_progress=phase, candidate_schema=schema)
+            self.save()
+            self.start(candidate, current["bot"])
+            self.state.update(previous=current,
+                              current={"image": candidate, "revision": revision, "schema": schema, "bot": current["bot"]},
+                              updated_at=deployment, in_progress=None, failed_image=None)
+            self.save()
+            print(f"Deployed tested commit {revision[:12]}; encrypted backup: {backup['path']}")
+        except Exception:
+            # Migration errors may include data changes even if the revision
+            # marker did not advance. They always need operator inspection.
+            safe = phase in ("stopping", "backup")
+            if phase == "starting":
+                try:
+                    safe = self.schema() == current["schema"]
+                except Exception:
+                    safe = False
+            self.state.update(failed_image=candidate, failure_phase=phase, paused=not safe)
+            self.save()
+            try:
+                self.stop(current["bot"])
+                if safe:
+                    self.start(current["image"], current["bot"])
+                    self.state.update(in_progress=None, current=current)
+                    self.save()
+                    print("Previous application restored; failed image will not be retried automatically", file=sys.stderr)
+                else:
+                    self.state["in_progress"] = "manual_recovery"
+                    self.save()
+                    print("Application stopped after migration-related failure; database and backups retained. Manual recovery required", file=sys.stderr)
+            except Exception:
+                self.state.update(paused=True, in_progress="manual_recovery")
+                self.save()
+                print("Recovery could not be verified; automatic updates are paused", file=sys.stderr)
+            raise
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["update", "status", "pause", "resume", "rollback"], nargs="?", default="update")
+    parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--state-dir", type=Path)
+    parser.add_argument("--image", default=DEFAULT_IMAGE)
+    parser.add_argument("--compose-file", action="append", type=Path)
+    parser.add_argument("--project-name")
+    parser.add_argument("--retry", action="store_true")
+    args = parser.parse_args(argv)
+    directory = args.state_dir or args.repo / ".apex-updater"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    with (directory / "update.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("Another update is already running")
+            return 0
+        try:
+            updater = Updater(args.repo, directory, image=args.image, compose_files=args.compose_file, project=args.project_name)
+            if args.action == "status":
+                print(json.dumps(updater.state, indent=2))
+            elif args.action == "pause":
+                updater.state["paused"] = True
+                updater.save()
+                print("Automatic updates paused; running services unchanged")
+            elif args.action == "resume":
+                updater.resume()
+            elif args.action == "rollback":
+                updater.rollback()
+            else:
+                updater.update(retry=args.retry)
+        except (UpdateError, subprocess.TimeoutExpired, OSError, ValueError, KeyError) as exc:
+            print(f"Update aborted: {exc}", file=sys.stderr)
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

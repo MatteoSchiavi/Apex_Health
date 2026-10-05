@@ -14,6 +14,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -32,6 +39,7 @@ jobs:
         working-directory: frontend
         run: |
           npm run check:i18n
+          npm run test:pwa
           npm run build
       - name: Install Chromium
         working-directory: frontend
@@ -83,7 +91,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Run the suite (schema is rebuilt by conftest per session)
         working-directory: backend
@@ -95,11 +103,39 @@ jobs:
           ENCRYPTION_KEY: ci-encryption-key
           OWNER_EMAIL: owner@apexhealth.dev
           OWNER_PASSWORD: ci-owner-password
-        run: uv run python -m pytest -q
+        run: uv run --frozen python -m pytest -q
+
+  updater:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify updater recovery and state handling
+        run: python -m unittest discover -s infra/tests -v
+      - name: Verify installer and generated systemd units
+        run: |
+          bash -n infra/install-auto-update.sh
+          bash infra/install-auto-update.sh --dry-run > "$RUNNER_TEMP/apex-unit-preview"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          preview = (root / "apex-unit-preview").read_text()
+          service, timer = preview.split("# apex-health-update.timer\n")
+          (root / "apex-health-update.service").write_text(service.split("# apex-health-update.service\n")[1])
+          (root / "apex-health-update.timer").write_text(timer)
+          PY
+          systemd-analyze verify "$RUNNER_TEMP/apex-health-update.service" "$RUNNER_TEMP/apex-health-update.timer"
 
   backend-release:
+    needs: [frontend, pytest, updater]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - name: Create isolated release configuration
@@ -123,6 +159,8 @@ jobs:
               env.write("".join(f"{key}={value}\n" for key, value in values.items()))
           PY
       - name: Build and start the production stack
+        env:
+          APEX_COMMIT: ${{ github.sha }}
         run: docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait --wait-timeout 180
       - name: Exercise deployed API contracts
         run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/release_smoke.py --allow-test-writes
@@ -150,6 +188,27 @@ jobs:
         run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/restore_drill.py
       - name: Verify failed restores are atomic
         run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/check_restore_atomicity.py
+      - name: Publish the exact tested image for home-server updates
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          registry_image="ghcr.io/${REPOSITORY,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+          docker tag apex-health-backend:local "$registry_image:sha-$REVISION"
+          docker push "$registry_image:sha-$REVISION"
+          # A newer push can arrive while this job finishes. Do not promote
+          # a superseded build over the current main release.
+          main_revision="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$main_revision" != "$REVISION" ]; then
+            echo "Published immutable image; main has advanced, so promotion was skipped."
+            exit 0
+          fi
+          docker tag apex-health-backend:local "$registry_image:main"
+          docker push "$registry_image:main"
       - name: Capture failures
         if: failure()
         run: docker compose --env-file .env -f infra/docker-compose.yml logs --tail=100

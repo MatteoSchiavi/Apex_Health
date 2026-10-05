@@ -985,7 +985,7 @@
     },
     "recipients": {
       "title": "Servizi e trasferimenti",
-      "body": "Le connessioni facoltative possono scambiare dati con Garmin, WHOOP, Oura, Strava, COROS, Technogym, Telegram e Open-Meteo. I fornitori collegati hanno proprie informative. Secondo la configurazione, prompt e contesto selezionato possono essere inviati a un modello AI esterno; testi a OpenAI per gli embedding e note vocali a OpenAI per la trascrizione. Il gestore può usare backup cifrati esterni su Backblaze B2. Prima dell'uso deve verificare ogni servizio attivo, contratto, ubicazione ed eventuale trasferimento fuori dallo SEE.",
+      "body": "Le connessioni facoltative possono scambiare dati con Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit, Telegram e Open-Meteo. I fornitori collegati hanno proprie informative. Secondo la configurazione, prompt e contesto selezionato possono essere inviati a un modello AI esterno; testi a OpenAI per gli embedding e note vocali a OpenAI per la trascrizione. Il gestore può usare backup cifrati esterni su Backblaze B2. Prima dell'uso deve verificare ogni servizio attivo, contratto, ubicazione ed eventuale trasferimento fuori dallo SEE.",
       "ai": "Fornitore AI configurato e ubicazione:",
       "hosting": "Area geografica dell'hosting:",
       "backup": "Ubicazione dei backup:",
@@ -995,7 +995,7 @@
       "title": "Conservazione e cancellazione",
       "body": "La pulizia programmata elimina le importazioni grezze elaborate dopo 180 giorni, i flussi delle attività idonei dopo 400 giorni e alcuni registri AI, degli strumenti e delle sincronizzazioni dopo 400 giorni. Le sessioni scadute vengono eliminate. Altri dati dell'account e dati derivati restano finché il gestore o l'utente li cancella o si applica un'altra regola. Questi termini dipendono dall'effettiva esecuzione delle attività programmate.",
       "preferences": "In Integrità dati puoi impostare il periodo di conservazione delle osservazioni di laboratorio e dei registri degli strumenti dell'agente. Puoi scaricare un JSON con alcuni dati dell'account (massimo 100.000 righe per tabella) e un CSV delle osservazioni; non sono una copia completa di ogni dato. Puoi anche esaminare in anteprima ed eliminare una fonte collegata: l'operazione rimuove dati associati e analisi memorizzate, ma non cancella l'intero account. Ricollegando la fonte, i dati possono essere importati di nuovo.",
-      "backups": "I backup cifrati del database possono contenere copie precedenti alla cancellazione dei dati attivi. La configurazione predefinita conserva fino a 14 archivi giornalieri e 6 mensili locali; eventuali copie esterne richiedono verifica e gestione della scadenza da parte del gestore."
+      "backups": "I backup cifrati del database possono contenere copie precedenti alla cancellazione dei dati attivi. La configurazione predefinita conserva fino a 14 archivi giornalieri e 6 mensili locali; i backup di recupero degli aggiornamenti automatici sono conservati separatamente finché il gestore li elimina. Eventuali copie esterne richiedono verifica e gestione della scadenza da parte del gestore."
     },
     "rights": {
       "title": "Scelte e diritti",

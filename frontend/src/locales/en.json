@@ -985,7 +985,7 @@
     },
     "recipients": {
       "title": "Services and transfers",
-      "body": "Optional connections may exchange data with Garmin, WHOOP, Oura, Strava, COROS, Technogym, Telegram and Open-Meteo. Connected providers have their own privacy terms. Depending on configuration, AI prompts and selected context can go to an external chat model, text can go to OpenAI for embeddings, and voice notes can go to OpenAI for transcription. The operator may use encrypted offsite backups on Backblaze B2. The operator must confirm each enabled service, contract, location and any transfer outside the EEA before use.",
+      "body": "Optional connections may exchange data with Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit, Telegram and Open-Meteo. Connected providers have their own privacy terms. Depending on configuration, AI prompts and selected context can go to an external chat model, text can go to OpenAI for embeddings, and voice notes can go to OpenAI for transcription. The operator may use encrypted offsite backups on Backblaze B2. The operator must confirm each enabled service, contract, location and any transfer outside the EEA before use.",
       "ai": "Configured AI processor and location:",
       "hosting": "Application hosting region:",
       "backup": "Backup storage location:",
@@ -995,7 +995,7 @@
       "title": "Storage and deletion",
       "body": "The scheduled cleanup removes processed raw imports after 180 days, qualifying activity streams after 400 days, and selected AI/tool/sync logs after 400 days. Expired sessions are purged. Other account and derived records remain until the operator or user deletes them or another retention rule applies. These windows depend on scheduled jobs actually running.",
       "preferences": "In Data Health, you can set retention periods for laboratory observations and agent tool logs. You can download a selected-records account JSON export (at most 100,000 rows per table) and observations CSV; these are not a complete copy of every record. You can also preview and erase a connected source; that operation removes linked data and cached analyses, but is not full account deletion. Reconnecting a source may import data again.",
-      "backups": "Encrypted database backups may contain earlier copies after live deletion. The default schedule retains up to 14 daily and 6 monthly local archives; any offsite copies require separate operator verification and expiry handling."
+      "backups": "Encrypted database backups may contain earlier copies after live deletion. The default schedule retains up to 14 daily and 6 monthly local archives; automatic-update recovery backups are kept separately until the operator removes them. Any offsite copies require separate operator verification and expiry handling."
     },
     "rights": {
       "title": "Your choices and rights",

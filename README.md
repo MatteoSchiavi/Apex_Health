@@ -50,6 +50,9 @@ when secure cookies are enabled.
 The full guide, including upgrades, backups and optional providers, is in
 [docs/INSTALL.md](docs/INSTALL.md).
 
+For a home server, [automatic updates](docs/AUTO_UPDATES.md) can follow tested
+main commits using prebuilt images, encrypted backups and deployment checks.
+
 ## Repository map
 
 ```text
@@ -65,6 +68,7 @@ wiki/          user-facing operating notes
 ## Product contracts
 
 - [Installation and local hosting](docs/INSTALL.md)
+- [Automatic home-server updates and recovery](docs/AUTO_UPDATES.md)
 - [Architecture and technical choices](docs/STACK.md)
 - [Performance Lab and agent contract](docs/PERFORMANCE_LAB.md)
 - [UI system and screenshots](docs/UI_REDESIGN.md)
@@ -73,9 +77,10 @@ wiki/          user-facing operating notes
 
 ## Verification
 
-The release branch is covered by four CI jobs: frontend build, locale parity
-and Chromium browser checks; backend tests; and a production Docker release
-smoke test including migration, background work and encrypted backup/restore.
+CI covers frontend build, locale parity, PWA and Chromium browser checks;
+backend tests; updater recovery; and a production Docker release smoke test
+including migration, background work and encrypted backup/restore. Successful
+main pushes publish the exact tested application image to GitHub Packages.
 
 For local UI development:
 

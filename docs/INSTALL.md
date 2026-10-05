@@ -63,6 +63,10 @@ port 8000 bound to loopback.
 
 ## Everyday operations
 
+For automatic deployments of tested main commits, follow
+[AUTO_UPDATES.md](AUTO_UPDATES.md). Its image override replaces the manual
+rebuild commands below once enabled.
+
 ```sh
 # Follow API or worker logs
 docker compose --env-file .env -f infra/docker-compose.yml logs -f api

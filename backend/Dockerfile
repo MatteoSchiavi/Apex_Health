@@ -15,6 +15,10 @@ RUN npm run build
 # --- Stage 2: the api/worker image ------------------------------------------
 FROM python:3.12-slim-bookworm
 
+ARG APEX_COMMIT=development
+LABEL org.opencontainers.image.revision=$APEX_COMMIT \
+      org.opencontainers.image.source="https://github.com/MatteoSchiavi/Apex_Health"
+
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 

@@ -24,6 +24,7 @@ backend/.venv/
 
 # Runtime data and generated files
 backups/
+.apex-updater/
 uploads/
 upload/
 tool-results/
