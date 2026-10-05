@@ -25,6 +25,7 @@ import hashlib
 import io
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
@@ -33,7 +34,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.activity import Activity, ActivitySourceLink
+from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.wellness import DailyBiometric, HrvReading
 from app.connectors.validation import (
     valid_body_fat_pct, valid_hrv_ms, valid_resting_hr_bpm,
@@ -154,6 +155,71 @@ def _external_id(*parts: object) -> str:
     return digest[:40]
 
 
+_CSV_SPORT_ALIASES = {
+    "run": "running",
+    "running": "running",
+    "trailrun": "running",
+    "hike": "hiking",
+    "hiking": "hiking",
+    "walk": "walking",
+    "walking": "walking",
+    "ride": "road_cycling",
+    "roadbike": "road_cycling",
+    "roadcycling": "road_cycling",
+    "cycling": "road_cycling",
+    "gravelride": "gravel_cycling",
+    "gravelcycling": "gravel_cycling",
+    "mountainbikeride": "mountain_biking",
+    "mountainbiking": "mountain_biking",
+    "mountainbike": "mountain_biking",
+    "emountainbikeride": "mountain_biking",
+    "downhillbiking": "mountain_biking",
+    "gravelbike": "gravel_cycling",
+    "swim": "swimming",
+    "swimming": "swimming",
+    "lapswimming": "swimming",
+    "poolswimming": "swimming",
+    "openwaterswimming": "swimming",
+    "row": "rowing",
+    "rowing": "rowing",
+    "yoga": "yoga",
+    "pilates": "pilates",
+    "strengthtraining": "strength",
+    "weighttraining": "strength",
+    "weightlifting": "strength",
+    "gym": "gym_general",
+    "gymgeneral": "gym_general",
+    "workout": "gym_general",
+    "strength": "strength",
+    "skiing": "skiing",
+    "tennis": "tennis",
+    "surf": "surf",
+    "snowboard": "snowboard",
+    "kitesurf": "kitesurf",
+    "windsurf": "windsurf",
+    "wakeboard": "wakeboard",
+    "sail": "sailing",
+    "sailing": "sailing",
+    "skitour": "skiing",
+    "alpineski": "skiing",
+    "nordicski": "skiing",
+    "surfing": "surf",
+    "snowboarding": "snowboard",
+    "kitesurfing": "kitesurf",
+    "windsurfing": "windsurf",
+    "wakeboarding": "wakeboard",
+    "enduro": "enduro",
+    "enduromotorcycling": "enduro",
+}
+
+
+def _csv_discipline_name(sport: str | None) -> str | None:
+    if not sport:
+        return None
+    key = re.sub(r"[^a-z0-9]", "", sport.strip().lower())
+    return _CSV_SPORT_ALIASES.get(key)
+
+
 # ---------------------------------------------------------------- workouts
 
 
@@ -167,6 +233,8 @@ async def _import_workouts(
 ) -> None:
     headers = list(rows[0].keys()) if rows else []
     cols = _map_headers(headers, _WORKOUT_HEADERS)
+    discipline_rows = await session.execute(select(Discipline.name, Discipline.id))
+    discipline_index = dict(discipline_rows.all())
     for idx, row in enumerate(rows):
         report.rows_seen += 1
         start = _parse_dt(row.get(cols.get("start")), tz)
@@ -189,7 +257,9 @@ async def _import_workouts(
             report.skipped += 1
             report.errors.append(f"workouts row {idx + 2}: no duration")
             continue
-        sport = (row.get(cols.get("sport")) or "gym_general").strip() or "gym_general"
+        sport_value = row.get(cols.get("sport")) if cols.get("sport") else None
+        sport = sport_value.strip() if sport_value and sport_value.strip() else None
+        discipline_name = _csv_discipline_name(sport)
         distance = _parse_number(row.get(cols.get("distance")))
         distance_header = _norm_header(cols.get("distance", ""))
         distance_m = None if distance is None else round(
@@ -214,7 +284,7 @@ async def _import_workouts(
             continue
         activity = Activity(
             user_id=user_id,
-            discipline_id=None,
+            discipline_id=discipline_index.get(discipline_name),
             start_time=start,
             start_tz_offset_minutes=(
                 int(start.utcoffset().total_seconds() // 60) if start.utcoffset() else 0

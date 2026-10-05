@@ -9,17 +9,21 @@ Adding a metric = adding one catalog entry; the SPA page renders itself
 from the catalog response, so new metrics never need new frontend routes.
 """
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+import math
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.features import DailyFeature
 from app.models.user import User
-from app.models.wellness import DailyBiometric, SleepSession
+from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from app.models.lab import Observation
+from app.services.analytics import robust_baseline
 from app.schemas.ui import MetricPoint, MetricTrendOut
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -37,9 +41,11 @@ CATALOG: dict[str, dict] = {
     "strain": {"model": "feature", "column": "strain_score", "unit": "/100", "direction": "band"},
     "sleep_score": {"model": "feature", "column": "sleep_architecture_score", "unit": "/100", "direction": "up"},
     "acwr": {"model": "feature", "column": "acwr", "unit": "ratio", "direction": "band"},
-    "acute_load": {"model": "feature", "column": "training_load_acute", "unit": "legacy load/day", "direction": "band"},
-    "chronic_load": {"model": "feature", "column": "training_load_chronic", "unit": "legacy load/day", "direction": "up"},
-    "hrv_deviation": {"model": "feature", "column": "hrv_deviation_from_baseline", "unit": "%", "direction": "up"},
+    "acute_load": {"model": "feature", "column": "training_load_acute", "unit": "load/day", "direction": "band"},
+    "chronic_load": {"model": "feature", "column": "training_load_chronic", "unit": "load/day", "direction": "band"},
+    "hrv_deviation": {"model": "feature", "column": "hrv_deviation_from_baseline", "unit": "%", "direction": "band"},
+    "hrv_ms": {"model": "hrv", "unit": "ms", "direction": "band"},
+    "provider_sleep_score": {"model": "sleep", "column": "sleep_score", "unit": "/100", "direction": "band"},
     "illness_risk": {"model": "feature", "column": "illness_risk_score", "unit": "/100", "direction": "down"},
     "injury_risk": {"model": "feature", "column": "injury_risk_score", "unit": "/100", "direction": "down"},
     "resting_hr": {"model": "biometric", "column": "resting_hr", "unit": "bpm", "direction": "down"},
@@ -67,6 +73,7 @@ async def metric_catalog(
         key: {
             "unit": spec["unit"],
             "direction": spec["direction"],
+            "kind": "estimate" if spec["model"] == "feature" else "measurement",
         }
         for key, spec in CATALOG.items()
     }
@@ -84,10 +91,13 @@ async def metric_trend(
     if spec is None:
         raise HTTPException(status_code=404, detail=f"unknown metric {key!r}")
 
-    end_d = end or date.today()
+    end_d = end or datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
     start_d = end_d - timedelta(days=days - 1)
+    reference_range = None
 
-    if spec["model"] == "feature":
+    if spec["model"] == "hrv":
+        rows, reference_range = await _hrv_series(session, user, start_d, end_d)
+    elif spec["model"] == "feature":
         rows = (
             await session.execute(
                 select(DailyFeature.date, getattr(DailyFeature, spec["column"]))
@@ -111,20 +121,24 @@ async def metric_trend(
                 .order_by(DailyBiometric.date)
             )
         ).all()
-    else:  # sleep — one row per local_date, longest night wins in SQL
+    else:  # Pick one complete night, rather than the maximum of each field.
         rows = (
             await session.execute(
                 select(
                     SleepSession.local_date,
-                    func.max(getattr(SleepSession, spec["column"])),
+                    getattr(SleepSession, spec["column"]),
                 )
                 .where(
                     SleepSession.user_id == user.id,
                     SleepSession.local_date >= start_d,
                     SleepSession.local_date <= end_d,
                 )
-                .group_by(SleepSession.local_date)
-                .order_by(SleepSession.local_date)
+                .distinct(SleepSession.local_date)
+                .order_by(
+                    SleepSession.local_date,
+                    SleepSession.total_sleep_s.desc().nulls_last(),
+                    SleepSession.end_time.desc(),
+                )
             )
         ).all()
 
@@ -157,4 +171,70 @@ async def metric_trend(
         end_date=end_d.isoformat(),
         points=[p for p in points],
         stats=stats,
+        reference_range=reference_range,
     )
+
+
+async def _hrv_series(session, user, start, end):
+    """Use comparable nightly measurements, keeping sources/devices separate.
+
+    The displayed range is the preceding 28 days' empirical P10–P90 band,
+    requiring 14 recorded days. It is not a clinical reference range and
+    never includes the measurement being assessed.
+    """
+    records = (
+        await session.scalars(
+            select(Observation).where(
+                Observation.user_id == user.id,
+                Observation.metric == "hrv_overnight_rmssd",
+                Observation.current.is_(True),
+                Observation.availability == "available",
+                Observation.local_date.between(start - timedelta(days=28), end),
+            ).order_by(Observation.measured_at, Observation.id)
+        )
+    ).all()
+    records = [r for r in records if isinstance(r.value.get("value"), (int, float))
+               and not isinstance(r.value["value"], bool)
+               and math.isfinite(r.value["value"]) and r.value["value"] > 0]
+    displayed = [r for r in records if r.local_date >= start]
+    if displayed:
+        latest = displayed[-1]
+        context = lambda r: (r.origin, r.metadata_json.get("reading_context"), r.metadata_json.get("device_id"))
+        comparable = [r for r in records if context(r) == context(latest)]
+        # The last revision/measurement within a day is the daily sample.
+        daily = {r.local_date: r for r in comparable}
+        history = [r.value["value"] for day, r in daily.items()
+                   if latest.local_date - timedelta(days=28) <= day < latest.local_date]
+        # Explicit device changes warm up the band again even if IDs are absent.
+        from app.models.lab import AthleteEntry
+        change = await session.scalar(select(AthleteEntry.date).where(
+            AthleteEntry.user_id == user.id, AthleteEntry.kind == "device_change",
+            AthleteEntry.date <= latest.local_date,
+            AthleteEntry.payload["metrics"].contains(["hrv_overnight_rmssd"]),
+        ).order_by(AthleteEntry.date.desc()).limit(1))
+        if change:
+            history = [r.value["value"] for day, r in daily.items()
+                       if max(change, latest.local_date - timedelta(days=28)) <= day < latest.local_date]
+        band = robust_baseline(history)
+        band.update({"origin": latest.origin, "as_of": str(latest.local_date),
+                     "device_id": latest.metadata_json.get("device_id"),
+                     "interpretation": "Personal empirical distribution; not a clinical reference range."})
+        return sorted((day, r.value["value"]) for day, r in daily.items() if start <= day <= end), band
+
+    # Older imports may predate the evidence index. Show their measurements
+    # without inventing a comparable source/device band.
+    tz = ZoneInfo(user.timezone)
+    readings = (await session.scalars(select(HrvReading).where(
+        HrvReading.user_id == user.id,
+        HrvReading.timestamp >= datetime.combine(start, datetime.min.time(), tzinfo=tz),
+        HrvReading.timestamp < datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=tz),
+    ).order_by(HrvReading.timestamp))).all()
+    groups = {}
+    for row in readings:
+        groups.setdefault(row.timestamp.astimezone(tz).date(), []).append(row)
+    points = []
+    for day, group in sorted(groups.items()):
+        summaries = [r for r in group if r.reading_type == "overnight_avg"]
+        value = float(summaries[-1].hrv_ms) if summaries else sum(float(r.hrv_ms) for r in group) / len(group)
+        points.append((day, round(value, 2)))
+    return points, None

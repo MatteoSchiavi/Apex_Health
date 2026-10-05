@@ -19,6 +19,7 @@ from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.activity import Activity, Discipline
 from app.models.features import DailyFeature
+from app.models.lab import Observation
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.queries.snapshot import integrations_overview, open_alerts
@@ -175,7 +176,7 @@ async def dashboard_overview(
         await session.scalars(
             select(SleepSession)
             .where(SleepSession.user_id == user.id, SleepSession.local_date == anchor)
-            .order_by(SleepSession.end_time.desc())
+            .order_by(SleepSession.total_sleep_s.desc().nulls_last(), SleepSession.end_time.desc())
             .limit(1)
         )
     ).first()
@@ -193,8 +194,23 @@ async def dashboard_overview(
             .order_by(HrvReading.timestamp)
         )
     ).all()
-    hrv_values = [float(r.hrv_ms) for r in hrv_rows]
+    summaries = [r for r in hrv_rows if r.reading_type == "overnight_avg"]
+    # Do not count the nightly average again as a five-minute sample.
+    hrv_values = [float(summaries[-1].hrv_ms)] if summaries else [float(r.hrv_ms) for r in hrv_rows]
     hrv_avg = round(sum(hrv_values) / len(hrv_values), 1) if hrv_values else None
+    # The index knows the provider's wake-date; five-minute samples can all
+    # fall on the previous local day and cannot identify its nightly summary.
+    recorded_hrv = await session.scalar(
+        select(Observation).where(
+            Observation.user_id == user.id,
+            Observation.metric == "hrv_overnight_rmssd",
+            Observation.local_date == anchor,
+            Observation.current.is_(True),
+            Observation.availability == "available",
+        ).order_by(Observation.measured_at.desc(), Observation.id.desc()).limit(1)
+    )
+    if recorded_hrv and isinstance(recorded_hrv.value.get("value"), (int, float)):
+        hrv_avg = round(float(recorded_hrv.value["value"]), 1)
     hrv_baseline = next(
         (_fl(r.rolling_baseline_ms) for r in reversed(hrv_rows) if r.rolling_baseline_ms),
         None,

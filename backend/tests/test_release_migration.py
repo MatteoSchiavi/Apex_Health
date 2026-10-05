@@ -51,7 +51,7 @@ async def test_populated_upgrade_preserves_links_and_downgrade_refuses_collision
         assert b"Cannot downgrade" in rejected.stderr
         async with engine.connect() as connection:
             assert await connection.scalar(text("SELECT count(*) FROM activity_source_links")) == 2
-            assert await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+            assert await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0012"
         # Once collisions are absent the downgrade path remains usable.
         async with engine.begin() as connection:
             await connection.execute(text("DELETE FROM activity_source_links WHERE user_id = :user"), {"user": second_user})

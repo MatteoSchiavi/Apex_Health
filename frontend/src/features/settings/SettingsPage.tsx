@@ -19,6 +19,10 @@ import { useTranslation } from "react-i18next";
 import { Check, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { api, type DeviceOut, type Me } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
+import DataHealthPage from "../lab/DataHealthPage";
+import { NotificationPreferences } from "../lab/NotificationsPage";
+import { InstallApp } from "../pwa/InstallApp";
+import { Link } from "react-router-dom";
 import {
   Badge,
   Button,
@@ -340,6 +344,19 @@ function DevicesSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
   });
 
+  const disconnect = useMutation({
+    mutationFn: (provider: string) =>
+      api.delete<{ provider: string; disconnected: boolean }>(
+        `/settings/integrations/${provider}`,
+      ),
+    onSuccess: () => {
+      setFlowError(null);
+      qc.invalidateQueries({ queryKey: ["devices"] });
+    },
+    onError: (err) =>
+      setFlowError(err instanceof Error ? err.message : String(err)),
+  });
+
   const connect = useMutation({
     mutationFn: (provider: string) =>
       api.post<{ authorize_url: string }>(
@@ -472,7 +489,11 @@ function DevicesSection() {
                       {connected ? (
                         <Badge tone="positive">{t("settings.connected")}</Badge>
                       ) : d ? (
-                        <Badge tone="warning">{d.status}</Badge>
+                        <Badge tone="warning">
+                          {d.status === "revoked"
+                            ? t("settings.disconnected")
+                            : d.status}
+                        </Badge>
                       ) : null}
                     </div>
                     <div className="num mt-0.5 text-[12px] text-muted">
@@ -495,6 +516,15 @@ function DevicesSection() {
                         onClick={() => d && setMain.mutate(d.integration_id)}
                       >
                         {t("settings.set_main")}
+                      </Button>
+                    )}
+                    {connected && (
+                      <Button
+                        variant="ghost"
+                        disabled={disconnect.isPending}
+                        onClick={() => disconnect.mutate(key)}
+                      >
+                        {t("settings.disconnect")}
                       </Button>
                     )}
                     {key === "garmin" && connected && (
@@ -790,6 +820,8 @@ export default function SettingsPage() {
     { value: "profile", label: t("settings.profile") },
     { value: "appearance", label: t("settings.theme_section") },
     { value: "devices", label: t("settings.devices") },
+    { value: "notifications", label: t("lab.notification_preferences") },
+    { value: "data-health", label: t("lab.data_health") },
     { value: "account", label: t("settings.account") },
     ...(me?.role === "owner"
       ? [{ value: "invites", label: t("settings.invites") }]
@@ -813,12 +845,23 @@ export default function SettingsPage() {
       />
       <div className="max-w-4xl">
         {tab === "profile" && <ProfileSection me={me} />}
-        {tab === "appearance" && <AppearanceSection />}
+        {tab === "appearance" && <div className="flex flex-col gap-6"><AppearanceSection /><InstallApp /></div>}
         {tab === "devices" && <DevicesSection />}
+        {tab === "notifications" && <NotificationPreferences />}
+        {tab === "data-health" && <DataHealthPage embedded />}
         {tab === "account" && (
           <div className="flex flex-col gap-6">
             <AccountSection />
             <SecuritySection />
+            <Card>
+              <CardHeader title={t("navigation.data_and_legal")} />
+              <div className="flex flex-col gap-3 text-[13px]">
+                <Link className="text-link" to="/app/settings?tab=data-health">{t("lab.data_health")} · {t("navigation.export_erase")}</Link>
+                <Link className="text-link" to="/legal/privacy">{t("legal.privacy_title")}</Link>
+                <Link className="text-link" to="/legal/terms">{t("legal.terms_title")}</Link>
+                <Link className="text-link" to="/legal/cookies">{t("legal.cookies_title")}</Link>
+              </div>
+            </Card>
           </div>
         )}
         {tab === "invites" && me.role === "owner" && <InvitesSection />}

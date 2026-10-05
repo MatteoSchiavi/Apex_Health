@@ -309,7 +309,7 @@ export default function ActivityDetailPage() {
         <StatPod
           label={t("activities.load")}
           value={fmtNum(a.training_load)}
-          unit="TSS"
+          unit={t("lab.load_points")}
         />
       </div>
       <Tabs

@@ -14,6 +14,7 @@ import {
   Segmented,
   StatPod,
   fmtNum,
+  fmtHours,
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
 import {
@@ -22,6 +23,7 @@ import {
   METRIC_LABELS,
   useUnits,
 } from "../../components/data";
+import { MetricDirection, PersonalRange } from "../../components/MetricInterpretation";
 export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
@@ -44,6 +46,7 @@ export default function MetricPage() {
     : key.replaceAll("_", " ");
   const status = assess(key, latest?.value ?? null);
   const unit = units.metricUnit(key, data.unit);
+  const formatValue = (value: number | null) => data.unit === "h" ? fmtHours(value == null ? null : value * 3600) : fmtNum(units.metric(key, value), ["steps", "floors"].includes(key) ? 0 : 1);
   return (
     <div className="flex flex-col gap-6">
       <Link className="text-link text-muted" to="/app/biometrics">
@@ -57,9 +60,9 @@ export default function MetricPage() {
           <Segmented
             value={range}
             onChange={setRange}
-            options={[7, 30, 90, 180, 365].map((r) => ({
+            options={[7, 28, 90, 180, 365].map((r) => ({
               value: String(r),
-              label: t("biometrics." + r + "d"),
+              label: [7,28,180].includes(r) ? t("metricView.days" + r) : t("biometrics." + r + "d"),
             }))}
           />
         }
@@ -88,12 +91,11 @@ export default function MetricPage() {
                   <Badge tone={status.tone}>{t(status.key)}</Badge>
                 </div>
                 <span className="num hero-number">
-                  {fmtNum(
-                    units.metric(key, latest.value),
-                    ["steps", "floors"].includes(key) ? 0 : 1,
-                  )}
+                  {formatValue(latest.value)}
                 </span>
-                <span className="ml-4 text-[18px] text-muted">{unit}</span>
+                {data.unit !== "h" && <span className="ml-4 text-[18px] text-muted">{unit}</span>}
+                <div className="mt-3"><MetricDirection metric={key} points={data.points} /></div>
+                {key === "hrv_ms" && <div className="mt-5"><PersonalRange trend={data} /></div>}
               </div>
               <p className="text-[12px] text-muted">
                 {data.start_date} – {data.end_date}
@@ -115,18 +117,18 @@ export default function MetricPage() {
             <div className="mt-6 grid grid-cols-2 gap-4 border-t border-hairline pt-3 md:grid-cols-4">
               <StatPod
                 label={t("biometrics.mean")}
-                value={fmtNum(units.metric(key, data.stats.mean ?? null), 1)}
-                unit={unit}
+                value={formatValue(data.stats.mean ?? null)}
+                unit={data.unit === "h" ? undefined : unit}
               />
               <StatPod
                 label={t("biometrics.min")}
-                value={fmtNum(units.metric(key, data.stats.min ?? null), 1)}
-                unit={unit}
+                value={formatValue(data.stats.min ?? null)}
+                unit={data.unit === "h" ? undefined : unit}
               />
               <StatPod
                 label={t("biometrics.max")}
-                value={fmtNum(units.metric(key, data.stats.max ?? null), 1)}
-                unit={unit}
+                value={formatValue(data.stats.max ?? null)}
+                unit={data.unit === "h" ? undefined : unit}
               />
               <StatPod
                 label={t("biometrics.count")}
@@ -156,7 +158,7 @@ export default function MetricPage() {
                     <tr key={p.date}>
                       <td>{p.date}</td>
                       <td className="numeric">
-                        {fmtNum(units.metric(key, p.value), 2)}
+                        {formatValue(p.value)}
                       </td>
                     </tr>
                   ))}

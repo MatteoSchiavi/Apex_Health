@@ -61,7 +61,11 @@ export function Field({
     <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
       <span>{label}</span>
       {children ? (
-        <select name={name} defaultValue={value} className={inputClass}>
+        <select
+          name={name}
+          defaultValue={value}
+          className={inputClass + " bg-surface text-ink"}
+        >
           {children}
         </select>
       ) : type === "textarea" ? (

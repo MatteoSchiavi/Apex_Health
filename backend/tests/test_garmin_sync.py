@@ -134,9 +134,10 @@ async def test_backfill_populates_normalized_tables(db_session):
     assert by_external["7101"].discipline_id == disc["running"]
     assert by_external["7102"].discipline_id == disc["road_cycling"]
     assert by_external["7103"].discipline_id == disc["strength"]
-    # 7104 'walking' -> generic bucket (explicitly MAPPED in type_map),
-    # manual-entry completeness
-    assert by_external["7104"].discipline_id == disc["gym_general"]
+    # Walking keeps its own seeded classification; manual-entry completeness
+    # remains an independent data-quality property.
+    assert by_external["7104"].discipline_id == disc["walking"]
+    assert by_external["7104"].source_metrics["garmin"]["type_key"] == "walking"
 
     # §17 day-boundary rule: 23:30 GMT start = 00:30 in Rome -> LOCAL next day
     act = by_external["7104"]
@@ -324,14 +325,27 @@ async def test_incremental_sync_fetches_minimally_and_populates_new_day(db_sessi
 # ------------------------------------------------- parser isolates history (§3)
 
 
-def test_type_key_resolution_maps_and_falls_back():
-    """Mapped keys resolve by name; unknown keys use the documented fallback
-    bucket and are flagged so unmapped upstream types stay visible."""
-    index = {"running": 1, "gym_general": 2}
+def test_type_key_resolution_maps_common_sports_and_leaves_unknown_null():
+    """Known sports map by name, while unknown labels remain unclassified."""
+    index = {
+        "running": 1,
+        "gym_general": 2,
+        "walking": 3,
+        "sailing": 4,
+        "mountain_biking": 5,
+        "enduro": 6,
+        "gravel_cycling": 7,
+        "hiking": 8,
+    }
     assert resolve_type_key("trail_running", index) == (1, "mapped")
-    assert resolve_type_key("walking", index) == (2, "mapped")
-    assert resolve_type_key("triathlon", index) == (2, "fallback")
-    assert resolve_type_key(None, index) == (2, "fallback")
+    assert resolve_type_key("walking", index) == (3, "mapped")
+    assert resolve_type_key(" SAiLing ", index) == (4, "mapped")
+    assert resolve_type_key("mountain_biking", index) == (5, "mapped")
+    assert resolve_type_key("enduro_motorcycling", index) == (6, "mapped")
+    assert resolve_type_key("gravel_cycling", index) == (7, "mapped")
+    assert resolve_type_key("hiking", index) == (8, "mapped")
+    assert resolve_type_key("triathlon", index) == (None, "fallback")
+    assert resolve_type_key(None, index) == (None, "fallback")
 
 
 async def test_malformed_payload_stays_unprocessed_others_normalize(db_session):

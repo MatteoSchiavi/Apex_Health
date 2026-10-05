@@ -28,6 +28,8 @@ from app.api import (
     weather,
     performance_lab,
     lab_assets,
+    legal,
+    nutrition_integrations,
 )
 from app.auth.service import ensure_owner
 from app.core.config import get_settings
@@ -110,6 +112,8 @@ def create_app() -> FastAPI:
     app.include_router(devices.router)
     app.include_router(performance_lab.router)
     app.include_router(lab_assets.router)
+    app.include_router(legal.router)
+    app.include_router(nutrition_integrations.router)
     _mount_spa(app)
     return app
 
@@ -172,7 +176,8 @@ def _mount_spa(app: FastAPI) -> None:
         # client-side route and gets index.html. API-shaped paths never reach
         # the fallback (see reserved above) — they 404 as JSON.
         first = full_path.split("/", 1)[0]
-        if full_path and first in reserved:
+        public_legal_pages = {"legal/privacy", "legal/terms", "legal/cookies"}
+        if full_path and first in reserved and full_path not in public_legal_pages:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
         candidate = (dist / full_path).resolve()
         if (

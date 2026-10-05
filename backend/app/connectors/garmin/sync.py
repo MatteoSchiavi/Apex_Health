@@ -228,7 +228,8 @@ def _wellness_payload_has_content(payload_type: str, payload: Any) -> bool:
             or dto.get("sleepStartTimestampGMT") is not None
         )
     if payload_type == fetch.PAYLOAD_HRV:
-        return any(
+        summary = payload.get("hrvSummary") or {}
+        return (isinstance(summary, dict) and summary.get("lastNightAvg") is not None) or any(
             isinstance(r, dict) and r.get("hrvValue") is not None
             for r in (payload.get("hrvReadings") or [])
         )
@@ -329,6 +330,10 @@ async def fetch_wellness(
             day_has_data = True
             stored_type = payload_type
             if payload_type in (fetch.PAYLOAD_STATS, fetch.PAYLOAD_BODY_COMPOSITION):
+                stored_type = f"{payload_type}:{day.isoformat()}"
+            elif payload_type == fetch.PAYLOAD_HRV and not (
+                isinstance(payload.get("hrvSummary"), dict) and payload["hrvSummary"].get("calendarDate")
+            ) and not payload.get("calendarDate"):
                 stored_type = f"{payload_type}:{day.isoformat()}"
             await fetch.store_raw(session, user_id, stored_type, payload)
             report.raw_rows_stored += 1

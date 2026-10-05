@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+from urllib.parse import quote
 from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -15,7 +16,7 @@ from app.core.db import get_session
 from app.core.encryption import decrypt_bytes, encrypt_bytes
 from app.models.lab import LabDocument, Observation, ChangeAudit
 from app.models.training import PlannedSession, TrainingPlan
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.schemas.changes import Strict, ApproveIn
 from app.services.evidence import digest, scope_lock, snapshot_revision
 
@@ -83,7 +84,9 @@ async def upload_document(
     sha = hashlib.sha256(content).hexdigest()
     row = await session.scalar(
         select(LabDocument).where(
-            LabDocument.user_id == user.id, LabDocument.content_hash == sha
+            LabDocument.user_id == user.id,
+            LabDocument.content_hash == sha,
+            LabDocument.status != "source_file",
         )
     )
     if row is None:
@@ -148,9 +151,12 @@ async def original_document(
     row = await owned_document(session, user.id, ident)
     return Response(
         decrypt_bytes(row.ciphertext),
-        media_type="application/octet-stream",
+        media_type=row.media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="document-{ident}.bin"',
+            "Content-Disposition": (
+                f"attachment; filename=\"document-{ident}\"; "
+                f"filename*=UTF-8''{quote(row.filename, safe='')}"
+            ),
             "Cache-Control": "no-store",
         },
     )
@@ -231,6 +237,7 @@ async def export_account(
     session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)
 ):
     # Explicit column whitelist. Never export sessions, tokens, provider secrets or ciphertext.
+    credential = await session.get(AuthCredential, user.id)
     tables = {
         "lab_observations": "id,metric,value,unit,origin,measured_at,local_date,timezone,fetched_at,revision,current,metadata_json",
         "athlete_entries": "id,kind,date,payload,revision",
@@ -253,6 +260,20 @@ async def export_account(
         "version": "apex-private-export-v1",
         "exported_at": datetime.now(UTC).isoformat(),
         "limits": {"rows_per_table": 100000},
+        "scope": "Selected account records; original uploaded file bytes, credentials and security sessions are excluded. Download individual originals from Documents. Request a full access response from the operator.",
+        "profile": {
+            "id": user.id,
+            "email": credential.email if credential else None,
+            "name": user.name,
+            "dob": user.dob,
+            "sex": user.sex,
+            "height_cm": user.height_cm,
+            "timezone": user.timezone,
+            "locale": user.locale,
+            "theme": user.theme,
+            "units": user.units,
+            "created_at": user.created_at,
+        },
     }
     for table, columns in tables.items():
         result[table] = [
@@ -262,6 +283,34 @@ async def export_account(
                     text(
                         f"SELECT {columns} FROM {table} WHERE user_id=:owner LIMIT 100000"
                     ),
+                    {"owner": user.id},
+                )
+            ).mappings()
+        ]
+    # Chat messages have no user_id of their own. Restrict them through the
+    # user's chat sessions rather than exposing another person's messages.
+    for table, columns, owner_filter in (
+        (
+            "ai_chat_sessions",
+            "id,title,started_at,last_activity_at",
+            "user_id=:owner",
+        ),
+        (
+            "ai_chat_messages",
+            "id,session_id,role,content,model_tier,referenced_data,created_at",
+            "session_id IN (SELECT id FROM ai_chat_sessions WHERE user_id=:owner)",
+        ),
+        (
+            "ai_reports",
+            "id,report_type,period_start,period_end,generated_at,content_md,model_used",
+            "user_id=:owner",
+        ),
+    ):
+        result[table] = [
+            dict(row)
+            for row in (
+                await session.execute(
+                    text(f"SELECT {columns} FROM {table} WHERE {owner_filter} LIMIT 100000"),
                     {"owner": user.id},
                 )
             ).mappings()

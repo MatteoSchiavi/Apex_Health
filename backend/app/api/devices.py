@@ -32,8 +32,11 @@ def _device_out(integration: Integration, user: User) -> DeviceOut:
         status=integration.status,
         last_synced_at=integration.last_synced_at,
         is_main=(
-            integration.id == user.main_integration_id
-            or (user.main_integration_id is None and integration.provider == "garmin")
+            integration.status == "active"
+            and (
+                integration.id == user.main_integration_id
+                or (user.main_integration_id is None and integration.provider == "garmin")
+            )
         ),
         connected_at=integration.created_at,
     )

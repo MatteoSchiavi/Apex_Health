@@ -10,7 +10,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Same-origin cookies: in dev every API root proxies to FastAPI :8000.
-      "^/(auth|me|dashboard|activities|sleep|metrics|coach|settings|integrations|events|context-docs|gym|labs|gear|watch|weather|imports|challenges|rankings|health|docs|openapi.json)": {
+      "^/(auth|me|dashboard|activities|sleep|metrics|coach|settings|integrations|nutrition|schedule|events|context-docs|gym|labs|lab|gear|watch|weather|imports|challenges|rankings|health|docs|openapi.json)": {
+        target: "http://localhost:8000",
+        changeOrigin: false,
+      },
+      "^/legal/config$": {
         target: "http://localhost:8000",
         changeOrigin: false,
       },

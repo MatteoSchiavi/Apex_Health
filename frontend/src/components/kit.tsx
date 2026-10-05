@@ -486,7 +486,7 @@ export function Select<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="h-11 w-full rounded-control border border-hairline bg-transparent px-3 text-[13px] text-ink focus:border-primary focus:outline-none"
+        className="h-11 w-full rounded-control border border-hairline bg-surface px-3 text-[13px] text-ink focus:border-primary focus:outline-none"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -565,7 +565,7 @@ export function fmtHours(seconds: number | null | undefined): string {
   const totalMinutes = Math.round(seconds / 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
-  return m ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`;
+  return `${h}:${String(m).padStart(2, "0")} h`;
 }
 
 export function fmtClock(seconds: number | null | undefined): string {

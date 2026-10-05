@@ -62,9 +62,14 @@ export default function WelcomePage() {
                 </Link>
               </div>
             </div>
-            <p className="mt-16 max-w-lg border-t border-hairline pt-4 text-[12px] leading-5 text-faint">
-              {t("landing.note")}
-            </p>
+            <div className="mt-16 max-w-lg border-t border-hairline pt-4 text-[12px] leading-5 text-faint">
+              <p>{t("landing.note")}</p>
+              <nav aria-label={t("legal.nav_label")} className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+                <Link to="/legal/privacy" className="text-link">{t("legal.privacy")}</Link>
+                <Link to="/legal/terms" className="text-link">{t("legal.terms")}</Link>
+                <Link to="/legal/cookies" className="text-link">{t("legal.cookies")}</Link>
+              </nav>
+            </div>
           </div>
 
           <aside className="border-t border-hairline bg-surface lg:border-l lg:border-t-0">

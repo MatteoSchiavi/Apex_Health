@@ -90,6 +90,28 @@ async def test_workouts_csv_imports_activities(db_session):
     assert gym.duration_s == 3600
     assert gym.distance_m is None
     assert gym.source_metrics["csv_import"]["sport_raw"] == "Strength Training"
+    from app.models.activity import Discipline
+    disciplines = {d.name: d.id for d in (await db_session.scalars(select(Discipline))).all()}
+    assert run.discipline_id == disciplines["running"]
+    assert gym.discipline_id == disciplines["strength"]
+
+
+async def test_csv_maps_known_sports_and_keeps_unknown_unclassified(db_session):
+    user_id = await make_user(db_session)
+    csv = (
+        "sport,start_time,duration\n"
+        "Mountain Biking,2026-09-15T07:00:00Z,3600\n"
+        "Sailing,2026-09-16T07:00:00Z,3600\n"
+        "Cheese Rolling,2026-09-17T07:00:00Z,3600\n"
+    )
+    await import_csv(db_session, user_id, "sports.csv", csv, "UTC")
+    rows = (await db_session.scalars(select(Activity).order_by(Activity.local_date))).all()
+    from app.models.activity import Discipline
+    disciplines = {d.name: d.id for d in (await db_session.scalars(select(Discipline))).all()}
+    assert rows[0].discipline_id == disciplines["mountain_biking"]
+    assert rows[1].discipline_id == disciplines["sailing"]
+    assert rows[2].discipline_id is None
+    assert rows[2].source_metrics["csv_import"]["sport_raw"] == "Cheese Rolling"
 
 
 async def test_import_is_idempotent(db_session):

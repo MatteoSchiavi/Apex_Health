@@ -452,7 +452,9 @@
     "verify_code": "Verifica codice",
     "mfa_sent": "Inserisci il codice che Garmin ti ha inviato.",
     "sync_now": "Sincronizza ora",
-    "tokens_note": "I token di accesso sono gestiti per te: salvati cifrati sul server del proprietario e rinnovati automaticamente — non c'è nulla da copiare o gestire a mano."
+    "tokens_note": "I token di accesso sono gestiti per te: salvati cifrati sul server del proprietario e rinnovati automaticamente — non c'è nulla da copiare o gestire a mano.",
+    "disconnect": "Disconnetti",
+    "disconnected": "Disconnesso"
   },
   "common": {
     "loading": "Caricamento…",
@@ -495,7 +497,7 @@
     "no_devices": "Nessun dispositivo collegato"
   },
   "disc": {
-    "unknown": "Attività",
+    "unknown": "Attività non classificata",
     "running": "Corsa",
     "road_cycling": "Ciclismo su strada",
     "gravel_cycling": "Gravel",
@@ -509,7 +511,8 @@
     "tennis": "Tennis",
     "cardio": "Cardio",
     "walking": "Camminata",
-    "hiking": "Trekking"
+    "hiking": "Trekking",
+    "enduro": "Enduro motociclistico"
   },
   "synth": {
     "title": "Diagnosi di Sintesi",
@@ -884,9 +887,9 @@
       "shoes": "Scarpe",
       "other": "Altro"
     },
-    "legacy_load_unit": "carico storico/giorno",
-    "legacy_readiness": "Readiness storica Apex",
-    "heuristic": "Euristica non calibrata",
+    "legacy_load_unit": "carico/giorno",
+    "legacy_readiness": "Stima di prontezza Apex",
+    "heuristic": "Stima calcolata",
     "grounding": {
       "structured": "Affermazioni verificate con evidenze",
       "narrative_only": "Solo narrativa · nessuna affermazione misurata verificata",
@@ -948,7 +951,167 @@
     "nav": "Laboratorio",
     "replan_drafted": "Una modifica è pronta da rivedere in Coach → Modifiche.",
     "replan_unchanged": "Le evidenze supportano il mantenimento del piano attuale.",
-    "legacy_metric_note": "Questo calcolo storico di Apex non è calibrato. Non è una diagnosi o una previsione di infortuni e recupero.",
-    "retired": "Ritirata"
+    "legacy_metric_note": "Questa stima Apex usa euristiche fisse e non è una previsione calibrata di malattia, infortunio o recupero.",
+    "retired": "Ritirata",
+    "load_points": "punti di carico"
+  },
+  "legal": {
+    "eyebrow": "Le tue informazioni",
+    "home": "Pagina iniziale di Apex Health",
+    "nav_label": "Informazioni legali",
+    "privacy": "Informativa privacy",
+    "terms": "Condizioni d'uso",
+    "cookies": "Cookie e memoria locale",
+    "not_configured": "Da completare a cura del gestore",
+    "incomplete": "I dati del gestore di questa installazione sono incompleti. Contattalo prima di inserire dati sanitari; questa informativa va completata per l'installazione effettiva.",
+    "revision_note": "Queste informazioni descrivono il codice dell'applicazione e i dati dell'installazione indicati dal gestore. Il gestore deve rivederle ogni volta che cambiano i servizi o i flussi di dati.",
+    "controller": {
+      "title": "Chi è responsabile",
+      "body": "La persona o organizzazione che gestisce questa installazione decide come usare i dati dell'account e quelli sanitari. Contattala per esercitare i diritti privacy o chiedere informazioni sull'installazione.",
+      "name": "Titolare",
+      "address": "Indirizzo",
+      "contact": "Contatto privacy",
+      "effective": "Data di efficacia"
+    },
+    "data": {
+      "title": "Dati trattati dal servizio",
+      "body": "Apex conserva i dati dell'account e del profilo, le attività e le misurazioni dei dispositivi, i dati su sonno e recupero, alimentazione e allenamento, i risultati di laboratorio e i documenti che fornisci o colleghi. Conserva anche messaggi di chat, risposte AI, informazioni sulla provenienza dei dati, sessioni di sicurezza e registri operativi. Le categorie effettive dipendono dai servizi e dalle funzioni attivati. I dati sanitari possono rivelare informazioni sensibili."
+    },
+    "purposes": {
+      "title": "Finalità e basi giuridiche",
+      "body": "L'app usa i dati per fornire l'account, importare i dati collegati, mostrare le tendenze, generare analisi e suggerimenti richiesti, proteggere l'accesso e mantenere i backup. Il codice non stabilisce da solo una base giuridica: il gestore deve definire e spiegare la base applicabile dell'articolo 6 GDPR e una distinta condizione dell'articolo 9 per i dati sanitari prima di raccoglierli. Se il gestore si basa sul consenso esplicito per i dati sanitari, deve raccoglierlo.",
+      "account_basis": "Base per account e servizio:",
+      "health_basis": "Condizione dell'articolo 9 per i dati sanitari:"
+    },
+    "recipients": {
+      "title": "Servizi e trasferimenti",
+      "body": "Le connessioni facoltative possono scambiare dati con Garmin, WHOOP, Oura, Strava, COROS, Technogym, Telegram e Open-Meteo. I fornitori collegati hanno proprie informative. Secondo la configurazione, prompt e contesto selezionato possono essere inviati a un modello AI esterno; testi a OpenAI per gli embedding e note vocali a OpenAI per la trascrizione. Il gestore può usare backup cifrati esterni su Backblaze B2. Prima dell'uso deve verificare ogni servizio attivo, contratto, ubicazione ed eventuale trasferimento fuori dallo SEE.",
+      "ai": "Fornitore AI configurato e ubicazione:",
+      "hosting": "Area geografica dell'hosting:",
+      "backup": "Ubicazione dei backup:",
+      "transfers": "Trasferimenti internazionali e garanzie:"
+    },
+    "retention": {
+      "title": "Conservazione e cancellazione",
+      "body": "La pulizia programmata elimina le importazioni grezze elaborate dopo 180 giorni, i flussi delle attività idonei dopo 400 giorni e alcuni registri AI, degli strumenti e delle sincronizzazioni dopo 400 giorni. Le sessioni scadute vengono eliminate. Altri dati dell'account e dati derivati restano finché il gestore o l'utente li cancella o si applica un'altra regola. Questi termini dipendono dall'effettiva esecuzione delle attività programmate.",
+      "preferences": "In Integrità dati puoi impostare il periodo di conservazione delle osservazioni di laboratorio e dei registri degli strumenti dell'agente. Puoi scaricare un JSON con alcuni dati dell'account (massimo 100.000 righe per tabella) e un CSV delle osservazioni; non sono una copia completa di ogni dato. Puoi anche esaminare in anteprima ed eliminare una fonte collegata: l'operazione rimuove dati associati e analisi memorizzate, ma non cancella l'intero account. Ricollegando la fonte, i dati possono essere importati di nuovo.",
+      "backups": "I backup cifrati del database possono contenere copie precedenti alla cancellazione dei dati attivi. La configurazione predefinita conserva fino a 14 archivi giornalieri e 6 mensili locali; eventuali copie esterne richiedono verifica e gestione della scadenza da parte del gestore."
+    },
+    "rights": {
+      "title": "Scelte e diritti",
+      "body": "Puoi chiedere al titolare accesso, rettifica, cancellazione, limitazione, portabilità od opposizione nei casi previsti dal GDPR. Se il trattamento si basa sul consenso, puoi revocarlo senza compromettere la liceità del trattamento precedente. Le richieste possono richiedere una verifica dell'identità e possono applicarsi eccezioni di legge. Usa il contatto privacy sopra indicato anche per chiedere la cancellazione dell'intero account.",
+      "controls": "I comandi autonomi di esportazione ed eliminazione delle fonti sono in",
+      "data_health": "Integrità dati",
+      "authority": "Puoi proporre reclamo al Garante per la protezione dei dati personali o all'autorità di controllo del tuo Stato SEE."
+    },
+    "automated": {
+      "title": "Risposte assistite dall'AI",
+      "body": "L'app genera punteggi, riepiloghi e suggerimenti da dati incompleti o stimati. Sei tu a decidere se seguirli. Il codice non prende decisioni basate unicamente su trattamenti automatizzati che producano effetti giuridici o analogamente significativi. Se il gestore modifica il servizio in tal senso, deve rivedere questa informativa e le garanzie."
+    },
+    "service": {
+      "title": "Ambito del servizio",
+      "body": "Apex Health è un servizio privato ospitato dal gestore e accessibile su invito per benessere e allenamento. Il gestore controlla gli inviti e le funzioni attive. Queste condizioni regolano l'uso di questa installazione; possono applicarsi anche le condizioni dei fornitori collegati."
+    },
+    "access": {
+      "title": "Account",
+      "body": "Proteggi le tue credenziali e usa soltanto account e dispositivi ai quali hai diritto di accedere. Puoi scollegare i fornitori e chiedere al gestore la chiusura dell'account. L'accesso può essere sospeso per proteggere il servizio o altri utenti."
+    },
+    "health": {
+      "title": "Informazioni sulla salute",
+      "body": "Punteggi e risposte AI sono stime informative per benessere e allenamento. Possono essere errati o incompleti e non diagnosticano, curano né sostituiscono un professionista qualificato. In caso di emergenza, chiama i servizi di emergenza locali. Non usare il servizio come unica base per decisioni mediche."
+    },
+    "providers": {
+      "title": "Servizi esterni",
+      "body": "Importazioni e funzioni AI dipendono dai servizi scelti da te o dal gestore. Un fornitore può cambiare accesso, qualità dei dati o disponibilità. Leggi le condizioni di ciascun fornitore prima di collegarlo."
+    },
+    "responsibilities": {
+      "title": "Contenuti e utilizzo",
+      "body": "Inserisci dati che hai il diritto di condividere. Controlla importazioni e piani generati prima di agire. Non usare il servizio per accedere ai dati altrui o comprometterne la sicurezza. Il gestore deve fornire un contatto e le eventuali condizioni ulteriori per i consumatori richieste dall'installazione effettiva."
+    },
+    "changes": {
+      "title": "Modifiche e contatto",
+      "body": "Il gestore dovrebbe datare e comunicare le modifiche sostanziali a queste condizioni prima della loro efficacia. Per accesso o condizioni d'uso, contattalo all'indirizzo nell'informativa privacy."
+    },
+    "cookies_used": {
+      "title": "Cookie necessari",
+      "body": "Dopo l'accesso, Apex imposta hcc_session per la sessione e csrf_token per proteggere le operazioni dagli attacchi tra siti. Il cookie di sessione è HttpOnly; l'app può leggere quello CSRF per inviare l'intestazione di sicurezza corrispondente. Entrambi sono SameSite=Lax e di norma Secure su HTTPS. La sessione dura per impostazione predefinita 12 ore, con limite assoluto di 30 giorni. Questi cookie servono per l'accesso autenticato."
+    },
+    "local_storage": {
+      "title": "Memoria del browser",
+      "body": "L'app salva in localStorage su questo dispositivo lingua e preferenze grafiche, stato delle sincronizzazioni recenti, una bozza non inviata della chat con il coach e la conversazione selezionata. I valori dell'account sono cancellati all'uscita o al cambio di sessione. Una bozza può contenere testo sensibile fino a quel momento: cancella i dati del sito su un browser condiviso dopo una chiusura improvvisa. Il codice dell'app non installa cookie pubblicitari o statistici. Hosting o script esterni aggiunti vanno verificati separatamente."
+    },
+    "cookies_choices": {
+      "title": "Gestione dei dati locali",
+      "body": "Puoi cancellare cookie e memoria locale del sito dal browser. La cancellazione dei cookie necessari disconnette l'account; quella della memoria locale elimina preferenze e bozze presenti solo sul dispositivo. Se il gestore aggiunge tracciamenti facoltativi, deve fornire informazioni separate e una scelta valida prima di attivarli."
+    }
+  },
+  "metricView": {
+    "hrv_ms": "HRV notturna",
+    "provider_sleep_score": "Punteggio sonno del dispositivo",
+    "estimates": "Stime calcolate",
+    "estimates_note": "Queste stime Apex usano euristiche fisse. Descrivono tendenze, non probabilità calibrate di malattia, infortunio o recupero; non usarle per decisioni mediche.",
+    "days7": "7 giorni",
+    "days28": "4 settimane",
+    "days180": "6 mesi",
+    "period": "Ultimi {{days}} giorni",
+    "up": "In aumento",
+    "down": "In diminuzione",
+    "steady": "Invariato",
+    "range_below": "Sotto il tuo intervallo abituale",
+    "range_above": "Sopra il tuo intervallo abituale",
+    "range_within": "Nel tuo intervallo abituale",
+    "below": "Sotto",
+    "above": "Sopra",
+    "personal_range": "Intervallo abituale",
+    "range_warming": "Intervallo personale: {{count}} / {{required}} giorni registrati",
+    "range_note": "{{low}}–{{high}} {{unit}} · {{count}} giorni comparabili nelle 4 settimane precedenti. È il tuo intervallo osservato P10–P90, non una soglia clinica. Un’HRV più alta non è sempre migliore."
+  },
+  "navigation": {
+    "collapse_sidebar": "Riduci la barra laterale",
+    "expand_sidebar": "Espandi la barra laterale",
+    "no_notifications": "Non ci sono nuove notifiche.",
+    "unread": "Da leggere",
+    "calendar_summary": "Attività, sessioni programmate ed eventi",
+    "previous_month": "Mese precedente",
+    "next_month": "Mese successivo",
+    "today": "Oggi",
+    "calendar_items": "elementi",
+    "calendar_activity": "Attività",
+    "calendar_plan": "Sessione programmata",
+    "calendar_event": "Evento",
+    "data_and_legal": "Dati e informazioni legali",
+    "export_erase": "Esporta i dati e cancella una fonte",
+    "no_calendar_items": "Nessun elemento per questo giorno."
+  },
+  "nutrition": {
+    "lab_files_title": "File di laboratorio",
+    "lab_files_note": "Conserva i referti nel tuo account. I file TXT, Markdown e PDF fino a 5 MB sono cifrati. Puoi scaricarli o eliminarli quando vuoi.",
+    "choose_file": "Scegli un referto",
+    "upload_file": "Carica file",
+    "download_file": "Scarica",
+    "no_lab_files": "Nessun file di laboratorio.",
+    "fitbit_title": "Diario alimentare · Fitbit",
+    "fitbit_intro": "Registra i pasti in Fitbit, poi visualizza qui il diario alimentare con il tuo consenso.",
+    "fitbit_unconfigured": "Il collegamento Fitbit sarà disponibile quando l'amministratore avrà configurato ID e segreto dell'app.",
+    "fitbit_connected": "Fitbit collegato",
+    "connect_fitbit": "Collega Fitbit",
+    "disconnect_fitbit": "Scollega",
+    "open_fitbit": "Apri diario Fitbit ↗",
+    "diary_title": "Diario alimentare",
+    "diary_date": "Data",
+    "calories": "Calorie",
+    "protein": "Proteine",
+    "carbs": "Carboidrati",
+    "fat": "Grassi",
+    "water": "Acqua",
+    "foods_logged": "Alimenti registrati",
+    "no_foods": "Nessun alimento registrato in Fitbit per questa data.",
+    "unnamed_food": "Alimento senza nome"
+  },
+  "pwa": {
+    "install": "Installa l’app",
+    "share": "Condividi",
+    "add_to_home": "Aggiungi alla schermata Home",
+    "ios_steps": "Tocca {{share}} nel browser, quindi scegli {{add}}."
   }
 }

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     owner_email: str
     owner_password: str
 
+    # Optional external food diary: read-only Fitbit Nutrition Web API.
+    fitbit_client_id: str = ""
+    fitbit_client_secret: str = ""
+    fitbit_redirect_uri: str = "http://localhost:8000/integrations/fitbit/callback"
+
     # --- Garmin connector (§5, §23 Phase 1) ---
     garmin_email: str = ""
     garmin_password: str = ""

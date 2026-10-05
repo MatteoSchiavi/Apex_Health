@@ -103,6 +103,23 @@ async def test_hrv_03x_iso_timestamps_normalize(db_session):
     assert raw.processed is True
 
 
+async def test_hrv_summary_without_samples_is_not_discarded(db_session):
+    from app.connectors.garmin.sync import _wellness_payload_has_content
+
+    user, _ = await make_garmin_user(db_session)
+    payload = {"hrvSummary": {"calendarDate": "2026-09-21", "lastNightAvg": 75, "baseline": {"avg": 70}}, "hrvReadings": []}
+    assert _wellness_payload_has_content("hrv", payload)
+    raw = await _store(db_session, user.id, "hrv", payload)
+    await _normalize_one(db_session, user.id, raw)
+    rows = (await db_session.scalars(select(HrvReading).where(HrvReading.user_id == user.id))).all()
+    assert len(rows) == 1
+    assert rows[0].reading_type == "overnight_avg"
+    assert float(rows[0].hrv_ms) == 75
+    assert float(rows[0].rolling_baseline_ms) == 70
+    assert rows[0].timestamp.date().isoformat() == "2026-09-21"
+    assert raw.processed
+
+
 async def test_stress_03x_value_arrays_normalize(db_session):
     user, _ = await make_garmin_user(db_session)
     raw = await _store(db_session, user.id, "stress", STRESS_03X)

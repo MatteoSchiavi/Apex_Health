@@ -1,5 +1,8 @@
-"""Strava sport_type -> canonical Discipline mapping (alias table + fallback,
-same law as the Whoop type_map: never invent a discipline)."""
+"""Strava sport_type -> seeded Discipline mapping.
+
+Known activity types map to their closest matching seeded sport. Unknown
+activities resolve to None instead of being mislabeled as generic gym work.
+"""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,12 +15,24 @@ SPORT_ALIASES = {
     "virtualrun": "running",
     "treadmill": "running",
     "ride": "road_cycling",
-    "gravelride": "road_cycling",
+    "gravelride": "gravel_cycling",
     "virtualride": "road_cycling",
     "ridefixedgear": "road_cycling",
-    "mountainbikeride": "enduro",
+    "mountainbikeride": "mountain_biking",
     "ebikeride": "road_cycling",
-    "emountainbikeride": "enduro",
+    "emountainbikeride": "mountain_biking",
+    "mountain_bike_ride": "mountain_biking",
+    "gravel_ride": "gravel_cycling",
+    "hike": "hiking",
+    "hiking": "hiking",
+    "walk": "walking",
+    "walking": "walking",
+    "swim": "swimming",
+    "swimming": "swimming",
+    "row": "rowing",
+    "rowing": "rowing",
+    "yoga": "yoga",
+    "pilates": "pilates",
     "alpineski": "skiing",
     "skitour": "skiing",
     "nordicski": "skiing",
@@ -34,7 +49,6 @@ SPORT_ALIASES = {
     "workout": "gym_general",
     "crossfit": "strength",
     "hiit": "gym_general",
-    "rockclimbing": "gym_general",
 }
 
 

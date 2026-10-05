@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Logo } from "../../components/layout/AppShell";
+import { Link } from "react-router-dom";
 export function AuthLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   return (
@@ -22,6 +23,11 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <span>Apex Health</span>
           <span>{t("design.footer")}</span>
         </div>
+        <nav aria-label={t("legal.nav_label")} className="mt-3 flex flex-wrap gap-4 text-xs">
+          <Link to="/legal/privacy" className="text-link">{t("legal.privacy")}</Link>
+          <Link to="/legal/terms" className="text-link">{t("legal.terms")}</Link>
+          <Link to="/legal/cookies" className="text-link">{t("legal.cookies")}</Link>
+        </nav>
       </aside>
       <div className="auth-form">
         <div className="auth-form-inner">{children}</div>

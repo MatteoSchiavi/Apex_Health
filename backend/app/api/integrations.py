@@ -15,12 +15,14 @@ GET /settings/integrations lists the account's connector rows.
 """
 
 import asyncio
+import hashlib
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -58,7 +60,7 @@ from app.connectors.garmin.client import (
     GarminAuthError,
     LiveGarminClient,
 )
-from app.core.encryption import encrypt_json
+from app.core.encryption import decrypt_json, encrypt_json
 from app.core.db import get_session
 from app.core.redis import get_redis_dependency
 from app.models.integration import Integration
@@ -67,6 +69,43 @@ from app.models.user import User
 logger = logging.getLogger("api.integrations")
 
 router = APIRouter(tags=["integrations"])
+
+_OAUTH_STATE_PROVIDERS = {"technogym", "whoop", "strava", "oura", "coros"}
+_DISCONNECTABLE_PROVIDERS = _OAUTH_STATE_PROVIDERS | {"garmin"}
+
+
+async def _discard_pending_oauth_states(
+    redis: Redis, provider: str, user_id: int
+) -> None:
+    """Remove unconsumed authorization states for this account/provider."""
+    if provider not in _OAUTH_STATE_PROVIDERS:
+        return
+    keys = []
+    async for key in redis.scan_iter(match=f"{provider}:oauth:state:*"):
+        owner = await redis.get(key)
+        if owner is not None and str(
+            owner.decode() if isinstance(owner, bytes) else owner
+        ) == str(user_id):
+            keys.append(key)
+    if keys:
+        await redis.delete(*keys)
+
+
+async def _revoke_strava_access_token(credentials: dict) -> bool:
+    """Call Strava's documented deauthorization endpoint when possible."""
+    access_token = credentials.get("access_token")
+    if not access_token:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                "https://www.strava.com/oauth/deauthorize",
+                data={"access_token": access_token},
+            )
+        return response.is_success
+    except httpx.HTTPError:
+        logger.warning("strava provider deauthorization was not confirmed")
+        return False
 
 
 def _to_dict(integration: Integration) -> dict:
@@ -91,6 +130,77 @@ async def list_integrations(
         )
     ).all()
     return [_to_dict(r) for r in rows]
+
+
+@router.delete("/settings/integrations/{provider}")
+async def disconnect_integration(
+    provider: str,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis_dependency),
+) -> dict:
+    """Remove this account's saved provider credentials and stop future syncs.
+
+    Historical imported records remain untouched. The sync advisory lock makes
+    a disconnect wait-free and prevents a running import from racing it.
+    """
+    if provider not in _DISCONNECTABLE_PROVIDERS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Integration not found")
+
+    lock_id = int.from_bytes(
+        hashlib.sha256(f"sync:{provider}:{user.id}".encode()).digest()[:8],
+        "big",
+        signed=True,
+    )
+    if not await session.scalar(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": lock_id}
+    ):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A sync is running for this provider; disconnect again when it finishes.",
+        )
+
+    integration = await session.scalar(
+        select(Integration).where(
+            Integration.user_id == user.id, Integration.provider == provider
+        )
+    )
+    if integration is None:
+        await _discard_pending_oauth_states(redis, provider, user.id)
+        return {
+            "provider": provider,
+            "disconnected": False,
+            "provider_revocation": "unsupported",
+        }
+
+    credentials = None
+    if provider == "strava" and integration.credentials_encrypted:
+        try:
+            credentials = decrypt_json(integration.credentials_encrypted)
+        except Exception:  # noqa: BLE001 — local disconnect must still succeed
+            logger.warning("stored Strava credentials could not be read for revocation")
+
+    await _discard_pending_oauth_states(redis, provider, user.id)
+    integration.status = "revoked"
+    integration.credentials_encrypted = None
+    integration.consecutive_failures = 0
+    if user.main_integration_id == integration.id:
+        user.main_integration_id = None
+    await session.commit()
+
+    provider_revocation = "unsupported"
+    if provider == "strava":
+        provider_revocation = (
+            "confirmed"
+            if credentials and await _revoke_strava_access_token(credentials)
+            else "not_confirmed"
+        )
+    logger.info("%s integration disconnected for user %s", provider, user.id)
+    return {
+        "provider": provider,
+        "disconnected": True,
+        "provider_revocation": provider_revocation,
+    }
 
 
 @router.post("/settings/integrations/technogym/authorize")

@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Apex Health",
+  "short_name": "Apex Health",
+  "description": "Your health and training, in perspective.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#090d12",
+  "theme_color": "#090d12",
+  "icons": [
+    { "src": "/icons/apex-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/apex-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/apex.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

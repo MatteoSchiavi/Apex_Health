@@ -6,10 +6,12 @@ export const keys = [
   "recovery",
   "strain",
   "sleep_score",
+  "provider_sleep_score",
   "acwr",
   "acute_load",
   "chronic_load",
   "hrv_deviation",
+  "hrv_ms",
   "illness_risk",
   "injury_risk",
   "resting_hr",
@@ -32,10 +34,12 @@ const units: Record<string, string> = {
   recovery: "/100",
   strain: "/100",
   sleep_score: "/100",
+  provider_sleep_score: "/100",
   acwr: "ratio",
   acute_load: "TSS/d",
   chronic_load: "TSS/d",
   hrv_deviation: "%",
+  hrv_ms: "ms",
   illness_risk: "/100",
   injury_risk: "/100",
   resting_hr: "bpm",
@@ -485,6 +489,8 @@ export async function installApi(
                     vo2max: 52.4,
                     floors: 6,
                     hrv_deviation: 6.7 + Math.sin(i) * 2,
+                    hrv_ms: 62 + Math.sin(i) * 3,
+                    provider_sleep_score: 82 + Math.sin(i) * 3,
                     sleep_duration: 7.5 + Math.sin(i) * 0.5,
                     sleep_deep: 1.4,
                     sleep_rem: 2,
@@ -516,6 +522,19 @@ export async function installApi(
               latest: valid.at(-1),
               delta_30d: 2,
             },
+        ...(key === "hrv_ms"
+          ? {
+              reference_range: {
+                state: "available",
+                empirical_range: [58, 66],
+                sample_count: 20,
+                required_samples: 14,
+                median: 62,
+                origin: "garmin",
+                as_of: end,
+              },
+            }
+          : {}),
       };
     } else if (path === "/activities") {
       const offset = Number(url.searchParams.get("offset") ?? 0);

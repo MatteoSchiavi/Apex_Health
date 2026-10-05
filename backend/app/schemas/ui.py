@@ -189,6 +189,7 @@ class MetricTrendOut(BaseModel):
     end_date: str
     points: list[MetricPoint]
     stats: dict[str, Any] = {}
+    reference_range: dict[str, Any] | None = None
 
 
 # --- /coach/chats --------------------------------------------------------------

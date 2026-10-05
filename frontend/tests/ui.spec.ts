@@ -27,13 +27,11 @@ test("all metrics remain reachable through keyboard tabs; sleep score has correc
   await installApi(page);
   await page.goto("/app/biometrics");
   for (const [name, metricKeys] of [
-    ["Body signals", ["resting_hr", "hrv_deviation", "spo2", "respiration"]],
+    ["Body signals", ["resting_hr", "hrv_ms", "spo2", "respiration"]],
     [
       "Recovery & sleep",
       [
-        "readiness",
-        "recovery",
-        "sleep_score",
+        "provider_sleep_score",
         "sleep_duration",
         "sleep_deep",
         "sleep_rem",
@@ -44,17 +42,26 @@ test("all metrics remain reachable through keyboard tabs; sleep score has correc
     [
       "Load & risk scores",
       [
-        "strain",
         "acwr",
         "acute_load",
         "chronic_load",
-        "illness_risk",
-        "injury_risk",
       ],
     ],
     [
       "Body & daily activity",
       ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
+    ],
+    [
+      "Calculated estimates",
+      [
+        "readiness",
+        "recovery",
+        "strain",
+        "sleep_score",
+        "hrv_deviation",
+        "illness_risk",
+        "injury_risk",
+      ],
     ],
   ] as const) {
     await page.getByRole("tab", { name, exact: true }).click();

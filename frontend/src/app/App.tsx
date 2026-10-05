@@ -16,7 +16,7 @@ import {
 } from "react-router-dom";
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { api, ApiError, type Me } from "./api";
-import { useUi } from "./stores/ui";
+import { clearAllAccountStorage, useUi } from "./stores/ui";
 import { PageBoundary } from "../components/PageBoundary";
 import { AppShell } from "../components/layout/AppShell";
 import Login from "../features/auth/Login";
@@ -39,13 +39,10 @@ const TrainingPage = lazy(() => import("../features/training/TrainingPage"));
 const CoachPage = lazy(() => import("../features/coach/CoachPage"));
 const SocialPage = lazy(() => import("../features/social/SocialPage"));
 const LabPage = lazy(() => import("../features/lab/LabPage"));
-const DataHealthPage = lazy(() => import("../features/lab/DataHealthPage"));
 const CalendarPage = lazy(() => import("../features/lab/CalendarPage"));
-const NotificationsPage = lazy(
-  () => import("../features/lab/NotificationsPage"),
-);
 const GearPage = lazy(() => import("../features/lab/GearPage"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage"));
+const LegalPage = lazy(() => import("../features/legal/LegalPage"));
 
 import { queryClient } from "./query";
 import { Button, ErrorNote, Loading } from "../components/kit";
@@ -69,6 +66,12 @@ function Protected({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const me = useUi((s) => s.me);
   const { isLoading, isError, error, refetch } = useSession();
+  useEffect(() => {
+    if (isError && error instanceof ApiError && error.status === 401) {
+      clearAllAccountStorage();
+      if (me) useUi.getState().setMe(null);
+    }
+  }, [isError, error, me]);
   if (isLoading) return <Loading />;
   if (isError && error instanceof ApiError && error.status === 401)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -101,6 +104,9 @@ export default function App() {
           <Route path="/" element={<WelcomePage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/join" element={<Join />} />
+          <Route path="/legal/privacy" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
+          <Route path="/legal/terms" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
+          <Route path="/legal/cookies" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
           <Route
             path="/app"
             element={
@@ -201,7 +207,7 @@ export default function App() {
             path="/app/data-health"
             element={
               <Protected>
-                <DataHealthPage />
+                <Navigate to="/app/settings?tab=data-health" replace />
               </Protected>
             }
           />
@@ -217,7 +223,7 @@ export default function App() {
             path="/app/notifications"
             element={
               <Protected>
-                <NotificationsPage />
+                <Navigate to="/app/settings?tab=notifications" replace />
               </Protected>
             }
           />

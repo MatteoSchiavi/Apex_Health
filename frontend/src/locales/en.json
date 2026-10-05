@@ -452,7 +452,9 @@
     "verify_code": "Verify code",
     "mfa_sent": "Enter the code Garmin sent you.",
     "sync_now": "Sync now",
-    "tokens_note": "Access tokens are handled for you: stored encrypted on the owner's server and refreshed automatically — there is nothing to copy or manage by hand."
+    "tokens_note": "Access tokens are handled for you: stored encrypted on the owner's server and refreshed automatically — there is nothing to copy or manage by hand.",
+    "disconnect": "Disconnect",
+    "disconnected": "Disconnected"
   },
   "common": {
     "loading": "Loading…",
@@ -495,7 +497,7 @@
     "no_devices": "No device connected"
   },
   "disc": {
-    "unknown": "Activity",
+    "unknown": "Unknown activity",
     "running": "Running",
     "road_cycling": "Road Cycling",
     "gravel_cycling": "Gravel Cycling",
@@ -509,7 +511,8 @@
     "tennis": "Tennis",
     "cardio": "Cardio",
     "walking": "Walking",
-    "hiking": "Hiking"
+    "hiking": "Hiking",
+    "enduro": "Enduro Motorcycling"
   },
   "synth": {
     "title": "Synthesis Diagnosis",
@@ -884,9 +887,9 @@
       "shoes": "Shoes",
       "other": "Other"
     },
-    "legacy_load_unit": "legacy load/day",
-    "legacy_readiness": "Apex legacy readiness",
-    "heuristic": "Uncalibrated heuristic",
+    "legacy_load_unit": "load/day",
+    "legacy_readiness": "Apex readiness estimate",
+    "heuristic": "Calculated estimate",
     "grounding": {
       "structured": "Evidence-backed claims checked",
       "narrative_only": "Narrative only · no measured claims verified",
@@ -948,7 +951,167 @@
     "nav": "Lab",
     "replan_drafted": "A change is ready to review in Coach → Changes.",
     "replan_unchanged": "The evidence supports keeping the current plan.",
-    "legacy_metric_note": "This historical Apex calculation is uncalibrated. It is not a diagnosis or an injury/recovery prediction.",
-    "retired": "Retired"
+    "legacy_metric_note": "This Apex estimate uses fixed heuristics and is not a calibrated prediction of illness, injury or recovery.",
+    "retired": "Retired",
+    "load_points": "load points"
+  },
+  "legal": {
+    "eyebrow": "Your information",
+    "home": "Apex Health home",
+    "nav_label": "Legal information",
+    "privacy": "Privacy notice",
+    "terms": "Terms of use",
+    "cookies": "Cookies and local storage",
+    "not_configured": "To be completed by the operator",
+    "incomplete": "This deployment's operator details are incomplete. Contact the operator before entering health data; this notice must be completed for the actual deployment.",
+    "revision_note": "These notices describe the application code and the deployment facts supplied by its operator. The operator must review them whenever services or data flows change.",
+    "controller": {
+      "title": "Who is responsible",
+      "body": "The person or organisation running this instance determines how account and health data are used. Contact them to exercise privacy rights or ask about this deployment.",
+      "name": "Controller",
+      "address": "Address",
+      "contact": "Privacy contact",
+      "effective": "Effective date"
+    },
+    "data": {
+      "title": "Data the service handles",
+      "body": "Apex stores account and profile details, activity and wearable measurements, sleep and recovery data, food and training records, laboratory results and uploaded documents when you provide or connect them. It also stores chat messages, AI outputs, source metadata, security sessions and operational logs. Connected providers and features determine which categories are actually present. Health data can reveal sensitive information."
+    },
+    "purposes": {
+      "title": "Purposes and legal grounds",
+      "body": "The app uses data to provide your account, import connected records, display trends, generate requested analyses and recommendations, secure access, and maintain backups. Its code does not establish a legal ground by itself; the operator must determine and explain the applicable GDPR Article 6 ground and separate Article 9 condition for health data before collecting it. A consent choice is required if the operator relies on explicit consent for health data.",
+      "account_basis": "Ground for account and service processing:",
+      "health_basis": "Article 9 condition for health data:"
+    },
+    "recipients": {
+      "title": "Services and transfers",
+      "body": "Optional connections may exchange data with Garmin, WHOOP, Oura, Strava, COROS, Technogym, Telegram and Open-Meteo. Connected providers have their own privacy terms. Depending on configuration, AI prompts and selected context can go to an external chat model, text can go to OpenAI for embeddings, and voice notes can go to OpenAI for transcription. The operator may use encrypted offsite backups on Backblaze B2. The operator must confirm each enabled service, contract, location and any transfer outside the EEA before use.",
+      "ai": "Configured AI processor and location:",
+      "hosting": "Application hosting region:",
+      "backup": "Backup storage location:",
+      "transfers": "International transfer details and safeguards:"
+    },
+    "retention": {
+      "title": "Storage and deletion",
+      "body": "The scheduled cleanup removes processed raw imports after 180 days, qualifying activity streams after 400 days, and selected AI/tool/sync logs after 400 days. Expired sessions are purged. Other account and derived records remain until the operator or user deletes them or another retention rule applies. These windows depend on scheduled jobs actually running.",
+      "preferences": "In Data Health, you can set retention periods for laboratory observations and agent tool logs. You can download a selected-records account JSON export (at most 100,000 rows per table) and observations CSV; these are not a complete copy of every record. You can also preview and erase a connected source; that operation removes linked data and cached analyses, but is not full account deletion. Reconnecting a source may import data again.",
+      "backups": "Encrypted database backups may contain earlier copies after live deletion. The default schedule retains up to 14 daily and 6 monthly local archives; any offsite copies require separate operator verification and expiry handling."
+    },
+    "rights": {
+      "title": "Your choices and rights",
+      "body": "You may ask the controller for access, correction, erasure, restriction, portability, or objection where the GDPR provides those rights. If processing relies on consent, you may withdraw it without affecting earlier lawful processing. Requests can require identity verification and legal exceptions may apply. Use the privacy contact above for requests, including whole-account erasure.",
+      "controls": "Available self-service export and source-erasure controls are in",
+      "data_health": "Data Health",
+      "authority": "You may lodge a complaint with the Italian Garante per la protezione dei dati personali or your local EEA supervisory authority."
+    },
+    "automated": {
+      "title": "AI-assisted outputs",
+      "body": "The app generates scores, summaries and suggestions from incomplete or estimated data. You decide whether to follow them. The code does not make a solely automated decision with legal or similarly significant effect. If the operator changes the service to do so, this notice and safeguards must be reviewed."
+    },
+    "service": {
+      "title": "Service scope",
+      "body": "Apex Health is a private, self-hosted, invite-based wellness and training service. The operator controls invitations and enabled features. These terms apply to use of this instance; separate connected-provider terms may also apply."
+    },
+    "access": {
+      "title": "Accounts",
+      "body": "Keep your login details secure and use only accounts and connected devices you are authorised to access. You can disconnect providers and request account closure through the operator. Access may be paused to protect the service or other users."
+    },
+    "health": {
+      "title": "Health information",
+      "body": "Scores and AI responses are informational estimates for wellness and training. They can be wrong or incomplete and do not diagnose, treat or replace a qualified professional. In an emergency, contact local emergency services. Do not use the service as the sole basis for medical decisions."
+    },
+    "providers": {
+      "title": "External services",
+      "body": "Imports and AI features depend on services selected by you or the operator. A provider can change access, data quality or availability. Review each provider's own terms before connecting it."
+    },
+    "responsibilities": {
+      "title": "Content and use",
+      "body": "Enter data you have the right to share. Review imports and generated plans before acting on them. Do not use the service to access another person's records or interfere with its security. The operator must provide contact and any additional consumer terms required for the actual deployment."
+    },
+    "changes": {
+      "title": "Changes and contact",
+      "body": "The operator should date and communicate material changes to these terms before they take effect. Contact the operator using the address in the privacy notice about access or these terms."
+    },
+    "cookies_used": {
+      "title": "Essential cookies",
+      "body": "After sign-in, Apex sets hcc_session for your session and csrf_token to protect actions against cross-site request forgery. The session cookie is HttpOnly; the CSRF cookie is readable by the app so it can send the matching security header. Both are SameSite=Lax and normally Secure on HTTPS. The session lifetime defaults to 12 hours with a 30-day absolute cap. These cookies are needed for signed-in access."
+    },
+    "local_storage": {
+      "title": "Storage in your browser",
+      "body": "The app stores language and display preferences, recent sync-job state, and an unsent coach chat draft and selected conversation in localStorage on this device. Account-specific values are cleared on sign-out or session change. An unsent draft may contain sensitive text until then; clear this site's browser data on a shared device after an abrupt close. The app code does not install advertising or analytics cookies. Hosting or added third-party scripts must be checked separately."
+    },
+    "cookies_choices": {
+      "title": "Managing storage",
+      "body": "You can clear this site's cookies and local storage in your browser. Clearing essential cookies signs you out; clearing local storage removes device-only preferences and drafts. If the operator adds optional tracking, it must provide separate information and a valid choice before enabling it."
+    }
+  },
+  "metricView": {
+    "hrv_ms": "Overnight HRV",
+    "provider_sleep_score": "Device sleep score",
+    "estimates": "Calculated estimates",
+    "estimates_note": "These Apex estimates use fixed heuristics. They describe trends, not calibrated probabilities of illness, injury or recovery; do not use them for medical decisions.",
+    "days7": "7 days",
+    "days28": "4 weeks",
+    "days180": "6 months",
+    "period": "Last {{days}} days",
+    "up": "Increasing",
+    "down": "Decreasing",
+    "steady": "Unchanged",
+    "range_below": "Below your usual range",
+    "range_above": "Above your usual range",
+    "range_within": "Within your usual range",
+    "below": "Below",
+    "above": "Above",
+    "personal_range": "Usual range",
+    "range_warming": "Personal range: {{count}} / {{required}} recorded days",
+    "range_note": "{{low}}–{{high}} {{unit}} · {{count}} comparable days in the previous 4 weeks. This is your observed P10–P90 range, not a clinical threshold. Higher HRV is not always better."
+  },
+  "navigation": {
+    "collapse_sidebar": "Collapse sidebar",
+    "expand_sidebar": "Expand sidebar",
+    "no_notifications": "You're all caught up.",
+    "unread": "Unread",
+    "calendar_summary": "Activities, planned sessions and events",
+    "previous_month": "Previous month",
+    "next_month": "Next month",
+    "today": "Today",
+    "calendar_items": "items",
+    "calendar_activity": "Activity",
+    "calendar_plan": "Planned session",
+    "calendar_event": "Event",
+    "data_and_legal": "Data and legal",
+    "export_erase": "Export data and erase a source",
+    "no_calendar_items": "No items for this day."
+  },
+  "nutrition": {
+    "lab_files_title": "Lab files",
+    "lab_files_note": "Keep lab reports with your account. TXT, Markdown, and PDF files up to 5 MB are encrypted. Download or delete them at any time.",
+    "choose_file": "Choose a report",
+    "upload_file": "Upload file",
+    "download_file": "Download",
+    "no_lab_files": "No lab files yet.",
+    "fitbit_title": "Food diary · Fitbit",
+    "fitbit_intro": "Log meals in Fitbit, then view your food diary here with your permission.",
+    "fitbit_unconfigured": "Fitbit connection is unavailable until an app ID and secret are configured by the administrator.",
+    "fitbit_connected": "Fitbit connected",
+    "connect_fitbit": "Connect Fitbit",
+    "disconnect_fitbit": "Disconnect",
+    "open_fitbit": "Open Fitbit food diary ↗",
+    "diary_title": "Food diary",
+    "diary_date": "Date",
+    "calories": "Calories",
+    "protein": "Protein",
+    "carbs": "Carbs",
+    "fat": "Fat",
+    "water": "Water",
+    "foods_logged": "Foods logged",
+    "no_foods": "No food was logged in Fitbit for this date.",
+    "unnamed_food": "Unnamed food"
+  },
+  "pwa": {
+    "install": "Install app",
+    "share": "Share",
+    "add_to_home": "Add to Home Screen",
+    "ios_steps": "Tap {{share}} in your browser, then choose {{add}}."
   }
 }

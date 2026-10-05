@@ -14,6 +14,7 @@ import {
   StatPod,
   fmtNum,
 } from "../../components/kit";
+import { NutritionIntegrations } from "../biometrics/NutritionIntegrations";
 import { shiftDay } from "../../components/data";
 import { TrendChart } from "../../components/charts/TrendChart";
 import type { Analysis, Decision, Doc, Entry, Observation } from "./types";
@@ -139,7 +140,7 @@ function Baselines() {
           <label className="text-[12px] text-muted">
             {t("lab.metric")}
             <select
-              className={inputClass + " mt-2"}
+              className={inputClass + " mt-2 bg-surface text-ink"}
               value={metric}
               onChange={(e) => {
                 setMetric(e.target.value);
@@ -156,7 +157,7 @@ function Baselines() {
           <label className="text-[12px] text-muted">
             {t("lab.source")}
             <select
-              className={inputClass + " mt-2"}
+              className={inputClass + " mt-2 bg-surface text-ink"}
               value={origin}
               onChange={(e) => {
                 setOrigin(e.target.value);
@@ -454,106 +455,9 @@ function Experiments() {
   );
 }
 function Nutrition() {
-  const { t } = useTranslation();
-  const today = useToday();
-  const action = useAction();
-  const logs = useLab<Entry[]>("/lab/entries?kind=nutrition");
-  return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader title={t("lab.nutrition")} />
-        <Form
-          pending={action.isPending}
-          error={action.error}
-          onSave={(f) =>
-            action.mutate({
-              path: "/lab/entries",
-              body: {
-                entry: {
-                  kind: "nutrition",
-                  date: str(f, "date"),
-                  ...Object.fromEntries(
-                    [
-                      "calories",
-                      "protein_g",
-                      "carbs_g",
-                      "fat_g",
-                      "water_ml",
-                      "caffeine_mg",
-                      "alcohol_units",
-                    ].map((k) => [k, num(f, k)]),
-                  ),
-                  notes: str(f, "notes"),
-                },
-              },
-            })
-          }
-        >
-          <Field
-            name="date"
-            type="date"
-            label={t("lab.start")}
-            value={today}
-            required
-          />
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              "calories",
-              "protein_g",
-              "carbs_g",
-              "fat_g",
-              "water_ml",
-              "caffeine_mg",
-              "alcohol_units",
-            ].map((k) => (
-              <Field
-                key={k}
-                name={k}
-                type="number"
-                min={0}
-                label={t("lab.nutrition_fields." + k)}
-              />
-            ))}
-          </div>
-          <Field name="notes" type="textarea" label={t("lab.notes")} />
-        </Form>
-      </Card>
-      <Card>
-        <CardHeader title={t("lab.history")} />
-        <QueryState
-          loading={logs.isLoading}
-          error={logs.isError}
-          empty={logs.data?.length === 0}
-        />
-        {logs.data?.map((e) => (
-          <div key={e.id} className="border-t border-hairline py-4 text-[13px]">
-            <h3 className="mb-3 font-medium">{e.date}</h3>
-            <Value
-              value={Object.fromEntries(
-                Object.entries(e.payload).filter(
-                  ([, v]) => v != null && v !== "",
-                ),
-              )}
-            />
-            <Button
-              variant="ghost"
-              disabled={action.isPending}
-              className="mt-4"
-              onClick={() =>
-                action.mutate({
-                  path: `/lab/entries/${e.id}`,
-                  method: "delete",
-                })
-              }
-            >
-              {t("training.delete")}
-            </Button>
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
+  return <NutritionIntegrations />;
 }
+
 function Documents() {
   const { t } = useTranslation();
   const docs = useLab<Doc[]>("/lab/documents");

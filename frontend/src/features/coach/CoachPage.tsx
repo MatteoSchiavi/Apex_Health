@@ -59,7 +59,8 @@ export default function CoachPage() {
   }, [activeId, activeKey]);
   useEffect(() => {
     try {
-      localStorage.setItem(draftKey, draft);
+      if (draft) localStorage.setItem(draftKey, draft);
+      else localStorage.removeItem(draftKey);
     } catch {
       /* unavailable */
     }

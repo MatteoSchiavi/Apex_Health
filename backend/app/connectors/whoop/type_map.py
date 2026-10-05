@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import Discipline
 
 # Whoop sport_name (lowercased) -> our seeded discipline name.
-# Extensible: unknown names degrade to a documented fallback, never an error.
+# Unknown names stay NULL rather than being assigned an unrelated sport.
 SPORT_ALIASES = {
     "running": "running",
     "running_indoor": "running",
@@ -22,8 +22,18 @@ SPORT_ALIASES = {
     "cycling": "road_cycling",
     "cycling_indoor": "road_cycling",
     "road_cycling": "road_cycling",
-    "mountain_biking": "enduro",
-    "gravel_cycling": "road_cycling",
+    "mountain_biking": "mountain_biking",
+    "gravel_cycling": "gravel_cycling",
+    "hiking": "hiking",
+    "hike": "hiking",
+    "walking": "walking",
+    "walk": "walking",
+    "swimming": "swimming",
+    "swim": "swimming",
+    "rowing": "rowing",
+    "row": "rowing",
+    "yoga": "yoga",
+    "pilates": "pilates",
     "skiing": "skiing",
     "alpine_skiing": "skiing",
     "cross_country_skiing": "skiing",

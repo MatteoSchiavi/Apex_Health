@@ -16,6 +16,35 @@ import { queryClient } from "../query";
 export type Theme = "dark" | "light";
 export type Locale = "en" | "it";
 
+export function clearAllAccountStorage() {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      if (key && (/^apex\.chat\.[^.]+\.(draft|active)$/.test(key) || /^apex\.sync\.[^.]+$/.test(key))) localStorage.removeItem(key);
+    }
+  } catch { /* unavailable */ }
+}
+
+export function clearAccountStorage(userId: number | string) {
+  try {
+    for (const key of [
+      `apex.chat.${userId}.draft`,
+      `apex.chat.${userId}.active`,
+      `apex.sync.${userId}`,
+    ]) localStorage.removeItem(key);
+  } catch { /* unavailable */ }
+}
+
+function clearOtherAccountStorage(userId: number | string) {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      const owner = key?.match(/^apex\.(?:chat|sync)\.([^.]+)(?:\.(?:draft|active))?$/)?.[1];
+      if (owner && owner !== String(userId)) localStorage.removeItem(key!);
+    }
+  } catch { /* unavailable */ }
+}
+
 interface UiState {
   theme: Theme;
   locale: Locale;
@@ -148,6 +177,9 @@ export const useUi = create<UiState>((set) => ({
     }
   },
   setMe: (me) => {
+    const previousId = useUi.getState().me?.user_id;
+    if (previousId != null && previousId !== me?.user_id) clearAccountStorage(previousId);
+    if (me) clearOtherAccountStorage(me.user_id);
     set(
       me
         ? { me, theme: me.theme, locale: me.locale }

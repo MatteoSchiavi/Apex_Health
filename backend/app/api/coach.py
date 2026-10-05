@@ -4,7 +4,7 @@ in-gym session tracker, and session feedback (owner feature batch).
 Every route is `get_current_user`-scoped; foreign ids answer 404 (the
 isolation law used across the whole API, §22)."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -79,10 +79,25 @@ class EventIn(BaseModel):
 @router.get("/events")
 async def list_events(
     horizon_days: int = 30,
+    start: date | None = None,
+    end: date | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     today = datetime.now(_tz(user)).date()
+    if start is not None or end is not None:
+        if start is None or end is None or start > end or (end - start).days > 365:
+            raise HTTPException(422, "Choose start and end spanning at most 366 days")
+        tz = _tz(user)
+        range_start = datetime.combine(start, datetime.min.time(), tzinfo=tz)
+        range_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+        rows = (await session.scalars(select(UserEvent).where(
+            UserEvent.user_id == user.id,
+            UserEvent.starts_at < range_end,
+            # Include multi-day events overlapping this range.
+            (UserEvent.ends_at >= range_start) | ((UserEvent.ends_at.is_(None)) & (UserEvent.starts_at >= range_start)),
+        ).order_by(UserEvent.starts_at, UserEvent.id))).all()
+        return [_event_dict(e, "past" if e.starts_at < datetime.combine(today, datetime.min.time(), tzinfo=tz) else "upcoming") for e in rows]
     rows = await upcoming_events(
         session, user.id, today, horizon_days=min(max(horizon_days, 1), 366)
     )

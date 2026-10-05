@@ -7,19 +7,42 @@ state-changing so they require the CSRF header (§22.3) exactly like every
 other mutating route.
 """
 
-from datetime import time
+from datetime import date, time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.gym import GymScheduleSlot
 from app.models.user import User
+from app.models.training import PlannedSession, TrainingPlan
 from app.queries import create_slot, delete_slot, list_slots, update_slot
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
+
+
+@router.get("/calendar")
+async def calendar_sessions(
+    start: date,
+    end: date,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict:
+    if start > end or (end - start).days > 365:
+        raise HTTPException(422, "Choose a closed range of at most 366 days")
+    rows = (await session.scalars(select(PlannedSession).join(
+        TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id,
+    ).where(
+        TrainingPlan.user_id == user.id,
+        TrainingPlan.status.in_(["confirmed", "active", "completed"]),
+        PlannedSession.date.between(start, end),
+    ).order_by(PlannedSession.date, PlannedSession.id))).all()
+    return {"sessions": [{"id": r.id, "date": r.date.isoformat(),
+                           "session_type": r.session_type, "description": r.description,
+                           "duration_min": r.target_duration_min} for r in rows]}
 
 
 def _slot_out(slot: GymScheduleSlot) -> dict:

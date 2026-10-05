@@ -10,26 +10,27 @@ import {
   ErrorNote,
   Loading,
   PageHeader,
+  Segmented,
   Sparkline,
+  fmtHours,
   fmtNum,
 } from "../../components/kit";
 import { Tabs } from "../../components/Tabs";
 import { assess, METRIC_LABELS, useUnits } from "../../components/data";
 import { LabsPanel } from "./LabsPanel";
+import { MetricDirection, PersonalRange } from "../../components/MetricInterpretation";
 
 const GROUPS = [
   {
     value: "signals",
     label: "design.body_signals",
-    keys: ["resting_hr", "hrv_deviation", "spo2", "respiration"],
+    keys: ["resting_hr", "hrv_ms", "spo2", "respiration"],
   },
   {
     value: "recovery",
     label: "design.recovery_sleep",
     keys: [
-      "readiness",
-      "recovery",
-      "sleep_score",
+      "provider_sleep_score",
       "sleep_duration",
       "sleep_deep",
       "sleep_rem",
@@ -41,12 +42,9 @@ const GROUPS = [
     value: "load",
     label: "design.load_risk",
     keys: [
-      "strain",
       "acwr",
       "acute_load",
       "chronic_load",
-      "illness_risk",
-      "injury_risk",
     ],
   },
   {
@@ -54,13 +52,18 @@ const GROUPS = [
     label: "design.body_activity",
     keys: ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
   },
+  {
+    value: "estimates",
+    label: "metricView.estimates",
+    keys: ["readiness", "recovery", "strain", "sleep_score", "hrv_deviation", "illness_risk", "injury_risk"],
+  },
 ];
-function MetricRow({ metricKey, unit }: { metricKey: string; unit: string }) {
+function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string; range: string }) {
   const { t } = useTranslation();
   const units = useUnits();
   const trend = useQuery({
-    queryKey: ["metric", metricKey, 60],
-    queryFn: () => api.get<MetricTrend>("/metrics/" + metricKey + "?days=60"),
+    queryKey: ["metric", metricKey, range],
+    queryFn: () => api.get<MetricTrend>("/metrics/" + metricKey + "?days=" + range),
   });
   const points = trend.data?.points ?? [];
   const latest = [...points].reverse().find((p) => p.value != null);
@@ -79,22 +82,22 @@ function MetricRow({ metricKey, unit }: { metricKey: string; unit: string }) {
       <div className="num whitespace-nowrap text-[24px] font-medium tracking-[-.04em]">
         {trend.isLoading
           ? "…"
-          : fmtNum(
+          : unit === "h" ? fmtHours(latest?.value == null ? null : latest.value * 3600) : fmtNum(
               units.metric(metricKey, latest?.value ?? null),
               ["steps", "floors"].includes(metricKey) ? 0 : 1,
             )}
         <span className="ml-1.5 text-[12px] font-normal tracking-normal text-muted">
-          {units.metricUnit(metricKey, unit)}
+          {unit === "h" ? "" : units.metricUnit(metricKey, unit)}
         </span>
       </div>
       <div className="metric-status">
-        <Badge tone={trend.isError ? "alert" : status.tone}>
+        {metricKey === "hrv_ms" && trend.data && !trend.isError ? <PersonalRange trend={trend.data} compact /> : <Badge tone={trend.isError ? "alert" : status.tone}>
           {trend.isError
             ? t("design.unavailable")
             : trend.isLoading
               ? t("common.loading")
               : t(status.key)}
-        </Badge>
+        </Badge>}
       </div>
       <div className="metric-trend">
         <Sparkline
@@ -102,6 +105,7 @@ function MetricRow({ metricKey, unit }: { metricKey: string; unit: string }) {
           color="var(--c-text-muted)"
           height={30}
         />
+        <MetricDirection metric={metricKey} points={points} />
       </div>
       <ArrowUpRight size={17} className="metric-arrow text-muted" />
     </Link>
@@ -111,6 +115,7 @@ export default function BiometricsHubPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
+  const [range, setRange] = useState("28");
   const catalog = useQuery({
     queryKey: ["metrics-catalog"],
     queryFn: () =>
@@ -145,7 +150,9 @@ export default function BiometricsHubPage() {
       <PageHeader
         title={t("biometrics.title")}
         subtitle={t("design.metrics_sub")}
+        actions={<Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} />}
       />
+      {active === "estimates" && <p className="text-[13px] text-muted">{t("metricView.estimates_note")}</p>}
       <Tabs
         value={active}
         onChange={(v) => {
@@ -165,7 +172,7 @@ export default function BiometricsHubPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <p className="text-[13px] text-muted">
               {t("design.metric_count", { count: keys.length })} ·{" "}
-              {t("design.latest60")}
+              {t("metricView.period", { days: range })}
             </p>
             <input
               value={search}
@@ -185,7 +192,7 @@ export default function BiometricsHubPage() {
                 <span>{t("design.metric")}</span>
                 <span>{t("biometrics.latest")}</span>
                 <span>{t("design.status")}</span>
-                <span>{t("biometrics.trend")} · 60d</span>
+                <span>{t("biometrics.trend")} · {range}d</span>
                 <span />
               </div>
               {keys.map((key) => (
@@ -193,6 +200,7 @@ export default function BiometricsHubPage() {
                   key={key}
                   metricKey={key}
                   unit={catalog.data![key].unit}
+                  range={range}
                 />
               ))}
               {keys.length === 0 && (

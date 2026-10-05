@@ -28,6 +28,7 @@ from app.connectors.technogym.client import (
     TechnogymOAuth,
     build_authorize_url,
 )
+from app.connectors.oauth_state import PendingAuthorizationError, consume_pending_state
 from app.core.config import get_settings
 from app.core.encryption import encrypt_json
 from app.models.integration import Integration
@@ -62,17 +63,11 @@ async def complete_authorization(
 
     Returns a small status dict; raises OAuthFlowError for anything the
     user can fix (bad state, provider refusal, unconfigured client)."""
-    key = _STATE_KEY.format(state=state)
-    stored_user_id = await redis.get(key)
-    if not stored_user_id:
-        raise OAuthFlowError(
-            "unknown or expired state — start the authorization again"
-        )
-    consumed = await redis.delete(key)
-    if not consumed:  # concurrent double-use of the same state
-        raise OAuthFlowError("state already used")
+    try:
+        user_id = await consume_pending_state(session, redis, provider="technogym", state=state)
+    except PendingAuthorizationError as exc:
+        raise OAuthFlowError(str(exc)) from exc
 
-    user_id = int(stored_user_id)
     try:
         tokens: OAuthTokens = await TechnogymOAuth().exchange_code(code)
     except TechnogymAuthError as exc:

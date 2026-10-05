@@ -532,7 +532,7 @@ async def index_garmin_payload(
             if isinstance(r, dict) and (r.get("timestamp") or r.get("readingTimeGMT"))
         ]
         # Summary-only feed is a valid observation, with its provider calendar day.
-        day_label = summary.get("calendarDate") or payload.get("calendarDate")
+        day_label = summary.get("calendarDate") or payload.get("calendarDate") or raw.payload_type.partition(":")[2]
         measured = (
             max(ts)
             if ts
@@ -615,6 +615,7 @@ async def index_garmin_payload(
         provider_day = (
             (payload.get("hrvSummary") or {}).get("calendarDate")
             or payload.get("calendarDate")
+            or (raw.payload_type.partition(":")[2] if kind == "hrv" else None)
             or measured.astimezone(tz).date().isoformat()
         )
         source_key = str((payload.get("dailySleepDTO") or {}).get("id") or provider_day)

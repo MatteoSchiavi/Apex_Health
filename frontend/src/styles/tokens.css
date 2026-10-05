@@ -142,6 +142,11 @@ select,
 textarea {
   -webkit-tap-highlight-color: transparent;
 }
+select,
+select option {
+  color: var(--c-text);
+  background-color: var(--c-surface);
+}
 button:not(:disabled),
 select {
   cursor: pointer;

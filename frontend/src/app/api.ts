@@ -267,6 +267,15 @@ export interface MetricTrend {
   end_date: string;
   points: { date: string; value: number | null }[];
   stats: Record<string, number | null>;
+  reference_range?: {
+    state: string;
+    empirical_range: [number, number] | null;
+    sample_count: number;
+    required_samples: number;
+    median: number | null;
+    origin: string;
+    as_of: string;
+  } | null;
 }
 
 export interface ChatSessionOut {

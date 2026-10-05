@@ -163,7 +163,7 @@ async def normalize_raw_row(
     elif kind == fetch.PAYLOAD_SLEEP:
         await _upsert_sleep(session, raw, payload, tz, stats)
     elif kind == fetch.PAYLOAD_HRV:
-        await _upsert_hrv(session, raw, payload, stats)
+        await _upsert_hrv(session, raw, payload, stats, tz)
     elif kind == fetch.PAYLOAD_STRESS:
         await _upsert_stress(session, raw, payload, stats)
     elif kind in (fetch.PAYLOAD_STATS, fetch.PAYLOAD_BODY_COMPOSITION):
@@ -253,12 +253,16 @@ async def _upsert_activity(
     else:
         # §12: reconcile against a same-window session from ANOTHER source
         # (±10 min, same discipline) — merge into it instead of duplicating.
-        candidate = await find_reconcilable_activity(
-            session,
-            user_id=raw.user_id,
-            start_time=start_time,
-            discipline_id=discipline_id,
-            source=fetch.SOURCE,
+        candidate = (
+            await find_reconcilable_activity(
+                session,
+                user_id=raw.user_id,
+                start_time=start_time,
+                discipline_id=discipline_id,
+                source=fetch.SOURCE,
+            )
+            if discipline_id is not None
+            else None
         )
         if candidate is not None:
             await reconcile_activity(
@@ -284,6 +288,15 @@ async def _upsert_activity(
                 )
             )
     stats.activities_upserted += 1
+
+    # Keep the provider's original activity label intact for unknown labels,
+    # later reclassification, and provenance even when no canonical sport is
+    # seeded for it. Merge this provider block without replacing other sources.
+    source_metrics = dict(activity.source_metrics or {})
+    garmin_metrics = dict(source_metrics.get("garmin") or {})
+    garmin_metrics["type_key"] = type_key
+    source_metrics["garmin"] = garmin_metrics
+    activity.source_metrics = source_metrics
 
     # §13: auto-link the discipline's default gear at ingestion (idempotent
     # via the (activity_id, gear_id) PK — re-normalization never re-adds).
@@ -437,12 +450,15 @@ async def _upsert_sleep(
 
 
 async def _upsert_hrv(
-    session: AsyncSession, raw: RawIngest, payload: dict[str, Any], stats: NormalizerStats
+    session: AsyncSession, raw: RawIngest, payload: dict[str, Any], stats: NormalizerStats,
+    tz: ZoneInfo,
 ) -> None:
     if not isinstance(payload, dict):
         raise NormalizationError(f"hrv raw row {raw.id}: expected object")
     readings = payload.get("hrvReadings") or []
     summary = payload.get("hrvSummary") or {}
+    if not isinstance(summary, dict):
+        raise NormalizationError(f"hrv raw row {raw.id}: hrvSummary must be an object")
     if not isinstance(readings, list):
         raise NormalizationError(f"hrv raw row {raw.id}: hrvReadings must be a list")
 
@@ -466,6 +482,16 @@ async def _upsert_hrv(
         baseline = _num(summary.get("baseline", {}).get("avg")) if isinstance(summary.get("baseline"), dict) else None
         await _upsert_hrv_reading(session, raw.user_id, ts, hrv, "5min", baseline, stats)
 
+    if last_ts is None:
+        # Some watches expose only the nightly summary. The requested
+        # calendar day is fetch context, not a fabricated provider timestamp.
+        day_label = summary.get("calendarDate") or payload.get("calendarDate") or _suffix(raw.payload_type)
+        if day_label:
+            try:
+                day = date.fromisoformat(day_label)
+            except ValueError as exc:
+                raise NormalizationError("HRV summary calendar date is invalid") from exc
+            last_ts = datetime(day.year, day.month, day.day, 7, tzinfo=tz)
     if last_ts is not None:
         # P-02 audit: validate the overnight average too — Garmin's own
         # summary can occasionally carry a corrupt aggregate even when the
@@ -477,7 +503,9 @@ async def _upsert_hrv(
             # coexists with the 5-min row at the same timestamp: reading_type is
             # part of the natural key.
             await _upsert_hrv_reading(
-                session, raw.user_id, last_ts, overnight, "overnight_avg", None, stats
+                session, raw.user_id, last_ts, overnight, "overnight_avg",
+                valid_hrv_ms(summary.get("baseline", {}).get("avg")) if isinstance(summary.get("baseline"), dict) else None,
+                stats
             )
 
 

@@ -25,7 +25,7 @@ import {
   useToday,
   Value,
 } from "./shared";
-export default function DataHealthPage() {
+export default function DataHealthPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const today = useToday();
   const q = useLab<Coverage>("/lab/coverage");
@@ -55,10 +55,10 @@ export default function DataHealthPage() {
   }
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
+      {!embedded && <PageHeader
         title={t("lab.data_health")}
         subtitle={t("lab.data_health_sub")}
-      />
+      />}
       <QueryState loading={q.isLoading} error={q.isError} />
       <Card>
         <CardHeader
@@ -456,7 +456,7 @@ export default function DataHealthPage() {
             <label className="flex flex-col gap-2 text-[12px] text-muted">
               {t("lab.source")}
               <select
-                className={inputClass}
+                className={inputClass + " bg-surface text-ink"}
                 value={source}
                 onChange={(e) => {
                   setSource(e.target.value);

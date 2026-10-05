@@ -13,13 +13,15 @@ import {
   Bell,
   CalendarDays,
   FlaskConical,
-  Database,
   Wrench,
+  PanelLeftClose,
+  PanelLeftOpen,
   ArrowUpRight,
   BarChart3,
   Bot,
   HeartPulse,
   Moon,
+  LogOut,
   Search,
   Settings,
   Sun,
@@ -31,6 +33,7 @@ import { api, type DeviceOut } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { useLab } from "../../features/lab/shared";
 import { ErrorNote, timeAgo } from "../kit";
+import { NotificationPopover, type NotificationsData } from "../../features/lab/NotificationsPage";
 
 const NAV = [
   { to: "/app", icon: Activity, key: "nav.overview", end: true },
@@ -46,18 +49,6 @@ const NAV = [
   { to: "/app/coach", icon: Bot, key: "nav.coach", end: false },
   { to: "/app/lab", icon: FlaskConical, key: "lab.nav", end: false },
   { to: "/app/calendar", icon: CalendarDays, key: "lab.calendar", end: false },
-  {
-    to: "/app/data-health",
-    icon: Database,
-    key: "lab.data_health",
-    end: false,
-  },
-  {
-    to: "/app/notifications",
-    icon: Bell,
-    key: "lab.notifications",
-    end: false,
-  },
   { to: "/app/gear", icon: Wrench, key: "lab.gear", end: false },
   { to: "/app/social", icon: Users, key: "nav.social", end: false },
   { to: "/app/settings", icon: Settings, key: "nav.settings", end: false },
@@ -180,6 +171,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationRoot = useRef<HTMLDivElement>(null);
+  const notificationButton = useRef<HTMLButtonElement>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("apex.sidebar.collapsed") === "true"; }
+    catch { return false; }
+  });
+  const notifications = useLab<NotificationsData>("/lab/notifications");
+  const unread = notifications.data?.items.filter((n) => n.state === "created").length ?? 0;
   const devices = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.get<DeviceOut[]>("/settings/devices"),
@@ -206,6 +206,33 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
   useEffect(() => {
+    if (!notificationsOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!notificationRoot.current?.contains(e.target as Node)) {
+        setNotificationsOpen(false);
+        notificationButton.current?.focus();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setNotificationsOpen(false);
+        notificationButton.current?.focus();
+      }
+    };
+    notificationRoot.current?.querySelector<HTMLElement>('[role="dialog"] a')?.focus();
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [notificationsOpen]);
+  useEffect(() => {
+    try { localStorage.setItem("apex.sidebar.collapsed", String(sidebarCollapsed)); }
+    catch { /* unavailable */ }
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    setNotificationsOpen(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   const closeSearch = useCallback(() => setSearch(false), []);
@@ -240,13 +267,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           returnFocus={searchOpener.current}
         />
       )}
-      <aside className="sticky top-0 hidden h-dvh w-[224px] shrink-0 flex-col border-r border-hairline px-6 py-8 lg:flex">
-        <NavLink to="/app" className="mb-8 shrink-0" aria-label="Apex Health">
-          <Logo />
-        </NavLink>
-        <div className="mb-4 text-[12px] text-muted">
-          {t("design.workspace")}
+      <aside className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex"}>
+        <div className="mb-8 flex shrink-0 items-center justify-between gap-2">
+          <NavLink to="/app" aria-label="Apex Health" className={sidebarCollapsed ? "mx-auto" : "min-w-0 overflow-hidden"}>
+            {sidebarCollapsed ? <Activity size={24} /> : <Logo />}
+          </NavLink>
+          {!sidebarCollapsed && <button type="button" aria-label={t("navigation.collapse_sidebar")} title={t("navigation.collapse_sidebar")}
+            onClick={() => setSidebarCollapsed(true)} className="shrink-0 p-1 text-muted hover:text-ink"><PanelLeftClose size={17} /></button>}
         </div>
+        {sidebarCollapsed && <button type="button" aria-label={t("navigation.expand_sidebar")} title={t("navigation.expand_sidebar")}
+          onClick={() => setSidebarCollapsed(false)} className="mb-5 self-center p-2 text-muted hover:text-ink"><PanelLeftOpen size={18} /></button>}
+        {!sidebarCollapsed && <div className="mb-4 text-[12px] text-muted">{t("design.workspace")}</div>}
         <nav
           aria-label={t("design.navigation")}
           className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
@@ -256,22 +287,24 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={to}
               to={to}
               end={end}
+              title={sidebarCollapsed ? t(key) : undefined}
+              aria-label={sidebarCollapsed ? t(key) : undefined}
               className={({ isActive }) =>
-                "flex items-center gap-3 px-3 py-2.5 text-[14px] transition-colors " +
+                "flex items-center gap-3 py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") +
                 (isActive
                   ? "bg-ink font-medium text-canvas"
                   : "text-muted hover:bg-surface2 hover:text-ink")
               }
             >
-              <Icon size={17} strokeWidth={1.6} />
-              <span>{t(key)}</span>
+              <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
+              <span className={sidebarCollapsed ? "sr-only" : undefined}>{t(key)}</span>
             </NavLink>
           ))}
         </nav>
         <div className="shrink-0 pt-6">
           <NavLink
             to="/app/settings?tab=devices"
-            className="block border-b border-hairline pb-5"
+            className={sidebarCollapsed ? "hidden" : "block border-b border-hairline pb-5"}
           >
             <span className="status text-muted">
               {devices.isError
@@ -286,19 +319,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 : t("settings.never")}
             </div>
           </NavLink>
-          <div className="mt-5 flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center bg-surface2 font-medium">
+          <div className={sidebarCollapsed ? "mt-5 flex justify-center" : "mt-5 flex items-center gap-3"}>
+            {!sidebarCollapsed && <span className="flex h-9 w-9 items-center justify-center bg-surface2 font-medium">
               {me?.name.slice(0, 1).toUpperCase()}
-            </span>
-            <div className="min-w-0">
+            </span>}
+            {!sidebarCollapsed && <div className="min-w-0">
               <p className="truncate text-[13px] font-medium">{me?.name}</p>
-              <button
-                onClick={logout}
-                className="text-[12px] text-muted hover:text-ink"
-              >
-                {t("auth.logout")}
-              </button>
-            </div>
+              <button onClick={logout} className="text-[12px] text-muted hover:text-ink">{t("auth.logout")}</button>
+            </div>}
+            {sidebarCollapsed && <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="p-1 text-muted hover:text-ink"><LogOut size={16} /></button>}
           </div>
           {logoutError && <ErrorNote />}
         </div>
@@ -322,6 +351,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                 timeZone: me?.timezone,
               })}
             </span>
+            <div className="relative" ref={notificationRoot}>
+              <button ref={notificationButton} type="button" aria-label={t("lab.notifications")}
+                aria-expanded={notificationsOpen} aria-haspopup="dialog" onClick={() => setNotificationsOpen((v) => !v)}
+                className="relative p-2 text-muted hover:text-ink">
+                <Bell size={18} />
+                {unread > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink px-1 text-[10px] text-canvas">{unread > 9 ? "9+" : unread}</span>}
+              </button>
+              {notificationsOpen && <div role="dialog" aria-label={t("lab.notifications")}
+                className="absolute right-0 top-full z-40 mt-2 w-[min(90vw,420px)] border border-hairline bg-surface shadow-xl">
+                <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
+                  <strong className="text-[14px]">{t("lab.notifications")}</strong>
+                  <NavLink to="/app/settings?tab=notifications" onClick={() => setNotificationsOpen(false)} className="text-link text-[12px]">{t("lab.notification_preferences")}</NavLink>
+                </div>
+                <NotificationPopover onNavigate={() => setNotificationsOpen(false)} />
+              </div>}
+            </div>
             <button
               disabled={preferenceSaving}
               aria-label={t("theme.toggle")}

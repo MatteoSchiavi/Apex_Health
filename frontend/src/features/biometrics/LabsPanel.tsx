@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../app/api";
@@ -13,6 +13,7 @@ import {
   fmtNum,
 } from "../../components/kit";
 import { localDay } from "../../components/data";
+import { useUi } from "../../app/stores/ui";
 interface Panel {
   id: number;
   panel_date: string;
@@ -36,6 +37,97 @@ const MARKERS = [
   { key: "wbc", unit: "" },
   { key: "plt", unit: "" },
 ] as const;
+
+interface LabFile {
+  id: number;
+  filename: string;
+  media_type: string;
+  content_hash: string;
+  status: string;
+  created_at: string;
+}
+
+function LabFiles() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const uid = useUi((s) => s.me?.user_id);
+  const input = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const files = useQuery({
+    queryKey: ["lab-files", uid],
+    queryFn: () => api.get<LabFile[]>("/lab/documents"),
+  });
+  const upload = useMutation({
+    mutationFn: (selected: File) => {
+      const body = new FormData();
+      body.append("file", selected);
+      return api.post<LabFile>("/lab/documents", body);
+    },
+    onSuccess: () => {
+      setFile(null);
+      if (input.current) input.current.value = "";
+      qc.invalidateQueries({ queryKey: ["lab-files", uid] });
+      qc.invalidateQueries({ queryKey: ["lab"] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/lab/documents/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lab-files", uid] });
+      qc.invalidateQueries({ queryKey: ["lab"] });
+    },
+  });
+  return (
+    <Card>
+      <CardHeader title={t("nutrition.lab_files_title")} />
+      <p className="mb-4 text-[13px] text-muted">{t("nutrition.lab_files_note")}</p>
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (file) upload.mutate(file);
+        }}
+      >
+        <label className="flex flex-col gap-2 text-[12px] text-muted">
+          {t("nutrition.choose_file")}
+          <input
+            ref={input}
+            type="file"
+            accept=".txt,.md,.pdf"
+            required
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            className="max-w-full text-[13px] text-ink"
+          />
+        </label>
+        <Button type="submit" disabled={!file || upload.isPending}>
+          {t("nutrition.upload_file")}
+        </Button>
+      </form>
+      {upload.isError && <p role="alert" className="mt-3 text-[13px] text-red-600">{upload.error.message}</p>}
+      {remove.isError && <p role="alert" className="mt-3 text-[13px] text-red-600">{remove.error.message}</p>}
+      <div className="mt-5 border-t border-hairline">
+        {files.isLoading ? <Loading /> : files.isError ? <ErrorNote /> : !files.data?.length ? (
+          <Empty>{t("nutrition.no_lab_files")}</Empty>
+        ) : files.data.map((item) => (
+          <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline py-3 text-[13px]">
+            <div className="min-w-0">
+              <p className="break-all font-medium">{item.filename}</p>
+              <p className="text-[12px] text-muted">{new Date(item.created_at).toLocaleDateString()} · {item.media_type}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <a className="text-link" href={`/lab/documents/${item.id}/original`} download>
+                {t("nutrition.download_file")}
+              </a>
+              <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(item.id)}>
+                {t("training.delete")}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 export function LabsPanel() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -72,6 +164,7 @@ export function LabsPanel() {
   });
   return (
     <div className="flex flex-col gap-6">
+      <LabFiles />
       <div className="flex items-center justify-between gap-4">
         <p className="text-[13px] text-muted">{t("design.lab_note")}</p>
         <Button variant="ghost" onClick={() => setAdding((v) => !v)}>

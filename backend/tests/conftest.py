@@ -86,13 +86,12 @@ async def _wipe_domain_tables() -> None:
 
 
 def _alembic_downgrade_tolerant() -> None:
-    """Best-effort teardown: a fresh database has nothing to downgrade."""
-    subprocess.run(
-        ["uv", "run", "alembic", "downgrade", "base"],
-        cwd=BACKEND_DIR,
-        check=False,
-        capture_output=True,
-    )
+    """Fresh databases are already at base; real rollback errors must surface.
+
+    Swallowing a failed rollback after truncating seeded tables can leave the
+    version at head, making the next upgrade a no-op with an empty catalog.
+    """
+    _run_alembic("downgrade", "base")
 
 
 @pytest.fixture(scope="session", autouse=True)

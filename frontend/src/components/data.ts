@@ -2,6 +2,8 @@ import { useUi } from "../app/stores/ui";
 export const METRIC_LABELS: Record<string, string> = {
   resting_hr: "biometrics.resting_hr",
   hrv_deviation: "biometrics.hrv",
+  hrv_ms: "metricView.hrv_ms",
+  provider_sleep_score: "metricView.provider_sleep_score",
   spo2: "biometrics.spo2",
   respiration: "biometrics.respiration_metric",
   readiness: "biometrics.readiness_metric",
@@ -29,8 +31,8 @@ export type Assessment = {
   tone: "neutral" | "positive" | "warning" | "alert";
   key: string;
 };
-// Only scored metrics and a measured deviation have interpretable thresholds.
-// Absolute body values and arbitrary means are not health reference ranges.
+// Estimates and deviations do not carry clinical thresholds. Personal HRV
+// ranges use comparable nightly measurements in MetricInterpretation.
 export const LEGACY_HEURISTICS = [
   "readiness",
   "recovery",
@@ -44,9 +46,7 @@ export function assess(key: string, value: number | null): Assessment {
   if (LEGACY_HEURISTICS.includes(key))
     return { tone: "neutral", key: "lab.heuristic" };
   if (key === "hrv_deviation")
-    return value < -20
-      ? { tone: "warning", key: "design.below_baseline" }
-      : { tone: "neutral", key: "design.vs_baseline" };
+    return { tone: "neutral", key: "design.vs_baseline" };
   return { tone: "neutral", key: "design.recorded" };
 }
 export function useUnits() {

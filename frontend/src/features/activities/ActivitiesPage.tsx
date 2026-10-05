@@ -140,7 +140,7 @@ export default function ActivitiesPage() {
                   ? load.reduce((a, b) => a + b.training_load!, 0)
                   : null,
               )}
-              unit="TSS"
+              unit={t("lab.load_points")}
             />
           </div>
           {items.length < total && (
@@ -223,7 +223,7 @@ export default function ActivitiesPage() {
                       </td>
                       <td className="numeric">
                         {fmtNum(a.training_load)}{" "}
-                        <span className="text-muted">TSS</span>
+                        <span className="text-muted">{t("lab.load_points")}</span>
                       </td>
                       <td>
                         <Link

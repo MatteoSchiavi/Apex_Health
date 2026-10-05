@@ -150,7 +150,7 @@ export default function OverviewPage() {
         o.hrv_baseline_ms != null
           ? t("design.baseline_value", { value: fmtNum(o.hrv_baseline_ms) })
           : t("design.baseline_missing"),
-      to: "hrv_deviation",
+      to: "hrv_ms",
     },
     {
       label: t("overview.spo2"),
@@ -470,7 +470,7 @@ export default function OverviewPage() {
                     </div>
                     <div className="num text-right">
                       {fmtNum(a.training_load)}
-                      <p className="text-[12px] text-muted">TSS</p>
+                      <p className="text-[12px] text-muted">{t("lab.load_points")}</p>
                     </div>
                     <ArrowRight size={16} />
                   </Link>

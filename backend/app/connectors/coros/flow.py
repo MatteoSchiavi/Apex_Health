@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.coros.client import build_authorize_url, exchange
+from app.connectors.oauth_state import PendingAuthorizationError, consume_pending_state
 from app.core.config import get_settings
 from app.core.encryption import encrypt_json
 from app.models.integration import Integration
@@ -34,16 +35,12 @@ async def create_pending_authorization(redis: Redis, user: User) -> tuple[str, s
 async def complete_authorization(
     session: AsyncSession, redis: Redis, *, code: str, state: str
 ) -> dict:
-    key = _STATE_KEY.format(state=state)
-    stored_user_id = await redis.get(key)
-    if not stored_user_id:
-        raise OAuthFlowError("unknown or expired state — start the authorization again")
-    consumed = await redis.delete(key)
-    if not consumed:
-        raise OAuthFlowError("state already used")
+    try:
+        user_id = await consume_pending_state(session, redis, provider="coros", state=state)
+    except PendingAuthorizationError as exc:
+        raise OAuthFlowError(str(exc)) from exc
 
     tokens = await exchange(code)
-    user_id = int(stored_user_id)
     integration = (
         await session.scalars(
             select(Integration).where(

@@ -93,9 +93,6 @@ export function DecisionCard() {
                   <span className="block">
                     {e.origin} · {t("lab.measured")} {e.local_date}
                   </span>
-                  <Link className="text-link mt-1" to="/app/data-health">
-                    {t("lab.provenance")}
-                  </Link>
                 </>
               }
             />

@@ -12,7 +12,7 @@ test("today shows coverage and separates a decision from a score", async ({
   await expect(
     page.getByText("100% of required signals covered"),
   ).toBeVisible();
-  await expect(page.getByText("Uncalibrated heuristic").first()).toBeVisible();
+  await expect(page.getByText("Calculated estimate").first()).toBeVisible();
   await page.getByRole("button", { name: "Followed", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Followed", exact: true }),

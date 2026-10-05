@@ -22,6 +22,8 @@ EXPECTED_TABLES = {
     "challenges", "challenge_members",
     # disciplines & gear
     "disciplines", "gear", "gear_service_logs", "discipline_gear_defaults",
+    # migration 0011's precise, reversible activity discipline updates
+    "activity_discipline_changes_0011",
     # Web UI foundation (migration 0007): laps from FIT enrichment
     "activity_laps",
     # activities
@@ -50,6 +52,12 @@ EXPECTED_TABLES = {
 EXPECTED_SEED = {
     "enduro": "endurance",
     "road_cycling": "endurance",
+    "mountain_biking": "endurance",
+    "gravel_cycling": "endurance",
+    "hiking": "endurance",
+    "walking": "endurance",
+    "swimming": "endurance",
+    "rowing": "endurance",
     "skiing": "technical",
     "sailing": "technical",
     "kitesurf": "technical",
@@ -62,6 +70,8 @@ EXPECTED_SEED = {
     "running": "endurance",
     "strength": "strength",
     "gym_general": "strength",
+    "yoga": "strength",
+    "pilates": "strength",
 }
 
 EXPECTED_HYPERTABLES = {"sleep_sessions", "hrv_readings", "stress_readings"}

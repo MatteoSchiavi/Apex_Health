@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { EChart, useChartTheme } from "./EChart";
-import { Empty } from "../kit";
+import { Empty, fmtHours } from "../kit";
 import { shiftDay } from "../data";
 export function TrendChart({
   points,
@@ -52,7 +52,7 @@ export function TrendChart({
             valueFormatter: (v: number | null) =>
               v == null
                 ? "—"
-                : v.toLocaleString(undefined, { maximumFractionDigits: 2 }) +
+                : unit === "h" ? fmtHours(v * 3600) : v.toLocaleString(undefined, { maximumFractionDigits: 2 }) +
                   " " +
                   unit,
           },
@@ -77,7 +77,7 @@ export function TrendChart({
             type: "value",
             scale: !bar,
             splitNumber: 2,
-            axisLabel: { color: c.muted, fontSize: 12 },
+            axisLabel: { color: c.muted, fontSize: 12, ...(unit === "h" ? { formatter: (value: number) => fmtHours(value * 3600) } : {}) },
             splitLine: { lineStyle: { color: c.hairline } },
           },
           series: [
