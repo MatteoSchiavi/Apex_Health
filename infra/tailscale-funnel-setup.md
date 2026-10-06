@@ -107,8 +107,6 @@ What is already correct with no further work:
 - **The Funnel URL is public knowledge.** Treat it like your bank's URL:
   fine to be known, pointless to attack without an account. Keep invites
   short-lived (`expires_in_days` default 7) and revoke unused ones.
-- **Telegram does not need Funnel** — the bot uses long polling outbound
-  (§10.1), it works behind NAT exactly as before.
 - **Watch app (Phase 10)**: Connect IQ's `makeWebRequest` from the watch goes
   via the phone's internet connection, so the glance works over the same
   Funnel URL — set it in the watch app settings together with the API token

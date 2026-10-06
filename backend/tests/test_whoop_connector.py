@@ -9,9 +9,7 @@ recovery as overnight_avg, sleep stages in SECONDS, sleep performance as
 zones) stay in source_metrics and NEVER touch training_load.
 """
 
-import json
-from datetime import UTC, datetime
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import httpx
@@ -25,6 +23,7 @@ from app.models.activity import Activity, ActivitySourceLink
 from app.models.integration import Integration, RawIngest
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from app.models.lab import Observation
 from tests.conftest import csrf_headers
 
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
@@ -81,7 +80,6 @@ RECOVERY_RECORD = {
     "sleep_id": SLEEP_RECORD["id"],
     "user_id": 9012,
     "score_state": "SCORED",
-    "cycle_start": "2026-09-21T05:10:00.000Z",
     "score": {
         "user_calibrating": False,
         "recovery_score": 88.0,
@@ -344,6 +342,7 @@ async def test_backfill_normalizes_with_annotation_laws(db_session):
     hrv = (await db_session.scalars(select(HrvReading))).all()
     assert len(hrv) == 1
     assert hrv[0].reading_type == "overnight_avg"
+    assert hrv[0].timestamp == datetime(2026, 9, 21, 7, 10, tzinfo=UTC)
     assert float(hrv[0].hrv_ms) == 98.6
     bio = (await db_session.scalars(select(DailyBiometric))).all()
     # one row for the wake-up day (recovery), one for the sync day (body
@@ -400,3 +399,213 @@ async def test_sync_is_idempotent(db_session):
     assert await db_session.scalar(select(func.count()).select_from(Activity)) == 1
     assert await db_session.scalar(select(func.count()).select_from(SleepSession)) == 1
     assert await db_session.scalar(select(func.count()).select_from(HrvReading)) == 1
+
+
+async def test_raw_recovery_preserved_and_context_observations_are_idempotent(db_session):
+    user, integration = await make_whoop_user(db_session)
+    for _ in range(2):
+        report = await run_user_sync_with_escalation(
+            db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW
+        )
+        assert report is not None
+    rows = (await db_session.scalars(select(Observation).where(
+        Observation.user_id == user.id, Observation.origin == "whoop",
+    ))).all()
+    assert len(rows) == 7
+    hrv = next(row for row in rows if row.metric == "hrv_overnight_rmssd")
+    assert hrv.unit == "ms" and hrv.value["value"] == 98.6
+    assert hrv.metadata_json["hrv_method"] == "RMSSD"
+    assert hrv.metadata_json["reading_context"] == "overnight"
+    assert hrv.metadata_json["sleep_id"] == SLEEP_RECORD["id"]
+    assert hrv.local_date.isoformat() == "2026-09-21"
+    raw = await db_session.scalar(select(RawIngest).where(
+        RawIngest.user_id == user.id, RawIngest.payload_type == "recovery",
+    ).limit(1))
+    assert raw.raw_json == RECOVERY_RECORD
+    assert "cycle_start" not in raw.raw_json
+
+
+async def test_recovery_without_timing_stays_unprocessed_instead_of_using_fetch_date(db_session):
+    class MissingContext(FixtureWhoopClient):
+        async def fetch_sleeps(self, start=None, end=None):
+            return []
+        async def fetch_cycles(self, start=None, end=None):
+            return []
+    user, integration = await make_whoop_user(db_session)
+    report = await run_user_sync_with_escalation(db_session, user, integration, MissingContext(), now=SYNC_NOW)
+    assert report is not None and report.raw_rows_unprocessed == 1
+    assert await db_session.scalar(select(func.count()).select_from(HrvReading)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(Observation).where(
+        Observation.user_id == user.id, Observation.metric == "hrv_overnight_rmssd",
+    )) == 0
+
+
+async def test_pending_sleep_does_not_overwrite_scored_sleep(db_session):
+    user, integration = await make_whoop_user(db_session)
+    await run_user_sync_with_escalation(db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW)
+    class PendingSleep(FixtureWhoopClient):
+        async def fetch_sleeps(self, start=None, end=None):
+            return [{**SLEEP_RECORD, "score_state": "PENDING_SCORE", "score": None}]
+    report = await run_user_sync_with_escalation(db_session, user, integration, PendingSleep(), now=SYNC_NOW)
+    assert report is not None
+    sleep = await db_session.scalar(select(SleepSession).where(SleepSession.user_id == user.id))
+    assert sleep.deep_s == 5400 and sleep.sleep_score == 91
+
+
+async def test_secondary_workout_resync_preserves_main_device_and_all_whoop_metrics(db_session):
+    user, integration = await make_whoop_user(db_session)
+    garmin = Integration(user_id=user.id, provider="garmin", status="active")
+    db_session.add(garmin)
+    start = datetime(2026, 9, 21, 8, tzinfo=UTC)
+    activity = Activity(user_id=user.id, start_time=start, start_tz_offset_minutes=120,
+                        local_date=start.date(), duration_s=5400, avg_hr=140,
+                        max_hr=175, distance_m=16000, calories=900,
+                        training_load=45, data_completeness="full")
+    db_session.add(activity)
+    await db_session.flush()
+    db_session.add(ActivitySourceLink(user_id=user.id, activity_id=activity.id,
+                                     source="garmin", external_id="garmin-workout"))
+    await db_session.commit()
+    for _ in range(2):
+        report = await run_user_sync_with_escalation(db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW)
+        assert report is not None and report.stats.activities_merged == 1
+    assert await db_session.scalar(select(func.count()).select_from(Activity)) == 1
+    assert activity.avg_hr == 140 and activity.calories == 900 and activity.training_load == 45
+    assert activity.source_metrics["whoop"]["strain"] == 14.2
+    assert activity.source_metrics["whoop"]["zone_seconds"]["one"] == 900
+    assert activity.source_metrics["whoop"]["avg_hr"] == 152
+
+
+async def test_whoop_main_takes_over_secondary_activity_without_duplicate(db_session):
+    user, integration = await make_whoop_user(db_session)
+    user.main_integration_id = integration.id
+    start = datetime(2026, 9, 21, 8, tzinfo=UTC)
+    activity = Activity(user_id=user.id, start_time=start, start_tz_offset_minutes=120,
+                        local_date=start.date(), duration_s=5400, avg_hr=140,
+                        data_completeness="full")
+    db_session.add(activity)
+    await db_session.flush()
+    db_session.add(ActivitySourceLink(user_id=user.id, activity_id=activity.id,
+                                     source="garmin", external_id="garmin-secondary"))
+    await db_session.commit()
+    report = await run_user_sync_with_escalation(db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW)
+    assert report is not None and report.stats.activities_merged == 1
+    assert await db_session.scalar(select(func.count()).select_from(Activity)) == 1
+    assert activity.avg_hr == 152
+    assert await db_session.scalar(select(func.count()).select_from(ActivitySourceLink)) == 2
+
+
+async def test_secondary_sleep_fills_gaps_preserves_main_values_and_deduplicates_night(db_session):
+    user, integration = await make_whoop_user(db_session)
+    db_session.add(Integration(user_id=user.id, provider="garmin", status="active"))
+    start = datetime(2026, 9, 20, 23, tzinfo=UTC)
+    sleep = SleepSession(user_id=user.id, local_date=datetime(2026, 9, 21).date(),
+                         start_time=start, end_time=datetime(2026, 9, 21, 7, tzinfo=UTC),
+                         total_sleep_s=25000, deep_s=5000, spo2_avg=98.2)
+    db_session.add(sleep)
+    await db_session.commit()
+    report = await run_user_sync_with_escalation(db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW)
+    assert report is not None
+    assert await db_session.scalar(select(func.count()).select_from(SleepSession)) == 1
+    assert sleep.total_sleep_s == 25000 and sleep.deep_s == 5000
+    assert float(sleep.spo2_avg) == 98.2 and sleep.light_s == 14400
+
+
+def fresh_tokens():
+    from app.connectors.oauth2 import OAuthTokens
+    return OAuthTokens("fixture-access", "fixture-refresh", datetime.now(UTC) + timedelta(hours=1))
+
+
+async def test_v2_client_uses_exact_url_and_paginates(monkeypatch):
+    from app.connectors.whoop.client import LiveWhoopClient
+    captured = []
+    def handler(req):
+        captured.append(req)
+        assert req.url.path == "/developer/v2/activity/sleep"
+        if req.url.params.get("nextToken"):
+            return httpx.Response(200, json={"records": [{"id": "second"}], "next_token": None})
+        return httpx.Response(200, json={"records": [{"id": "first"}], "next_token": "page-two"})
+    async with httpx.AsyncClient(base_url=SETTINGS.whoop_api_base + "/", transport=httpx.MockTransport(handler)) as http:
+        client = LiveWhoopClient(fresh_tokens(), http=http)
+        assert await client.fetch_sleeps() == [{"id": "first"}, {"id": "second"}]
+    assert captured[1].url.params["nextToken"] == "page-two"
+
+
+async def test_401_forces_refresh_once_and_stops_on_repeated_401():
+    from app.connectors.whoop.client import LiveWhoopClient, WhoopAuthError
+    calls = []
+    class OAuth:
+        async def refresh(self, token):
+            calls.append(token)
+            return fresh_tokens()
+    async with httpx.AsyncClient(base_url=SETTINGS.whoop_api_base + "/", transport=httpx.MockTransport(
+        lambda req: httpx.Response(401, json={"message": "expired"})
+    )) as http:
+        client = LiveWhoopClient(fresh_tokens(), http=http, oauth=OAuth())
+        with pytest.raises(WhoopAuthError, match="after refresh"):
+            await client.fetch_sleeps()
+    assert len(calls) == 1 and client.tokens_out is not None
+
+
+async def test_profile_checks_http_status_before_json():
+    from app.connectors.whoop.client import LiveWhoopClient, WhoopAuthError
+    async with httpx.AsyncClient(base_url=SETTINGS.whoop_api_base + "/", transport=httpx.MockTransport(
+        lambda req: httpx.Response(403, text="provider denied access")
+    )) as http:
+        client = LiveWhoopClient(fresh_tokens(), http=http)
+        with pytest.raises(WhoopAuthError, match="access denied"):
+            await client.fetch_profile()
+
+
+async def test_repeated_page_token_is_bounded():
+    from app.connectors.whoop.client import LiveWhoopClient, WhoopAPIError
+    async with httpx.AsyncClient(base_url=SETTINGS.whoop_api_base + "/", transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"records": [], "next_token": "same"})
+    )) as http:
+        client = LiveWhoopClient(fresh_tokens(), http=http)
+        with pytest.raises(WhoopAPIError, match="repeated"):
+            await client.fetch_sleeps()
+
+
+async def test_missing_collection_cycle_is_fetched_without_redating_recovery(db_session):
+    class CycleLookup(FixtureWhoopClient):
+        calls = 0
+        async def fetch_sleeps(self, start=None, end=None):
+            return []
+        async def fetch_cycles(self, start=None, end=None):
+            return []
+        async def fetch_cycle(self, cycle_id):
+            self.calls += 1
+            assert cycle_id == str(CYCLE_RECORD["id"])
+            return CYCLE_RECORD
+    user, integration = await make_whoop_user(db_session)
+    client = CycleLookup()
+    report = await run_user_sync_with_escalation(db_session, user, integration, client, now=SYNC_NOW)
+    assert report is not None and client.calls == 1
+    hrv = await db_session.scalar(select(HrvReading).where(HrvReading.user_id == user.id))
+    assert hrv.timestamp == datetime(2026, 9, 21, 5, 10, tzinfo=UTC)
+
+
+async def test_malformed_score_retains_raw_for_retry(db_session):
+    class MalformedSleep(FixtureWhoopClient):
+        async def fetch_sleeps(self, start=None, end=None):
+            return [{**SLEEP_RECORD, "score": ["schema changed"]}]
+    user, integration = await make_whoop_user(db_session)
+    report = await run_user_sync_with_escalation(db_session, user, integration, MalformedSleep(), now=SYNC_NOW)
+    assert report is not None and report.raw_rows_unprocessed == 1
+    raw = await db_session.scalar(select(RawIngest).where(
+        RawIngest.user_id == user.id, RawIngest.payload_type == "sleep",
+    ))
+    assert raw.processed is False and raw.raw_json["score"] == ["schema changed"]
+
+
+async def test_refresh_retains_previous_refresh_token_if_rotation_omits_it():
+    from app.connectors.whoop.client import LiveWhoopClient
+    class OAuth:
+        async def refresh(self, token):
+            fresh = fresh_tokens()
+            fresh.refresh_token = None
+            return fresh
+    client = LiveWhoopClient(fresh_tokens(), oauth=OAuth())
+    await client.ensure_fresh(force=True)
+    assert client.tokens_out.refresh_token == "fixture-refresh"

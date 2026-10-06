@@ -1,5 +1,5 @@
-"""Alert model (MASTER_SPEC §6.4, §21). DB-backed, user-facing alerts — pushed
-to Telegram from Phase 3; distinct from application logs."""
+"""Alert model (MASTER_SPEC §6.4, §21). DB-backed user-facing alerts,
+distinct from application logs."""
 
 from datetime import datetime
 

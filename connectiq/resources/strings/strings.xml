@@ -135,7 +135,7 @@
     <!-- alerts -->
     <string id="AlertsNone">Nothing open</string>
     <string id="AlertsOpen">$1$ open</string>
-    <string id="AlertsAck">Acknowledge in web / Telegram</string>
+    <string id="AlertsAck">Acknowledge in web</string>
 
     <!-- body & upkeep -->
     <string id="BodyNone">Needs Apex server v3</string>

@@ -96,7 +96,7 @@ async def test_ai_and_training_models_round_trip(db_session):
     assert (
         await db_session.scalar(select(AiReport).where(AiReport.model_used.is_(None)))
     ) is not None
-    assert (await db_session.scalar(select(AgentToolCall))).session_id is None
+    assert (await db_session.get(AgentToolCall, tool_call.id)).session_id is None
 
 
 def test_parse_completion_plain_and_tools():

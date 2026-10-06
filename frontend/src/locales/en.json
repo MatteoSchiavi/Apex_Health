@@ -38,7 +38,8 @@
     "choose_theme": "Theme",
     "error": "Invalid email or password",
     "invite_error": "Invite code is not valid (unknown, already used, or expired)",
-    "welcome": "Welcome to Apex"
+    "welcome": "Welcome to Apex",
+    "remember_me": "Remember me on this device"
   },
   "landing": {
     "eyebrow": "PRIVATE PERFORMANCE SYSTEM",
@@ -985,7 +986,7 @@
     },
     "recipients": {
       "title": "Services and transfers",
-      "body": "Optional connections may exchange data with Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit, Telegram and Open-Meteo. Connected providers have their own privacy terms. Depending on configuration, AI prompts and selected context can go to an external chat model, text can go to OpenAI for embeddings, and voice notes can go to OpenAI for transcription. The operator may use encrypted offsite backups on Backblaze B2. The operator must confirm each enabled service, contract, location and any transfer outside the EEA before use.",
+      "body": "Optional connections may exchange data with Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit and Open-Meteo. Connected providers have their own privacy terms. Depending on configuration, AI prompts and selected context can go to an external chat model, text can go to OpenAI for embeddings, and voice notes can go to OpenAI for transcription. The operator may use encrypted offsite backups on Backblaze B2. The operator must confirm each enabled service, contract, location and any transfer outside the EEA before use.",
       "ai": "Configured AI processor and location:",
       "hosting": "Application hosting region:",
       "backup": "Backup storage location:",
@@ -1034,7 +1035,7 @@
     },
     "cookies_used": {
       "title": "Essential cookies",
-      "body": "After sign-in, Apex sets hcc_session for your session and csrf_token to protect actions against cross-site request forgery. The session cookie is HttpOnly; the CSRF cookie is readable by the app so it can send the matching security header. Both are SameSite=Lax and normally Secure on HTTPS. The session lifetime defaults to 12 hours with a 30-day absolute cap. These cookies are needed for signed-in access."
+      "body": "After sign-in, Apex sets hcc_session for your session and csrf_token to protect actions against cross-site request forgery. The session cookie is HttpOnly; the CSRF cookie is readable by the app so it can send the matching security header. Both are SameSite=Lax and normally Secure on HTTPS. The session lifetime defaults to 12 hours with a 30-day absolute cap. These cookies are needed for signed-in access. Without Remember me, these are browser-session cookies. With Remember me, both persist for a fixed 30 days; sign-out revokes the session immediately."
     },
     "local_storage": {
       "title": "Storage in your browser",
@@ -1113,5 +1114,46 @@
     "share": "Share",
     "add_to_home": "Add to Home Screen",
     "ios_steps": "Tap {{share}} in your browser, then choose {{add}}."
+  },
+  "sportView": {
+    "pace": "Pace",
+    "max_speed": "Maximum speed",
+    "slopes": "Recorded runs",
+    "zones": "Recorded zones",
+    "recorded_exercises": "Recorded exercises",
+    "no_exercises": "No completed exercise sets were recorded for this session.",
+    "body_map": "Muscle groups",
+    "body_map_note": "Highlights reflect recorded exercises, not heart-rate estimates.",
+    "all_groups": "All groups",
+    "sets": "Sets",
+    "reps": "Reps",
+    "volume": "Volume",
+    "partial_volume": "Weight recorded for {{known}} of {{total}} sets",
+    "previous": "Previous session",
+    "no_previous": "No previous session",
+    "delta": "Change",
+    "group_legs": "Legs",
+    "group_push": "Chest, shoulders and triceps",
+    "group_pull": "Back and biceps",
+    "group_core": "Core",
+    "group_full_body": "Full body",
+    "group_unknown": "Unspecified",
+    "zone_metric_hr": "Heart rate",
+    "zone_metric_power": "Power",
+    "set_details": "Set details",
+    "weight": "Weight",
+    "total": "Session totals"
+  },
+  "refinement": {
+    "previous_reading": "Change from the previous recorded reading",
+    "trend_unavailable": "Trend unavailable",
+    "recorded_trend": "Recorded readings over {{days}} days",
+    "quick_access": "Quick access",
+    "recorded_signals": "Recorded signals",
+    "signal_note": "Ranges compare the last reading with your own preceding 28 days from the same source and device. At least 14 recorded days are needed. They are not clinical limits; higher is not always better.",
+    "apple_import_note": "Import export.zip from Apple Health. This is a manual import; Apple requires an iPhone app with HealthKit permission for automatic sync. Apple SDNN is kept separate from overnight RMSSD.",
+    "coros_mcp_note": "Connect through your configured COROS MCP server using your own account token. Apex does not call the COROS API directly.",
+    "coros_mcp_setup": "The server administrator must first configure the MCP URL, activity tool and arguments. See docs/COROS_MCP.md.",
+    "coros_mcp_token": "Your MCP access token"
   }
 }

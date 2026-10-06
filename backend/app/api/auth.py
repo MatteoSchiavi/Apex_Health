@@ -14,9 +14,9 @@ from app.auth.invites import InviteError, redeem_invite
 from app.auth.service import (
     AuthError,
     authenticate,
-    cookie_max_age_seconds,
     create_session,
     destroy_session,
+    remembered_session_max_age_seconds,
     session_cookie_name,
 )
 from app.core.config import get_settings
@@ -54,19 +54,28 @@ async def login(
 
     user = await session.get(User, cred.user_id)
     assert user is not None  # FK guarantees existence
-    token, _ = await create_session(session, user.id)
+    token, _ = await create_session(session, user.id, remember_me=payload.remember_me)
 
     settings = get_settings()
     response.set_cookie(
         key=session_cookie_name(),
         value=token,
-        max_age=cookie_max_age_seconds(),
+        **(
+            {"max_age": remembered_session_max_age_seconds()}
+            if payload.remember_me
+            else {}
+        ),
         secure=settings.cookie_secure,  # §22.2 — TLS paths default; LAN-HTTP opts out via COOKIE_SECURE=false
         httponly=True,
         samesite="lax",
         path="/",
     )
-    set_csrf_cookie(response, mint_csrf_token(token), secure=settings.cookie_secure)
+    set_csrf_cookie(
+        response,
+        mint_csrf_token(token),
+        secure=settings.cookie_secure,
+        max_age=(remembered_session_max_age_seconds() if payload.remember_me else None),
+    )
     return LoginResponse(
         user_id=user.id,
         email=cred.email,
@@ -130,13 +139,17 @@ async def redeem(
     response.set_cookie(
         key=session_cookie_name(),
         value=token,
-        max_age=cookie_max_age_seconds(),
         secure=settings.cookie_secure,
         httponly=True,
         samesite="lax",
         path="/",
     )
-    set_csrf_cookie(response, mint_csrf_token(token), secure=settings.cookie_secure)
+    set_csrf_cookie(
+        response,
+        mint_csrf_token(token),
+        secure=settings.cookie_secure,
+        max_age=None,
+    )
     return LoginResponse(
         user_id=user.id,
         email=cred.email,

@@ -18,7 +18,7 @@ import {
 import { Tabs } from "../../components/Tabs";
 import { assess, METRIC_LABELS, useUnits } from "../../components/data";
 import { LabsPanel } from "./LabsPanel";
-import { MetricDirection, PersonalRange } from "../../components/MetricInterpretation";
+import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
 
 const GROUPS = [
   {
@@ -91,7 +91,7 @@ function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string
         </span>
       </div>
       <div className="metric-status">
-        {metricKey === "hrv_ms" && trend.data && !trend.isError ? <PersonalRange trend={trend.data} compact /> : <Badge tone={trend.isError ? "alert" : status.tone}>
+        {RANGE_METRICS.has(metricKey) && trend.data && !trend.isError ? <PersonalRange trend={trend.data} compact /> : <Badge tone={trend.isError ? "alert" : status.tone}>
           {trend.isError
             ? t("design.unavailable")
             : trend.isLoading

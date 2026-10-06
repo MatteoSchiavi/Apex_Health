@@ -132,7 +132,7 @@
     <!-- avvisi -->
     <string id="AlertsNone">Tutto chiuso</string>
     <string id="AlertsOpen">$1$ aperti</string>
-    <string id="AlertsAck">Conferma su web / Telegram</string>
+    <string id="AlertsAck">Conferma su web</string>
 
     <!-- corpo e cura -->
     <string id="BodyNone">Serve il server Apex v3</string>

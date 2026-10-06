@@ -61,7 +61,6 @@ docker compose -f infra/docker-compose.yml logs -f api   # (or worker, bot)
 | 403 on a write from curl | Send the `X-CSRF-Token` header (double-submit: value must match the `csrf_token` cookie) — the SPA does this automatically. |
 | Login blocked | 5 failed attempts / 15 min → temporary lockout; wait it out. |
 | Garmin connect rejected | Rate-limited to 3 connects/hour; re-check credentials/MFA; sync tokens refresh automatically afterwards. |
-| Bot silent | Start it: `--profile telegram up -d`; pairing is `/link` then `/confirm` with the code from the server log. |
 | Voice drafts stuck pending | Whisper runs on the worker — worker up + `OPENAI_API_KEY` set. |
 | Overview shows an older day | Working as designed: today is unsynced, the dashboard anchored to the most recent measured day and says so. |
 | Coach answers 429 | Daily AI budget gate — raise `DAILY_TOKEN_BUDGET_USD` or wait for the UTC reset. |

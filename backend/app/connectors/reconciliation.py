@@ -140,16 +140,20 @@ async def reconcile_activity(
     view (a partial Garmin row merged with a full Technogym row should
     become 'full', not stay 'partial').
     """
+    incoming_is_main = await selected_main_provider(session, existing.user_id) == source
+    preserve_main = await activity_has_other_selected_main(session, existing, source)
     merged_fields: dict[str, str] = {}  # field_name → source that supplied the value
     for field, new_val in incoming_values.items():
         if field in _IDENTITY_FIELDS:
+            if incoming_is_main and field in {"start_time", "start_tz_offset_minutes", "local_date"} and new_val is not None:
+                setattr(existing, field, new_val)
             continue
         current = getattr(existing, field)
         if current is None:
             if new_val is not None:
                 setattr(existing, field, new_val)  # fill the gap
                 merged_fields[field] = source
-        elif new_val is not None and FIELD_PREFERENCE.get(field) == source:
+        elif new_val is not None and (incoming_is_main or not preserve_main and FIELD_PREFERENCE.get(field) == source):
             setattr(existing, field, new_val)  # preferred source wins the conflict
             merged_fields[field] = source
         # else: keep the existing value
@@ -176,6 +180,34 @@ async def reconcile_activity(
         )
     )
     return ReconciliationOutcome(activity_id=existing.id, reconciled=True)
+
+
+async def selected_main_provider(session: AsyncSession, user_id: int) -> str | None:
+    """Explicit account choice only; absence preserves legacy field preferences."""
+    from app.models.integration import Integration
+    from app.models.user import User
+
+    user = await session.get(User, user_id)
+    if user is None or user.main_integration_id is None:
+        return None
+    integration = await session.get(Integration, user.main_integration_id)
+    if integration is None or integration.user_id != user_id:
+        return None
+    return integration.provider
+
+
+async def activity_has_other_selected_main(
+    session: AsyncSession, activity: Activity, incoming_source: str
+) -> bool:
+    """A secondary may fill gaps on a chosen main's linked effort, never replace it."""
+    main = await selected_main_provider(session, activity.user_id)
+    if main is None or main == incoming_source:
+        return False
+    return await session.scalar(select(ActivitySourceLink.id).where(
+        ActivitySourceLink.user_id == activity.user_id,
+        ActivitySourceLink.activity_id == activity.id,
+        ActivitySourceLink.source == main,
+    ).limit(1)) is not None
 
 
 def _recompute_completeness(existing: Activity, incoming_values: dict) -> str:

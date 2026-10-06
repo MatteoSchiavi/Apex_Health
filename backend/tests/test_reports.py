@@ -1,7 +1,7 @@
 """Report tests (§9.2, §19, Phase 5): templated daily summaries persist as
 ai_reports with model_used=NULL (no LLM); weekly/monthly reports run the
 POWERFUL tier over a §8.2 data pack (query calls audited with session_id
-NULL), are idempotent per period, and push to linked chats."""
+NULL), and are idempotent per period."""
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -15,13 +15,12 @@ from app.core.llm import LLMResponse
 from app.models.activity import Activity, Discipline
 from app.models.ai import AgentToolCall, AiReport, Embedding
 from app.models.features import DailyFeature
-from app.models.telegram import TelegramLink
 from app.models.user import AuthCredential
 from app.reports.daily import build_daily_summary, upsert_daily_report
 from app.reports.periodic import upsert_periodic_report
 from app.tasks.ai_reports import _dispatch_daily, _dispatch_periodic
 from tests.helpers.ai import FixtureAgentLLMClient, FixtureEmbeddingClient
-from tests.helpers.telegram import FixtureTelegramClient
+from tests.helpers.domain_db import clean_domain_tables  # noqa: F401
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -37,7 +36,7 @@ async def _isolate_report_tables():
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE lab_observations, lab_feed_states, ai_reports, agent_tool_calls, token_usage, telegram_links "
+                "TRUNCATE lab_observations, lab_feed_states, ai_reports, agent_tool_calls, token_usage "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -134,9 +133,8 @@ async def test_daily_summary_task_dispatch(db_session):
 
 
 async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
-    """§23: weekly/monthly reports are batch artifacts — always powerful tier,
-    data pack via the §8.2 query functions, query calls audited with
-    session_id NULL, one token_usage row, pushed to linked chats."""
+    """§23: reports are batch artifacts — powerful tier, audited data pack,
+    one token_usage row, and idempotent persistence."""
     owner = await _owner_id(db_session)
     await _seed_user_and_data(db_session, owner)
 
@@ -155,16 +153,11 @@ async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
             training_load=310,
         )
     )
-    db_session.add(TelegramLink(user_id=owner, chat_id=888))
     await db_session.commit()
 
-    client = FixtureTelegramClient()
     monkeypatch.setattr(
         "app.core.llm.get_settings",
         lambda: SimpleNamespace(glm_api_key="fixture", glm_api_base="http://x", llm_provider_cheap="c", llm_provider_powerful="p"),
-    )
-    monkeypatch.setattr(
-        "app.connectors.telegram.client.LiveTelegramClient", lambda bot_token: client
     )
     llm = FixtureAgentLLMClient(
         [LLMResponse(content="# Weekly report\nAll good.", model="glm-5.2", tokens_in=4000, tokens_out=900)]
@@ -193,24 +186,19 @@ async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
     assert again.id == row.id and len(llm.calls) == before
 
 
-async def test_weekly_task_dispatch_and_push(db_session, monkeypatch):
-    """The §19 weekly dispatch (Monday 06:00 local) generates and pushes."""
+async def test_weekly_task_dispatch_persists_report(db_session, monkeypatch):
+    """The §19 weekly dispatch (Monday 06:00 local) persists a report."""
     owner = await _owner_id(db_session)
     await _seed_user_and_data(db_session, owner)
 
-    client = FixtureTelegramClient()
     embeddings = FixtureEmbeddingClient()
     monkeypatch.setattr(
         "app.tasks.ai_reports.get_settings",
         lambda: SimpleNamespace(
-            glm_api_key="fixture", telegram_bot_token="fixture-token", openai_api_key="fixture"
+            glm_api_key="fixture", openai_api_key="fixture"
         ),
     )
     monkeypatch.setattr("app.core.embeddings.build_embedding_client", lambda: embeddings)
-    monkeypatch.setattr(
-        "app.connectors.telegram.client.LiveTelegramClient", lambda bot_token: client
-    )
-    db_session.add(TelegramLink(user_id=owner, chat_id=999))
     await db_session.commit()
 
     # inject the fixture LLM as the production client for the task
@@ -224,8 +212,6 @@ async def test_weekly_task_dispatch_and_push(db_session, monkeypatch):
     # Monday 2025-03-10 06:00 Rome = 05:00 UTC; period = Mon 03-03 .. Sun 03-09
     result = await _dispatch_periodic("weekly", now_iso="2025-03-10T05:00:00+00:00")
     assert result[str(owner)] == "weekly:2025-03-03"
-    assert [m["chat_id"] for m in client.sent_messages] == [999]
-    assert "Weekly: consistent block." in client.sent_messages[0]["text"]
 
     # the report content was embedded into the search corpus (§6.2/§8.3)
     report_rows = (await db_session.scalars(select(Embedding))).all()

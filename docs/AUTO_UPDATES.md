@@ -23,8 +23,10 @@ A superseded build is not promoted when main has already advanced.
 The server verifies the source/revision labels, pins the pulled image ID,
 checks the existing API/worker, stops application processes gracefully, creates
 and decrypts an encrypted database backup, runs migrations, then checks the
-new API and an actual Celery round trip. The optional running Telegram bot is
-updated too. Download/authentication/preflight failures leave the app running.
+new API and an actual Celery round trip. Download/authentication/preflight
+failures leave the app running. When updating an existing installation, the
+updater stops and removes that installation's legacy bot container by its
+Compose project and service labels after the new API and worker are healthy.
 
 Database/Redis containers and volumes, `.env`, encryption keys and the host Git
 checkout are retained. Infrastructure, environment-variable and updater-script
@@ -60,6 +62,10 @@ every provider, account or existing production database works with a release.
    Back up this key separately along with `ENCRYPTION_KEY` and `SESSION_SECRET`.
    The updater will refuse to deploy without encrypted backups. Never commit
    keys or paste them into chat.
+
+   If the old stack used the Telegram bot, remove `TELEGRAM_BOT_TOKEN` from
+   `.env`. The next updater start removes the now-orphaned bot container and
+   recreates the API/worker without that credential.
 
 4. Log in if the package is private. `docker login` prompts for your read-only
    package credential; it is not put into shell history:

@@ -5,7 +5,8 @@ import pytest
 
 from app.api.metrics import metric_trend
 from app.models.lab import AthleteEntry
-from app.models.wellness import SleepSession
+from app.models.wellness import DailyBiometric, SleepSession
+from app.models.integration import Integration
 from app.services.evidence import record_observation
 from tests.test_garmin_sync import make_garmin_user
 
@@ -71,3 +72,40 @@ async def test_sleep_metrics_select_the_same_whole_night(db_session):
     assert duration.stats["latest"] == 8.5
     assert deep.stats["latest"] == 1
     assert score.stats["latest"] == 80
+
+
+async def test_resting_hr_range_prefers_main_source_without_mixing_devices(db_session):
+    user, _ = await make_garmin_user(db_session)
+    main = Integration(user_id=user.id, provider="whoop", status="active")
+    db_session.add(main)
+    await db_session.flush()
+    user.main_integration_id = main.id
+    for offset in range(15):
+        day = END - timedelta(days=offset)
+        measured = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=7)
+        for provider, value in (("whoop", 55 if offset else 70), ("garmin", 100)):
+            await record_observation(
+                db_session, user_id=user.id, metric="resting_hr", value=value, unit="bpm",
+                origin=provider, source_record_id=f"{provider}:rhr:{day}", measured_at=measured,
+                timezone=user.timezone, fetched_at=measured,
+                metadata={"device_id": provider, "reading_context": "overnight"},
+            )
+    result = await metric_trend("resting_hr", user=user, session=db_session, days=7, end=END)
+    assert result.reference_range["origin"] == "whoop"
+    assert result.reference_range["sample_count"] == 14
+    assert result.reference_range["empirical_range"] == [55, 55]
+    assert result.stats["delta_30d"] == 15
+    assert len(result.points) == 7
+
+
+async def test_delta_uses_prior_calendar_days_even_for_a_short_view(db_session):
+    user, _ = await make_garmin_user(db_session)
+    for offset in range(8):
+        db_session.add(DailyBiometric(user_id=user.id, date=END - timedelta(days=offset),
+                                      vo2max=70 if offset == 0 else 50))
+    db_session.add(DailyBiometric(user_id=user.id, date=END - timedelta(days=60), vo2max=10))
+    await db_session.flush()
+    result = await metric_trend("vo2max", user=user, session=db_session, days=7, end=END)
+    assert result.stats["count"] == 7
+    assert result.stats["delta_30d"] == 20
+    assert len(result.points) == 7

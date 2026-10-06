@@ -13,9 +13,7 @@ from app.medical.lifestyle import (
     record_supplement_intake,
 )
 from app.models.medical import NutritionLog, SupplementLog
-from tests.helpers.telegram import (
-    clean_bot_tables,  # noqa: F401 — autouse per-test truncate
-)
+from tests.helpers.domain_db import clean_domain_tables  # noqa: F401 — autouse per-test truncate
 
 
 async def _owner_id(db_session) -> int:
@@ -30,7 +28,7 @@ async def test_nutrition_log_roundtrip(db_session):
         db_session,
         user_id=user_id,
         timestamp=datetime(2025, 5, 2, 13, 30, tzinfo=UTC),
-        source="telegram_text",
+        source="web",
         calories=1850,
         protein_g=140.5,
         carbs_g=180.0,
@@ -43,7 +41,7 @@ async def test_nutrition_log_roundtrip(db_session):
     assert fresh.calories == 1850
     assert float(fresh.protein_g) == 140.5
     assert float(fresh.caffeine_mg) == 180
-    assert fresh.source == "telegram_text"
+    assert fresh.source == "web"
 
 
 async def test_supplement_protocol_lifecycle_and_adherence(db_session):

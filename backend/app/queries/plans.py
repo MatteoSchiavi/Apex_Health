@@ -2,7 +2,7 @@
 
 Write discipline: the agent's propose_* tools only ever create DRAFT rows —
 a plan starts at status='draft' (§6.4 CHECK), a supplement proposal at
-active=false — and Telegram inline buttons (§8.5) drive confirm/reject.
+active=false — and the application drives confirm/reject.
 Only a 'confirmed' plan may later sync to Technogym (§11).
 """
 
@@ -86,8 +86,8 @@ async def get_plan_sessions_for_day(
     session: AsyncSession, user_id: int, day: date
 ) -> list[dict]:
     """Sessions scheduled for `day` under the account's CONFIRMED/ACTIVE plans
-    (§11b fallback: '/plan today' in Telegram is how the plan reaches the user
-    while prescription-push awaits the real Technogym access tier, §24).
+    (§11b fallback while prescription-push awaits the real Technogym access
+    tier, §24).
     Latest plan wins per plan id ordering; sessions ordered by id."""
     rows = (
         await session.execute(
@@ -155,7 +155,7 @@ async def create_plan_draft(
 
 
 async def confirm_plan_draft(session: AsyncSession, user_id: int, plan_id: int) -> str:
-    """✅ Confirm (Telegram inline button, §8.5): draft → confirmed. Scoped to
+    """✅ Confirm (§8.5): draft → confirmed. Scoped to
     the linked user — a foreign plan id is just 'not found'."""
     plan = await session.scalar(select(TrainingPlan).where(
         TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id,

@@ -27,9 +27,9 @@ curl http://localhost:8000/health
 docker compose -f infra/docker-compose.yml exec api python tools/restore_drill.py
 ```
 
-## Step 4 — Remote access + bot
+## Step 4 — Remote access
 
-Apply [Remote access](06-Remote-Access.md) on the server, and `--profile telegram up -d` if you use the bot. If you have existing data to carry over, take a backup on the old host, copy the `backups/` artifact over any channel (it's encrypted), and restore with `tools/restore_backup.py` into the new database.
+Apply [Remote access](06-Remote-Access.md) on the server. If you have existing data to carry over, take a backup on the old host, copy the `backups/` artifact over any channel (it's encrypted), and restore with `tools/restore_backup.py` into the new database.
 
 ## Boot resilience
 

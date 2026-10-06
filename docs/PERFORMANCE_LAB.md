@@ -70,7 +70,7 @@ Observation and tool-audit retention are opt-in preferences for those two stores
 | Experiment engine | Defined windows/check-ins/confounders, matched observational associations | Prospective protocols and causal identification; associations do not establish causation |
 | Plan-to-device closure | Local receipts and honest workout-description export; existing explicit Technogym path retained | Official Garmin Training API delivery, acceptance/sync receipts and supported compensation |
 | Documents and search | Encrypted originals, explicit reviewed excerpts, private lexical search | OCR and sophisticated private semantic indexing; no remote embedding is required for the shipped path |
-| Notifications | In-app durable rules and fatigue controls | Opt-in per-channel consent/verification and new email/push/Telegram delivery adapters |
+| Notifications | In-app durable rules and fatigue controls | Opt-in per-channel consent/verification and new email/push delivery adapters |
 | Agent runtime | Bounded calls, owned audits, serialized drafts and durable analysis/repair jobs | Durable checkpoint/resume of an entire interrupted LLM conversation; atomic spend reservations; live-model evaluation telemetry |
 | Localization/privacy | Bilingual UI/decision behavior, export/deletion/retention controls | Complete translation of every analytical/provider sentence and coordinated upstream/backup erasure |
 

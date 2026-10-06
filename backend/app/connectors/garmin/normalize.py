@@ -39,8 +39,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.connectors.garmin import fetch
 from app.connectors.garmin.type_map import resolve_type_key
 from app.connectors.reconciliation import (
+    activity_has_other_selected_main,
     find_reconcilable_activity,
     reconcile_activity,
+    selected_main_provider,
 )
 from app.connectors.validation import (
     valid_body_battery,
@@ -246,8 +248,9 @@ async def _upsert_activity(
             raise NormalizationError(f"activity link {external_id} points at missing row")
         # §17 upsert law: this source's own row updates in place; a populated
         # field is never degraded to NULL (§12 floor rule, applied to re-syncs).
+        preserve_main = await activity_has_other_selected_main(session, activity, fetch.SOURCE)
         for key, val in values.items():
-            if val is not None:
+            if val is not None and (not preserve_main or getattr(activity, key) is None):
                 setattr(activity, key, val)
         link.raw_ingest_id = raw.id
     else:
@@ -295,6 +298,15 @@ async def _upsert_activity(
     source_metrics = dict(activity.source_metrics or {})
     garmin_metrics = dict(source_metrics.get("garmin") or {})
     garmin_metrics["type_key"] = type_key
+    # Preserve recorded provider summary fields in their original units. The
+    # presentation layer only displays a sport-specific field when it exists.
+    for upstream, canonical in (("averageSpeed", "avg_speed_m_s"), ("maxSpeed", "max_speed_m_s")):
+        value = _num(payload.get(upstream))
+        if value is not None and value >= 0:
+            garmin_metrics[canonical] = value
+    cadence = payload.get("averageBikingCadenceInRevPerMinute") if type_key in {"cycling", "mountain_biking", "indoor_cycling", "gravel_cycling"} else payload.get("averageRunCadence") if type_key in {"running", "trail_running", "treadmill_running"} else None
+    if (value := _num(cadence)) is not None and value >= 0:
+        garmin_metrics["avg_cadence"] = value
     source_metrics["garmin"] = garmin_metrics
     activity.source_metrics = source_metrics
 
@@ -320,7 +332,8 @@ async def _upsert_activity(
         if bio is None:
             bio = DailyBiometric(user_id=raw.user_id, date=local_date)
             session.add(bio)
-        bio.vo2max = vo2
+        if await _can_write_biometric(session, bio, "vo2max"):
+            bio.vo2max = vo2
 
 
 async def _upsert_streams(
@@ -647,6 +660,17 @@ async def _upsert_biometrics(
         existing = DailyBiometric(user_id=raw.user_id, date=day)
         session.add(existing)
     for key, val in values.items():
-        if val is not None:
+        if val is not None and await _can_write_biometric(session, existing, key):
             setattr(existing, key, val)
     stats.biometrics_upserted += 1
+
+
+async def _can_write_biometric(session: AsyncSession, row: DailyBiometric, field: str) -> bool:
+    main = await selected_main_provider(session, row.user_id)
+    if main is None or main == fetch.SOURCE or getattr(row, field) is None:
+        return True
+    # WHOOP does not measure these Garmin fields; its selection must not
+    # freeze steps, floors, body fat, or VO2max supplied only by the watch.
+    if main == "whoop" and field not in {"resting_hr", "spo2_avg", "weight_kg"}:
+        return True
+    return False

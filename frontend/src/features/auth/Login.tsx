@@ -13,6 +13,7 @@ export default function Login() {
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -20,7 +21,7 @@ export default function Login() {
     setBusy(true);
     setError("");
     try {
-      await api.post("/auth/login", { email, password });
+      await api.post("/auth/login", { email, password, remember_me: rememberMe });
       qc.clear();
       useUi.getState().setMe(null);
       const from = location.state?.from;
@@ -56,6 +57,15 @@ export default function Login() {
           autoComplete="username"
           required
         />
+        <label className="flex items-center gap-3 text-[14px] text-muted">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(event) => setRememberMe(event.target.checked)}
+            className="h-4 w-4 accent-accent"
+          />
+          {t("auth.remember_me")}
+        </label>
         <Input
           label={t("auth.password")}
           type="password"

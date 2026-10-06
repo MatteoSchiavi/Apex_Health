@@ -4,7 +4,7 @@
 # worker (Celery worker + embedded beat — beat_schedule lives in
 # app/tasks/celery_app.py, §19: Garmin/Whoop/Strava/Technogym syncs every 6h,
 # nightly feature engine 03:00 user-local, gear accumulation, AI budget
-# check, nightly encrypted backup, reports), bot (Telegram long polling, §10.1).
+# check, nightly encrypted backup, reports).
 # The production web UI is built from frontend/ into the API image.
 #
 # Sizing: memory limits are tuned for the owner's 8 GB homeserver (multi-user
@@ -31,7 +31,7 @@ services:
     #   - effective_cache_size=1536MB: tells the planner the OS cache exists.
     #   - work_mem=8MB: keeps per-sort/hash operations bounded under concurrency.
     #   - maintenance_work_mem=128MB: vacuum/index builds complete fast enough.
-    #   - max_connections=40: 2 uvicorn (10 each) + Celery (4) + bot (1) + slack.
+    #   - max_connections=40: 2 uvicorn (10 each) + Celery (4) + slack.
     #   - wal_compression=on: cuts WAL churn from bulk deletes (D-01 retention).
     #   - checkpoint_completion_target=0.9: spread checkpoints, reduce I/O spikes.
     #   - autovacuum_vacuum_cost_delay=2ms: don't starve foreground ops.
@@ -192,34 +192,6 @@ services:
       - ../backups:/app/backups
     mem_limit: 1536m
     mem_reservation: 512m
-    logging: *default_logging
-
-  # §10.1: long polling — outbound-only, no public port, no webhook secret.
-  # Behind a profile so a stack without TELEGRAM_BOT_TOKEN boots fully
-  # healthy instead of crash-looping the bot container:
-  #   docker compose -f infra/docker-compose.yml --profile telegram up -d
-  bot:
-    image: apex-health-backend:local
-    build:
-      context: ..
-      dockerfile: backend/Dockerfile
-      args: *app_build_args
-    command: python -m app.connectors.telegram.polling
-    profiles: ["telegram"]
-    env_file: ../.env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hcc}:${POSTGRES_PASSWORD:-hcc}@db:5432/${POSTGRES_DB:-hcc}
-      REDIS_URL: redis://redis:6379/0
-      BACKUP_DIR: /app/backups
-      ENVIRONMENT: ${ENVIRONMENT:-prod}
-    depends_on:
-      api:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    mem_limit: 512m
-    mem_reservation: 128m
     logging: *default_logging
 
 volumes:

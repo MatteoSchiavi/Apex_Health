@@ -2,8 +2,8 @@
 planned_sessions.
 
 Mapped in Phase 5 — the agent's write tools (§8.3 propose_training_plan)
-create these as DRAFTS (§8.5): confirmation happens via a Telegram inline
-button, never inside the agent loop. Tables exist since migration 0001.
+create these as DRAFTS (§8.5): confirmation happens in the application, never
+inside the agent loop. Tables exist since migration 0001.
 """
 
 from datetime import date, datetime

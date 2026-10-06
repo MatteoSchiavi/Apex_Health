@@ -138,14 +138,6 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
         )
 
     results: dict[str, str] = {}
-    from app.connectors.telegram.alerts import notify_user
-
-    telegram = None
-    if settings.telegram_bot_token:
-        from app.connectors.telegram.client import LiveTelegramClient
-
-        telegram = LiveTelegramClient(settings.telegram_bot_token)
-
     embeddings_client = None
 
     for user, local_now in targets:
@@ -166,11 +158,6 @@ async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> di
                 results[str(user.id)] = "no-data"
                 continue
             results[str(user.id)] = f"{report_type}:{row.period_start.isoformat()}"
-            if telegram is not None:
-                header = f"📊 Your {report_type} report ({start.isoformat()} — {end.isoformat()}):\n\n"
-                await notify_user(
-                    sessionmaker, telegram, user.id, header + row.content_md
-                )
         except Exception:
             logger.exception("%s report failed for user %s", report_type, user.id)
             results[str(user.id)] = "failed"

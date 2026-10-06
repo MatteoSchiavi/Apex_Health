@@ -16,6 +16,7 @@ import {
   Segmented,
   StatPod,
   SportIcon,
+  Sparkline,
   ZoneBar,
   fmtNum,
   fmtHours,
@@ -24,6 +25,8 @@ import {
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
 import { localDay, shiftDay, useUnits } from "../../components/data";
+import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
+import { METRIC_LABELS } from "../../components/data";
 import { DecisionCard } from "../lab/DecisionCard";
 import { useState } from "react";
 
@@ -96,6 +99,28 @@ function LoadPanel({ o }: { o: Overview }) {
     </Card>
   );
 }
+function Signal({ metric, fallback, unit, date, days }: { metric: string; fallback: number | null; unit: string; date: string; days: string }) {
+  const { t } = useTranslation();
+  const trend = useQuery({
+    queryKey: ["metric", metric, days, date],
+    queryFn: () => api.get<MetricTrend>(`/metrics/${metric}?days=${days}&end=${date}`),
+  });
+  const data = trend.data;
+  const value = data?.points.find((p) => p.date === date)?.value ?? fallback;
+  const byDate = new Map(data?.points.map((p) => [p.date, p.value]) ?? []);
+  const chart = Array.from({ length: Number(days) }, (_, i) => byDate.get(shiftDay(date, i - Number(days) + 1)) ?? null);
+  const label = t(METRIC_LABELS[metric]);
+  const latest = data?.points.filter((p) => p.value != null).at(-1);
+  return <Card className="!p-4 sm:!p-5">
+    <Link to={`/app/biometrics/${metric}`} className="flex items-center justify-between text-[13px] text-ink2"><span>{label}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+    <div className="my-3 flex items-baseline gap-2"><span className="num text-[28px] sm:text-[34px] font-medium tracking-[-.045em]">{unit === "h" ? fmtHours(value == null ? null : value * 3600) : fmtNum(value, metric === "spo2" || metric === "respiration" || metric === "vo2max" ? 1 : 0)}</span>{unit !== "h" && <span className="text-[12px] text-muted">{unit}</span>}</div>
+    {trend.isError ? <span className="text-[12px] text-muted">{t("refinement.trend_unavailable")}</span> : RANGE_METRICS.has(metric) && value != null && data ? <PersonalRange compact trend={latest?.date === date ? data : { ...data, points: [{ date, value }], reference_range: null }} /> : <>
+      <div role="img" aria-label={t("refinement.recorded_trend", { days })}><Sparkline points={chart} height={26} color="var(--c-text-muted)" /></div>
+      {data && <div className="mt-2"><MetricDirection metric={metric} points={data.points} /></div>}
+    </>}
+  </Card>;
+}
+
 export default function OverviewPage() {
   const { t } = useTranslation();
   const units = useUnits();
@@ -105,451 +130,70 @@ export default function OverviewPage() {
   const [range, setRange] = useState("7");
   const overview = useQuery({
     queryKey: ["overview", date ?? "latest"],
-    queryFn: () =>
-      api.get<Overview>("/dashboard/overview" + (date ? "?date=" + date : "")),
+    queryFn: () => api.get<Overview>("/dashboard/overview" + (date ? "?date=" + date : "")),
     refetchInterval: 300_000,
   });
-  const o = overview.data;
-  const readiness = useQuery({
-    queryKey: ["metric", "readiness", range, o?.date],
-    queryFn: () =>
-      api.get<MetricTrend>(
-        "/metrics/readiness?days=" + range + "&end=" + o!.date,
-      ),
-    enabled: !!o,
-  });
   if (overview.isLoading) return <Loading />;
-  if (overview.isError || !o) return <ErrorNote />;
-
-  const hasData =
-    [
-      o.readiness.value,
-      o.recovery.value,
-      o.sleep_hours,
-      o.resting_hr,
-      o.steps,
-      o.hrv_ms,
-      o.weight_kg,
-      o.acute_load,
-    ].some((v) => v != null) ||
-    o.activities.length > 0 ||
-    !!o.sleep;
-  const signalRows = [
-    {
-      label: t("overview.resting_hr"),
-      value: fmtNum(o.resting_hr),
-      unit: "bpm",
-      delta: o.resting_hr_delta_7d,
-      to: "resting_hr",
-    },
-    {
-      label: t("design.hrv_raw"),
-      value: fmtNum(o.hrv_ms),
-      unit: "ms",
-      sub:
-        o.hrv_baseline_ms != null
-          ? t("design.baseline_value", { value: fmtNum(o.hrv_baseline_ms) })
-          : t("design.baseline_missing"),
-      to: "hrv_ms",
-    },
-    {
-      label: t("overview.spo2"),
-      value: fmtNum(o.spo2_avg, 1),
-      unit: "%",
-      delta: o.spo2_delta_7d,
-      to: "spo2",
-    },
-    {
-      label: t("overview.respiration"),
-      value: fmtNum(o.respiration_avg, 1),
-      unit: "br/min",
-      to: "respiration",
-    },
-    {
-      label: t("biometrics.weight"),
-      value: fmtNum(units.weight(o.weight_kg), 1),
-      unit: units.weightUnit,
-      to: "weight",
-    },
-    {
-      label: t("biometrics.vo2max"),
-      value: fmtNum(o.vo2max, 1),
-      unit: "ml/kg/min",
-      to: "vo2max",
-    },
-  ];
-  const stageParts = o.sleep
-    ? [
-        {
-          key: "deep",
-          value: o.sleep.stages.deep_s ?? 0,
-          color: "var(--c-stage-deep)",
-        },
-        {
-          key: "rem",
-          value: o.sleep.stages.rem_s ?? 0,
-          color: "var(--c-stage-rem)",
-        },
-        {
-          key: "core",
-          value: o.sleep.stages.light_s ?? 0,
-          color: "var(--c-stage-core)",
-        },
-        {
-          key: "awake",
-          value: o.sleep.stages.awake_s ?? 0,
-          color: "var(--c-stage-awake)",
-        },
-      ]
-    : [];
+  if (overview.isError || !overview.data) return <ErrorNote />;
+  const o = overview.data;
   const today = localDay(me?.timezone);
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={t("design.overview")}
-        subtitle={t("design.overview_sub")}
-        actions={
-          <div className="flex items-center gap-3">
-            <button
-              className="p-2 text-muted hover:text-ink"
-              aria-label={t("common.prev_day")}
-              onClick={() => setParams({ date: shiftDay(o.date, -1) })}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="num text-[13px]">
-              {new Date(o.date + "T12:00:00").toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </span>
-            <button
-              disabled={o.date >= today}
-              className="p-2 text-muted hover:text-ink disabled:opacity-30"
-              aria-label={t("common.next_day")}
-              onClick={() => setParams({ date: shiftDay(o.date, 1) })}
-            >
-              <ChevronRight size={18} />
-            </button>
-            {date && (
-              <button onClick={() => setParams({})} className="text-link">
-                {t("common.today")}
-              </button>
-            )}
-          </div>
-        }
-      />
+  const signals = [
+    { metric: "hrv_ms", fallback: o.hrv_ms, unit: "ms" },
+    { metric: "resting_hr", fallback: o.resting_hr, unit: "bpm" },
+    { metric: "sleep_duration", fallback: o.sleep_hours, unit: "h" },
+    { metric: "spo2", fallback: o.spo2_avg, unit: "%" },
+    { metric: "respiration", fallback: o.respiration_avg, unit: "br/min" },
+    { metric: "vo2max", fallback: o.vo2max, unit: "ml/kg/min" },
+  ];
+  const body = [
+    { key: "weight", value: units.weight(o.weight_kg), unit: units.weightUnit },
+    { key: "body_fat", value: o.body_fat_pct, unit: "%" },
+    { key: "steps", value: o.steps, unit: "" },
+    { key: "floors", value: o.floors, unit: "" },
+    { key: "hydration", value: units.metric("hydration", o.hydration_ml ?? null), unit: units.metricUnit("hydration", "ml") },
+  ];
+  const hasData = signals.some((r) => r.fallback != null) || body.some((r) => r.value != null) || o.activities.length > 0 || !!o.sleep || o.readiness.value != null || o.recovery.value != null || o.strain.value != null || o.acute_load != null;
+  const stageParts = o.sleep ? [
+    { key: "deep", value: o.sleep.stages.deep_s ?? 0, color: "var(--c-stage-deep)" },
+    { key: "rem", value: o.sleep.stages.rem_s ?? 0, color: "var(--c-stage-rem)" },
+    { key: "core", value: o.sleep.stages.light_s ?? 0, color: "var(--c-stage-core)" },
+    { key: "awake", value: o.sleep.stages.awake_s ?? 0, color: "var(--c-stage-awake)" },
+  ] : [];
+  return <div className="flex flex-col gap-6">
+    <PageHeader title={t("design.overview")} subtitle={t("design.overview_sub")} actions={<div className="flex items-center gap-3">
+      <button className="p-2 text-muted hover:text-ink" aria-label={t("common.prev_day")} onClick={() => setParams({ date: shiftDay(o.date, -1) })}><ChevronLeft size={18} /></button>
+      <span className="num text-[13px]">{new Date(o.date + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+      <button disabled={o.date >= today} className="p-2 text-muted hover:text-ink disabled:opacity-30" aria-label={t("common.next_day")} onClick={() => setParams({ date: shiftDay(o.date, 1) })}><ChevronRight size={18} /></button>
+      {date && <button onClick={() => setParams({})} className="text-link">{t("common.today")}</button>}
+    </div>} />
+    <nav aria-label={t("refinement.quick_access")} className="flex flex-wrap gap-x-6 gap-y-3 border-b border-hairline pb-4 text-[13px]">
+      {[{ to: "/app/calendar", key: "lab.calendar" }, { to: "/app/training", key: "design.view_training" }, { to: "/app/biometrics?tab=labs", key: "biometrics.labs" }, { to: "/app/coach", key: "nav.coach" }, { to: "/app/settings?tab=devices", key: "settings.devices" }].map((link) => <More key={link.to} to={link.to}>{t(link.key)}</More>)}
+    </nav>
+    {!o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
+    {!hasData ? <Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card> : <>
+      {!!o.alerts.length && <div className="flex flex-col gap-2" role="status">{o.alerts.map((a, i) => <div key={i} className="flex items-start gap-4 border-l-2 border-alert px-5 py-3 text-[13px]"><Badge tone={a.severity === "critical" || a.severity === "high" ? "alert" : "warning"}>{a.severity}</Badge><span>{a.message}</span></div>)}</div>}
+      <section aria-label={t("refinement.recorded_signals")}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
+        <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
+      </section>
       {!date && <DecisionCard />}
-      {!o.anchor_is_today && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning bg-warningSoft px-4 py-3 text-[13px]">
-          <span>{t("overview.history_notice", { date: o.date })}</span>
-          <Badge tone="warning">{t("design.history")}</Badge>
-        </div>
-      )}
-      {!hasData ? (
-        <Card>
-          <Empty
-            action={
-              <More to="/app/settings?tab=devices">
-                {t("overview.connect_cta")}
-              </More>
-            }
-          >
-            {t("design.connect_empty")}
-          </Empty>
+      <div className="grid gap-6 xl:grid-cols-[1fr_1.25fr]">
+        <Card><CardHeader title={t("design.body_activity")} right={<More to="/app/biometrics?tab=body">{t("design.all_metrics")}</More>} />
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">{body.map((b) => <Link key={b.key} to={`/app/biometrics/${b.key}`}><StatPod label={t(METRIC_LABELS[b.key])} value={fmtNum(b.value, ["steps", "floors", "hydration"].includes(b.key) ? 0 : 1)} unit={b.unit} /></Link>)}</div>
+          <details className="mt-5 border-t border-hairline pt-4"><summary className="cursor-pointer text-[13px] text-muted">{t("metricView.estimates")}</summary><p className="my-3 text-[12px] text-muted">{t("metricView.estimates_note")}</p><div className="grid grid-cols-3 gap-3">{[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }].map((e) => <Link key={e.key} to={`/app/biometrics/${e.key}`}><StatPod label={t(METRIC_LABELS[e.key])} value={fmtNum(e.score.value)} unit="/100" /><DeltaChip delta={e.score.delta_7d} compact /></Link>)}</div></details>
         </Card>
-      ) : (
-        <>
-          {o.alerts.length > 0 && (
-            <div className="flex flex-col gap-2" role="status">
-              {o.alerts.map((a, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-4 bg-alertSoft px-5 py-4 text-[13px]"
-                >
-                  <Badge
-                    tone={
-                      a.severity === "critical" || a.severity === "high"
-                        ? "alert"
-                        : "warning"
-                    }
-                  >
-                    {a.severity}
-                  </Badge>
-                  <span>{a.message}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="grid gap-6 xl:grid-cols-[1.65fr_1fr]">
-            <Card className="!p-6 md:!p-8">
-              <CardHeader
-                title={t("lab.legacy_readiness")}
-                right={<Badge>{t("lab.heuristic")}</Badge>}
-              />
-              <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-                <div className="flex items-baseline gap-3">
-                  <span className="hero-number num">
-                    {fmtNum(o.readiness.value)}
-                  </span>
-                  <span className="text-[18px] text-muted">/ 100</span>
-                </div>
-                <div className="pb-2">
-                  <DeltaChip
-                    delta={o.readiness.delta_7d}
-                    unit="pts"
-                    suffix={t("design.vs_previous7")}
-                  />
-                </div>
-              </div>
-              <div className="mb-1 flex items-center justify-between gap-4">
-                <span className="text-[12px] text-muted">
-                  {t("design.readiness_trend")}
-                </span>
-                <Segmented
-                  value={range}
-                  onChange={setRange}
-                  options={[
-                    { value: "7", label: t("common.week") },
-                    { value: "30", label: t("common.month") },
-                  ]}
-                />
-              </div>
-              {readiness.isError ? (
-                <ErrorNote />
-              ) : readiness.isLoading ? (
-                <Loading />
-              ) : (
-                <TrendChart
-                  points={readiness.data?.points ?? []}
-                  start={readiness.data?.start_date}
-                  end={o.date}
-                  unit="/100"
-                  label={t("lab.legacy_readiness")}
-                  height={180}
-                />
-              )}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
-                <span className="text-[12px] text-muted">
-                  {t("design.score_note")}
-                </span>
-                <More to="/app/biometrics/readiness">
-                  {t("design.explore")}
-                </More>
-              </div>
-            </Card>
-            <Card className="!p-6 md:!p-8">
-              <CardHeader
-                title={t("design.at_glance")}
-                right={<span className="text-[12px] text-muted">{o.date}</span>}
-              />
-              {[
-                {
-                  label: t("overview.recovery_label"),
-                  v: o.recovery.value,
-                  k: "recovery",
-                  unit: "/100",
-                },
-                {
-                  label: t("overview.strain_label"),
-                  v: o.strain.value,
-                  k: "strain",
-                  unit: "/100",
-                },
-                {
-                  label: t("overview.sleep_score"),
-                  v: o.sleep_score.value,
-                  k: "sleep_score",
-                  unit: "/100",
-                },
-                {
-                  label: t("biometrics.steps"),
-                  v: o.steps,
-                  k: "steps",
-                  unit: "",
-                },
-              ].map((s) => {
-                return (
-                  <Link
-                    key={s.k}
-                    to={"/app/biometrics/" + s.k}
-                    className="flex items-center justify-between gap-4 border-b border-hairline py-5 last:border-0"
-                  >
-                    <div>
-                      <span className="text-[14px]">{s.label}</span>
-                      <div className="mt-1">
-                        <Badge>{t("lab.heuristic")}</Badge>
-                      </div>
-                    </div>
-                    <div className="num text-[28px] font-medium tracking-[-.04em]">
-                      {fmtNum(s.v)}
-                      <span className="ml-2 text-[12px] font-normal tracking-normal text-muted">
-                        {s.unit}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-            </Card>
-          </div>
-          <div className="grid gap-6 xl:grid-cols-[1fr_1.25fr]">
-            <Card>
-              <CardHeader
-                title={t("design.body_signals")}
-                right={
-                  <More to="/app/biometrics">{t("design.all_metrics")}</More>
-                }
-              />
-              {signalRows.map((r) => (
-                <Link
-                  to={"/app/biometrics/" + r.to}
-                  key={r.to}
-                  className="flex items-center justify-between gap-4 border-b border-hairline py-4 last:border-0"
-                >
-                  <div>
-                    <div className="text-[14px]">{r.label}</div>
-                    {r.sub && (
-                      <p className="mt-1 text-[12px] text-muted">{r.sub}</p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <span className="num text-[22px] font-medium">
-                      {r.value}
-                      <span className="ml-2 text-[12px] font-normal text-muted">
-                        {r.unit}
-                      </span>
-                    </span>
-                    {r.delta != null && (
-                      <div className="mt-1 text-[12px] text-muted">
-                        <DeltaChip
-                          delta={r.delta}
-                          unit={r.unit === "%" ? "pp" : r.unit}
-                          compact
-                        />
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              ))}
-              {o.hrv_norm_30d != null && (
-                <p className="mt-4 border-t border-hairline pt-4 text-[12px] text-muted">
-                  {t("design.hrv_norm", { value: fmtNum(o.hrv_norm_30d) })}
-                </p>
-              )}
-            </Card>
-            <LoadPanel o={o} />
-          </div>
-          <div className="grid gap-6 xl:grid-cols-2">
-            <Card>
-              <CardHeader
-                title={t("activities.title")}
-                right={<More to="/app/activities">{t("design.view_log")}</More>}
-              />
-              {o.activities.length === 0 ? (
-                <Empty>{t("overview.no_activities")}</Empty>
-              ) : (
-                o.activities.map((a) => (
-                  <Link
-                    key={a.id}
-                    to={"/app/activities/" + a.id}
-                    className="flex items-center gap-4 border-b border-hairline py-5 last:border-0"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-surface2">
-                      <SportIcon discipline={a.discipline} size={19} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">
-                        {friendlyDiscipline(a.discipline, t)}
-                      </p>
-                      <p className="mt-1 text-[12px] text-muted">
-                        {fmtDuration(a.duration_s)} ·{" "}
-                        {fmtNum(units.distance(a.distance_m), 1)}{" "}
-                        {units.distanceUnit} · {fmtNum(a.avg_hr)} bpm
-                      </p>
-                    </div>
-                    <div className="num text-right">
-                      {fmtNum(a.training_load)}
-                      <p className="text-[12px] text-muted">{t("lab.load_points")}</p>
-                    </div>
-                    <ArrowRight size={16} />
-                  </Link>
-                ))
-              )}
-              <p className="mt-4 text-[12px] text-muted">
-                {t("design.week_load", { value: fmtNum(o.training_load_7d) })}
-              </p>
-            </Card>
-            <Card>
-              <CardHeader
-                title={t("overview.last_night")}
-                right={
-                  <More to={o.sleep ? "/app/sleep/" + o.date : "/app/sleep"}>
-                    {t("design.view_sleep")}
-                  </More>
-                }
-              />
-              {o.sleep ? (
-                <>
-                  <div className="mb-6 flex items-baseline gap-3">
-                    <span className="num text-[48px] font-medium tracking-[-.055em]">
-                      {fmtHours(o.sleep.total_sleep_s)}
-                    </span>
-                    <span className="text-[13px] text-muted">
-                      {t("sleep.asleep")}
-                    </span>
-                  </div>
-                  <ZoneBar parts={stageParts} height={12} gap={2} />
-                  <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    {stageParts.map((p) => (
-                      <div key={p.key}>
-                        <span className="flex items-center gap-2 text-[12px] text-muted">
-                          <span
-                            className="h-2 w-2"
-                            style={{ background: p.color }}
-                          />
-                          {t("stage." + p.key)}
-                        </span>
-                        <p className="num mt-2 font-medium">
-                          {fmtHours(
-                            o.sleep!.stages[
-                              p.key === "core"
-                                ? "light_s"
-                                : p.key === "deep"
-                                  ? "deep_s"
-                                  : p.key === "rem"
-                                    ? "rem_s"
-                                    : "awake_s"
-                            ],
-                          )}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-6 border-t border-hairline pt-4 text-[12px] text-muted">
-                    {new Date(o.sleep.start_time).toLocaleTimeString(
-                      undefined,
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        timeZone: me?.timezone,
-                      },
-                    )}{" "}
-                    –{" "}
-                    {new Date(o.sleep.end_time).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone: me?.timezone,
-                    })}
-                  </div>
-                </>
-              ) : (
-                <Empty>{t("sleep.no_night")}</Empty>
-              )}
-            </Card>
-          </div>
-        </>
-      )}
-    </div>
-  );
+        <LoadPanel o={o} />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card><CardHeader title={t("activities.title")} right={<More to="/app/activities">{t("design.view_log")}</More>} />
+          {!o.activities.length ? <Empty>{t("overview.no_activities")}</Empty> : o.activities.map((a) => <Link key={a.id} to={`/app/activities/${a.id}`} className="flex items-center gap-4 border-b border-hairline py-5 last:border-0"><span className="flex h-10 w-10 shrink-0 items-center justify-center bg-surface2"><SportIcon discipline={a.discipline} size={19} /></span><div className="min-w-0 flex-1"><p className="font-medium">{friendlyDiscipline(a.discipline, t)}</p><p className="mt-1 text-[12px] text-muted">{fmtDuration(a.duration_s)} · {a.discipline === "sailing" ? `${fmtNum(a.distance_m == null ? null : a.distance_m / 1852, 1)} nmi` : `${fmtNum(units.distance(a.distance_m), 1)} ${units.distanceUnit}`} · {fmtNum(a.avg_hr)} bpm</p></div><ArrowRight size={16} /></Link>)}
+          <p className="mt-4 text-[12px] text-muted">{t("design.week_load", { value: fmtNum(o.training_load_7d) })}</p>
+        </Card>
+        <Card><CardHeader title={t("overview.last_night")} right={<More to={o.sleep ? "/app/sleep/" + o.date : "/app/sleep"}>{t("design.view_sleep")}</More>} />
+          {o.sleep ? <><div className="mb-6 flex items-baseline gap-3"><span className="num text-[48px] font-medium tracking-[-.055em]">{fmtHours(o.sleep.total_sleep_s)}</span><span className="text-[13px] text-muted">{t("sleep.asleep")}</span></div><ZoneBar parts={stageParts} height={12} gap={2} /><div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">{stageParts.map((part) => <div key={part.key}><span className="flex items-center gap-2 text-[12px] text-muted"><span className="h-2 w-2" style={{ backgroundColor: part.color }} />{t("stage." + part.key)}</span><span className="num mt-2 block text-[20px]">{fmtHours(part.value)}</span></div>)}</div>{o.sleep.sleep_score != null && <p className="mt-5 border-t border-hairline pt-4 text-[12px] text-muted">{t("metricView.provider_sleep_score")}: {fmtNum(o.sleep.sleep_score)} / 100</p>}</> : <Empty>{t("overview.no_sleep")}</Empty>}
+        </Card>
+      </div>
+    </>}
+  </div>;
 }

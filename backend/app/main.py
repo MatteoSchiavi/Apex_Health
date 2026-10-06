@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 
 from app.api import (
     activities,
+    apple_health,
     auth,
     challenges,
     chats,
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(coach.router)
     app.include_router(challenges.router)
     app.include_router(imports.router)
+    app.include_router(apple_health.router)
     app.include_router(watch.router)
     app.include_router(weather.router)
     # Web UI surface (migration 0007 / STACK.md §3)

@@ -24,6 +24,7 @@ from app.models.activity import (
 )
 from app.models.user import User
 from app.schemas.ui import ActivityDetailOut, ActivityListOut, ActivityOut, StreamOut
+from app.services.activity_presentation import activity_presentation
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 
@@ -207,6 +208,7 @@ async def activity_detail(
         gear=[
             {"id": g.id, "name": g.name, "type": g.gear_type} for g in gear_rows
         ],
+        presentation=await activity_presentation(session, a, disciplines.get(a.discipline_id), list(laps)),
     )
 
 

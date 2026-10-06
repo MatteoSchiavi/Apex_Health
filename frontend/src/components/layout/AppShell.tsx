@@ -65,6 +65,13 @@ export function Logo() {
     </div>
   );
 }
+function Mark() {
+  return (
+    <svg width="26" height="28" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 2L31 29H23L16 15L9 29H1Z" fill="currentColor" />
+    </svg>
+  );
+}
 function SearchDialog({
   onClose,
   returnFocus,
@@ -270,7 +277,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex"}>
         <div className="mb-8 flex shrink-0 items-center justify-between gap-2">
           <NavLink to="/app" aria-label="Apex Health" className={sidebarCollapsed ? "mx-auto" : "min-w-0 overflow-hidden"}>
-            {sidebarCollapsed ? <Activity size={24} /> : <Logo />}
+            {sidebarCollapsed ? <Mark /> : <Logo />}
           </NavLink>
           {!sidebarCollapsed && <button type="button" aria-label={t("navigation.collapse_sidebar")} title={t("navigation.collapse_sidebar")}
             onClick={() => setSidebarCollapsed(true)} className="shrink-0 p-1 text-muted hover:text-ink"><PanelLeftClose size={17} /></button>}

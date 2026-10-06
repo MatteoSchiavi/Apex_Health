@@ -33,6 +33,10 @@ def _fl(value) -> float | None:
     return float(value) if value is not None else None
 
 
+RANGE_METRICS = {"hrv_ms", "resting_hr", "spo2", "respiration"}
+ABSOLUTE_METRICS = {"steps", "floors", "hydration", "weight", "body_fat", "sleep_deep", "sleep_rem", "sleep_light"}
+
+
 # Catalog law: (key → model, column, unit, better_direction, label-en, label-it)
 # better_direction: 'up' | 'down' | 'band' — the UI colors deltas accordingly.
 CATALOG: dict[str, dict] = {
@@ -74,6 +78,7 @@ async def metric_catalog(
             "unit": spec["unit"],
             "direction": spec["direction"],
             "kind": "estimate" if spec["model"] == "feature" else "measurement",
+            "display_type": "range" if key in RANGE_METRICS else "absolute" if key in ABSOLUTE_METRICS else "trend",
         }
         for key, spec in CATALOG.items()
     }
@@ -93,17 +98,18 @@ async def metric_trend(
 
     end_d = end or datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
     start_d = end_d - timedelta(days=days - 1)
+    history_start = min(start_d, end_d - timedelta(days=30))
     reference_range = None
 
     if spec["model"] == "hrv":
-        rows, reference_range = await _hrv_series(session, user, start_d, end_d)
+        rows, reference_range = await _hrv_series(session, user, history_start, end_d)
     elif spec["model"] == "feature":
         rows = (
             await session.execute(
                 select(DailyFeature.date, getattr(DailyFeature, spec["column"]))
                 .where(
                     DailyFeature.user_id == user.id,
-                    DailyFeature.date >= start_d,
+                    DailyFeature.date >= history_start,
                     DailyFeature.date <= end_d,
                 )
                 .order_by(DailyFeature.date)
@@ -115,7 +121,7 @@ async def metric_trend(
                 select(DailyBiometric.date, getattr(DailyBiometric, spec["column"]))
                 .where(
                     DailyBiometric.user_id == user.id,
-                    DailyBiometric.date >= start_d,
+                    DailyBiometric.date >= history_start,
                     DailyBiometric.date <= end_d,
                 )
                 .order_by(DailyBiometric.date)
@@ -130,7 +136,7 @@ async def metric_trend(
                 )
                 .where(
                     SleepSession.user_id == user.id,
-                    SleepSession.local_date >= start_d,
+                    SleepSession.local_date >= history_start,
                     SleepSession.local_date <= end_d,
                 )
                 .distinct(SleepSession.local_date)
@@ -142,12 +148,22 @@ async def metric_trend(
             )
         ).all()
 
+    if key in RANGE_METRICS and key != "hrv_ms":
+        comparable, reference_range = await _personal_series(session, user, history_start, end_d, key)
+        if comparable:
+            rows = comparable
+
     scale = spec.get("scale", 1.0)
     points = [
         MetricPoint(date=d.isoformat(), value=_fl(v) / scale if v is not None else None)
         for d, v in rows
     ]
+    points = [p for p in points if p.value is None or math.isfinite(p.value)]
+    history_points = points
+    points = [p for p in points if p.date >= start_d.isoformat()]
     values = [p.value for p in points if p.value is not None]
+    latest_day = date.fromisoformat(next((p.date for p in reversed(points) if p.value is not None), end_d.isoformat()))
+    previous_30 = [p.value for p in history_points if p.value is not None and latest_day - timedelta(days=30) <= date.fromisoformat(p.date) < latest_day]
     stats = {}
     if values:
         stats = {
@@ -157,8 +173,8 @@ async def metric_trend(
             "max": round(max(values), 2),
             "latest": values[-1],
             "delta_30d": (
-                round(values[-1] - sum(values[-30:]) / len(values[-30:]), 2)
-                if len(values) >= 8
+                round(values[-1] - sum(previous_30) / len(previous_30), 2)
+                if len(previous_30) >= 7
                 else None
             ),
         }
@@ -175,8 +191,8 @@ async def metric_trend(
     )
 
 
-async def _hrv_series(session, user, start, end):
-    """Use comparable nightly measurements, keeping sources/devices separate.
+async def _personal_series(session, user, start, end, metric):
+    """Use comparable measurements, keeping sources/devices separate.
 
     The displayed range is the preceding 28 days' empirical P10–P90 band,
     requiring 14 recorded days. It is not a clinical reference range and
@@ -186,7 +202,7 @@ async def _hrv_series(session, user, start, end):
         await session.scalars(
             select(Observation).where(
                 Observation.user_id == user.id,
-                Observation.metric == "hrv_overnight_rmssd",
+                Observation.metric == metric,
                 Observation.current.is_(True),
                 Observation.availability == "available",
                 Observation.local_date.between(start - timedelta(days=28), end),
@@ -198,7 +214,13 @@ async def _hrv_series(session, user, start, end):
                and math.isfinite(r.value["value"]) and r.value["value"] > 0]
     displayed = [r for r in records if r.local_date >= start]
     if displayed:
-        latest = displayed[-1]
+        # Prefer the configured main provider when it has readings in this window.
+        from app.models.integration import Integration
+        main = await session.scalar(select(Integration).where(
+            Integration.id == user.main_integration_id, Integration.user_id == user.id
+        )) if user.main_integration_id else None
+        primary = [r for r in displayed if main and r.origin == main.provider]
+        latest = (primary or displayed)[-1]
         context = lambda r: (r.origin, r.metadata_json.get("reading_context"), r.metadata_json.get("device_id"))
         comparable = [r for r in records if context(r) == context(latest)]
         # The last revision/measurement within a day is the daily sample.
@@ -210,7 +232,7 @@ async def _hrv_series(session, user, start, end):
         change = await session.scalar(select(AthleteEntry.date).where(
             AthleteEntry.user_id == user.id, AthleteEntry.kind == "device_change",
             AthleteEntry.date <= latest.local_date,
-            AthleteEntry.payload["metrics"].contains(["hrv_overnight_rmssd"]),
+            AthleteEntry.payload["metrics"].contains([metric]),
         ).order_by(AthleteEntry.date.desc()).limit(1))
         if change:
             history = [r.value["value"] for day, r in daily.items()
@@ -220,6 +242,14 @@ async def _hrv_series(session, user, start, end):
                      "device_id": latest.metadata_json.get("device_id"),
                      "interpretation": "Personal empirical distribution; not a clinical reference range."})
         return sorted((day, r.value["value"]) for day, r in daily.items() if start <= day <= end), band
+
+    return [], None
+
+
+async def _hrv_series(session, user, start, end):
+    points, band = await _personal_series(session, user, start, end, "hrv_overnight_rmssd")
+    if points:
+        return points, band
 
     # Older imports may predate the evidence index. Show their measurements
     # without inventing a comparable source/device band.

@@ -113,21 +113,11 @@ class Settings(BaseSettings):
     oura_page_size: int = 25
     oura_page_delay_seconds: float = 0.5
 
-    # --- COROS connector (Open API, doc-first shell) ---
-    # COROS requires a manual developer-portal application review before any
-    # live key exists, so this ships as an approved-scope shell: config,
-    # OAuth URLs, sync driver skeleton — owner applies, fills env, flow is
-    # already wired.
-    coros_client_id: str = ""
-    coros_client_secret: str = ""
-    coros_redirect_uri: str = "http://localhost:8000/integrations/coros/callback"
-    coros_oauth_authorize_url: str = "https://open.coros.com/oauth2/authorize"
-    coros_oauth_token_url: str = "https://open.coros.com/oauth2/token"
-    coros_api_base: str = "https://open.coros.com"
-    coros_scope: str = "base"
-
-    # --- Telegram bot (§5, §10: long polling, no webhook secret this round) ---
-    telegram_bot_token: str = ""
+    # --- COROS MCP (operator-configured server; per-account bearer credentials) ---
+    coros_mcp_url: str = ""
+    coros_mcp_activity_tool: str = ""
+    coros_mcp_activity_args: str = "{}"
+    coros_mcp_timeout_seconds: float = 30.0
 
     # --- LLM providers (§5, §8.1, §9): env-var swappable, no code change ---
     llm_provider_cheap: str = "glm-4.7-flash"
@@ -174,11 +164,6 @@ class Settings(BaseSettings):
     # §14: the cache exists to answer "when is a good training window" — seven
     # days of daily rows per refresh is the useful horizon.
     weather_forecast_days: int = 7
-    # §14 nudge ("worth building once the pieces exist"): tomorrow's forecast
-    # crosses the good-window test AND latest readiness >= threshold → one
-    # proactive Telegram nudge per user per day. <=0 disables the nudge.
-    weather_nudge_readiness_threshold: float = 70.0
-
     # --- Backups (§22.7, §19): nightly pg_dump, encrypted with a key DEDICATED
     # to backups (independent from ENCRYPTION_KEY so a leaked app key cannot
     # open backups and vice versa), retained 14 daily + 6 monthly archives.

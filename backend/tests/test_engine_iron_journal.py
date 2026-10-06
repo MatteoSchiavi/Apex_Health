@@ -101,7 +101,7 @@ async def test_illness_with_max_soreness_journal(hrv_user, db_session):
             date=BASE_DAY,
             soreness_score=Decimal(10),
             energy_score=Decimal(1),
-            source="telegram_voice",
+            source="web",
         )
     )
     await db_session.commit()
@@ -120,7 +120,7 @@ async def test_illness_journal_renormalizes(hrv_user, db_session):
             date=BASE_DAY,
             soreness_score=Decimal(1),
             energy_score=Decimal(10),
-            source="telegram_text",
+            source="web",
         )
     )
     await db_session.commit()
@@ -136,7 +136,7 @@ async def test_illness_journal_on_other_day_ignored(hrv_user, db_session):
             user_id=hrv_user.id,
             date=BASE_DAY - timedelta(days=1),
             soreness_score=Decimal(10),
-            source="telegram_voice",
+            source="web",
         )
     )
     await db_session.commit()

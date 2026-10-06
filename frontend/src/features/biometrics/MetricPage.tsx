@@ -23,7 +23,7 @@ import {
   METRIC_LABELS,
   useUnits,
 } from "../../components/data";
-import { MetricDirection, PersonalRange } from "../../components/MetricInterpretation";
+import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
 export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
@@ -95,7 +95,7 @@ export default function MetricPage() {
                 </span>
                 {data.unit !== "h" && <span className="ml-4 text-[18px] text-muted">{unit}</span>}
                 <div className="mt-3"><MetricDirection metric={key} points={data.points} /></div>
-                {key === "hrv_ms" && <div className="mt-5"><PersonalRange trend={data} /></div>}
+                {RANGE_METRICS.has(key) && <div className="mt-5"><PersonalRange trend={data} /></div>}
               </div>
               <p className="text-[12px] text-muted">
                 {data.start_date} – {data.end_date}

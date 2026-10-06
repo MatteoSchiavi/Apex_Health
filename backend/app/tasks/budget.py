@@ -2,8 +2,7 @@
 
 Sums each account's estimated token_usage cost for the UTC day and — when a
 user crosses DAILY_TOKEN_BUDGET_USD — fires a `budget_warning` alert
-(severity info: informational, NOT a hard stop) and pushes it to that user's
-linked chat(s). One warning per user per UTC day (§17-style idempotency: the
+(severity info: informational, NOT a hard stop). One warning per user per UTC day (§17-style idempotency: the
 re-run inside the same day finds the existing row and stays quiet).
 
 Scheduling: beat fires once a day at 23:45 UTC — near the close of the UTC
@@ -37,15 +36,8 @@ async def _daily_check(now_iso: str | None = None) -> dict:
     if budget <= 0:
         return {"status": "disabled"}
 
-    telegram = None
-    if get_settings().telegram_bot_token:
-        from app.connectors.telegram.client import LiveTelegramClient
-
-        telegram = LiveTelegramClient(get_settings().telegram_bot_token)
-
     day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
     fired: list[dict] = []
-    created_alerts: list[Alert] = []
 
     async with sessionmaker() as session:
         spends = await day_spend_by_user(session, now)
@@ -74,15 +66,8 @@ async def _daily_check(now_iso: str | None = None) -> dict:
                 ),
             )
             session.add(alert)
-            created_alerts.append(alert)
             fired.append({"user": name, "spend": f"${spend:.2f}"})
         await session.commit()
-
-    if telegram is not None and created_alerts:
-        from app.connectors.telegram.alerts import push_alert
-
-        for alert in created_alerts:
-            await push_alert(sessionmaker, telegram, alert)
 
     return {"checked_users": len(spends), "warnings_fired": fired}
 

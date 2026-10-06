@@ -38,7 +38,8 @@
     "choose_theme": "Tema",
     "error": "Email o password non validi",
     "invite_error": "Codice invito non valido (sconosciuto, già usato o scaduto)",
-    "welcome": "Benvenuto in Apex"
+    "welcome": "Benvenuto in Apex",
+    "remember_me": "Ricordami su questo dispositivo"
   },
   "landing": {
     "eyebrow": "SISTEMA PRIVATO PER LA PERFORMANCE",
@@ -985,7 +986,7 @@
     },
     "recipients": {
       "title": "Servizi e trasferimenti",
-      "body": "Le connessioni facoltative possono scambiare dati con Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit, Telegram e Open-Meteo. I fornitori collegati hanno proprie informative. Secondo la configurazione, prompt e contesto selezionato possono essere inviati a un modello AI esterno; testi a OpenAI per gli embedding e note vocali a OpenAI per la trascrizione. Il gestore può usare backup cifrati esterni su Backblaze B2. Prima dell'uso deve verificare ogni servizio attivo, contratto, ubicazione ed eventuale trasferimento fuori dallo SEE.",
+      "body": "Le connessioni facoltative possono scambiare dati con Garmin, WHOOP, Oura, Strava, COROS, Technogym, Fitbit e Open-Meteo. I fornitori collegati hanno proprie informative. Secondo la configurazione, prompt e contesto selezionato possono essere inviati a un modello AI esterno; testi a OpenAI per gli embedding e note vocali a OpenAI per la trascrizione. Il gestore può usare backup cifrati esterni su Backblaze B2. Prima dell'uso deve verificare ogni servizio attivo, contratto, ubicazione ed eventuale trasferimento fuori dallo SEE.",
       "ai": "Fornitore AI configurato e ubicazione:",
       "hosting": "Area geografica dell'hosting:",
       "backup": "Ubicazione dei backup:",
@@ -1034,7 +1035,7 @@
     },
     "cookies_used": {
       "title": "Cookie necessari",
-      "body": "Dopo l'accesso, Apex imposta hcc_session per la sessione e csrf_token per proteggere le operazioni dagli attacchi tra siti. Il cookie di sessione è HttpOnly; l'app può leggere quello CSRF per inviare l'intestazione di sicurezza corrispondente. Entrambi sono SameSite=Lax e di norma Secure su HTTPS. La sessione dura per impostazione predefinita 12 ore, con limite assoluto di 30 giorni. Questi cookie servono per l'accesso autenticato."
+      "body": "Dopo l'accesso, Apex imposta hcc_session per la sessione e csrf_token per proteggere le operazioni dagli attacchi tra siti. Il cookie di sessione è HttpOnly; l'app può leggere quello CSRF per inviare l'intestazione di sicurezza corrispondente. Entrambi sono SameSite=Lax e di norma Secure su HTTPS. La sessione dura per impostazione predefinita 12 ore, con limite assoluto di 30 giorni. Questi cookie servono per l'accesso autenticato. Senza Ricordami, sono cookie di sessione del browser. Con Ricordami, entrambi persistono per 30 giorni fissi; l’uscita revoca subito la sessione."
     },
     "local_storage": {
       "title": "Memoria del browser",
@@ -1113,5 +1114,46 @@
     "share": "Condividi",
     "add_to_home": "Aggiungi alla schermata Home",
     "ios_steps": "Tocca {{share}} nel browser, quindi scegli {{add}}."
+  },
+  "sportView": {
+    "pace": "Passo",
+    "max_speed": "Velocità massima",
+    "slopes": "Discese registrate",
+    "zones": "Zone registrate",
+    "recorded_exercises": "Esercizi registrati",
+    "no_exercises": "Nessuna serie completata è stata registrata per questa sessione.",
+    "body_map": "Gruppi muscolari",
+    "body_map_note": "Le aree evidenziate riflettono gli esercizi registrati, non stime dalla frequenza cardiaca.",
+    "all_groups": "Tutti i gruppi",
+    "sets": "Serie",
+    "reps": "Ripetizioni",
+    "volume": "Volume",
+    "partial_volume": "Peso registrato per {{known}} di {{total}} serie",
+    "previous": "Sessione precedente",
+    "no_previous": "Nessuna sessione precedente",
+    "delta": "Variazione",
+    "group_legs": "Gambe",
+    "group_push": "Petto, spalle e tricipiti",
+    "group_pull": "Schiena e bicipiti",
+    "group_core": "Core",
+    "group_full_body": "Tutto il corpo",
+    "group_unknown": "Non specificato",
+    "zone_metric_hr": "Frequenza cardiaca",
+    "zone_metric_power": "Potenza",
+    "set_details": "Dettagli serie",
+    "weight": "Peso",
+    "total": "Totali della sessione"
+  },
+  "refinement": {
+    "previous_reading": "Variazione rispetto alla lettura precedente",
+    "trend_unavailable": "Andamento non disponibile",
+    "recorded_trend": "Letture registrate in {{days}} giorni",
+    "quick_access": "Accesso rapido",
+    "recorded_signals": "Segnali registrati",
+    "signal_note": "Gli intervalli confrontano l’ultima lettura con i tuoi 28 giorni precedenti dalla stessa fonte e dallo stesso dispositivo. Servono almeno 14 giorni registrati. Non sono limiti clinici; più alto non è sempre meglio.",
+    "apple_import_note": "Importa export.zip da Apple Salute. L’importazione è manuale; Apple richiede un’app iPhone con autorizzazione HealthKit per la sincronizzazione automatica. SDNN Apple rimane separato da RMSSD notturno.",
+    "coros_mcp_note": "Collega il server MCP COROS configurato usando il token del tuo account. Apex non chiama direttamente le API COROS.",
+    "coros_mcp_setup": "L’amministratore deve prima configurare URL MCP, strumento delle attività e argomenti. Vedi docs/COROS_MCP.md.",
+    "coros_mcp_token": "Il tuo token di accesso MCP"
   }
 }

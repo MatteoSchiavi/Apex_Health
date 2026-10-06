@@ -1,8 +1,8 @@
 """Identity & auth models (MASTER_SPEC §6.4 — users, auth_credentials, sessions).
 
 Remaining §6.4 tables are mapped by their owning phases (integrations in
-Phase 1, telegram_links in Phase 3, invites with onboarding work); the full
-schema itself is created by the Alembic migration regardless.
+Phase 1, invites with onboarding work); the full schema itself is created by
+the Alembic migration regardless.
 """
 
 from datetime import date, datetime
@@ -110,6 +110,9 @@ class UserSession(Base):
     # total lifetime (default 30d, set at creation).
     absolute_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    remember_me: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
 
 

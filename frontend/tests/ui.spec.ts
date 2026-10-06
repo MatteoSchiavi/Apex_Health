@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installApi, today, keys } from "./fixtures";
-test("overview prioritizes readiness and never invents clinical status", async ({
+test("overview prioritizes recorded signals and keeps estimates distinct", async ({
   page,
 }) => {
   await installApi(page);
@@ -8,12 +8,14 @@ test("overview prioritizes readiness and never invents clinical status", async (
   await expect(
     page.getByRole("heading", { name: "Your daily overview" }),
   ).toBeVisible();
-  await expect(page.locator(".hero-number")).toHaveText("82");
+  await expect(page.getByRole("region", { name: "Recorded signals" })).toBeVisible();
+  await page.getByText("Calculated estimates", { exact: true }).click();
+  await expect(page.getByRole("link", { name: /Readiness.*82/ })).toBeVisible();
   await expect(page.getByText("All systems normal")).toHaveCount(0);
   await expect(page.getByText("No overreaching markers")).toHaveCount(0);
-  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await page.getByRole("button", { name: "4 weeks", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Month", exact: true }),
+    page.getByRole("button", { name: "4 weeks", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
 });
 test("all metrics remain reachable through keyboard tabs; sleep score has correct label", async ({

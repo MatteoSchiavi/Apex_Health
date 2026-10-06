@@ -227,7 +227,7 @@ const PROVIDERS: { key: string; name: string; connectable: boolean }[] = [
   { key: "whoop", name: "Whoop", connectable: true },
   { key: "strava", name: "Strava", connectable: true },
   { key: "oura", name: "Oura", connectable: true },
-  { key: "coros", name: "COROS", connectable: true },
+  { key: "coros", name: "COROS · MCP", connectable: true },
 ];
 
 /**
@@ -328,6 +328,27 @@ function GarminConnectForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+function CorosConnectForm({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
+  const [token, setToken] = useState("");
+  const status = useQuery({
+    queryKey: ["coros-mcp-status"],
+    queryFn: () => api.get<{ configured: boolean }>("/settings/integrations/coros/mcp/status"),
+  });
+  const connect = useMutation({
+    mutationFn: () => api.post("/settings/integrations/coros/mcp/connect", { access_token: token }),
+    onSuccess: () => { setToken(""); onDone(); },
+  });
+  return <form className="border-b border-hairline py-5" onSubmit={(event) => { event.preventDefault(); connect.mutate(); }}>
+    <p className="mb-3 text-[12px] text-muted">{t("refinement.coros_mcp_note")}</p>
+    {status.isLoading ? <Loading /> : status.isError ? <ErrorNote /> : !status.data?.configured ? <p className="text-[13px] text-muted">{t("refinement.coros_mcp_setup")}</p> : <div className="flex flex-wrap items-end gap-3">
+      <Input label={t("refinement.coros_mcp_token")} value={token} onChange={setToken} type="password" required autoComplete="off" />
+      <Button type="submit" disabled={connect.isPending || !token.trim()}>{t("settings.connect")}</Button>
+    </div>}
+    {connect.isError && <div className="mt-3"><ErrorNote message={connect.error.message} /></div>}
+  </form>;
+}
+
 function DevicesSection() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -337,6 +358,7 @@ function DevicesSection() {
   });
   const [flowError, setFlowError] = useState<string | null>(null);
   const [garminOpen, setGarminOpen] = useState(false);
+  const [corosOpen, setCorosOpen] = useState(false);
 
   const setMain = useMutation({
     mutationFn: (integration_id: number | null) =>
@@ -395,9 +417,9 @@ function DevicesSection() {
     retry: false,
   });
   const syncNow = useMutation({
-    mutationFn: () =>
+    mutationFn: (provider: string) =>
       api.post<{ job_id: string; enqueued: boolean; completed: boolean }>(
-        "/settings/integrations/garmin/sync",
+        `/settings/integrations/${provider}/sync`,
       ),
     onSuccess: (res) => {
       setJob(res.job_id);
@@ -527,11 +549,11 @@ function DevicesSection() {
                         {t("settings.disconnect")}
                       </Button>
                     )}
-                    {key === "garmin" && connected && (
+                    {connected && (
                       <Button
                         variant="ghost"
                         disabled={syncNow.isPending || !!job}
-                        onClick={() => syncNow.mutate()}
+                        onClick={() => syncNow.mutate(key)}
                       >
                         {job
                           ? t("design.sync_running")
@@ -546,7 +568,8 @@ function DevicesSection() {
                         {garminOpen ? t("common.close") : t("settings.connect")}
                       </Button>
                     )}
-                    {key !== "garmin" && !connected && (
+                    {key === "coros" && !connected && <Button variant="ghost" onClick={() => setCorosOpen((value) => !value)}>{corosOpen ? t("common.close") : t("settings.connect")}</Button>}
+                    {key !== "garmin" && key !== "coros" && !connected && (
                       <Button
                         variant="ghost"
                         disabled={connect.isPending}
@@ -566,6 +589,7 @@ function DevicesSection() {
                     }}
                   />
                 ) : null}
+                {key === "coros" && corosOpen && !connected && <CorosConnectForm onDone={() => { setCorosOpen(false); qc.invalidateQueries({ queryKey: ["devices"] }); }} />}
               </Fragment>
             );
           })}

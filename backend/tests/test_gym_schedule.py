@@ -376,58 +376,6 @@ async def test_friend_token_and_slots_are_isolated(client: AsyncClient, db_sessi
     assert [s["title"] for s in owner_day["sessions"]] == ["Owner Secret Session"]
 
 
-# ----------------------------------------------------------------- /gym bot
-
-
-async def test_gym_bot_roundtrip():
-    from app.connectors.telegram.handlers import handle_update
-    from tests.helpers.telegram import (
-        FixtureTelegramClient, bot_context, clean_bot_tables,  # noqa: F401
-        load_update, sent_texts, with_text,
-    )
-    from app.models.telegram import TelegramLink
-    from app.models.user import AuthCredential
-
-    client = FixtureTelegramClient()
-    async with bot_context(client) as ctx:
-        async with ctx.sessionmaker() as session:
-            owner = (
-                await session.scalars(
-                    select(AuthCredential.user_id).where(AuthCredential.role == "owner")
-                )
-            ).first()
-            session.add(TelegramLink(user_id=owner, chat_id=42))
-            await session.execute(delete(GymScheduleSlot))  # schema persists across tests
-            await session.commit()
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"),
-                                           "/gym set Mon 18:00 Push Day"))
-        first = sent_texts(client)[-1]
-        assert "Added #" in first and "Mon 18:00 Push Day" in first
-        import re
-
-        slot_id = re.search(r"#(\d+)", first).group(1)
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"),
-                                           f"/gym note {slot_id} Bench 4x8 · Incline 3x10"))
-        assert "Bench 4x8" in sent_texts(client)[-1]
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"), "/gym list"))
-        listing = sent_texts(client)[-1]
-        assert f"#{slot_id} Mon 18:00 Push Day" in listing and "Bench 4x8" in listing
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"), "/gym week"))
-        week = sent_texts(client)[-1]
-        assert "Mon 18:00 Push Day" in week and "— rest" in week
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"),
-                                           f"/gym rm {slot_id}"))
-        assert sent_texts(client)[-1] == "Removed."
-
-        await handle_update(ctx, with_text(load_update("text_plan_today"), "/gym"))
-        assert "rest day" in sent_texts(client)[-1].lower()
-
-
 async def test_journal_streak_counts_yesterday_when_today_missing(db_session):
     user_id = await _owner_id(db_session)
     today = await _local_today(db_session, user_id)

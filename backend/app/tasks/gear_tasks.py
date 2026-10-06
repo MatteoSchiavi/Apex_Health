@@ -5,9 +5,8 @@ local window as the feature engine (minute 0), guaranteeing it runs after
 that day's feature pass in every timezone. The recompute is idempotent
 (§17), so a DST fall-back double-run is harmless.
 
-gear_service_due alerts are DB rows committed here; when TELEGRAM_BOT_TOKEN
-is configured they are pushed to the linked chat(s) right after the commit
-(§21 contract in app/connectors/telegram/alerts.py).
+gear_service_due alerts are DB rows committed here and remain available in the
+application's alert inbox.
 """
 
 import logging
@@ -16,7 +15,6 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.core.db import sessionmaker
 from app.gear.service import accumulate_gear_usage
 from app.models.gear import Gear
@@ -40,12 +38,6 @@ async def _accumulate_all(now_iso: str | None = None) -> dict:
         now = now.replace(tzinfo=UTC)
 
     results: dict[str, dict] = {}
-    telegram = None
-    if get_settings().telegram_bot_token:
-        from app.connectors.telegram.client import LiveTelegramClient
-
-        telegram = LiveTelegramClient(get_settings().telegram_bot_token)
-
     async with sessionmaker() as session:
         users = (await session.scalars(select(User).order_by(User.id))).all()
         for user in users:
@@ -67,11 +59,6 @@ async def _accumulate_all(now_iso: str | None = None) -> dict:
                 await session.commit()
                 fired = len(alerts)
 
-                if telegram is not None:
-                    from app.connectors.telegram.alerts import push_alert
-
-                    for alert in alerts:
-                        await push_alert(sessionmaker, telegram, alert)
                 results[str(user.id)] = {
                     "gear_checked": len(gears),
                     "alerts_fired": fired,

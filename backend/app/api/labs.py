@@ -2,21 +2,15 @@
 
 Session-protected like every non-public route (§17); POST is state-changing
 so it requires the CSRF header (§22.3). POST evaluates the low-ferritin rule
-(§23 Phase 4 AC1) and, when a bot token is configured, pushes the resulting
-alert to the linked chat(s) after commit (§21 pattern).
+(§23 Phase 4 AC1) and stores any resulting alert for the in-app inbox.
 """
-
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
-from app.connectors.telegram.alerts import push_alert
-from app.connectors.telegram.client import LiveTelegramClient
-from app.core.config import get_settings
-from app.core.db import get_session, sessionmaker
+from app.core.db import get_session
 from app.medical.labs import (
     decrypt_notes,
     evaluate_ferritin_alert,
@@ -25,8 +19,6 @@ from app.medical.labs import (
 from app.models.medical import LabPanel, LabMetric
 from app.models.user import User
 from app.schemas.labs import LabPanelIn, LabPanelOut
-
-logger = logging.getLogger("api.labs")
 
 router = APIRouter(prefix="/labs", tags=["labs"])
 
@@ -136,18 +128,9 @@ async def create_panel(
         extra_markers=payload.extra_markers,
         reference_ranges=payload.reference_ranges,
     )
-    alert = await evaluate_ferritin_alert(session, panel)
+    await evaluate_ferritin_alert(session, panel)
     await session.commit()
 
-    if alert is not None and get_settings().telegram_bot_token:
-        # Committed first, then pushed (§21 contract in telegram/alerts.py).
-        telegram = LiveTelegramClient(get_settings().telegram_bot_token)
-        try:
-            await push_alert(sessionmaker, telegram, alert)
-        except Exception:
-            # The alert row is committed and user-visible via /alerts; a
-            # transport failure must not fail the ingestion request.
-            logger.exception("low_ferritin alert push failed for panel %s", panel.id)
     markers = (
         await session.scalars(
             select(LabMetric).where(LabMetric.lab_panel_id == panel.id)

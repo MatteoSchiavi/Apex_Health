@@ -1,9 +1,4 @@
-"""AI chat models (MASTER_SPEC §6.4).
-
-Mapped by their owning phase (Phase 3): the Telegram bot is the only chat
-interface this round (§10.2), so chat session/message logging starts with
-the bot's free-text path. The agent harness (Phase 5) reuses them.
-"""
+"""AI chat models (MASTER_SPEC §6.4)."""
 
 from datetime import datetime
 

@@ -19,7 +19,7 @@
 |---|---|---|
 | 1 | [What you are running](01-What-You-Are-Running.md) | The five containers, memory budget, three facts to memorize |
 | 2 | [Installation (Windows)](02-Installation-Windows.md) | Docker Desktop + WSL2, clone, `.env` secrets, build & boot, first login |
-| 3 | [First-run setup](03-First-Run-Setup.md) | Connect Garmin in the UI, Whoop/Strava registration, demo data, invites, Telegram |
+| 3 | [First-run setup](03-First-Run-Setup.md) | Connect Garmin in the UI, Whoop/Strava registration, demo data, invites |
 | 4 | [Daily usage](04-Daily-Usage.md) | The 13 pages, the safety interlock, main-device law, the Connect IQ watch app |
 | 5 | [Maintenance](05-Maintenance.md) | Update runbook, nightly schedule, backups & restore drill, troubleshooting table |
 | 6 | [Remote access (free)](06-Remote-Access.md) | Tailscale / Funnel / Cloudflare Tunnel — ranked, with copy-paste recipes |

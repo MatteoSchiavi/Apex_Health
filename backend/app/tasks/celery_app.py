@@ -29,12 +29,12 @@ celery_app = Celery(
         "app.tasks.whoop_sync",
         "app.tasks.strava_sync",
         "app.tasks.oura_sync",
+        "app.tasks.coros_sync",
         "app.tasks.weather_tasks",
         "app.tasks.feature_engine",
         "app.tasks.gear_tasks",
         "app.tasks.budget",
         "app.tasks.ai_reports",
-        "app.tasks.telegram_voice",
         "app.tasks.backups",
         "app.tasks.maintenance",
         "app.tasks.lab_tasks",
@@ -114,18 +114,16 @@ celery_app.conf.update(
             "task": "oura.sync_all",
             "schedule": crontab(minute=9, hour="*/6"),
         },
+        "coros-mcp-sync-every-6h": {
+            "task": "coros.sync_all",
+            "schedule": crontab(minute=12, hour="*/6"),
+        },
         # §19: forecast refresh every 6 hours, upserts forecast_cache (§6.4).
         # Staggered at :20, after both connector syncs — so activities they
         # ingested are enriched in the same tick (§14).
         "weather-refresh-every-6h": {
             "task": "weather.refresh_all",
             "schedule": crontab(minute=20, hour="*/6"),
-        },
-        # §14 nudge: hourly dispatch, the task gates on LOCAL hour 07:00 (the
-        # feature engine's pattern) and de-dupes per user per day in Redis.
-        "weather-nudge-hourly-dispatch": {
-            "task": "weather.readiness_nudge",
-            "schedule": crontab(minute=25),
         },
         "feature-engine-hourly-dispatch": {
             "task": "features.nightly",

@@ -366,7 +366,7 @@ export default function DataHealthPage({ embedded = false }: { embedded?: boolea
             onSave={(f) =>
               action.mutate({
                 path:
-                  str(f, "format") === "fit" ? "/imports/fit" : "/imports/csv",
+                  str(f, "format") === "apple-health" ? "/imports/apple-health" : str(f, "format") === "fit" ? "/imports/fit" : "/imports/csv",
                 body: f,
               })
             }
@@ -374,16 +374,18 @@ export default function DataHealthPage({ embedded = false }: { embedded?: boolea
             <Field name="format" label={t("lab.format")} value="fit">
               <option value="fit">FIT</option>
               <option value="csv">CSV</option>
+              <option value="apple-health">Apple Health · export.zip</option>
             </Field>
             <input
               className={inputClass}
               type="file"
               name="file"
-              accept=".fit,.csv"
+              accept=".fit,.csv,.zip"
               aria-label={t("lab.file")}
               required
             />
           </Form>
+          <p className="mt-3 text-[12px] text-muted">{t("refinement.apple_import_note")}</p>
           <div className="mt-6 flex flex-col gap-3">
             <a className="text-link" href="/lab/export/observations.csv">
               {t("lab.export_csv")} ↗

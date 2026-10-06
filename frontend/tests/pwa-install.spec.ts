@@ -6,7 +6,7 @@ test("install prompt received on dashboard is available in Settings", async ({
 }) => {
   await installApi(page);
   await page.goto("/app");
-  await expect(page.locator(".hero-number")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your daily overview" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Install app" })).toHaveCount(0);
 
   const captured = await page.evaluate(() => {

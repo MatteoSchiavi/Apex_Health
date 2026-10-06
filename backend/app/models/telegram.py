@@ -1,8 +1,8 @@
-"""Telegram models (MASTER_SPEC §6.4).
+"""Legacy Telegram tables retained for existing database history.
 
-Mapped by their owning phase (Phase 3): telegram_links (link flow) and
-telegram_messages (voice pipeline). The full schema is created by the
-Alembic migration regardless.
+The bot integration has been removed. These mappings remain so existing
+telegram_links and telegram_messages tables stay represented in SQLAlchemy
+metadata and future schema autogeneration does not propose dropping them.
 """
 
 from datetime import datetime

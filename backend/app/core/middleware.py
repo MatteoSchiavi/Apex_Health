@@ -85,7 +85,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def set_csrf_cookie(response: Response, token: str, *, secure: bool = True) -> None:
+def set_csrf_cookie(
+    response: Response,
+    token: str,
+    *,
+    secure: bool = True,
+    max_age: int | None = 30 * 24 * 3600,
+) -> None:
     """Attach the non-HttpOnly ``csrf_token`` cookie to a response.
 
     Non-HttpOnly is REQUIRED — the SPA must read the cookie to mirror it
@@ -100,7 +106,7 @@ def set_csrf_cookie(response: Response, token: str, *, secure: bool = True) -> N
         httponly=False,
         secure=secure,
         samesite="lax",
-        max_age=30 * 24 * 3600,  # 30d — refreshes on each login
+        max_age=max_age,
         path="/",
     )
 

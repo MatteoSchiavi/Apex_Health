@@ -2,7 +2,7 @@
 
 *Five containers, one box, zero cloud dependency.*
 
-Apex Health is a single-server platform: a FastAPI backend that also serves the compiled web UI, a PostgreSQL 16 database with TimescaleDB and pgvector extensions, Redis as the job broker, a Celery worker that runs every scheduled job (syncs, scoring, backups, retention), and an optional Telegram bot. Everything is stored locally in one Docker volume — activity streams, sleep stages, lab panels, AI chat history, embeddings — and nothing leaves the machine except calls you deliberately configure (device APIs, LLM providers, optional B2 backup upload).
+Apex Health is a single-server platform: a FastAPI backend that also serves the compiled web UI, a PostgreSQL 16 database with TimescaleDB and pgvector extensions, Redis as the job broker, a Celery worker that runs every scheduled job (syncs, scoring, backups, retention). Everything is stored locally in one Docker volume — activity streams, sleep stages, lab panels, AI chat history, embeddings — and nothing leaves the machine except calls you deliberately configure (device APIs, LLM providers, optional B2 backup upload).
 
 ## The services
 
@@ -12,7 +12,6 @@ Apex Health is a single-server platform: a FastAPI backend that also serves the 
 | `db` | PostgreSQL 16 + TimescaleDB + pgvector. All health data, tuned for 8 GB | compose network only |
 | `redis` | Celery broker, rate limits, OAuth state, agent locks (256 MB cap, LRU) | compose network only |
 | `worker` | Celery worker with embedded beat — every scheduled job lives here | none |
-| `bot` | Telegram long polling (outbound-only, behind the `telegram` profile) | none |
 
 ## Three facts worth memorizing
 

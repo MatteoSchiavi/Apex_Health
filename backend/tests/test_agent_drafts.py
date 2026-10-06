@@ -8,10 +8,17 @@ from app.models.lab import ChangeDraft
 from app.models.training import TrainingPlan
 from app.services.changes import apply, reject, undo
 from tests.helpers.ai import FixtureAgentLLMClient
-from tests.helpers.telegram import FixtureTelegramClient, bot_context, clean_bot_tables  # noqa: F401
-from app.connectors.telegram.draft_actions import keyboard_for_drafts
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from app.core.db import sessionmaker
+from tests.helpers.domain_db import clean_domain_tables  # noqa: F401
 
 NOW = datetime(2025, 3, 10, 8, tzinfo=UTC)
+
+
+@asynccontextmanager
+async def _test_context(ctx):
+    yield ctx
 
 
 def proposal(kind="plan_create"):
@@ -73,12 +80,13 @@ async def draft_turn(ctx, kind="plan_create"):
     result = await run_agent_turn(
         ctx.sessionmaker, llm, owner, "draft a change", now=NOW, tier="cheap"
     )
-    assert result.drafts and keyboard_for_drafts(result.drafts) is None
+    assert result.drafts
     return owner, result
 
 
 async def test_plan_is_reviewed_in_app_then_applied_once():
-    async with bot_context(FixtureTelegramClient()) as ctx:
+    ctx = SimpleNamespace(sessionmaker=sessionmaker)
+    async with _test_context(ctx):
         owner, result = await draft_turn(ctx)
         async with ctx.sessionmaker() as session:
             row = await session.get(ChangeDraft, result.drafts[0]["id"])
@@ -97,7 +105,8 @@ async def test_plan_is_reviewed_in_app_then_applied_once():
 
 
 async def test_rejected_model_proposal_never_creates_plan():
-    async with bot_context(FixtureTelegramClient()) as ctx:
+    ctx = SimpleNamespace(sessionmaker=sessionmaker)
+    async with _test_context(ctx):
         owner, result = await draft_turn(ctx)
         async with ctx.sessionmaker() as session:
             ident = result.drafts[0]["id"]
@@ -110,7 +119,8 @@ async def test_rejected_model_proposal_never_creates_plan():
 
 
 async def test_journal_proposal_waits_for_exact_approval_and_can_undo():
-    async with bot_context(FixtureTelegramClient()) as ctx:
+    ctx = SimpleNamespace(sessionmaker=sessionmaker)
+    async with _test_context(ctx):
         owner, result = await draft_turn(ctx, "journal_create")
         async with ctx.sessionmaker() as session:
             row = await session.get(ChangeDraft, result.drafts[0]["id"])

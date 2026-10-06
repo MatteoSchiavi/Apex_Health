@@ -43,7 +43,7 @@ EXPECTED_TABLES = {
     # ai layer
     "ai_reports", "ai_chat_sessions", "ai_chat_messages", "agent_tool_calls",
     "embeddings", "token_usage",
-    # watch, bot & alerts
+    # watch, legacy integration history & alerts
     "watch_sync_log", "telegram_messages", "alerts",
     # weather
     "forecast_cache",
@@ -83,6 +83,17 @@ async def test_all_section6_tables_exist(db_session):
     )
     actual = {r[0] for r in rows} - {"alembic_version"}
     assert actual == EXPECTED_TABLES
+
+
+async def test_new_journal_entries_default_to_web(db_session):
+    default = await db_session.scalar(
+        text(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='journal_entries' "
+            "AND column_name='source'"
+        )
+    )
+    assert default == "'web'::text"
 
 
 async def test_hypertables_created(db_session):

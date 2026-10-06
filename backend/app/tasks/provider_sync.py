@@ -69,19 +69,24 @@ async def _sync_account(provider: str, user_id: int) -> dict:
         try:
             report = await sync(session, user, integration, client, **kwargs)
         finally:
-            # Refreshed OAuth tokens must survive even when the subsequent
-            # request fails, or the next attempt starts with invalid tokens.
-            tokens = getattr(client, "tokens_out", None)
-            refreshed_credentials = None
-            if tokens is not None:
-                refreshed_credentials = tokens.as_credentials()
-            if provider == "garmin" and hasattr(client, "dump_tokens"):
-                refreshed_credentials = client.dump_tokens()
-            if refreshed_credentials is not None:
-                await session.execute(update(Integration).where(
-                    Integration.id == integration_id, Integration.status == "active",
-                ).values(credentials_encrypted=encrypt_json(refreshed_credentials)))
-                await session.commit()
+            try:
+                # Refreshed OAuth tokens must survive even when the subsequent
+                # request fails, or the next attempt starts with invalid tokens.
+                tokens = getattr(client, "tokens_out", None)
+                refreshed_credentials = None
+                if tokens is not None:
+                    refreshed_credentials = tokens.as_credentials()
+                if provider == "garmin" and hasattr(client, "dump_tokens"):
+                    refreshed_credentials = client.dump_tokens()
+                if refreshed_credentials is not None:
+                    await session.execute(update(Integration).where(
+                        Integration.id == integration_id, Integration.status == "active",
+                    ).values(credentials_encrypted=encrypt_json(refreshed_credentials)))
+                    await session.commit()
+            finally:
+                close = getattr(client, "aclose", None)
+                if close is not None:
+                    await close()
         if report is None:
             raise SyncTaskError("Provider sync failed; retrying may recover it")
         return {"status": "partial" if report.raw_rows_unprocessed else "ok",

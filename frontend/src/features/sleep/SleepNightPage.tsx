@@ -31,9 +31,10 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
   const end = Math.max(...segments.map((s) => new Date(s.t_end).getTime()));
   const names = ["deep", "core", "rem", "awake"];
   return (
-    <EChart
-      height={200}
-      option={{
+    <>
+      <EChart
+        height={200}
+        option={{
         animation: false,
         grid: { left: 54, right: 12, top: 8, bottom: 30 },
         tooltip: {
@@ -128,8 +129,23 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
             encode: { x: 0, y: 1 },
           },
         ],
-      }}
-    />
+        }}
+      />
+      <div
+        className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted"
+        aria-label={t("sleep.architecture")}
+      >
+        {names.map((stage) => (
+          <span key={stage} className="flex items-center gap-2">
+            <span
+              className="h-2 w-2"
+              style={{ background: `var(--c-stage-${stage})` }}
+            />
+            {t("stage." + stage)}
+          </span>
+        ))}
+      </div>
+    </>
   );
 }
 function OvernightHrv({ day }: { day: SleepDay }) {

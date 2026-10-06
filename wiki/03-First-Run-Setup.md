@@ -39,12 +39,4 @@ The app is multi-user with strict server-side isolation: a friend's session can 
 
 1. **Mint an invite.** As owner: Settings → Invites → create (7-day expiry by default). The code is shown once.
 2. **Friend redeems.** Send the code over a channel you trust. Your friend opens `/join` on your public URL (see [Remote access](06-Remote-Access.md)), picks name/email/password, and is in — one step, no admin work.
-3. **Optional: Telegram bot.** Put `TELEGRAM_BOT_TOKEN` (from @BotFather) in `.env`, then:
-
-```powershell
-docker compose -f infra/docker-compose.yml --profile telegram up -d
-```
-
-In the chat: `/link`, then `/confirm <code-from-server-log>`. The bot uses long polling — it works behind NAT with zero exposure, and it is where alerts and journal/gym shortcuts land.
-
 **Next:** [Daily usage →](04-Daily-Usage.md)

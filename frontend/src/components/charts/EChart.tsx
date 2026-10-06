@@ -54,10 +54,10 @@ export function useChartTheme() {
     alert: theme === "light" ? "#b73f3f" : "#e07878",
     warning: theme === "light" ? "#a26b12" : "#d6a755",
     stage: {
-      awake: theme === "light" ? "#d5d3ca" : "#c9c7bf",
-      rem: theme === "light" ? "#aaa89c" : "#a2a097",
-      core: "#74766e",
-      deep: theme === "light" ? "#353b34" : "#4b4b46",
+      awake: theme === "light" ? "#a98549" : "#d5bd91",
+      rem: theme === "light" ? "#79669e" : "#b2a0ce",
+      core: theme === "light" ? "#4e7e85" : "#83aeb4",
+      deep: theme === "light" ? "#37665f" : "#5e8982",
     },
     font: '12px "Geist", sans-serif',
   };

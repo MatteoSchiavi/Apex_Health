@@ -31,6 +31,7 @@ class FakeDocker:
             }),
         }
         self.services = {name: OLD_IMAGE for name in ("api", "worker", "bot")}
+        self.bot_exists = True
         self.schema_value = list(OLD_SCHEMA)
         self.fail = set()
         self.pulled = False
@@ -44,6 +45,22 @@ class FakeDocker:
 
     def run(self, *args):
         self.events.append(tuple(args))
+        if args[:1] == ("ps",):
+            filters = " ".join(args)
+            if ("label=com.docker.compose.project=apex-health" in filters
+                    and "label=com.docker.compose.service=bot" in filters
+                    and self.bot_exists):
+                return "legacy-bot-container"
+            return ""
+        if args[:1] == ("stop",):
+            if "legacy-bot-container" in args:
+                self.services["bot"] = None
+            return ""
+        if args[:1] == ("rm",):
+            if "legacy-bot-container" in args:
+                self.services["bot"] = None
+                self.bot_exists = False
+            return ""
         if args[:1] == ("pull",):
             if "pull" in self.fail:
                 raise UpdateError("fake pull failed")
@@ -136,9 +153,13 @@ class AutoUpdateTests(unittest.TestCase):
         start = next(i for i, e in enumerate(events) if "up" in e)
         self.assertLess(backup, migration)
         self.assertLess(migration, start)
+        bot_stop = next(i for i, e in enumerate(events) if "legacy-bot-container" in e and "stop" in e)
+        bot_remove = next(i for i, e in enumerate(events) if "legacy-bot-container" in e and "rm" in e)
+        self.assertLess(bot_stop, backup)
+        self.assertGreater(bot_remove, start)
         self.assertEqual(self.docker.services["api"], NEW_IMAGE)
         self.assertEqual(self.docker.services["worker"], NEW_IMAGE)
-        self.assertEqual(self.docker.services["bot"], NEW_IMAGE)
+        self.assertIsNone(self.docker.services["bot"])
         self.assertTrue(any("--pull" in e and "never" in e for e in events))
         self.assertTrue((self.state_dir / "active.compose.yml").exists())
         self.assertEqual(self.updater.state["current"]["image"], NEW_IMAGE)
@@ -200,13 +221,13 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertEqual(self.updater.state["in_progress"], "manual_recovery")
         self.assertIsNone(self.docker.services["api"])
 
-    def test_update_without_optional_bot_does_not_launch_it(self):
-        self.docker.services["bot"] = None
+    def test_update_recreates_only_application_services(self):
         self.updater.update()
         up_events = [e for e in self.docker.events if "up" in e]
         self.assertEqual(len(up_events), 2)
-        self.assertFalse(any("bot" in e[e.index("up") + 1:] for e in up_events))
-        self.assertIsNone(self.docker.services["bot"])
+        self.assertEqual(self.docker.services, {"api": NEW_IMAGE, "worker": NEW_IMAGE, "bot": None})
+        override = json.loads((self.state_dir / "active.compose.yml").read_text())
+        self.assertEqual(set(override["services"]), {"api", "worker", "migrate"})
 
     def test_mixed_api_and_worker_images_refuse_before_stopping(self):
         self.docker.services["worker"] = "sha256:" + "3" * 64
@@ -279,7 +300,7 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertEqual(self.count("stop"), 0)
 
     def test_resume_adopts_healthy_running_deployment(self):
-        self.docker.services.update(api=NEW_IMAGE, worker=NEW_IMAGE, bot=NEW_IMAGE)
+        self.docker.services.update(api=NEW_IMAGE, worker=NEW_IMAGE)
         self.docker.schema_value = list(NEW_SCHEMA)
         self.updater.resume()
         self.assertEqual(self.updater.state["current"]["image"], NEW_IMAGE)

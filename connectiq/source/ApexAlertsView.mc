@@ -1,5 +1,5 @@
 // Apex Day — ALERTS view (spec 6.6 #6): the newest Apex alerts,
-// severity-coloured. Acknowledging stays in web/Telegram — the watch is a
+// severity-coloured. Acknowledging stays in the app — the watch is a
 // read-only window on purpose (no accidental acks on the wrist).
 
 using Toybox.Graphics;

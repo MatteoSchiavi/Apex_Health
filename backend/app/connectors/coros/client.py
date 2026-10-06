@@ -1,67 +1,84 @@
-"""COROS Open API client shell (see package docstring: awaiting owner's
-developer-portal approval). Endpoints follow the published Open API doc;
-they are intentionally thin because live verification is impossible before
-approval — shapes land in raw_ingest and any mismatch fails per-row, not
-per-sync."""
+"""COROS data access through a configured MCP server only."""
 
-import logging
+from __future__ import annotations
+
+import json
 from typing import Any
-from urllib.parse import urlencode
 
-import httpx
-
-from app.connectors.oauth2 import OAuth2Error, OAuthTokens, exchange_code, refresh
+from app.connectors.coros.mcp import MCPError, StreamableHTTPMCPClient
 from app.core.config import get_settings
-
-logger = logging.getLogger("connectors.coros.client")
 
 SOURCE = "coros"
 
 
 class CorosAuthError(Exception):
-    """Raised when COROS tokens are missing/unusable."""
+    """MCP access credentials or server configuration are unavailable."""
 
 
-def build_authorize_url(state: str) -> str:
-    from app.connectors.oauth2 import build_authorize_url as shared
-
-    return shared("coros", state)
-
-
-async def exchange(code: str) -> OAuthTokens:
-    return await exchange_code("coros", code)
+def build_live_client(credentials: dict | None) -> "CorosClient":
+    if not isinstance(credentials, dict) or not credentials.get("mcp_access_token"):
+        raise CorosAuthError("No account-scoped COROS MCP credential is stored")
+    settings = get_settings()
+    endpoint = getattr(settings, "coros_mcp_url", "")
+    if not endpoint:
+        raise CorosAuthError("COROS MCP server URL is not configured")
+    activity_tool = getattr(settings, "coros_mcp_activity_tool", "")
+    if not activity_tool:
+        raise CorosAuthError("COROS MCP activity tool is not configured")
+    try:
+        arguments = json.loads(getattr(settings, "coros_mcp_activity_args", "{}") or "{}")
+    except (TypeError, ValueError) as exc:
+        raise CorosAuthError("COROS MCP activity arguments are invalid JSON") from exc
+    if not isinstance(arguments, dict):
+        raise CorosAuthError("COROS MCP activity arguments must be a JSON object")
+    try:
+        timeout = float(getattr(settings, "coros_mcp_timeout_seconds", 30))
+    except (TypeError, ValueError):
+        timeout = 30.0
+    return CorosClient(
+        endpoint,
+        bearer_token=str(credentials["mcp_access_token"]),
+        activity_tool=activity_tool,
+        activity_arguments=arguments,
+        timeout=timeout,
+    )
 
 
 class CorosClient:
-    """Bearer-token reader with the same surface as the other connectors."""
+    """Account-authenticated MCP client for one explicitly selected tool."""
 
-    def __init__(self, tokens: OAuthTokens) -> None:
-        self._tokens = tokens
-        self._base = get_settings().coros_api_base.rstrip("/")
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        bearer_token: str,
+        activity_tool: str,
+        activity_arguments: dict[str, Any],
+        timeout: float = 30.0,
+    ) -> None:
+        self.activity_tool = activity_tool
+        self.activity_arguments = activity_arguments
+        try:
+            self.mcp = StreamableHTTPMCPClient(
+                endpoint, bearer_token=bearer_token, timeout=timeout
+            )
+        except MCPError as exc:
+            raise CorosAuthError(str(exc)) from exc
 
-    async def _ensure_token(self) -> str:
-        if not self._tokens.access_token:
-            raise CorosAuthError("COROS access token missing")
-        if self._tokens.refresh_token:
-            try:
-                self._tokens = await refresh("coros", self._tokens.refresh_token)
-            except OAuth2Error as exc:
-                raise CorosAuthError(f"COROS token refresh failed: {exc}") from exc
-        return self._tokens.access_token
+    async def fetch_activities(self) -> dict[str, Any]:
+        try:
+            return await self.mcp.call_tool(self.activity_tool, self.activity_arguments)
+        except MCPError:
+            raise
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        token = await self._ensure_token()
-        url = f"{self._base}/{path.lstrip('/')}"
-        if params:
-            url = f"{url}?{urlencode(params)}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers={"ACCESS-TOKEN": token})
-            resp.raise_for_status()
-            return resp.json()
 
-    async def fetch_sports_list(self, page: int = 1, size: int = 50) -> dict[str, Any]:
-        """Paged activity summaries (Open API /sports/sportsList)."""
-        return await self._get("sports/sportsList", {"page": page, "size": size})
+# Legacy OAuth symbols remain import-compatible while the API is migrated.
+# They intentionally cannot issue a request to COROS or construct direct URLs.
+def build_authorize_url(state: str) -> str:
+    del state
+    raise CorosAuthError("COROS uses the configured MCP connection flow, not COROS OAuth")
 
-    async def fetch_sports_detail(self, sport_id: str) -> dict[str, Any]:
-        return await self._get("sports/sportDetail", {"sportId": sport_id})
+
+async def exchange(code: str) -> Any:
+    del code
+    raise CorosAuthError("COROS uses the configured MCP connection flow, not COROS OAuth")

@@ -19,19 +19,14 @@ import hashlib
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
-from app.connectors.coros.flow import (
-    OAuthFlowError as CorosFlowError,
-    complete_authorization as coros_complete,
-    create_pending_authorization as coros_create_pending,
-    flow_settings_ready as coros_flow_ready,
-)
 from app.connectors.oura.flow import (
     OAuthFlowError as OuraFlowError,
     complete_authorization as oura_complete,
@@ -117,6 +112,13 @@ def _to_dict(integration: Integration) -> dict:
         "last_synced_at": integration.last_synced_at,
         "consecutive_failures": integration.consecutive_failures,
     }
+
+
+def _connection_result(request: Request, result: dict) -> dict | Response:
+    """Return athletes to their device settings after browser OAuth consent."""
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse("/app/settings?tab=devices", status_code=303)
+    return result
 
 
 @router.get("/settings/integrations")
@@ -231,14 +233,15 @@ async def start_technogym_authorization(
     }
 
 
-@router.get("/integrations/technogym/callback")
+@router.get("/integrations/technogym/callback", response_model=None)
 async def technogym_oauth_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
-) -> dict:
+) -> dict | Response:
     """Provider browser redirect target. No app session exists here — the
     single-use `state` is the authentication and account binding."""
     if error:
@@ -252,7 +255,8 @@ async def technogym_oauth_callback(
             detail="callback requires both 'code' and 'state' parameters",
         )
     try:
-        return await complete_authorization(session, redis, code=code, state=state)
+        result = await complete_authorization(session, redis, code=code, state=state)
+        return _connection_result(request, result)
     except OAuthFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
@@ -290,14 +294,15 @@ async def start_whoop_authorization(
     }
 
 
-@router.get("/integrations/whoop/callback")
+@router.get("/integrations/whoop/callback", response_model=None)
 async def whoop_oauth_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
-) -> dict:
+) -> dict | Response:
     """Whoop's browser redirect target (session-less; single-use state is
     the authentication and account binding)."""
     if error:
@@ -311,7 +316,8 @@ async def whoop_oauth_callback(
             detail="callback requires both 'code' and 'state' parameters",
         )
     try:
-        return await whoop_complete(session, redis, code=code, state=state)
+        result = await whoop_complete(session, redis, code=code, state=state)
+        return _connection_result(request, result)
     except WhoopFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
@@ -347,14 +353,15 @@ async def start_strava_authorization(
     }
 
 
-@router.get("/integrations/strava/callback")
+@router.get("/integrations/strava/callback", response_model=None)
 async def strava_oauth_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
-) -> dict:
+) -> dict | Response:
     if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -366,7 +373,8 @@ async def strava_oauth_callback(
             detail="callback requires both 'code' and 'state' parameters",
         )
     try:
-        return await strava_complete(session, redis, code=code, state=state)
+        result = await strava_complete(session, redis, code=code, state=state)
+        return _connection_result(request, result)
     except StravaFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
@@ -404,14 +412,15 @@ async def start_oura_authorization(
     }
 
 
-@router.get("/integrations/oura/callback")
+@router.get("/integrations/oura/callback", response_model=None)
 async def oura_oauth_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
-) -> dict:
+) -> dict | Response:
     if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -423,66 +432,78 @@ async def oura_oauth_callback(
             detail="callback requires both 'code' and 'state' parameters",
         )
     try:
-        return await oura_complete(session, redis, code=code, state=state)
+        result = await oura_complete(session, redis, code=code, state=state)
+        return _connection_result(request, result)
     except OuraFlowError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
 
-# ------------------------------------------------- COROS (Open API shell)
+# ------------------------------------------------- COROS (MCP)
 
 
-@router.post("/settings/integrations/coros/authorize")
-async def start_coros_authorization(
+class CorosMcpConnectIn(BaseModel):
+    access_token: str = Field(min_length=1, max_length=4096, repr=False)
+
+
+@router.get("/settings/integrations/coros/mcp/status")
+async def coros_mcp_status(user: User = Depends(get_current_user)) -> dict:
+    from app.core.config import get_settings
+    settings = get_settings()
+    return {"configured": bool(settings.coros_mcp_url and settings.coros_mcp_activity_tool)}
+
+
+@router.post("/settings/integrations/coros/mcp/connect")
+async def connect_coros_mcp(
+    payload: CorosMcpConnectIn,
     user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis_dependency),
-) -> dict:
-    """COROS gates API access behind a manual developer-portal review — this
-    endpoint 400s with the explanation until COROS_CLIENT_ID/SECRET exist."""
-    if not coros_flow_ready():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "COROS_CLIENT_ID / COROS_CLIENT_SECRET are not configured — "
-                "apply at open.coros.com (manual review); when approved, set "
-                "the env pair and this flow works unchanged (INSTALL §7f)"
-            ),
-        )
-    state, authorize_url = await coros_create_pending(redis, user)
-    logger.info("coros OAuth: pending authorization minted for user %s", user.id)
-    return {
-        "authorize_url": authorize_url,
-        "state": state,
-        "expires_in_seconds": 600,
-        "note": "Open the URL, log into COROS, and approve.",
-    }
-
-
-@router.get("/integrations/coros/callback")
-async def coros_oauth_callback(
-    code: str | None = None,
-    state: str | None = None,
-    error: str | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
 ) -> dict:
-    if error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"COROS authorization failed: {error}",
-        )
-    if not code or not state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="callback requires both 'code' and 'state' parameters",
-        )
+    from app.connectors.coros.client import CorosAuthError, build_live_client
+    from app.connectors.coros.mcp import MCPError
+    from app.connectors.coros.sync import _activities_from_result
+    from app.core.config import get_settings
+    settings = get_settings()
+    if not settings.coros_mcp_url or not settings.coros_mcp_activity_tool:
+        raise HTTPException(409, "Configure COROS_MCP_URL and the server's COROS_MCP_ACTIVITY_TOOL first")
+    lock_id = int.from_bytes(hashlib.sha256(f"sync:coros:{user.id}".encode()).digest()[:8], "big", signed=True)
+    if not await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": lock_id}):
+        raise HTTPException(409, "A COROS sync is running; try connecting again when it finishes")
+    credentials = {"mcp_access_token": payload.access_token}
     try:
-        return await coros_complete(session, redis, code=code, state=state)
-    except CorosFlowError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        client = build_live_client(credentials)
+        result = await client.fetch_activities()
+        if _activities_from_result(result) is None:
+            raise HTTPException(422, "COROS MCP tool result does not match the configured activity contract")
+    except (CorosAuthError, MCPError):
+        raise HTTPException(422, "COROS MCP connection could not be verified; check the server, tool and account token") from None
+    finally:
+        payload.access_token = ""
+    integration = await session.scalar(select(Integration).where(
+        Integration.user_id == user.id, Integration.provider == "coros",
+    ))
+    if integration is None:
+        integration = Integration(user_id=user.id, provider="coros")
+        session.add(integration)
+    integration.credentials_encrypted = encrypt_json(credentials)
+    integration.status = "active"
+    integration.consecutive_failures = 0
+    integration.last_synced_at = None
+    await _discard_pending_oauth_states(redis, "coros", user.id)
+    await session.commit()
+    return {"connected": True, "provider": "coros"}
+
+
+@router.post("/settings/integrations/coros/authorize")
+async def start_coros_authorization(user: User = Depends(get_current_user)) -> dict:
+    raise HTTPException(410, "COROS now connects through your configured MCP server in Settings")
+
+
+@router.get("/integrations/coros/callback")
+async def coros_oauth_callback() -> dict:
+    raise HTTPException(410, "COROS OAuth has been retired; connect through the configured MCP server")
 
 
 # ------------------------------------------------- Garmin (credentials flow)
@@ -594,9 +615,8 @@ async def connect_garmin(
     backfill_enqueued = True
     try:
         from app.tasks.garmin_sync import sync_user_garmin
-
         sync_user_garmin.delay(user.id)
-    except Exception:  # noqa: BLE001 — broker down: next beat tick (6h) covers
+    except Exception:
         backfill_enqueued = False
         logger.warning("garmin connect: per-user backfill enqueue failed — beat will cover")
 
@@ -609,7 +629,9 @@ async def connect_garmin(
 
 
 @router.post("/settings/integrations/garmin/sync", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/settings/integrations/{provider}/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_garmin_now(
+    provider: str = "garmin",
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis_dependency),
@@ -617,29 +639,34 @@ async def sync_garmin_now(
     """Queue one account's sync; a status resource exposes progress safely."""
     from uuid import uuid4
     from starlette.concurrency import run_in_threadpool
-    from app.tasks.garmin_sync import sync_user_garmin
+    from importlib import import_module
+    if provider not in _DISCONNECTABLE_PROVIDERS:
+        raise HTTPException(404, "Unknown integration")
+    task = import_module(f"app.tasks.{provider}_sync").__dict__[f"sync_user_{provider}"]
 
     integration = await session.scalar(select(Integration).where(
-        Integration.user_id == user.id, Integration.provider == "garmin",
+        Integration.user_id == user.id, Integration.provider == provider,
         Integration.status == "active",
     ))
     if integration is None:
-        raise HTTPException(400, "Garmin is not connected — connect it first.")
+        raise HTTPException(400, "Provider is not connected — connect it first.")
     job_id = str(uuid4())
     try:
         # Ownership precedes publishing so even a fast worker result is scoped.
         await redis.set(f"sync:job:{job_id}", str(user.id), ex=7 * 24 * 3600)
-        await run_in_threadpool(sync_user_garmin.apply_async, args=[user.id], task_id=job_id)
+        await run_in_threadpool(task.apply_async, args=[user.id], task_id=job_id)
     except Exception:
-        logger.warning("Could not enqueue Garmin sync for user %s", user.id)
+        logger.warning("Could not enqueue %s sync for user %s", provider, user.id)
         raise HTTPException(503, "Sync queue unavailable; try again shortly.") from None
     return {"enqueued": True, "completed": False, "job_id": job_id,
-            "status_url": f"/settings/integrations/garmin/sync/{job_id}"}
+            "status_url": f"/settings/integrations/{provider}/sync/{job_id}"}
 
 
 @router.get("/settings/integrations/garmin/sync/{job_id}")
+@router.get("/settings/integrations/{provider}/sync/{job_id}")
 async def garmin_sync_status(
     job_id: str,
+    provider: str = "garmin",
     user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis_dependency),
 ) -> dict:

@@ -81,6 +81,7 @@ class Updater:
         self.directory = state_dir.resolve()
         self.image = image
         self.docker = docker or Docker()
+        self.project_name = project or os.environ.get("COMPOSE_PROJECT_NAME") or "apex-health"
         self.base = ["compose", "--env-file", str(self.repo / ".env")]
         if project:
             self.base += ["--project-name", project]
@@ -102,7 +103,7 @@ class Updater:
         path = self.directory / (name + ".compose.yml")
         # JSON is valid YAML and avoids interpolating configuration as shell code.
         write_json(path, {"services": {service: {"image": image_id, "pull_policy": "never"}
-                                     for service in ("api", "worker", "migrate", "bot")}})
+                                     for service in ("api", "worker", "migrate")}})
         return path
 
     def image_info(self, reference):
@@ -123,6 +124,24 @@ class Updater:
     def schema(self):
         return self.compose("exec", "-T", "db", "sh", "-c", SCHEMA).splitlines()
 
+    def legacy_bot_containers(self):
+        """Find only bot containers owned by this Compose project."""
+        result = self.docker.run(
+            "ps", "-aq", "--filter", "label=com.docker.compose.project=" + self.project_name,
+            "--filter", "label=com.docker.compose.service=bot",
+        )
+        return result.splitlines()
+
+    def stop_legacy_bot(self):
+        containers = self.legacy_bot_containers()
+        if containers:
+            self.docker.run("stop", "-t", "120", *containers)
+
+    def remove_legacy_bot(self):
+        containers = self.legacy_bot_containers()
+        if containers:
+            self.docker.run("rm", "-f", *containers)
+
     def probe(self):
         self.compose("exec", "-T", "api", "python", "-c", API_PROBE)
         self.compose("exec", "-T", "api", "python", "-c", WORKER_PROBE)
@@ -131,24 +150,23 @@ class Updater:
         current = self.service_image("api")
         if self.service_image("worker") != current:
             raise UpdateError("API and worker use different images; repair the existing stack first")
-        bot = self.service_image("bot", required=False)
-        if bot and bot != current:
-            raise UpdateError("Telegram bot uses a different image; repair the existing stack first")
         self.probe()
         _, labels = self.image_info(current)
         return {"image": current, "revision": labels.get("org.opencontainers.image.revision"),
-                "schema": self.schema(), "bot": bool(bot)}
+                "schema": self.schema()}
 
-    def start(self, image_id, bot):
+    def start(self, image_id):
         override = self.override("active", image_id)
         common = ("up", "-d", "--no-build", "--pull", "never", "--no-deps",
                   "--force-recreate", "--wait", "--wait-timeout", "120")
         self.compose(*common, "api", override=override)
-        self.compose(*common, "worker", *( ["bot"] if bot else [] ), override=override)
+        self.compose(*common, "worker", override=override)
         self.probe()
+        self.remove_legacy_bot()
 
-    def stop(self, bot):
-        self.compose("stop", "-t", "120", "worker", *( ["bot"] if bot else [] ))
+    def stop(self):
+        self.stop_legacy_bot()
+        self.compose("stop", "-t", "120", "worker")
         self.compose("stop", "-t", "60", "api")
 
     def resume(self):
@@ -170,9 +188,9 @@ class Updater:
         current = self.running()
         self.state.update(paused=True, in_progress="rollback")
         self.save()
-        self.stop(current["bot"])
+        self.stop()
         try:
-            self.start(previous["image"], previous["bot"])
+            self.start(previous["image"])
         except Exception:
             self.save()
             raise
@@ -208,7 +226,7 @@ class Updater:
         self.state.update(in_progress=phase, candidate={"image": candidate, "revision": revision})
         self.save()
         try:
-            self.stop(current["bot"])
+            self.stop()
             phase = "backup"
             self.state["in_progress"] = phase
             self.save()
@@ -226,9 +244,9 @@ class Updater:
             phase = "starting"
             self.state.update(in_progress=phase, candidate_schema=schema)
             self.save()
-            self.start(candidate, current["bot"])
+            self.start(candidate)
             self.state.update(previous=current,
-                              current={"image": candidate, "revision": revision, "schema": schema, "bot": current["bot"]},
+                              current={"image": candidate, "revision": revision, "schema": schema},
                               updated_at=deployment, in_progress=None, failed_image=None)
             self.save()
             print(f"Deployed tested commit {revision[:12]}; encrypted backup: {backup['path']}")
@@ -244,9 +262,9 @@ class Updater:
             self.state.update(failed_image=candidate, failure_phase=phase, paused=not safe)
             self.save()
             try:
-                self.stop(current["bot"])
+                self.stop()
                 if safe:
-                    self.start(current["image"], current["bot"])
+                    self.start(current["image"])
                     self.state.update(in_progress=None, current=current)
                     self.save()
                     print("Previous application restored; failed image will not be retried automatically", file=sys.stderr)

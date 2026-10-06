@@ -1,8 +1,4 @@
-"""Journal model (MASTER_SPEC §6.4 — journal_entries).
-
-Mapped by its owning consumer: written by the Telegram voice pipeline on
-draft confirmation (§10.2). source CHECK: ('web','telegram_voice','telegram_text').
-"""
+"""Journal model (MASTER_SPEC §6.4 — journal_entries)."""
 
 from datetime import date, datetime
 
@@ -29,7 +25,7 @@ class JournalEntry(Base):
     free_text_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     source: Mapped[str] = mapped_column(
-        Text, nullable=False, default="telegram_text", server_default="telegram_text"
+        Text, nullable=False, default="web", server_default="web"
     )
     raw_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

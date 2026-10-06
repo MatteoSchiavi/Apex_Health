@@ -1,15 +1,14 @@
 """Gear tracking (MASTER_SPEC §13).
 
 - Auto-link: an ingested activity inherits the user's default gear for its
-  discipline (discipline_gear_defaults); Telegram voice can override later.
+  discipline (discipline_gear_defaults).
 - Nightly accumulation (§19, right after the feature engine): usage since
   the last gear_service_logs.performed_at is RECOMPUTED from linked
   activities into hours_since_service / km_since_service — a pure recompute,
   so re-running never double-counts (§17).
 - Crossing the configured interval fires ONE gear_service_due alert per gear
   (deduped on unacknowledged alerts for the same gear); logging a service
-  resets the counters. Alerts are DB rows — the caller commits, then pushes
-  (§21 contract in app/connectors/telegram/alerts.py).
+  resets the counters. Alerts are durable DB rows.
 """
 
 import logging

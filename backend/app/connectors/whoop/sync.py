@@ -60,6 +60,8 @@ async def sync_user_whoop(
         ("workout", client.fetch_workouts(start, None)),
     )
     errors: list[str] = []
+    cycles: dict[str, dict] = {}
+    sleeps: dict[str, dict] = {}
     for payload_type, coro in pulls:
         try:
             records = await coro
@@ -70,6 +72,10 @@ async def sync_user_whoop(
         for record in records:
             if not isinstance(record, dict) or not record:
                 continue
+            if payload_type == "cycle" and record.get("id") is not None:
+                cycles[str(record["id"])] = record
+            elif payload_type == "sleep" and record.get("id") is not None:
+                sleeps[str(record["id"])] = record
             await store_raw(session, user.id, payload_type, record, fetched_at=now)
             report.raw_rows_stored += 1
         report.notes.append(f"{payload_type}: {len(records)} records")
@@ -103,10 +109,33 @@ async def sync_user_whoop(
         try:
             async with session.begin_nested():
                 stats = NormalizerStats()
+                payload = row.raw_json
+                if row.payload_type == "recovery" and isinstance(payload, dict) and payload.get("score_state") in (None, "SCORED"):
+                    # The recovery API exposes cycle_id/sleep_id, not timestamps.
+                    # Join fetch context without altering the preserved API JSON.
+                    cycle_id = str(payload.get("cycle_id", ""))
+                    cycle = cycles.get(cycle_id)
+                    if cycle is None and not payload.get("cycle_start") and hasattr(client, "fetch_cycle"):
+                        try:
+                            cycle = await client.fetch_cycle(cycle_id)
+                        except Exception as exc:
+                            raise NormalizationError("recovery cycle context unavailable") from exc
+                        cycles[cycle_id] = cycle
+                        cycle_raw = await store_raw(session, user.id, "cycle", cycle, fetched_at=now)
+                        await normalize_raw_row(session, cycle_raw, cycle, tz, discipline_index, stats)
+                        cycle_raw.processed = True
+                        report.raw_rows_stored += 1
+                    sleep = sleeps.get(str(payload.get("sleep_id", "")), {})
+                    payload = {
+                        **payload,
+                        "cycle_start": (cycle or {}).get("start") or payload.get("cycle_start"),
+                        "sleep_end": sleep.get("end") or payload.get("sleep_end"),
+                    }
                 await normalize_raw_row(
-                    session, row, row.raw_json, tz, discipline_index, stats
+                    session, row, payload, tz, discipline_index, stats
                 )
                 totals.activities_upserted += stats.activities_upserted
+                totals.activities_merged += stats.activities_merged
                 totals.sleep_upserted += stats.sleep_upserted
                 totals.hrv_upserted += stats.hrv_upserted
                 totals.biometrics_upserted += stats.biometrics_upserted

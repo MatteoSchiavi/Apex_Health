@@ -37,6 +37,9 @@ async def _mint(client: AsyncClient, owner_cookies: dict, **payload) -> dict:
         headers=csrf_headers(client, owner_cookies),
         cookies=owner_cookies,
     )
+    # Authenticated responses refresh cookies; each probe below explicitly
+    # supplies its identity, so do not retain the owner's refreshed jar.
+    client.cookies.clear()
     return resp
 
 

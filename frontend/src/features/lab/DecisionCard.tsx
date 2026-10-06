@@ -9,6 +9,7 @@ import {
   Loading,
   StatPod,
   fmtNum,
+  fmtHours,
 } from "../../components/kit";
 import type { Decision } from "./types";
 import { useAction, useLab, useToday, Form, Field, num, str } from "./shared";
@@ -86,8 +87,8 @@ export function DecisionCard() {
               label={t("lab.metrics." + e.metric, {
                 defaultValue: e.metric.replaceAll("_", " "),
               })}
-              value={fmtNum(e.value, 1)}
-              unit={e.unit}
+              value={e.unit === "h" ? fmtHours(e.value == null ? null : e.value * 3600) : fmtNum(e.value, 1)}
+              unit={e.unit === "h" ? undefined : e.unit}
               sub={
                 <>
                   <span className="block">

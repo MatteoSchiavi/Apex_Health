@@ -73,6 +73,9 @@ class OverviewOut(BaseModel):
     steps: int | None
     weight_kg: float | None
     vo2max: float | None
+    body_fat_pct: float | None = None
+    floors: int | None = None
+    hydration_ml: float | None = None
     acute_load: float | None
     chronic_load: float | None
     acwr: float | None
@@ -111,6 +114,52 @@ class ActivityListOut(BaseModel):
     offset: int
 
 
+class RecordedZoneOut(BaseModel):
+    metric: Literal["hr", "power"]
+    name: str
+    duration_s: float
+    lower: float | None = None
+    upper: float | None = None
+
+
+class StrengthPreviousOut(BaseModel):
+    date: str
+    sets: int
+    reps: int
+    volume_kg: float | None
+    weighted_sets: int
+
+
+class StrengthSetOut(BaseModel):
+    reps: int
+    weight_kg: float | None
+
+
+class StrengthExerciseOut(BaseModel):
+    exercise_id: int | None
+    name: str
+    muscle_group: str | None
+    sets: int
+    reps: int
+    volume_kg: float | None
+    weighted_sets: int
+    recorded_sets: list[StrengthSetOut] = Field(default_factory=list)
+    previous: StrengthPreviousOut | None = None
+    delta_sets: int | None = None
+    delta_reps: int | None = None
+    delta_volume_kg: float | None = None
+
+
+class ActivityPresentationOut(BaseModel):
+    kind: Literal["strength", "running", "cycling", "sailing", "skiing", "hiit", "other"]
+    avg_speed_m_s: float | None = None
+    max_speed_m_s: float | None = None
+    avg_cadence: float | None = None
+    slope_count: int | None = None
+    zones: list[RecordedZoneOut] = Field(default_factory=list)
+    strength: list[StrengthExerciseOut] = Field(default_factory=list)
+
+
 class ActivityDetailOut(ActivityOut):
     has_streams: bool = False
     stream_types: list[str] = []
@@ -118,6 +167,7 @@ class ActivityDetailOut(ActivityOut):
     weather: dict[str, Any] | None = None
     source_metrics: dict[str, Any] | None = None
     gear: list[dict[str, Any]] = []
+    presentation: ActivityPresentationOut | None = None
 
 
 class StreamOut(BaseModel):

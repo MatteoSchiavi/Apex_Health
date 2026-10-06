@@ -1,12 +1,11 @@
 """Medical module acceptance tests (§23 Phase 4).
 
-AC1: a low-ferritin entry fires an alert — DB-backed row + pushed to the
-linked chat. Also proves §17's app-layer encryption of lab_panels notes and
+AC1: a low-ferritin entry fires a DB-backed alert. Also proves §17's
+app-layer encryption of lab_panels notes and
 the §8.3 shared reads (get_lab_trend, get_donation_status) now running on the
 Phase 4 ORM models.
 
-No third-party calls — the Telegram client is the fixture implementation
-(§0, §16.7, §20).
+No third-party calls (§16.7, §20).
 """
 
 import os
@@ -15,7 +14,6 @@ from datetime import date
 from httpx import AsyncClient
 from sqlalchemy import select, text
 
-from app.core.db import sessionmaker
 from app.medical.labs import (
     decrypt_notes,
     evaluate_ferritin_alert,
@@ -23,13 +21,8 @@ from app.medical.labs import (
 )
 from app.models.alert import Alert
 from app.models.medical import LabMetric, LabPanel
-from app.models.telegram import TelegramLink
-from app.connectors.telegram.alerts import push_alert
 from app.queries import get_donation_status, get_lab_trend
-from tests.helpers.telegram import (
-    FixtureTelegramClient,
-    clean_bot_tables,  # noqa: F401 — autouse per-test truncate
-)
+from tests.helpers.domain_db import clean_domain_tables  # noqa: F401 — autouse per-test truncate
 from tests.conftest import csrf_headers
 
 OWNER_EMAIL = os.environ["OWNER_EMAIL"]
@@ -43,16 +36,9 @@ async def _owner_id(db_session) -> int:
     return row.scalar_one()
 
 
-async def _link_chat(db_session, user_id: int, chat_id: int) -> None:
-    db_session.add(TelegramLink(user_id=user_id, chat_id=chat_id))
-    await db_session.commit()
-
-
-async def test_low_ferritin_entry_fires_alert_and_pushes(db_session):
-    """AC1: a low-ferritin panel → low_ferritin alert row + Telegram push."""
-    client = FixtureTelegramClient()
+async def test_low_ferritin_entry_fires_alert(db_session):
+    """AC1: a low-ferritin panel creates a durable low_ferritin alert."""
     user_id = await _owner_id(db_session)
-    await _link_chat(db_session, user_id, 555)
 
     panel = await record_lab_panel(
         db_session,
@@ -67,14 +53,6 @@ async def test_low_ferritin_entry_fires_alert_and_pushes(db_session):
     alert = await evaluate_ferritin_alert(db_session, panel)
     assert alert is not None
     await db_session.commit()
-
-    notified = await push_alert(sessionmaker, client, alert)
-
-    assert notified == 1
-    (msg,) = client.sent_messages
-    assert msg["chat_id"] == 555
-    assert "low_ferritin" in msg["text"]
-    assert "12" in msg["text"] and "30" in msg["text"]
 
     alerts = (
         await db_session.scalars(

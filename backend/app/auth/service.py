@@ -1,8 +1,9 @@
 """Auth service: owner bootstrap, login with lockout bookkeeping, server-side sessions.
 
 Sessions are server-side rows (§2, §22.2): the cookie carries a random token,
-only its peppered SHA-256 hash is stored. Expiry slides: once more than half
-the TTL has passed, a valid request extends the session to a full TTL from now.
+only its peppered SHA-256 hash is stored. Ordinary session expiry slides: once
+more than half the TTL has passed, a valid request extends it to a full TTL.
+Remembered sessions instead expire at their fixed 30-day bound.
 """
 
 import logging
@@ -26,6 +27,7 @@ from app.core.security import (
 from app.models.user import AuthCredential, User, UserSession
 
 logger = logging.getLogger("auth.service")
+REMEMBERED_SESSION_DAYS = 30
 
 
 class AuthError(Exception):
@@ -158,7 +160,9 @@ async def authenticate(
     return cred
 
 
-async def create_session(session: AsyncSession, user_id: int) -> tuple[str, datetime]:
+async def create_session(
+    session: AsyncSession, user_id: int, *, remember_me: bool = False
+) -> tuple[str, datetime]:
     """Create a server-side session row; returns (raw_token, expires_at).
 
     F-21 audit: sets ``absolute_expires_at`` (30-day cap from creation) so
@@ -167,15 +171,22 @@ async def create_session(session: AsyncSession, user_id: int) -> tuple[str, date
     settings = get_settings()
     token = new_session_token()
     now = datetime.now(UTC)
-    expires_at = now + timedelta(minutes=settings.session_ttl_minutes)
-    # F-21: 30-day absolute lifetime — sliding refresh cannot extend past this.
-    absolute_expires_at = now + timedelta(days=30)
+    # A normal login keeps the existing sliding server lifetime and absolute
+    # cap. Remembered logins get a fixed, bounded 30-day lifetime so that the
+    # browser cookie and the server-side session expire together.
+    absolute_expires_at = now + timedelta(days=REMEMBERED_SESSION_DAYS)
+    expires_at = (
+        absolute_expires_at
+        if remember_me
+        else now + timedelta(minutes=settings.session_ttl_minutes)
+    )
     session.add(
         UserSession(
             user_id=user_id,
             token_hash=hash_session_token(token, settings.session_secret),
             expires_at=expires_at,
             absolute_expires_at=absolute_expires_at,
+            remember_me=remember_me,
         )
     )
     await session.commit()
@@ -204,6 +215,14 @@ async def resolve_session(
     # if its sliding expiry was just refreshed.
     if row.absolute_expires_at is not None and row.absolute_expires_at <= datetime.now(UTC):
         return None
+
+    # Remembered sessions use the full 30-day bound without sliding; normal
+    # sessions retain the short sliding expiry (§22.2).
+    if row.remember_me:
+        user = await session.get(User, row.user_id)
+        if user is None:
+            return None
+        return user, row
 
     # Sliding expiry: past half the TTL, extend to a full TTL from now (§22.2).
     # F-21: the extension is capped by absolute_expires_at — sliding refresh
@@ -243,5 +262,6 @@ def session_cookie_name() -> str:
     return "hcc_session"
 
 
-def cookie_max_age_seconds() -> int:
-    return get_settings().session_ttl_minutes * 60
+def remembered_session_max_age_seconds() -> int:
+    """Maximum persisted lifetime shared by remembered sessions and cookies."""
+    return REMEMBERED_SESSION_DAYS * 24 * 60 * 60

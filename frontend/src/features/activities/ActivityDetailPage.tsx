@@ -32,7 +32,8 @@ import {
   friendlyDiscipline,
 } from "../../components/kit";
 import { Tabs } from "../../components/Tabs";
-import { useUnits } from "../../components/data";
+import { RecordedZones, SportMetrics, paceText, sportKind, useSportUnits } from "./SportActivityView";
+import { StrengthBodyMap } from "./StrengthBodyMap";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
@@ -102,10 +103,10 @@ function GpsTrace({ stream }: { stream: StreamOut }) {
     </div>
   );
 }
-function Timeline({ stream }: { stream: StreamOut }) {
+function Timeline({ stream, kind }: { stream: StreamOut; kind: string }) {
   const { t } = useTranslation();
   const c = useChartTheme();
-  const units = useUnits();
+  const units = useSportUnits(kind);
   const [channel, setChannel] = useState("hr");
   const defs = [
     {
@@ -123,7 +124,7 @@ function Timeline({ stream }: { stream: StreamOut }) {
     {
       key: "cadence",
       label: t("activities.cadence"),
-      unit: "rpm",
+      unit: kind === "running" ? "spm" : "rpm",
       convert: (v: number) => v,
     },
     {
@@ -134,11 +135,11 @@ function Timeline({ stream }: { stream: StreamOut }) {
     },
     {
       key: "speed",
-      label: t("activities.speed"),
-      unit: units.speedUnit,
-      convert: (v: number) => units.speed(v * 3.6)!,
+      label: kind === "running" ? t("sportView.pace") : t("activities.speed"),
+      unit: kind === "running" ? units.paceUnit : units.speedUnit,
+      convert: (v: number) => kind === "running" ? units.pace(v) : units.speed(v),
     },
-  ].filter((d) => stream.columns[d.key]?.some((v) => v != null));
+  ].filter((d) => !(kind === "sailing" && d.key === "altitude") && stream.columns[d.key]?.some((v) => v != null));
   const active = defs.find((d) => d.key === channel) ?? defs[0];
   if (!active) return <Empty>{t("design.no_streams")}</Empty>;
   return (
@@ -169,7 +170,7 @@ function Timeline({ stream }: { stream: StreamOut }) {
               backgroundColor: c.surface,
               borderColor: c.hairline,
               textStyle: { color: c.ink, fontSize: 13 },
-              valueFormatter: (v: number) => fmtNum(v, 1) + " " + active.unit,
+              valueFormatter: (v: number) => (kind === "running" && active.key === "speed" ? paceText(v) : fmtNum(v, 1)) + " " + active.unit,
             },
             dataZoom: [
               { type: "inside" },
@@ -219,6 +220,41 @@ function Timeline({ stream }: { stream: StreamOut }) {
     </Card>
   );
 }
+
+// Provider payloads may contain scalars, arrays or null instead of dictionaries.
+// Flatten bounded scalar records; never assume a provider block is an object.
+function safeSourceRows(meta: unknown, sailing: boolean): [string, string | number | boolean][] {
+  const rows: [string, string | number | boolean][] = [];
+  let budget = 500;
+  function visit(value: unknown, path: string, depth: number) {
+    if (--budget < 0 || rows.length >= 100 || depth > 5 || value == null) return;
+    if (["string", "number", "boolean"].includes(typeof value)) {
+      if (typeof value !== "number" || Number.isFinite(value))
+        rows.push([path || "value", value as string | number | boolean]);
+      return;
+    }
+    if (typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value).slice(0, 100)) {
+      if (budget < 0 || rows.length >= 100) break;
+      if (sailing && /altitude|elevation|ascent|descent/i.test(key)) continue;
+      visit(child, path ? path + "." + key : key, depth + 1);
+    }
+  }
+  visit(meta, "", 0);
+  return rows;
+}
+function sourceValue(key: string, value: string | number | boolean, units: ReturnType<typeof useSportUnits>) {
+  const field = key.split(".").at(-1)!;
+  if (typeof value === "number") {
+    if (["distance_m", "distance", "total_distance"].includes(field)) return fmtNum(units.distance(value), 2) + " " + units.distanceUnit;
+    if (["avg_speed_m_s", "max_speed_m_s", "averageSpeed", "maxSpeed"].includes(field)) return fmtNum(units.speed(value), 1) + " " + units.speedUnit;
+    if (["elevation_gain_m", "altitude_m", "total_ascent", "total_descent"].includes(field)) return fmtNum(units.elevation(value)) + " " + units.elevationUnit;
+    if (field === "weight_kg") return fmtNum(value) + " kg";
+    if (field === "duration_s") return fmtDuration(value);
+  }
+  return String(value);
+}
+
 const WEATHER_CODES: Record<number, string> = {
   0: "clear",
   1: "mostly_clear",
@@ -245,7 +281,6 @@ const WEATHER_CODES: Record<number, string> = {
 export default function ActivityDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams();
-  const units = useUnits();
   const timezone = useUi((s) => s.me?.timezone);
   const [tab, setTab] = useState("session");
   const detail = useQuery({
@@ -258,16 +293,16 @@ export default function ActivityDetailPage() {
     queryFn: () => api.get<StreamOut>("/activities/" + id + "/streams"),
     enabled: !!detail.data?.has_streams,
   });
+  const kind = detail.data ? sportKind(detail.data) : "other";
+  const units = useSportUnits(kind);
   if (detail.isLoading) return <Loading />;
   if (detail.isError || !detail.data) return <ErrorNote />;
   const a = detail.data;
-  const water = [
-    "sailing",
-    "kitesurf",
-    "windsurf",
-    "surf",
-    "wakeboard",
-  ].includes(a.discipline ?? "");
+  const indoor = ["strength", "hiit"].includes(kind);
+  const hasGps = streams.data?.columns.lat?.some((lat, i) => {
+    const lon = streams.data?.columns.lon?.[i];
+    return lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+  });
   const weather = a.weather;
   const weatherNum = (key: string) =>
     typeof weather?.[key] === "number" ? (weather[key] as number) : null;
@@ -296,11 +331,11 @@ export default function ActivityDetailPage() {
           label={t("activities.duration")}
           value={fmtDuration(a.duration_s)}
         />
-        <StatPod
+        {indoor ? <StatPod label={t("activities.calories")} value={fmtNum(a.calories)} unit="kcal" /> : <StatPod
           label={t("activities.distance")}
           value={fmtNum(units.distance(a.distance_m), 2)}
           unit={units.distanceUnit}
-        />
+        />}
         <StatPod
           label={t("activities.avg_hr")}
           value={fmtNum(a.avg_hr)}
@@ -324,75 +359,21 @@ export default function ActivityDetailPage() {
       />
       {tab === "session" && (
         <>
-          <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-            <Card>
+          {kind === "strength" && <StrengthBodyMap activity={a} />}
+          <div className={(!indoor || hasGps) ? "grid gap-6 xl:grid-cols-[1.6fr_1fr]" : "grid gap-6"}>
+            {(!indoor || hasGps) && <Card>
               <CardHeader title={t("activities.map")} />
-              {streams.isLoading ? (
-                <Loading />
-              ) : streams.isError ? (
-                <ErrorNote />
-              ) : streams.data ? (
-                <GpsTrace stream={streams.data} />
-              ) : (
-                <Empty>{t("activities.no_map")}</Empty>
-              )}
-            </Card>
-            <Card>
-              <CardHeader title={t("design.session_metrics")} />
-              <div className="grid grid-cols-2 gap-x-6">
-                {!water && (
-                  <StatPod
-                    label={t("activities.elevation")}
-                    value={fmtNum(units.elevation(a.elevation_gain_m))}
-                    unit={units.elevationUnit}
-                  />
-                )}
-                <StatPod
-                  label={t("activities.max_hr")}
-                  value={fmtNum(a.max_hr)}
-                  unit="bpm"
-                />
-                <StatPod
-                  label={t("activities.avg_power")}
-                  value={fmtNum(a.avg_power)}
-                  unit="W"
-                />
-                <StatPod
-                  label={t("activities.np")}
-                  value={fmtNum(a.np_power)}
-                  unit="W"
-                />
-                <StatPod
-                  label={t("activities.speed")}
-                  value={fmtNum(
-                    units.speed(
-                      a.distance_m != null && a.duration_s > 0
-                        ? (a.distance_m / a.duration_s) * 3.6
-                        : null,
-                    ),
-                    1,
-                  )}
-                  unit={units.speedUnit}
-                />
-                <StatPod
-                  label={t("activities.calories")}
-                  value={fmtNum(a.calories)}
-                  unit="kcal"
-                />
-              </div>
-              {a.gear.length > 0 && (
-                <p className="mt-5 border-t border-hairline pt-4 text-[13px] text-muted">
-                  {t("activities.gear")}: {a.gear.map((g) => g.name).join(", ")}
-                </p>
-              )}
-            </Card>
+              {streams.isLoading ? <Loading /> : streams.isError ? <ErrorNote /> : streams.data ? <GpsTrace stream={streams.data} /> : <Empty>{t("activities.no_map")}</Empty>}
+            </Card>}
+            <SportMetrics activity={a} />
           </div>
+          <RecordedZones activity={a} />
           {streams.isLoading ? (
             <Loading />
           ) : streams.isError ? (
             <ErrorNote />
           ) : streams.data ? (
-            <Timeline stream={streams.data} />
+            <Timeline stream={streams.data} kind={kind} />
           ) : (
             <Card>
               <Empty>{t("design.no_streams")}</Empty>
@@ -426,7 +407,7 @@ export default function ActivityDetailPage() {
                 <StatPod
                   label={t("weather.wind")}
                   value={fmtNum(
-                    units.speed(weatherNum("wind_speed_10m_max")),
+                    units.speed(weatherNum("wind_speed_10m_max") == null ? null : weatherNum("wind_speed_10m_max")! / 3.6),
                     1,
                   )}
                   unit={units.speedUnit}
@@ -454,12 +435,13 @@ export default function ActivityDetailPage() {
                       "lap",
                       "duration",
                       "distance",
+                      ...(kind === "running" ? ["pace"] : kind === "sailing" ? ["speed"] : []),
                       "avg_hr",
                       "max_hr",
                       "avg_power",
                       "calories",
                     ].map((k) => (
-                      <th key={k}>{t("activities." + k)}</th>
+                      <th key={k}>{t((k === "pace" ? "sportView." : "activities.") + k)}</th>
                     ))}
                   </tr>
                 </thead>
@@ -472,6 +454,8 @@ export default function ActivityDetailPage() {
                         {fmtNum(units.distance(l.distance_m), 2)}{" "}
                         {units.distanceUnit}
                       </td>
+                      {kind === "running" && <td>{paceText(units.pace(l.distance_m != null && l.duration_s != null && l.duration_s > 0 ? l.distance_m / l.duration_s : null))} {units.paceUnit}</td>}
+                      {kind === "sailing" && <td>{fmtNum(units.speed(l.distance_m != null && l.duration_s != null && l.duration_s > 0 ? l.distance_m / l.duration_s : null), 1)} {units.speedUnit}</td>}
                       <td>{fmtNum(l.avg_hr)} bpm</td>
                       <td>{fmtNum(l.max_hr)} bpm</td>
                       <td>{fmtNum(l.avg_power)} W</td>
@@ -501,8 +485,7 @@ export default function ActivityDetailPage() {
               <div key={provider} className="mb-6">
                 <h2 className="section-label mb-4">{provider}</h2>
                 <dl className="grid gap-x-8 md:grid-cols-2">
-                  {Object.entries(meta)
-                    .filter(([, v]) => v != null)
+                  {safeSourceRows(meta, kind === "sailing")
                     .map(([k, v]) => (
                       <div
                         key={k}
@@ -510,9 +493,7 @@ export default function ActivityDetailPage() {
                       >
                         <dt className="text-muted">{k.replaceAll("_", " ")}</dt>
                         <dd className="num max-w-[60%] break-words text-right">
-                          {typeof v === "object"
-                            ? JSON.stringify(v)
-                            : String(v)}
+                          {sourceValue(k, v, units)}
                         </dd>
                       </div>
                     ))}

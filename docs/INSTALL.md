@@ -93,8 +93,6 @@ service.
   encrypted; the password is used only for the connection flow.
 - **FIT files:** import original files from Data Health. Originals are stored
   encrypted and sample provenance is retained.
-- **Telegram:** set `TELEGRAM_BOT_TOKEN`, then start the optional profile:
-  `docker compose --env-file .env -f infra/docker-compose.yml --profile telegram up -d`.
 - **AI coach:** configure an OpenAI-compatible provider using the LLM settings
   in `.env`. The app remains usable when no key is configured.
 - **Other device providers:** add the corresponding OAuth credentials only
@@ -102,6 +100,19 @@ service.
 
 Provider access, model latency and device delivery are not proven by the local
 test suite. Validate them with your own account before relying on them.
+
+When upgrading from a version that ran the Telegram bot, delete the
+`TELEGRAM_BOT_TOKEN` line from `.env` and recreate the stack. This clears the
+old credential from the application environment and removes the orphaned bot
+container:
+
+```sh
+docker ps -aq --filter label=com.docker.compose.project=apex-health --filter label=com.docker.compose.service=bot | xargs -r docker rm -f
+docker compose --env-file .env -f infra/docker-compose.yml up -d --build --force-recreate --wait
+```
+
+Replace `apex-health` with the Compose project name if the installation uses a
+custom name.
 
 ## Backups and upgrades
 

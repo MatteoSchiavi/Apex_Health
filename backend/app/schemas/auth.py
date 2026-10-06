@@ -9,6 +9,9 @@ from pydantic import BaseModel, EmailStr, Field
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=1024)
+    # Defaults to the current short-lived session policy for API consumers
+    # that do not send this field.
+    remember_me: bool = False
 
 
 class AuthUserOut(BaseModel):

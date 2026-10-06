@@ -8,7 +8,7 @@ Every panel entry flows through `record_lab_panel`:
   and is only ever decrypted through `decrypt_notes`,
 - a ferritin value below the panel's own lab-provided reference low (or the
   configured default when the lab gave none) fires a `low_ferritin` alert —
-  DB-backed first, pushed to Telegram by the caller after commit (§21).
+  DB-backed and visible in the alerts inbox (§21).
 """
 
 import logging
@@ -179,8 +179,7 @@ async def evaluate_ferritin_alert(
 
     Only a value actually below the threshold fires; a panel without a
     ferritin value never fires. The alert row is added to the session —
-    the caller commits, then pushes it to Telegram (§21 pattern from
-    app/connectors/telegram/alerts.py).
+    the caller commits it for the alerts inbox.
     """
     if panel.ferritin_ng_ml is None:
         return None

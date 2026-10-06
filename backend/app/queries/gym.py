@@ -211,7 +211,7 @@ async def open_alert_summaries(
 ) -> dict:
     """Unacknowledged alerts — count plus the newest few for the wrist (the
     watch is a glance surface, not the alert inbox; acking stays in
-    Telegram/web)."""
+    application)."""
     total = len(
         (
             await session.scalars(

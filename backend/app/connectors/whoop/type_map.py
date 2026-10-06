@@ -40,6 +40,11 @@ SPORT_ALIASES = {
     "snowboarding": "snowboard",
     "strength_training": "strength",
     "weight_training": "strength",
+    "weightlifting": "strength",
+    "powerlifting": "strength",
+    "strength_trainer": "strength",
+    "crossfit": "strength",
+    "hiit": "gym_general",
     "gym": "gym_general",
     "functional_fitness": "gym_general",
     "sailing": "sailing",
@@ -69,6 +74,7 @@ def resolve_discipline(
     key = str(sport_name).strip().lower()
     if key in discipline_index:
         return discipline_index[key], None
+    key = key.replace(" ", "_").replace("-", "_")
     if key in SPORT_ALIASES:
         alias = SPORT_ALIASES[key]
         if alias in discipline_index:

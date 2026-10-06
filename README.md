@@ -27,8 +27,8 @@ There is no second web application or mock-data runtime in this repository.
   account owner approves the exact proposal.
 - Keeps source provenance, revisions, privacy controls, encrypted originals,
   exports, deletion previews and audit records.
-- Runs scheduled jobs and encrypted backups locally. Telegram and AI providers
-  are optional integrations.
+- Runs scheduled jobs and encrypted backups locally. AI providers are optional
+  integrations.
 
 ## Run it locally
 
@@ -72,6 +72,8 @@ wiki/          user-facing operating notes
 - [Architecture and technical choices](docs/STACK.md)
 - [Performance Lab and agent contract](docs/PERFORMANCE_LAB.md)
 - [UI system and screenshots](docs/UI_REDESIGN.md)
+- [UI refinements and sport-specific detail views](docs/UI_REFINEMENTS.md)
+- [WHOOP setup](docs/WHOOP_SETUP.md) · [COROS MCP](docs/COROS_MCP.md) · [Apple Health import](docs/APPLE_HEALTH.md)
 - [Release checklist](docs/BACKEND_RELEASE.md)
 - [Security and privacy posture](docs/SECURITY.md)
 
@@ -97,7 +99,7 @@ in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Integration boundaries
 
-Live Garmin, LLM and Telegram credentials are not bundled with the project.
+Live Garmin and LLM credentials are not bundled with the project.
 The UI and local stack work without them, but live provider behaviour must be
 verified with the account owner’s credentials before relying on it. The
 [Performance Lab contract](docs/PERFORMANCE_LAB.md) records the remaining

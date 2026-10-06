@@ -65,6 +65,98 @@ async def test_login_rotates_and_csrf_is_bound_to_session(client, db_session):
     assert (await client.put("/me", json={"theme": "dark"}, headers=csrf_headers(client))).status_code == 200
 
 
+async def test_login_defaults_to_browser_session_cookie(client, db_session):
+    response = await sign_in(client, db_session)
+    session_cookie = next(
+        value for value in response.headers.get_list("set-cookie")
+        if value.startswith("hcc_session=")
+    )
+    assert "Max-Age=" not in session_cookie
+    assert "Expires=" not in session_cookie
+    assert "httponly" in session_cookie.lower()
+    assert "secure" in session_cookie.lower()
+    assert "samesite=lax" in session_cookie.lower()
+    csrf_cookie = next(
+        value for value in response.headers.get_list("set-cookie")
+        if value.startswith("csrf_token=")
+    )
+    assert "Max-Age=" not in csrf_cookie
+    assert "Expires=" not in csrf_cookie
+    assert "httponly" not in csrf_cookie.lower()
+    assert "secure" in csrf_cookie.lower()
+    assert "samesite=lax" in csrf_cookie.lower()
+
+
+async def test_remembered_login_has_bounded_persistent_cookie_and_session(client, db_session):
+    await reset_owner_auth_state(db_session)
+    response = await client.post("/auth/login", json={
+        "email": os.environ["OWNER_EMAIL"],
+        "password": os.environ["OWNER_PASSWORD"],
+        "remember_me": True,
+    })
+    assert response.status_code == 200
+    session_cookie = next(
+        value for value in response.headers.get_list("set-cookie")
+        if value.startswith("hcc_session=")
+    )
+    assert "Max-Age=2592000" in session_cookie
+    csrf_cookie = next(
+        value for value in response.headers.get_list("set-cookie")
+        if value.startswith("csrf_token=")
+    )
+    assert "Max-Age=2592000" in csrf_cookie
+    token = response.cookies["hcc_session"]
+    row = await db_session.scalar(select(UserSession).where(
+        UserSession.token_hash == hash_session_token(token, get_settings().session_secret),
+    ))
+    assert row is not None
+    assert row.remember_me is True
+    assert row.absolute_expires_at == row.expires_at
+    fixed_expiry = row.expires_at
+
+    renewed = await client.get("/me")
+    assert renewed.status_code == 200
+    renewed_cookie = next(
+        value for value in renewed.headers.get_list("set-cookie")
+        if value.startswith("hcc_session=")
+    )
+    assert "Max-Age=" in renewed_cookie
+    renewed_csrf_cookie = next(
+        value for value in renewed.headers.get_list("set-cookie")
+        if value.startswith("csrf_token=")
+    )
+    assert "Max-Age=" in renewed_csrf_cookie
+    await db_session.refresh(row)
+    assert row.expires_at == fixed_expiry
+
+
+async def test_nonremembered_session_stays_session_cookie_at_absolute_cap(client, db_session):
+    login = await sign_in(client, db_session)
+    token = login.cookies["hcc_session"]
+    row = await db_session.scalar(select(UserSession).where(
+        UserSession.token_hash == hash_session_token(token, get_settings().session_secret),
+    ))
+    assert row is not None
+    now = datetime.now(UTC)
+    row.created_at = now - timedelta(days=29)
+    row.expires_at = now + timedelta(minutes=1)
+    row.absolute_expires_at = now + timedelta(minutes=3)
+    assert row.remember_me is False
+    await db_session.commit()
+
+    response = await client.get("/me")
+    assert response.status_code == 200
+    await db_session.refresh(row)
+    assert row.expires_at == row.absolute_expires_at
+    for cookie_name in ("hcc_session", "csrf_token"):
+        cookie = next(
+            value for value in response.headers.get_list("set-cookie")
+            if value.startswith(f"{cookie_name}=")
+        )
+        assert "Max-Age=" not in cookie
+        assert "Expires=" not in cookie
+
+
 @pytest.mark.parametrize("headers", [
     {"Origin": "https://attacker.example"}, {"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"},
 ])
@@ -109,7 +201,11 @@ async def test_sliding_session_refresh_uses_remaining_ttl(client, db_session):
     assert refreshed_expiry > datetime.now(UTC) + timedelta(minutes=settings.session_ttl_minutes - 1)
     assert (await resolve_session(db_session, token))[1].expires_at == refreshed_expiry
     response = await client.get("/me")
-    assert "Max-Age=" in response.headers["set-cookie"]
+    session_cookie = next(
+        value for value in response.headers.get_list("set-cookie")
+        if value.startswith("hcc_session=")
+    )
+    assert "Max-Age=" not in session_cookie
 
 
 async def test_unicode_csrf_and_logout_csrf_rejected(client, db_session):
@@ -119,4 +215,8 @@ async def test_unicode_csrf_and_logout_csrf_rejected(client, db_session):
     assert response.status_code == 403
     response = await client.post("/auth/logout", headers=csrf_headers(client))
     assert response.status_code == 204
+    deleted_cookies = response.headers.get_list("set-cookie")
+    assert any(value.startswith("hcc_session=") and "Max-Age=0" in value for value in deleted_cookies)
+    assert any(value.startswith("csrf_token=") and "Max-Age=0" in value for value in deleted_cookies)
+    assert not client.cookies.get("hcc_session")
     assert not client.cookies.get("csrf_token")
