@@ -1,10 +1,10 @@
-"""Garmin client abstraction.
+"""Garmin authentication facade and unofficial Connect transport.
 
-§0/§16.7/§20: automated tests NEVER talk to the live Garmin API — the sync
-pipeline depends only on the `GarminClient` protocol and tests inject a
-fixture-backed implementation. `LiveGarminClient` wraps the unofficial
-`garminconnect` library (§3) and imports it lazily, so the codebase works
-without it installed and no test can reach the network even by accident.
+The sync pipeline depends on the `GarminTransport` protocol in `transport.py`.
+Automated tests inject fixture-backed clients and never call Garmin live.
+`LiveGarminClient` handles the unofficial `garminconnect` session while
+`GarminConnectTransport` owns calls and response adaptation. The library is
+imported lazily, so this module remains importable when it is not installed.
 
 Real-account connection is performed manually by the owner (§23 Phase 1
 acceptance): see tools/garmin_sync.py.
@@ -13,8 +13,9 @@ acceptance): see tools/garmin_sync.py.
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Protocol
+from typing import Any, Callable
 
+from app.connectors.garmin.transport import GarminTransport
 from app.core.config import get_settings
 
 logger = logging.getLogger("connectors.garmin.client")
@@ -24,29 +25,72 @@ class GarminAuthError(Exception):
     """Raised when the live client cannot authenticate."""
 
 
-class GarminClient(Protocol):
-    """The surface the sync pipeline needs. All methods are async; the live
-    implementation bridges the synchronous garminconnect library via
-    asyncio.to_thread."""
+# Keep the former protocol import stable for existing callers.
+GarminClient = GarminTransport
+
+
+class GarminConnectTransport:
+    """Unofficial Garmin Connect API calls and response-shape adaptation."""
+
+    def __init__(self, gc_client: Any) -> None:
+        self._gc = gc_client
 
     async def get_activities(self, start: int, limit: int) -> list[dict[str, Any]]:
-        """Activity summaries, newest first, paginated (§6.3 backfill walks
-        every page)."""
-        ...
+        return await asyncio.to_thread(self._gc.get_activities, start, limit)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
-        """Per-second(ish) stream samples for one activity."""
-        ...
+        # garminconnect 0.3.x returns activityDetailMetrics aligned with
+        # metricDescriptors. Keep converting at this provider boundary so the
+        # sync pipeline and fixture clients retain their established shape.
+        payload = await asyncio.to_thread(self._gc.get_activity_details, str(activity_id))
+        if not isinstance(payload, dict):
+            return []
+        samples = payload.get("samples")
+        if samples is None:
+            legacy_keys = {
+                "directTimestamp": "timestamp",
+                "directHeartRate": "heartRate",
+                "directPower": "power",
+                "directCadence": "cadence",
+                "directSpeed": "speed",
+                "directElevation": "altitude",
+                "directLatitude": "positionLat",
+                "directLongitude": "positionLong",
+            }
+            descriptors = [
+                d.get("key")
+                for d in (payload.get("metricDescriptors") or [])
+                if isinstance(d, dict)
+            ]
+            rebuilt: list[dict[str, Any]] = []
+            for row in payload.get("activityDetailMetrics") or []:
+                values = row.get("metrics") if isinstance(row, dict) else None
+                if not isinstance(values, list):
+                    continue
+                sample: dict[str, Any] = {}
+                for key, value in zip(descriptors, values):
+                    name = legacy_keys.get(key)
+                    if name is not None and value is not None:
+                        sample[name] = value
+                if sample:
+                    rebuilt.append(sample)
+            samples = rebuilt
+        return samples if isinstance(samples, list) else []
 
-    async def get_sleep_data(self, local_date: str) -> dict[str, Any]: ...
+    async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_sleep_data, local_date)
 
-    async def get_hrv_data(self, local_date: str) -> dict[str, Any]: ...
+    async def get_hrv_data(self, local_date: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_hrv_data, local_date)
 
-    async def get_stress_data(self, local_date: str) -> dict[str, Any]: ...
+    async def get_stress_data(self, local_date: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_stress_data, local_date)
 
-    async def get_stats(self, local_date: str) -> dict[str, Any]: ...
+    async def get_stats(self, local_date: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_stats_and_body, local_date)
 
-    async def get_body_composition(self, local_date: str) -> dict[str, Any]: ...
+    async def get_body_composition(self, local_date: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_body_composition, local_date)
 
 
 class LiveGarminClient:
@@ -66,8 +110,16 @@ class LiveGarminClient:
     Tokens are NOT cached here — the caller owns persisting them encrypted.
     """
 
-    def __init__(self, _gc_client: Any) -> None:
+    def __init__(
+        self,
+        _gc_client: Any,
+        *,
+        transport: GarminTransport | None = None,
+    ) -> None:
         self._gc = _gc_client
+        self._transport = (
+            transport if transport is not None else GarminConnectTransport(_gc_client)
+        )
 
     @classmethod
     def from_tokens(cls, garth_dump: dict[str, Any]) -> "LiveGarminClient":
@@ -142,63 +194,31 @@ class LiveGarminClient:
         return Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
 
     async def get_activities(self, start: int, limit: int) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(self._gc.get_activities, start, limit)
+        return await self._transport.get_activities(start, limit)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
-        # 0.3.x removed get_activity_samples: get_activity_details carries the
-        # stream under activityDetailMetrics (rows of values aligned with
-        # metricDescriptors keys) instead of the legacy flat "samples" list.
-        # Rebuild the legacy shape here so the normalizer and fixtures stay
-        # unchanged (§3: the sync pipeline speaks one sample shape).
-        payload = await asyncio.to_thread(self._gc.get_activity_details, str(activity_id))
-        if not isinstance(payload, dict):
-            return []
-        samples = payload.get("samples")
-        if samples is None:
-            legacy_keys = {
-                "directTimestamp": "timestamp",
-                "directHeartRate": "heartRate",
-                "directPower": "power",
-                "directCadence": "cadence",
-                "directSpeed": "speed",
-                "directElevation": "altitude",
-                "directLatitude": "positionLat",
-                "directLongitude": "positionLong",
-            }
-            descriptors = [
-                d.get("key")
-                for d in (payload.get("metricDescriptors") or [])
-                if isinstance(d, dict)
-            ]
-            rebuilt: list[dict[str, Any]] = []
-            for row in payload.get("activityDetailMetrics") or []:
-                values = row.get("metrics") if isinstance(row, dict) else None
-                if not isinstance(values, list):
-                    continue
-                sample: dict[str, Any] = {}
-                for key, value in zip(descriptors, values):
-                    name = legacy_keys.get(key)
-                    if name is not None and value is not None:
-                        sample[name] = value
-                if sample:
-                    rebuilt.append(sample)
-            samples = rebuilt
-        return samples if isinstance(samples, list) else []
+        return await self._transport.get_activity_samples(activity_id)
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_sleep_data, local_date)
+        return await self._transport.get_sleep_data(local_date)
 
     async def get_hrv_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_hrv_data, local_date)
+        return await self._transport.get_hrv_data(local_date)
 
     async def get_stress_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_stress_data, local_date)
+        return await self._transport.get_stress_data(local_date)
 
     async def get_stats(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_stats_and_body, local_date)
+        return await self._transport.get_stats(local_date)
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_body_composition, local_date)
+        return await self._transport.get_body_composition(local_date)
+
+
+# The old concrete class name remains the public integration surface for the
+# CLI and settings API. The Garmin Connect qualifier makes the unofficial
+# transport explicit for new call sites.
+GarminConnectClient = LiveGarminClient
 
 
 def build_live_client(credentials: dict[str, Any] | None) -> LiveGarminClient:
