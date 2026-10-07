@@ -208,9 +208,14 @@ async def _execute_tool_bounded(
 
 def validate_answer(content, evidence_objects):
     """Validate explicit measured claims, never label prose as calibrated proof."""
+    from app.agent.claims import inspect_claim_safety, validate_claim_kind
     try:
         answer = json.loads(content or "")
     except (ValueError, TypeError):
+        violations = inspect_claim_safety(content or "")
+        if violations:
+            return ("I cannot support that causal or medical conclusion from the available evidence. Please review the observations and seek appropriate help for concerning symptoms.",
+                    {"status": "invalid", "verified_claims": [], "violations": violations})
         if re.search(r"(?<!\w)\d+(?:[.,]\d+)?", content or ""):
             return (
                 "I could not verify the measured values in this answer. Please request an evidence-backed analysis.",
@@ -231,6 +236,11 @@ def validate_answer(content, evidence_objects):
             {"status": "invalid"},
         )
     indexed = {}
+    analysis_metadata = {}
+    violations = inspect_claim_safety(answer["answer"])
+    if violations:
+        return ("I cannot support that causal or medical conclusion from the available evidence. Please review the observations and seek appropriate help for concerning symptoms.",
+                {"status": "invalid", "verified_claims": [], "violations": violations})
 
     def walk(obj):
         if isinstance(obj, dict):
@@ -240,10 +250,11 @@ def validate_answer(content, evidence_objects):
                 "analysis:"
             ):
                 indexed[obj["handle"]] = obj.get("data", {})
-            if len(obj.get("evidence_refs", [])) == 1 and obj["evidence_refs"][
-                0
-            ].startswith("analysis:"):
+                analysis_metadata[obj["handle"]] = {"recipe": obj.get("recipe"), "formula_version": obj.get("formula_version")}
+            refs = obj.get("evidence_refs")
+            if isinstance(refs, list) and len(refs) == 1 and isinstance(refs[0], str) and refs[0].startswith("analysis:"):
                 indexed[obj["evidence_refs"][0]] = obj.get("data", {})
+                analysis_metadata[obj["evidence_refs"][0]] = {"recipe": obj.get("recipe"), "formula_version": obj.get("formula_version")}
             for value in obj.values():
                 walk(value)
         elif isinstance(obj, list):
@@ -252,13 +263,26 @@ def validate_answer(content, evidence_objects):
 
     walk(evidence_objects)
     valid = []
+    qualitative = []
     for claim in answer.get("claims", []):
         if not isinstance(claim, dict):
             return (
                 "I could not verify the measured claims in this answer. Please request a fresh analysis.",
                 {"status": "invalid"},
             )
+        try:
+            kind = validate_claim_kind(claim, is_analysis=str(claim.get("evidence_id", "")).startswith("analysis:"))
+        except ValueError:
+            return ("I could not verify this claim type. Please request an evidence-backed analysis.",
+                    {"status": "invalid", "verified_claims": []})
         row = indexed.get(claim.get("evidence_id"))
+        if kind in {"HYPOTHESIS", "UNKNOWN"}:
+            qualitative.append({**claim, "kind": kind})
+            continue
+        if kind == "ASSOCIATION":
+            # Association is admitted only from the registered observational recipe.
+            if analysis_metadata.get(claim.get("evidence_id"), {}).get("recipe") != "intervention_association":
+                return ("No registered association analysis supports this statement.", {"status": "invalid", "verified_claims": []})
         if row is not None and str(claim.get("evidence_id", "")).startswith(
             "analysis:"
         ):
@@ -285,7 +309,7 @@ def validate_answer(content, evidence_objects):
                 "I could not verify the measured claims in this answer. Please request a fresh analysis.",
                 {"status": "invalid"},
             )
-        valid.append(claim)
+        valid.append({**claim, "kind": kind})
     numbers = re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?", answer["answer"])
     claimed = {
         float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float))
@@ -298,6 +322,7 @@ def validate_answer(content, evidence_objects):
     return answer["answer"], {
         "status": "structured",
         "verified_claims": valid,
+        "qualitative_claims": qualitative,
         "limitations": answer.get("limitations", []),
     }
 
