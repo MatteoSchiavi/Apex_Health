@@ -3,9 +3,10 @@
 - ``purge_sessions``: deletes expired session rows (F-08). Bounded by the
   ``idx_sessions_expires_at`` index added in migration 0008.
 - ``prune_streams``: retention policy for ``activity_streams`` and
-  ``raw_ingest`` (D-01). Streams older than 400 days whose activity already
-  has summary metrics are deleted; raw_ingest older than 180 days is deleted
-  oldest-first in batches.
+  ``raw_ingest`` (D-01). Streams older than 400 days are deleted only when
+  the activity is full and has canonical average heart rate; processed
+  ``raw_ingest`` older than 180 days is deleted in batches. Alpha utility
+  events and AI accounting/tool logs are retained for 400 days.
 - ``vacuum_analyze``: weekly VACUUM ANALYZE on bulk-insert tables (D-10).
 
 All tasks are memory-bounded: stream pruning uses ``DELETE ... USING`` (no
@@ -16,7 +17,7 @@ import logging
 
 from sqlalchemy import text
 
-from app.core.db import sessionmaker
+from app.core.db import engine, sessionmaker
 from app.tasks.celery_app import celery_app
 from app.tasks.runtime import run_async
 
@@ -71,17 +72,21 @@ def prune_streams() -> dict:
 async def _prune_streams() -> dict:
     streams_deleted = 0
     raw_deleted = 0
+    alpha_events_deleted = 0
     async with sessionmaker() as session:
-        # Streams: drop rows whose activity is older than the retention
-        # window AND already has summary metrics (so the feature engine
-        # never needs the raw stream again).
+        # Streams: drop rows only after the activity has a trustworthy
+        # summary fallback. `full` alone is not enough: it can be the model's
+        # default, and stream-derived HR does not populate activities.avg_hr.
+        # The feature engine can use avg_hr for HR-based load when detailed
+        # samples are gone. Activities with no summary HR retain their streams.
         streams_result = await session.execute(
             text(
                 "DELETE FROM activity_streams st "
                 "USING activities a "
                 "WHERE a.id = st.activity_id "
-                "  AND a.start_time < now() - (:days || ' days')::interval "
-                "  AND a.metrics IS NOT NULL"
+                "  AND a.start_time < now() - make_interval(days => :days) "
+                "  AND a.data_completeness = 'full' "
+                "  AND a.avg_hr IS NOT NULL"
             ),
             {"days": STREAM_RETENTION_DAYS},
         )
@@ -97,7 +102,7 @@ async def _prune_streams() -> dict:
                     "WHERE id IN ("
                     "  SELECT id FROM raw_ingest "
                     "  WHERE processed = true "
-                    "    AND fetched_at < now() - (:days || ' days')::interval "
+                    "    AND fetched_at < now() - make_interval(days => :days) "
                     "  ORDER BY id LIMIT :batch"
                     ")"
                 ),
@@ -109,28 +114,39 @@ async def _prune_streams() -> dict:
             if batch_deleted < RAW_INGEST_PRUNE_BATCH:
                 break
 
-        # ai_llm_calls / agent_tool_calls / sync_log: rolling 400-day delete.
-        # budget math needs ≥90d; 400d matches the stream window.
-        for table in ("token_usage", "agent_tool_calls", "sync_log"):
+        # AI accounting/tool history: rolling 400-day delete. Budget math
+        # needs ≥90d; 400d matches the stream window.
+        for table in ("token_usage", "agent_tool_calls"):
             await session.execute(
                 text(
                     f"DELETE FROM {table} "
-                    f"WHERE created_at < now() - (:days || ' days')::interval"
+                    f"WHERE created_at < now() - make_interval(days => :days)"
                 ),
                 {"days": AI_LOG_RETENTION_DAYS},
             )
 
-        # Bounded WAL after bulk delete (D-10).
-        await session.execute(text("CHECKPOINT"))
+        # Alpha utility telemetry contains a fixed event vocabulary and no
+        # prompts or health payloads. Retain enough history for the 28-day
+        # owner aggregates and their longer comparison window.
+        alpha_events_result = await session.execute(
+            text(
+                "DELETE FROM alpha_events "
+                "WHERE created_at < now() - make_interval(days => :days)"
+            ),
+            {"days": AI_LOG_RETENTION_DAYS},
+        )
+        alpha_events_deleted = alpha_events_result.rowcount or 0
+
         await session.commit()
 
     logger.info(
-        "retention prune: streams_deleted=%s raw_ingest_deleted=%s",
-        streams_deleted, raw_deleted,
+        "retention prune: streams_deleted=%s raw_ingest_deleted=%s alpha_events_deleted=%s",
+        streams_deleted, raw_deleted, alpha_events_deleted,
     )
     return {
         "streams_deleted": streams_deleted,
         "raw_ingest_deleted": raw_deleted,
+        "alpha_events_deleted": alpha_events_deleted,
         "retention_days_streams": STREAM_RETENTION_DAYS,
         "retention_days_raw": RAW_INGEST_RETENTION_DAYS,
     }
@@ -160,11 +176,14 @@ async def _vacuum_analyze() -> dict:
         "token_usage",
         "agent_tool_calls",
     )
-    async with sessionmaker() as session:
+    # VACUUM cannot run in a transaction. Use an AUTOCOMMIT connection before
+    # issuing it; session.connection() autobegins a transaction and cannot
+    # safely switch isolation levels afterward.
+    async with engine.connect() as connection:
+        connection = await connection.execution_options(
+            isolation_level="AUTOCOMMIT"
+        )
         for table in tables:
-            # VACUUM cannot run inside a transaction; use a raw connection.
-            async with session.connection() as conn:
-                await conn.execution_options(isolation_level="AUTOCOMMIT")
-                await conn.execute(text(f"VACUUM ANALYZE {table}"))
-        logger.info("vacuum_analyze: %s tables maintained", len(tables))
+            await connection.execute(text(f"VACUUM ANALYZE {table}"))
+    logger.info("vacuum_analyze: %s tables maintained", len(tables))
     return {"tables": list(tables)}
