@@ -46,13 +46,13 @@ EXPECTED_V1 = {
         "deep_pct": "0.35",
         "efficiency": "0.25",
     },
-    "illness_risk_score": {
+    "systemic_stress_signal": {
         "hrv_drop": "0.40",
         "resting_hr_elevation": "0.30",
         "respiration_elevation": "0.20",
         "journal_soreness_fatigue": "0.10",
     },
-    "injury_risk_score": {
+    "load_spike_indicator": {
         "acwr_spike": "0.70",
         "load_spike": "0.30",
     },
@@ -110,7 +110,7 @@ async def test_selection_rule_latest_effective_from_wins(db_session: AsyncSessio
     assert after["prior_day_strain"] == 0.02
 
     untouched = await load_weights(
-        db_session, "illness_risk_score", cutoff_for_local_day(date(2025, 4, 5), ROME)
+        db_session, "systemic_stress_signal", cutoff_for_local_day(date(2025, 4, 5), ROME)
     )
     assert untouched["hrv_drop"] == 0.40  # other features unaffected
 

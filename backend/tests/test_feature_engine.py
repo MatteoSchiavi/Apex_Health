@@ -32,8 +32,8 @@ from tests.helpers.golden import seed_golden_world
 COMPOSITE_FIELDS = {
     "recovery_score",
     "readiness_score",
-    "illness_risk_score",
-    "injury_risk_score",
+    "systemic_stress_signal",
+    "load_spike_indicator",
     "sleep_architecture_score",
     "cross_discipline_fatigue_index",
 }
@@ -219,7 +219,7 @@ async def test_acwr_single_load_metric_for_both_windows(db_session, golden_world
     rows = await daily_rows(db_session, user.id)
     for row in rows.values():
         if row.acwr is None:
-            assert float(row.training_load_chronic) == 0.0
+            assert row.training_load_chronic is None or float(row.training_load_chronic) == 0.0
             continue
         acute = float(row.training_load_acute)
         chronic_weekly = float(row.training_load_chronic)
@@ -285,7 +285,7 @@ async def test_nightly_single_day_matches_range_recompute(db_session, golden_wor
     for field in (
         "recovery_score",
         "readiness_score",
-        "illness_risk_score",
+        "systemic_stress_signal",
         "acwr",
     ):
         assert float(getattr(stored, field)) == pytest.approx(

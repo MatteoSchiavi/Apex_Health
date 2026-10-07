@@ -117,18 +117,18 @@ def test_injury_veto_never_resurrects_dropped_exercises():
 # ---- P-04 audit: safety interlock wired into adjust() --------------------
 
 
-def test_high_illness_risk_drops_high_and_moderate_impact():
-    """P-04: illness_risk ≥ 70 → ceiling='rest' → all high+moderate dropped."""
-    safety = {"illness_risk": 88, "hrv_dev_pct": -31, "rhr_dev_bpm": 9}
+def test_high_systemic_stress_drops_high_and_moderate_impact():
+    """P-04: systemic_stress ≥ 70 → ceiling='rest' → all high+moderate dropped."""
+    safety = {"systemic_stress": 88, "hrv_dev_pct": -31, "rhr_dev_bpm": 9}
     kept, notes = adjust(_leg_day(), [], [], TODAY, safety=safety)
     # All high/moderate impact rows dropped; only low-impact survives.
     assert all(r["impact_level"] == "low" for r in kept)
     assert any("illness" in n.lower() or "rest" in n.lower() for n in notes)
 
 
-def test_high_injury_risk_caps_at_low():
-    """P-04: injury_risk ≥ 75 → ceiling='low' → high+moderate dropped."""
-    safety = {"injury_risk": 80}
+def test_high_load_spike_caps_at_low():
+    """P-04: load_spike ≥ 75 → ceiling='low' → high+moderate dropped."""
+    safety = {"load_spike": 80}
     kept, notes = adjust(_leg_day(), [], [], TODAY, safety=safety)
     assert all(r["impact_level"] == "low" for r in kept)
     assert any("injury" in n.lower() or "load spike" in n.lower() for n in notes)
@@ -156,10 +156,10 @@ def test_safety_veto_runs_before_event_taper():
     and a kept set that respects BOTH (high impact dropped by veto, legs
     further reduced by taper).
     """
-    safety = {"illness_risk": 88}
+    safety = {"systemic_stress": 88}
     event = _event("ski", 2)  # taper
     kept, notes = adjust(_leg_day(), [event], [], TODAY, safety=safety)
-    assert any("illness" in n.lower() for n in notes)
+    assert any("systemic stress" in n.lower() for n in notes)
     assert any("taper" in n.lower() for n in notes)
     # No high or moderate impact survived (illness veto drops them all).
     assert all(r["impact_level"] == "low" for r in kept)

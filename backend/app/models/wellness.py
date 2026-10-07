@@ -33,6 +33,8 @@ class SleepSession(Base):
     rem_s: Mapped[int | None] = mapped_column(nullable=True)
     awake_s: Mapped[int | None] = mapped_column(nullable=True)
     sleep_score: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    origin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_metrics: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     respiration_avg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     spo2_avg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     restlessness: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
@@ -48,6 +50,8 @@ class HrvReading(Base):
     )
     hrv_ms: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     reading_type: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    method: Mapped[str | None] = mapped_column(Text, nullable=True)
     rolling_baseline_ms: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
 
 

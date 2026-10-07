@@ -26,22 +26,28 @@ def cutoff_for_local_day(day: date, tz: ZoneInfo) -> datetime:
     return datetime(day.year, day.month, day.day, tzinfo=tz)
 
 
-async def load_weights(
+async def load_weight_selection(
     session: AsyncSession, feature_name: str, cutoff: datetime
-) -> dict[str, float]:
-    """Active component weights for `feature_name` as of `cutoff` — per
-    component the row with the latest effective_from <= cutoff (id breaks
-    ties for same-instant rows). Returned as floats: the engine computes in
-    float and pins its numerics via the golden-dataset regression tests."""
+) -> dict[str, dict]:
+    """Actual selected rows, including the configuration version and identity."""
     rows = await session.execute(
         text(
             "SELECT DISTINCT ON (component_name) "
-            "  component_name, weight "
+            "component_name, weight, id, version, effective_from "
             "FROM feature_weights "
-            "WHERE feature_name = :feature_name "
-            "  AND effective_from <= :cutoff "
+            "WHERE feature_name = :feature_name AND effective_from <= :cutoff "
             "ORDER BY component_name, effective_from DESC, id DESC"
         ),
         {"feature_name": feature_name, "cutoff": cutoff},
     )
-    return {component: float(weight) for component, weight in rows.fetchall()}
+    return {component: {"value": float(weight), "id": row_id, "version": version,
+                        "effective_from": effective.isoformat()}
+            for component, weight, row_id, version, effective in rows.fetchall()}
+
+
+async def load_weights(
+    session: AsyncSession, feature_name: str, cutoff: datetime
+) -> dict[str, float]:
+    """Compatibility numeric adapter over the same authoritative selection."""
+    return {name: row["value"] for name, row in
+            (await load_weight_selection(session, feature_name, cutoff)).items()}

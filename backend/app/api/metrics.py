@@ -24,7 +24,7 @@ from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.models.lab import Observation
 from app.services.analytics import robust_baseline
-from app.schemas.ui import MetricPoint, MetricTrendOut, MetricCalculationInputs
+from app.schemas.ui import MetricPoint, MetricTrendOut, MetricCalculationInputs, MetricCalculationContributor
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -39,34 +39,21 @@ ABSOLUTE_METRICS = {"steps", "floors", "hydration", "weight", "body_fat", "sleep
 
 # Catalog law: (key → model, column, unit, better_direction, label-en, label-it)
 # better_direction: 'up' | 'down' | 'band' — the UI colors deltas accordingly.
-CATALOG: dict[str, dict] = {
-    "readiness": {"model": "feature", "column": "readiness_score", "unit": "/100", "direction": "up"},
-    "recovery": {"model": "feature", "column": "recovery_score", "unit": "/100", "direction": "up"},
-    "strain": {"model": "feature", "column": "strain_score", "unit": "/100", "direction": "band"},
-    "sleep_score": {"model": "feature", "column": "sleep_architecture_score", "unit": "/100", "direction": "up"},
-    "acwr": {"model": "feature", "column": "acwr", "unit": "ratio", "direction": "band"},
-    "acute_load": {"model": "feature", "column": "training_load_acute", "unit": "load/week", "direction": "band"},
-    "chronic_load": {"model": "feature", "column": "training_load_chronic", "unit": "load/week", "direction": "band"},
-    "hrv_deviation": {"model": "feature", "column": "hrv_deviation_from_baseline", "unit": "%", "direction": "band"},
-    "hrv_ms": {"model": "hrv", "unit": "ms", "direction": "band"},
-    "provider_sleep_score": {"model": "sleep", "column": "sleep_score", "unit": "/100", "direction": "band"},
-    "illness_risk": {"model": "feature", "column": "illness_risk_score", "unit": "/100", "direction": "down"},
-    "injury_risk": {"model": "feature", "column": "injury_risk_score", "unit": "/100", "direction": "down"},
-    "resting_hr": {"model": "biometric", "column": "resting_hr", "unit": "bpm", "direction": "down"},
-    "weight": {"model": "biometric", "column": "weight_kg", "unit": "kg", "direction": "band"},
-    "body_fat": {"model": "biometric", "column": "body_fat_pct", "unit": "%", "direction": "band"},
-    "vo2max": {"model": "biometric", "column": "vo2max", "unit": "ml/kg/min", "direction": "up"},
-    "steps": {"model": "biometric", "column": "steps", "unit": "steps", "direction": "up"},
-    "floors": {"model": "biometric", "column": "floors", "unit": "floors", "direction": "up"},
-    "spo2": {"model": "biometric", "column": "spo2_avg", "unit": "%", "direction": "up"},
-    "hydration": {"model": "biometric", "column": "hydration_ml", "unit": "ml", "direction": "up"},
-    "sleep_duration": {"model": "sleep", "column": "total_sleep_s", "unit": "h", "scale": 3600.0, "direction": "band"},
-    "sleep_deep": {"model": "sleep", "column": "deep_s", "unit": "h", "scale": 3600.0, "direction": "band"},
-    "sleep_rem": {"model": "sleep", "column": "rem_s", "unit": "h", "scale": 3600.0, "direction": "band"},
-    "sleep_light": {"model": "sleep", "column": "light_s", "unit": "h", "scale": 3600.0, "direction": "band"},
-    "respiration": {"model": "sleep", "column": "respiration_avg", "unit": "br/min", "direction": "band"},
-    "restlessness": {"model": "sleep", "column": "restlessness", "unit": "%", "direction": "down"},
-}
+from app.metrics.registry import METRIC_REGISTRY, metric_catalog as registry_catalog
+from app.metrics.provenance import valid_snapshot
+
+CATALOG = registry_catalog()
+
+
+@router.get("/definitions")
+async def definitions(user: User = Depends(get_current_user)):
+    return {key: value.to_dict() for key, value in METRIC_REGISTRY.items()}
+
+
+@router.get("/provider-semantics")
+async def provider_semantics_catalog(user: User = Depends(get_current_user)):
+    from app.connectors.semantics import semantic_catalog
+    return semantic_catalog()
 
 
 @router.get("")
@@ -78,6 +65,7 @@ async def metric_catalog(
             "unit": spec["unit"],
             "direction": spec["direction"],
             "kind": "estimate" if spec["model"] == "feature" else "measurement",
+            "definition": METRIC_REGISTRY[key].to_dict(),
             "display_type": "range" if key in RANGE_METRICS else "absolute" if key in ABSOLUTE_METRICS else "trend",
         }
         for key, spec in CATALOG.items()
@@ -101,6 +89,7 @@ async def metric_trend(
     history_start = min(start_d, end_d - timedelta(days=30))
     reference_range = None
     acwr_snapshots = {}
+    provenance_snapshots = {}
 
     if spec["model"] == "hrv":
         rows, reference_range = await _hrv_series(session, user, history_start, end_d)
@@ -108,7 +97,7 @@ async def metric_trend(
         snapshots = (await session.execute(
             select(DailyFeature.date, DailyFeature.acwr,
                    DailyFeature.training_load_acute, DailyFeature.training_load_chronic,
-                   DailyFeature.load_metadata)
+                   DailyFeature.load_metadata, DailyFeature.calculation_provenance)
             .where(DailyFeature.user_id == user.id, DailyFeature.date >= history_start,
                    DailyFeature.date <= end_d)
             .order_by(DailyFeature.date)
@@ -116,11 +105,12 @@ async def metric_trend(
         # Keep the constituent snapshot from the same SELECT as each point;
         # a concurrent recompute cannot mix rows from two calculation versions.
         rows = [(row[0], row[1]) for row in snapshots]
-        acwr_snapshots = {row[0]: row for row in snapshots}
+        acwr_snapshots = {row[0]: row[:5] for row in snapshots}
+        provenance_snapshots = {row[0]: row[5] for row in snapshots}
     elif spec["model"] == "feature":
         rows = (
             await session.execute(
-                select(DailyFeature.date, getattr(DailyFeature, spec["column"]))
+                select(DailyFeature.date, getattr(DailyFeature, spec["column"]), DailyFeature.calculation_provenance)
                 .where(
                     DailyFeature.user_id == user.id,
                     DailyFeature.date >= history_start,
@@ -129,6 +119,8 @@ async def metric_trend(
                 .order_by(DailyFeature.date)
             )
         ).all()
+        provenance_snapshots = {row[0]: row[2] for row in rows}
+        rows = [(row[0], row[1]) for row in rows]
     elif spec["model"] == "biometric":
         rows = (
             await session.execute(
@@ -141,26 +133,15 @@ async def metric_trend(
                 .order_by(DailyBiometric.date)
             )
         ).all()
-    else:  # Pick one complete night, rather than the maximum of each field.
-        rows = (
-            await session.execute(
-                select(
-                    SleepSession.local_date,
-                    getattr(SleepSession, spec["column"]),
-                )
-                .where(
-                    SleepSession.user_id == user.id,
-                    SleepSession.local_date >= history_start,
-                    SleepSession.local_date <= end_d,
-                )
-                .distinct(SleepSession.local_date)
-                .order_by(
-                    SleepSession.local_date,
-                    SleepSession.total_sleep_s.desc().nulls_last(),
-                    SleepSession.end_time.desc(),
-                )
-            )
-        ).all()
+    else:  # Reuse domain selection so all sleep fields describe one source night.
+        from app.features.engine import _sleep_sessions_by_day
+        from app.connectors.reconciliation import selected_main_provider
+        sessions = (await session.scalars(select(SleepSession).where(
+            SleepSession.user_id == user.id,
+            SleepSession.local_date.between(history_start, end_d),
+        ))).all()
+        selected = _sleep_sessions_by_day(sessions, await selected_main_provider(session, user.id))
+        rows = [(day, getattr(sleep, spec["column"])) for day, sleep in sorted(selected.items())]
 
     if key in RANGE_METRICS and key != "hrv_ms":
         comparable, reference_range = await _personal_series(session, user, history_start, end_d, key)
@@ -193,6 +174,15 @@ async def metric_trend(
             ),
         }
 
+    calculation_provenance = None
+    calculation_inputs = _acwr_calculation_inputs(acwr_snapshots.get(latest_day)) if key == "acwr" and values else None
+    if values and spec["model"] == "feature":
+        record = valid_snapshot(provenance_snapshots.get(latest_day), key, latest_day.isoformat(), values[-1] * scale)
+        if record:
+            calculation_provenance = {"as_of": latest_day.isoformat(), **record}
+            if key != "acwr":
+                calculation_inputs = _composite_inputs(key, latest_day, record)
+
     return MetricTrendOut(
         metric=key,
         label=key,
@@ -202,10 +192,9 @@ async def metric_trend(
         points=[p for p in points],
         stats=stats,
         reference_range=reference_range,
-        calculation_inputs=(
-            _acwr_calculation_inputs(acwr_snapshots.get(latest_day))
-            if key == "acwr" and values else None
-        ),
+        definition=METRIC_REGISTRY[key].to_dict(),
+        calculation_provenance=calculation_provenance,
+        calculation_inputs=calculation_inputs,
     )
 
 
@@ -266,7 +255,8 @@ async def _personal_series(session, user, start, end, metric):
         )) if user.main_integration_id else None
         primary = [r for r in displayed if main and r.origin == main.provider]
         latest = (primary or displayed)[-1]
-        context = lambda r: (r.origin, r.metadata_json.get("reading_context"), r.metadata_json.get("device_id"))
+        context = lambda r: (r.origin, r.metadata_json.get("reading_context"),
+                             r.metadata_json.get("device_id"), r.metadata_json.get("hrv_method"))
         comparable = [r for r in records if context(r) == context(latest)]
         # The last revision/measurement within a day is the daily sample.
         daily = {r.local_date: r for r in comparable}
@@ -304,12 +294,38 @@ async def _hrv_series(session, user, start, end):
         HrvReading.timestamp >= datetime.combine(start, datetime.min.time(), tzinfo=tz),
         HrvReading.timestamp < datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=tz),
     ).order_by(HrvReading.timestamp))).all()
-    groups = {}
-    for row in readings:
-        groups.setdefault(row.timestamp.astimezone(tz).date(), []).append(row)
-    points = []
-    for day, group in sorted(groups.items()):
-        summaries = [r for r in group if r.reading_type == "overnight_avg"]
-        value = float(summaries[-1].hrv_ms) if summaries else sum(float(r.hrv_ms) for r in group) / len(group)
-        points.append((day, round(value, 2)))
+    from app.features.engine import _readings_by_local_day
+    from app.connectors.reconciliation import selected_main_provider
+    main_provider = await selected_main_provider(session, user.id)
+    coherent = _readings_by_local_day(readings, tz, start, end, main_provider)
+    points = [(day, round(value, 2)) for day, value in sorted(coherent.items())]
     return points, None
+
+
+_INPUT_UNITS = {"hrv_deviation": "%", "hrv_drop": "%", "resting_hr_deviation": "bpm",
+    "resting_hr_elevation": "bpm", "respiration_elevation": "%", "sleep_quality": "/100",
+    "prior_day_strain": "/100", "recovery": "/100", "sleep_architecture": "/100",
+    "acwr": "ratio", "rem_pct": "%", "deep_pct": "%", "total_sleep_s": "s", "awake_s": "s",
+    "journal_soreness_fatigue": "normalized signal", "active_days": "days"}
+
+
+def _composite_inputs(key, day, record):
+    contributors = []
+    seen = set()
+    operands = {"efficiency": ("total_sleep_s", "awake_s"), "acwr_spike": ("acwr",),
+                "load_spike": ("day_load", "mean28", "std28", "active_days")}
+    for name, component in record.get("components", {}).items():
+        if not component.get("active") or not component.get("normalized_weight") or component["normalized_weight"] <= 0:
+            continue
+        for operand in operands.get(name, (name,)):
+            value = record.get("inputs", {}).get(operand)
+            if operand in seen or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                continue
+            unit = _INPUT_UNITS.get(operand)
+            if operand in {"day_load", "mean28", "std28"}:
+                unit = record.get("sources", {}).get(operand, {}).get("unit")
+            if unit:
+                seen.add(operand)
+                contributors.append(MetricCalculationContributor(metric=operand, value=value, unit=unit))
+    return MetricCalculationInputs(metric=key, as_of=day.isoformat(), contributors=contributors,
+        methodology=record.get("formula_version")) if contributors else None

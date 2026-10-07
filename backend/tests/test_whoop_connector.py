@@ -4,9 +4,9 @@ import os
 
 The annotation assertions are the point of this file: Whoop data must land
 in the SAME canonical shapes the Garmin connector writes (HRV in ms,
-recovery as overnight_avg, sleep stages in SECONDS, sleep performance as
-0-100, kcal from kJ) while Whoop-only quantities (strain, recovery score,
-zones) stay in source_metrics and NEVER touch training_load.
+recovery as overnight_avg, sleep stages in SECONDS, kcal from kJ) while
+Whoop-only quantities (sleep performance, strain, recovery score, zones) stay
+in source_metrics and NEVER touch generic provider fields.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -327,14 +327,16 @@ async def test_backfill_normalizes_with_annotation_laws(db_session):
     # raw-first: sleep + recovery + cycle + workout + body = 5 payloads
     assert report.raw_rows_stored == 5
 
-    # --- sleep: ms -> s, performance % -> sleep_score, wake local date
+    # --- sleep: ms -> s, provider performance stays provider-scoped
     sleeps = (await db_session.scalars(select(SleepSession))).all()
     assert len(sleeps) == 1
     s = sleeps[0]
     assert s.total_sleep_s == (14400 + 5400 + 6600) // 1  # light+deep+rem seconds
     assert s.deep_s == 5400 and s.rem_s == 6600 and s.light_s == 14400
     assert s.awake_s == 2400
-    assert s.sleep_score == 91.0
+    assert s.origin == "whoop"
+    assert s.sleep_score is None
+    assert s.source_metrics["whoop"]["sleep_performance_pct"] == 91.0
     assert s.respiration_avg == 15.4
     assert s.local_date.isoformat() == "2026-09-21"  # wake-up local date (+02:00)
 
@@ -449,7 +451,8 @@ async def test_pending_sleep_does_not_overwrite_scored_sleep(db_session):
     report = await run_user_sync_with_escalation(db_session, user, integration, PendingSleep(), now=SYNC_NOW)
     assert report is not None
     sleep = await db_session.scalar(select(SleepSession).where(SleepSession.user_id == user.id))
-    assert sleep.deep_s == 5400 and sleep.sleep_score == 91
+    assert sleep.deep_s == 5400 and sleep.sleep_score is None
+    assert sleep.source_metrics["whoop"]["sleep_performance_pct"] == 91.0
 
 
 async def test_secondary_workout_resync_preserves_main_device_and_all_whoop_metrics(db_session):
@@ -495,20 +498,36 @@ async def test_whoop_main_takes_over_secondary_activity_without_duplicate(db_ses
     assert await db_session.scalar(select(func.count()).select_from(ActivitySourceLink)) == 2
 
 
-async def test_secondary_sleep_fills_gaps_preserves_main_values_and_deduplicates_night(db_session):
+async def test_secondary_sleep_keeps_provider_rows_separate_and_deduplicates_whoop_night(db_session):
     user, integration = await make_whoop_user(db_session)
-    db_session.add(Integration(user_id=user.id, provider="garmin", status="active"))
+    garmin = Integration(user_id=user.id, provider="garmin", status="active")
+    db_session.add(garmin)
+    user.main_integration_id = garmin.id
     start = datetime(2026, 9, 20, 23, tzinfo=UTC)
     sleep = SleepSession(user_id=user.id, local_date=datetime(2026, 9, 21).date(),
                          start_time=start, end_time=datetime(2026, 9, 21, 7, tzinfo=UTC),
-                         total_sleep_s=25000, deep_s=5000, spo2_avg=98.2)
+                         total_sleep_s=25000, deep_s=5000, light_s=20000,
+                         sleep_score=82, origin="garmin",
+                         source_metrics={"garmin": {"fixture": "main-night"}},
+                         spo2_avg=98.2)
     db_session.add(sleep)
     await db_session.commit()
-    report = await run_user_sync_with_escalation(db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW)
-    assert report is not None
-    assert await db_session.scalar(select(func.count()).select_from(SleepSession)) == 1
+    for _ in range(2):
+        report = await run_user_sync_with_escalation(
+            db_session, user, integration, FixtureWhoopClient(), now=SYNC_NOW
+        )
+        assert report is not None
+    sleeps = (await db_session.scalars(select(SleepSession))).all()
+    assert len(sleeps) == 2
     assert sleep.total_sleep_s == 25000 and sleep.deep_s == 5000
-    assert float(sleep.spo2_avg) == 98.2 and sleep.light_s == 14400
+    assert sleep.light_s == 20000 and sleep.sleep_score == 82
+    assert float(sleep.spo2_avg) == 98.2
+    assert sleep.source_metrics == {"garmin": {"fixture": "main-night"}}
+    whoop_sleep = next(row for row in sleeps if row.origin == "whoop")
+    assert whoop_sleep.total_sleep_s == 26400
+    assert whoop_sleep.deep_s == 5400 and whoop_sleep.light_s == 14400
+    assert whoop_sleep.sleep_score is None
+    assert whoop_sleep.source_metrics["whoop"]["sleep_performance_pct"] == 91.0
 
 
 def fresh_tokens():

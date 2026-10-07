@@ -85,6 +85,8 @@ class Embedding(Base):
     __tablename__ = "embeddings"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Unknown legacy source ownership remains quarantined (never searchable).
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     source_table: Mapped[str] = mapped_column(Text, nullable=False)
     source_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     embedding: Mapped[list | None] = mapped_column(

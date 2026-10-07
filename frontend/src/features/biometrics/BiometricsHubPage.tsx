@@ -55,7 +55,7 @@ const GROUPS = [
   {
     value: "estimates",
     label: "metricView.estimates",
-    keys: ["readiness", "recovery", "strain", "sleep_score", "hrv_deviation", "illness_risk", "injury_risk"],
+    keys: ["readiness", "recovery", "strain", "sleep_score", "hrv_deviation", "systemic_stress", "load_spike"],
   },
 ];
 function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string; range: string }) {

@@ -60,6 +60,7 @@ from app.services.sleep_summary import awake_seconds
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream
 from app.models.integration import RawIngest
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession, StressReading
+from app.services.biometric_provenance import set_biometric
 
 logger = logging.getLogger("connectors.garmin.normalize")
 
@@ -340,7 +341,7 @@ async def _upsert_activity(
             bio = DailyBiometric(user_id=raw.user_id, date=local_date)
             session.add(bio)
         if await _can_write_biometric(session, bio, "vo2max"):
-            bio.vo2max = vo2
+            set_biometric(bio, "vo2max", vo2, fetch.SOURCE)
 
 
 async def _upsert_streams(
@@ -439,6 +440,7 @@ async def _upsert_sleep(
 
     values = dict(
         user_id=raw.user_id,
+        origin="garmin",
         local_date=end.astimezone(tz).date(),  # §17: wake-up day, local calendar
         start_time=start,
         end_time=end,
@@ -459,7 +461,8 @@ async def _upsert_sleep(
 
     existing = await session.scalar(
         select(SleepSession).where(
-            SleepSession.user_id == raw.user_id, SleepSession.start_time == start
+            SleepSession.user_id == raw.user_id, SleepSession.start_time == start,
+            SleepSession.origin == "garmin",
         )
     )
     if existing is None:
@@ -549,6 +552,7 @@ async def _upsert_hrv_reading(
             HrvReading.user_id == user_id,
             HrvReading.timestamp == ts,
             HrvReading.reading_type == reading_type,
+            HrvReading.origin == "garmin",
         )
     )
     if existing is None:
@@ -558,6 +562,7 @@ async def _upsert_hrv_reading(
                 timestamp=ts,
                 hrv_ms=hrv_ms,
                 reading_type=reading_type,
+                origin="garmin", method="RMSSD",
                 rolling_baseline_ms=baseline,
             )
         )
@@ -673,7 +678,7 @@ async def _upsert_biometrics(
         session.add(existing)
     for key, val in values.items():
         if val is not None and await _can_write_biometric(session, existing, key):
-            setattr(existing, key, val)
+            set_biometric(existing, key, val, fetch.SOURCE)
     stats.biometrics_upserted += 1
 
 

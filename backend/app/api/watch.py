@@ -40,6 +40,7 @@ from app.core.db import get_session
 from app.core.security import hash_session_token, new_session_token
 from app.models.features import DailyFeature
 from app.models.user import User, UserSession
+from app.models.user import AuthCredential
 from app.models.watch import DeviceToken
 from app.queries import (
     active_supplements,
@@ -77,13 +78,14 @@ async def get_watch_principal(
     )
     now = datetime.now(UTC)
     # F-19: revocation OR absolute expiry → reject.
-    if token is None or token.revoked_at is not None:
+    if token is None or token.revoked_at is not None or token.scope != "watch_read":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked token")
     if token.absolute_expires_at is not None and token.absolute_expires_at <= now:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
 
     user = await session.get(User, token.user_id)
-    if user is None:
+    disabled = await session.scalar(select(AuthCredential.disabled).where(AuthCredential.user_id == token.user_id))
+    if user is None or disabled is not False:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked token")
 
     # F-19: throttle last_used writes — only stamp when the previous stamp is
@@ -154,7 +156,7 @@ async def list_tokens(
     rows = (
         await session.scalars(
             select(DeviceToken)
-            .where(DeviceToken.user_id == principal[0].id)
+            .where(DeviceToken.user_id == principal[0].id, DeviceToken.scope == "watch_read")
             .order_by(DeviceToken.created_at.desc(), DeviceToken.id.desc())
         )
     ).all()
@@ -174,7 +176,7 @@ async def revoke_token(
     principal: tuple[User, UserSession] = Depends(get_current_session),
 ) -> None:
     token = await session.get(DeviceToken, token_id)
-    if token is None or token.user_id != principal[0].id:
+    if token is None or token.user_id != principal[0].id or token.scope != "watch_read":
         # 404 denies existence across users (same convention as every
         # user-scoped row in this API).
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token not found")

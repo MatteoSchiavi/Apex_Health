@@ -25,6 +25,7 @@ from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.integration import RawIngest
 from app.models.lab import LabDocument
 from app.models.wellness import DailyBiometric, SleepSession
+from app.services.biometric_provenance import set_biometric
 from app.connectors.validation import (
     valid_resting_hr_bpm, valid_spo2_pct, valid_weight_kg,
 )
@@ -418,22 +419,22 @@ async def import_apple_health(session: AsyncSession, user, filename: str, conten
         apple = dict(metrics.get(SOURCE) or {})
         steps, step_source = _step_total(vals["steps"])
         if steps:
-            if bio.steps is None: bio.steps = round(steps)
+            if bio.steps is None: set_biometric(bio, "steps", round(steps), IMPORT_SOURCE)
             apple["steps"] = {"value": round(steps), "unit": "count", "method": "sum_nonoverlapping_intervals_selected_source", "source": step_source, "samples": len(vals["steps"])}
         weight, weight_source = _priority_samples(vals["weight"])
         if weight:
             sample = max(weight, key=lambda row: row[0])
-            if bio.weight_kg is None: bio.weight_kg = Decimal(str(sample[1]))
+            if bio.weight_kg is None: set_biometric(bio, "weight_kg", Decimal(str(sample[1])), IMPORT_SOURCE)
             apple["weight_kg"] = {"value": sample[1], "unit": "kg", "method": "latest_sample_unit_converted", "source": weight_source, "original_unit": sample[2], "measured_at": sample[0].isoformat()}
         rhr, rhr_source = _priority_samples(vals["rhr"])
         if rhr:
             sample = max(rhr, key=lambda row: row[0])
-            if bio.resting_hr is None: bio.resting_hr = int(sample[1])
+            if bio.resting_hr is None: set_biometric(bio, "resting_hr", int(sample[1]), IMPORT_SOURCE)
             apple["resting_hr_bpm"] = {"value": sample[1], "unit": "bpm", "method": "latest_sample", "source": rhr_source, "measured_at": sample[0].isoformat()}
         spo2, spo2_source = _priority_samples(vals["spo2"])
         if spo2:
             mean = sum(row[1] for row in spo2) / len(spo2)
-            if bio.spo2_avg is None: bio.spo2_avg = Decimal(str(mean))
+            if bio.spo2_avg is None: set_biometric(bio, "spo2_avg", Decimal(str(mean)), IMPORT_SOURCE)
             apple["spo2_pct"] = {"value": round(mean, 2), "unit": "%", "method": "mean_samples_selected_source", "source": spo2_source, "samples": len(spo2), "start": min(row[0] for row in spo2).isoformat(), "end": max(row[0] for row in spo2).isoformat()}
         sdnn, sdnn_source = _priority_samples(vals["sdnn"])
         if sdnn:
@@ -442,6 +443,7 @@ async def import_apple_health(session: AsyncSession, user, filename: str, conten
         if heart:
             apple["heart_rate_samples_bpm"] = {"samples": len(heart), "mean": round(sum(row[1] for row in heart)/len(heart), 1), "unit": "bpm", "method": "mean_samples", "source": heart_source, "start": min(row[0] for row in heart).isoformat(), "end": max(row[0] for row in heart).isoformat()}
         if apple:
+            metrics = dict(bio.source_metrics or {})
             metrics[SOURCE] = apple
             bio.source_metrics = metrics
         days_updated += 1
@@ -463,7 +465,7 @@ async def import_apple_health(session: AsyncSession, user, filename: str, conten
         if existing: continue
         secs = _sleep_totals(entries)
         total = secs["deep"] + secs["core"] + secs["rem"] + secs["asleep"]
-        session.add(SleepSession(user_id=user.id, local_date=local_day, start_time=start, end_time=end,
+        session.add(SleepSession(user_id=user.id, origin="apple_health", local_date=local_day, start_time=start, end_time=end,
                                  total_sleep_s=total or None, deep_s=secs["deep"] or None,
                                  light_s=secs["core"] or None, rem_s=secs["rem"] or None,
                                  awake_s=secs["awake"] or None))

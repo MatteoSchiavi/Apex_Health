@@ -1,6 +1,8 @@
 """ORM models."""
 
 from app.models.admin import Feedback, OwnerNotification
+from app.models.alpha import AlphaEvent
+from app.models.healthkit import HealthKitPairing, HealthKitSample, HealthKitBatch
 from app.models.activity import (
     Activity,
     ActivityLap,

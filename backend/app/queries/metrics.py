@@ -24,8 +24,8 @@ DAILY_METRICS: dict[str, str] = {
     "chronic_load": "training_load_chronic",
     "sleep_architecture": "sleep_architecture_score",
     "hrv_deviation_pct": "hrv_deviation_from_baseline",
-    "illness_risk": "illness_risk_score",
-    "injury_risk": "injury_risk_score",
+    "systemic_stress": "systemic_stress_signal",
+    "load_spike": "load_spike_indicator",
     "cross_discipline_fatigue": "cross_discipline_fatigue_index",
     "iron_status_flag": "iron_status_flag",
 }

@@ -20,7 +20,7 @@ async def index_whoop_payload(session, raw, payload, tz):
         return
     score = payload.get("score") or {}
     metrics = {
-        "sleep": ("sleep_duration", "sleep_score", "respiration"),
+        "sleep": ("sleep_duration", "whoop_sleep_performance", "respiration"),
         "recovery": ("hrv_overnight_rmssd", "resting_hr", "spo2"),
         "body_measurement": ("weight",),
     }[kind]
@@ -43,7 +43,7 @@ async def index_whoop_payload(session, raw, payload, tz):
         )]
         records = {
             "sleep_duration": sum(parts) / 3600 if all(p is not None for p in parts) else None,
-            "sleep_score": valid_sleep_score(score.get("sleep_performance_percentage")),
+            "whoop_sleep_performance": valid_sleep_score(score.get("sleep_performance_percentage")),
             "respiration": valid_respiration_bpm(score.get("respiratory_rate")),
         }
         source_key = f"sleep:{payload.get('id') or payload.get('start')}"

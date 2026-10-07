@@ -11,7 +11,7 @@ user — the glance can therefore only ever see that user's data.
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -24,6 +24,8 @@ class DeviceToken(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False, default="watch")
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    scope: Mapped[str] = mapped_column(Text, nullable=False, default="watch_read", server_default="watch_read")
+    sync_checkpoint: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
     )

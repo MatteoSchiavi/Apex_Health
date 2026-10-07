@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { api } from "../../../app/api";
 import { useTranslation } from "react-i18next";
 import { useUnits } from "../../../components/data";
 import { fmtHours, fmtNum } from "../../../components/kit";
@@ -10,14 +11,24 @@ export function MetricEducationDisclosure({ education }: { education: MetricExpl
   const units = useUnits();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const localize = (text: EducationText) => t(text.key, text.values);
+  const localize = (text: EducationText) => {
+    const values = { ...text.values };
+    if (text.key.startsWith("metricEducation.registry.")) {
+      for (const key of ["input", "baseline"] as const) {
+        if (typeof values[key] === "string" && t(`metricEducation.inputNames.${values[key]}`, { defaultValue: "" })) {
+          values[key] = t(`metricEducation.inputNames.${values[key]}`);
+        }
+      }
+    }
+    return t(text.key, values);
+  };
   const display = (fact: EducationFact) => {
     const value = fact.display;
     if ("key" in value) return localize(value);
     const converted = units.metric(value.metric, value.value)!;
     const formatted = value.unit === "h"
       ? `${converted < 0 ? "−" : ""}${fmtHours(Math.abs(converted) * 3600)}`
-      : `${fmtNum(converted, ["steps", "floors"].includes(value.metric) ? 0 : 1)} ${units.metricUnit(value.metric, value.unit)}`;
+      : `${fmtNum(converted, ["steps", "floors"].includes(value.metric) ? 0 : value.unit === "fraction" ? 3 : 1)} ${value.unit === "fraction" ? t("metricEducation.registry.fraction") : units.metricUnit(value.metric, value.unit)}`;
     return value.signed && converted > 0 ? `+${formatted}` : formatted;
   };
   const contributors = education.semanticType === "apex_derived" ? education.actualCalculation?.contributors : undefined;
@@ -30,7 +41,11 @@ export function MetricEducationDisclosure({ education }: { education: MetricExpl
   }[education.semanticType];
   const headingClass = "mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-muted";
   return (
-    <details className="mb-6 border-y border-hairline" onToggle={event => setOpen(event.currentTarget.open)}>
+    <details className="mb-6 border-y border-hairline" onToggle={event => {
+      const expanded = event.currentTarget.open;
+      setOpen(expanded);
+      if (expanded) void api.post("/alpha/events", { event: "metric_explanation_opened", metric: education.identity.metric }).catch(() => {});
+    }}>
       <summary aria-expanded={open} aria-controls={id} className="cursor-pointer py-4 text-[14px] font-medium">
         {t("metricEducation.understand")}
       </summary>
@@ -61,9 +76,17 @@ export function MetricEducationDisclosure({ education }: { education: MetricExpl
         </section>}
         {(education.methodology.length > 0 || education.provenance.length > 0 || education.limitations.length > 0) && <section aria-labelledby={`${id}-methodology`} className="min-w-0 border-t border-hairline pt-4 md:col-span-2">
           <h2 id={`${id}-methodology`} className={headingClass}>{t(methodologyHeading)}</h2>
-          <p className="mb-2 text-muted">{t(`metricEducation.semantics.${education.semanticType}`)}</p>
+          <p className="mb-2 text-muted">{t(`metricEducation.semantics.${education.heuristic ? "apex_heuristic" : education.semanticType}`)}</p>
           {education.methodology.map((method, index) => <p key={index} className={index ? "mt-2" : undefined}>{localize(method)}</p>)}
           {education.provenance.length > 0 && <p className="mt-2 text-muted">{t("metricEducation.source")} · {education.provenance.map(localize).join(" · ")}</p>}
+          {!!education.calculationDetails?.length && <details className="mt-3">
+            <summary className="cursor-pointer text-muted">{t("metricEducation.registry.details")}</summary>
+            <dl className="mt-2 space-y-2">
+              {education.calculationDetails.map((item, index) => <div key={index} className="flex flex-wrap justify-between gap-3">
+                <dt>{localize(item.label)}</dt><dd className="num">{display(item)}</dd>
+              </div>)}
+            </dl>
+          </details>}
           {education.limitations.map((limit, index) => <p key={index} className="mt-2 text-muted">{localize(limit)}</p>)}
         </section>}
       </div>

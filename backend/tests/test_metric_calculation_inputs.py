@@ -96,3 +96,25 @@ async def test_recovery_and_resting_hr_do_not_gain_inferred_inputs(db_session):
         output = await metric_trend(metric, user=user, session=db_session, days=7, end=END)
         assert output.stats["latest"] == value
         assert output.calculation_inputs is None
+
+
+@pytest.mark.asyncio
+async def test_recorded_recovery_exposes_exact_operands_and_missingness(db_session):
+    from app.metrics.provenance import metric_snapshot
+    user, _ = await make_garmin_user(db_session)
+    record = metric_snapshot('recovery', 80, {'sleep_quality': 80, 'hrv_deviation': None},
+        components={'sleep_quality': 0.8, 'hrv_deviation': None},
+        weights={'sleep_quality': 0.2, 'hrv_deviation': 0.35})
+    snapshot = {'schema_version': 1, 'as_of': END.isoformat(), 'metrics': {'recovery': record}}
+    row = DailyFeature(user_id=user.id, date=END, recovery_score=80, calculation_provenance=snapshot)
+    db_session.add(row)
+    await db_session.flush()
+    output = await metric_trend('recovery', user=user, session=db_session, days=7, end=END)
+    assert output.calculation_provenance['formula_version'] == 'recovery-v2'
+    assert output.calculation_provenance['missing_inputs'] == ['hrv_deviation']
+    assert [item.model_dump() for item in output.calculation_inputs.contributors] == [
+        {'metric': 'sleep_quality', 'value': 80.0, 'unit': '/100'}]
+    row.calculation_provenance = {**snapshot, 'as_of': (END - timedelta(days=1)).isoformat()}
+    await db_session.flush()
+    changed = await metric_trend('recovery', user=user, session=db_session, days=7, end=END)
+    assert changed.calculation_inputs is None and changed.calculation_provenance is None

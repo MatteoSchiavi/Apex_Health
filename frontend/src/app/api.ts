@@ -283,6 +283,22 @@ export interface SleepStages {
   source: string | null;
 }
 
+export interface ScientificMetricDefinition {
+  id: string; display_name: string; kind: "measured" | "provider" | "derived" | "heuristic";
+  validation_level: string; formula_version: string | null; formula: string;
+  minimum_data_requirements: string; missing_data_behavior: string;
+  limitations: string[]; prohibited_claims: string[];
+}
+export interface CalculationProvenance {
+  metric: string; value: number; as_of: string; formula_version: string;
+  inputs: Record<string, number | null>;
+  components: Record<string, { value: number | null; active: boolean; weight: number | null; normalized_weight: number | null }>;
+  weights: Record<string, { value: number; version: number | null; id: number | null; effective_from: string | null }>;
+  missing_inputs: string[]; missing_components?: string[];
+  coverage: { status: string; available_components: number; total_components: number };
+  sources: Record<string, { provider?: string | null; attribution?: string }>;
+  baselines: Record<string, { value: number | null; observed_days: number; required_days: number }>;
+}
 export interface MetricTrend {
   metric: string;
   label: string;
@@ -300,6 +316,8 @@ export interface MetricTrend {
     origin: string;
     as_of: string;
   } | null;
+  definition?: ScientificMetricDefinition | null;
+  calculation_provenance?: CalculationProvenance | null;
   calculation_inputs?: {
     metric: string;
     as_of: string;
@@ -330,6 +348,7 @@ export interface ChatSessionDetail extends ChatSessionOut {
 }
 
 export interface DeviceOut {
+  support?: { status: string; live_tested: boolean; production_supported: boolean };
   integration_id: number;
   provider: string;
   status: string;

@@ -1,6 +1,6 @@
 """Engine logic regression tests for the §7 components that were wired late:
 
-- illness_risk_score.journal_soreness_fatigue (journal module landed Phase 3;
+- systemic_stress_signal.journal_soreness_fatigue (journal module landed Phase 3;
   the seeded 0.10 weight said to activate on landing),
 - daily_features.iron_status_flag (labs module landed Phase 4; the flag was
   hardcoded NULL while /status and get_donation_status read it),
@@ -88,7 +88,7 @@ async def test_illness_without_journal_is_hrv_only(hrv_user, db_session):
     component -> illness = 1.0 * 100."""
     await compute_user_day(db_session, hrv_user, BASE_DAY)
     row = await fetch_row(db_session, hrv_user.id, BASE_DAY)
-    assert float(row.illness_risk_score) == pytest.approx(100.0, abs=1e-6)
+    assert float(row.systemic_stress_signal) == pytest.approx(100.0, abs=1e-6)
 
 
 async def test_illness_with_max_soreness_journal(hrv_user, db_session):
@@ -107,7 +107,7 @@ async def test_illness_with_max_soreness_journal(hrv_user, db_session):
     await db_session.commit()
     await compute_user_day(db_session, hrv_user, BASE_DAY)
     row = await fetch_row(db_session, hrv_user.id, BASE_DAY)
-    assert float(row.illness_risk_score) == pytest.approx(100.0, abs=1e-6)
+    assert float(row.systemic_stress_signal) == pytest.approx(100.0, abs=1e-6)
 
 
 async def test_illness_journal_renormalizes(hrv_user, db_session):
@@ -126,7 +126,7 @@ async def test_illness_journal_renormalizes(hrv_user, db_session):
     await db_session.commit()
     await compute_user_day(db_session, hrv_user, BASE_DAY)
     row = await fetch_row(db_session, hrv_user.id, BASE_DAY)
-    assert float(row.illness_risk_score) == pytest.approx(80.0, abs=1e-6)
+    assert float(row.systemic_stress_signal) == pytest.approx(80.0, abs=1e-6)
 
 
 async def test_illness_journal_on_other_day_ignored(hrv_user, db_session):
@@ -142,7 +142,7 @@ async def test_illness_journal_on_other_day_ignored(hrv_user, db_session):
     await db_session.commit()
     await compute_user_day(db_session, hrv_user, BASE_DAY)
     row = await fetch_row(db_session, hrv_user.id, BASE_DAY)
-    assert float(row.illness_risk_score) == pytest.approx(100.0, abs=1e-6)
+    assert float(row.systemic_stress_signal) == pytest.approx(100.0, abs=1e-6)
 
 
 # --- iron_status_flag --------------------------------------------------------

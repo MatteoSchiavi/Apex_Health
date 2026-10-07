@@ -1,25 +1,10 @@
 """Deterministic safety interlock for training prescription (P-04, W-02 audit).
 
-A hard-coded veto layer that runs BEFORE any coaching prescription is
-generated. The deterministic risk scores (`illness_risk`, `injury_risk`,
-`acwr`) are computed by the feature engine but were never consulted by
-``gym_advisor.adjust()`` — the audit (P-04) flags this as a medical-safety
-defect because non-deterministic LLM prompting is the only thing standing
-between a sick athlete and a hard interval prescription.
-
-This module is the single canonical source of veto rules. Every prescription
-path (gym_advisor, watch glance, agent planner) calls ``exertion_veto``
-BEFORE returning its prescription; the veto either:
-
-- Returns ``None`` — no veto, prescription proceeds as planned.
-- Returns a non-empty message — the prescription MUST be capped at the
-  declared intensity ceiling and the message appended to the user-facing
-  notes.
-
-The veto is intentionally conservative: false positives (unnecessary rest)
-are recoverable, false negatives (prescribing hard work during illness) are
-not. Athletes can always override via journal feedback — the veto just
-guarantees the DEFAULT path is safe.
+Conservative planning rules applied before prescription. These heuristic
+signals and load ratios do not diagnose illness, predict injury or establish
+that a proposed workout is safe. Existing caps are product guardrails, not
+clinically validated thresholds. Missing inputs leave this interlock
+uninformed; the separate coverage and symptom rules still apply.
 """
 
 from __future__ import annotations
@@ -31,14 +16,13 @@ from typing import Any, SupportsFloat
 
 logger = logging.getLogger("services.safety_interlock")
 
-# Veto thresholds — clinical-grade triggers from the audit (P-04) and
-# sports-medicine literature (Gabbett ACWR, Buchheit HRV).
-ILLNESS_RISK_VETO_THRESHOLD = 70.0       # ≥70 → rest or mobility only
-INJURY_RISK_VETO_THRESHOLD = 75.0        # ≥75 → cap below Zone 3
+# Product guardrails retained conservatively; no calibrated clinical validity.
+SYSTEMIC_STRESS_VETO_THRESHOLD = 70.0       # ≥70 → rest or mobility only
+LOAD_SPIKE_VETO_THRESHOLD = 75.0        # ≥75 → cap below Zone 3
 ACWR_HIGH_VETO = 1.5                     # >1.5 → replace high-impact with low
-ACWR_LOW_DETRAINING = 0.8                # <0.8 → detraining band (P-03)
-HRV_DEV_DEVIATION_BPM = -25.0            # HRV ≥25% below baseline → illness signal
-RHR_DEV_ELEVATION_BPM = 5.0              # RHR ≥5bpm above baseline → illness signal
+ACWR_LOW_CONTEXT = 0.8                  # lower recent load; no detraining inference
+HRV_DEV_DEVIATION_BPM = -25.0            # HRV ≥25% below baseline → descriptive deviation
+RHR_DEV_ELEVATION_BPM = 5.0              # RHR ≥5bpm above baseline → descriptive deviation
 
 
 @dataclass(frozen=True)
@@ -72,8 +56,8 @@ def _to_float(value: Any) -> float | None:
 
 def exertion_veto(
     *,
-    illness_risk: Any | None = None,
-    injury_risk: Any | None = None,
+    systemic_stress: Any | None = None,
+    load_spike: Any | None = None,
     acwr: Any | None = None,
     hrv_dev_pct: Any | None = None,
     rhr_dev_bpm: Any | None = None,
@@ -99,26 +83,26 @@ def exertion_veto(
     reasons: list[str] = []
     ceiling: str | None = None
 
-    illness = _to_float(illness_risk)
-    injury = _to_float(injury_risk)
+    illness = _to_float(systemic_stress)
+    injury = _to_float(load_spike)
     acwr_v = _to_float(acwr)
     hrv_dev = _to_float(hrv_dev_pct)
     rhr_dev = _to_float(rhr_dev_bpm)
 
-    # P-04: illness risk dominates — full rest veto.
-    if illness is not None and illness >= ILLNESS_RISK_VETO_THRESHOLD:
+    # P-04: systemic stress heuristic dominates — full rest veto.
+    if illness is not None and illness >= SYSTEMIC_STRESS_VETO_THRESHOLD:
         ceiling = "rest"
         reasons.append(
-            f"Illness-risk elevated ({illness:.0f}/100): rest or mobility only."
+            f"Systemic stress signal elevated ({illness:.0f}/100): rest or mobility only."
         )
 
     # P-04: acute load spike — cap below Zone 3.
-    if injury is not None and injury >= INJURY_RISK_VETO_THRESHOLD:
+    if injury is not None and injury >= LOAD_SPIKE_VETO_THRESHOLD:
         ceiling = "low" if ceiling is None else ceiling
         if ceiling != "rest":
             ceiling = "low"
         reasons.append(
-            f"Acute load spike (injury risk {injury:.0f}/100): cap intensity below Zone 3."
+            f"Acute load spike (load spike indicator {injury:.0f}/100): cap intensity below Zone 3."
         )
 
     # P-04: ACWR > 1.5 — replace high-impact with low-impact volume.
@@ -142,16 +126,12 @@ def exertion_veto(
                 "cap at moderate intensity."
             )
 
-    # P-03: ACWR < 0.8 — detraining band, NOT a veto. Informative note only.
-    # The athlete is undertrained; prescribing hard work is wrong but
-    # prescription is not blocked — they need progressive rebuild, not rest.
-    # Tracked separately so it doesn't flip `vetoed` (a veto requires an
-    # intensity_ceiling; an informative note does not block prescription).
+    # Lower recent load is context, not proof of detraining or a health band.
     advisory_notes: list[str] = []
-    if acwr_v is not None and acwr_v < ACWR_LOW_DETRAINING:
+    if acwr_v is not None and acwr_v < ACWR_LOW_CONTEXT:
         advisory_notes.append(
-            f"ACWR {acwr_v:.2f} < 0.8 indicates detraining — recommend progressive "
-            "rebuild rather than peak intensity."
+            f"ACWR {acwr_v:.2f} < 0.8: recent recorded load is lower than its "
+            "longer-window average. Consider training history before increasing intensity."
         )
 
     # A veto requires an intensity_ceiling — informative notes alone do NOT
@@ -220,8 +200,8 @@ def safety_block(feature: Any | None) -> dict:
             "note": "no scored day available — safety interlock not engaged",
         }
     decision = exertion_veto(
-        illness_risk=getattr(feature, "illness_risk_score", None),
-        injury_risk=getattr(feature, "injury_risk_score", None),
+        systemic_stress=getattr(feature, "systemic_stress_signal", None),
+        load_spike=getattr(feature, "load_spike_indicator", None),
         acwr=getattr(feature, "acwr", None),
         hrv_dev_pct=getattr(feature, "hrv_deviation_from_baseline", None),
         rhr_dev_bpm=None,  # not stored on DailyFeature directly
@@ -237,8 +217,8 @@ def safety_block(feature: Any | None) -> dict:
         "intensity_ceiling": decision.intensity_ceiling,
         "reasons": list(decision.reasons),
         "risk_scores": {
-            "illness_risk": _to_float(getattr(feature, "illness_risk_score", None)),
-            "injury_risk": _to_float(getattr(feature, "injury_risk_score", None)),
+            "systemic_stress": _to_float(getattr(feature, "systemic_stress_signal", None)),
+            "load_spike": _to_float(getattr(feature, "load_spike_indicator", None)),
             "acwr": _to_float(getattr(feature, "acwr", None)),
             "hrv_dev_pct": _to_float(getattr(feature, "hrv_deviation_from_baseline", None)),
         },

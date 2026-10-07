@@ -19,6 +19,7 @@ export type MetricSemantics = "measured" | "apex_derived" | "provider_proprietar
 export interface MetricExplanation {
   identity: { metric: string; label: EducationText };
   semanticType: MetricSemantics;
+  heuristic?: boolean;
   context: EducationFact[];
   /** Only actual persisted calculation inputs, never surrounding observations or possible influences. */
   actualCalculation?: { asOf: string; contributors: EducationFact[] };
@@ -28,5 +29,6 @@ export interface MetricExplanation {
   actionableFactors: EducationText[];
   methodology: EducationText[];
   provenance: EducationText[];
+  calculationDetails?: EducationFact[];
   limitations: EducationText[];
 }

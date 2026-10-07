@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.wellness import DailyBiometric, HrvReading
+from app.services.biometric_provenance import set_biometric
 from app.connectors.validation import (
     valid_body_fat_pct, valid_hrv_ms, valid_resting_hr_bpm,
     valid_spo2_pct, valid_weight_kg,
@@ -367,15 +368,15 @@ async def _import_daily(
             bio = DailyBiometric(user_id=user_id, date=day_d)
             session.add(bio)
         if steps is not None and bio.steps is None:
-            bio.steps = int(steps)
+            set_biometric(bio, "steps", int(steps), "csv_import")
         if weight is not None and bio.weight_kg is None:
-            bio.weight_kg = Decimal(str(weight))
+            set_biometric(bio, "weight_kg", Decimal(str(weight)), "csv_import")
         if body_fat is not None and bio.body_fat_pct is None:
-            bio.body_fat_pct = Decimal(str(body_fat))
+            set_biometric(bio, "body_fat_pct", Decimal(str(body_fat)), "csv_import")
         if rhr is not None and bio.resting_hr is None:
-            bio.resting_hr = int(rhr)
+            set_biometric(bio, "resting_hr", int(rhr), "csv_import")
         if spo2 is not None and bio.spo2_avg is None:
-            bio.spo2_avg = Decimal(str(spo2))
+            set_biometric(bio, "spo2_avg", Decimal(str(spo2)), "csv_import")
         report.biometrics_upserted += 1
 
         if hrv is not None and hrv > 0:

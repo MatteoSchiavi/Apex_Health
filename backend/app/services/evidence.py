@@ -35,6 +35,7 @@ METRICS = {
     "resting_hr": "bpm",
     "sleep_duration": "h",
     "sleep_score": "/100",
+    "whoop_sleep_performance": "%",
     "respiration": "br/min",
     "spo2": "%",
     "stress": "/100",

@@ -61,8 +61,8 @@ test("all metrics remain reachable through keyboard tabs; sleep score has correc
         "strain",
         "sleep_score",
         "hrv_deviation",
-        "illness_risk",
-        "injury_risk",
+        "systemic_stress",
+        "load_spike",
       ],
     ],
   ] as const) {

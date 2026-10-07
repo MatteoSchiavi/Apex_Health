@@ -36,6 +36,7 @@ meaningful NP/EF; the gate prevents the noisy FTP estimates the audit flagged.
 """
 
 import bisect
+from types import SimpleNamespace
 
 from app.models.activity import Activity, ActivityStream
 
@@ -244,7 +245,12 @@ def aerobic_decoupling(
     # each half's power samples. This is the textbook definition.
     split_s = activity.duration_s / 2.0
     first_power = [s for s in streams if s.power is not None and s.t_offset_s < split_s]
-    second_power = [s for s in streams if s.power is not None and s.t_offset_s >= split_s]
+    # Every half algorithm expects offsets relative to that half. Passing
+    # full-session offsets to a half-duration algorithm silently produced
+    # zero second-half NP and missing HR (or a bogus 100% drift).
+    second_half = [SimpleNamespace(t_offset_s=s.t_offset_s - split_s, power=s.power, hr=s.hr)
+                   for s in streams if s.t_offset_s >= split_s]
+    second_power = [s for s in second_half if s.power is not None]
     if len(first_power) < MIN_HALF_SAMPLES or len(second_power) < MIN_HALF_SAMPLES:
         return None
     # NP per half — use the same normalized_power function on the half's
@@ -260,10 +266,10 @@ def aerobic_decoupling(
         first_duration, "hr",
     )
     hr2 = _time_weighted_mean(
-        [s for s in streams if s.hr is not None and s.t_offset_s >= split_s],
+        [s for s in second_half if s.hr is not None],
         second_duration, "hr",
     )
-    if hr1 is None or hr2 is None or hr1 <= 0:
+    if hr1 is None or hr2 is None or hr1 <= 0 or hr2 <= 0:
         return None
     ef1 = np1 / hr1
     ef2 = np2 / hr2

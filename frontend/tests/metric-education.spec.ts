@@ -63,7 +63,7 @@ test("unavailable, invalid or stale ranges cannot create a current baseline comp
 });
 
 test("unreviewed and empty metrics have no fabricated education", () => {
-  for (const metric of ["future_unknown", "toString", "illness_risk", "injury_risk"]) {
+  for (const metric of ["future_unknown", "toString"]) {
     expect(explainMetric({...rhr,metric})).toBeNull();
   }
   expect(explainMetric({...rhr,points:[{date:end,value:null}]})).toBeNull();
@@ -106,7 +106,7 @@ test("every curated definition and explanation resolves to real English and Ital
   }
 });
 
-test("disclosure starts closed, preserves the hero, toggles with pointer and keyboard without requests", async ({page}) => {
+test("disclosure starts closed, preserves the hero, toggles with pointer and keyboard and emits only minimal utility events", async ({page}) => {
   await showMetric(page,rhr);
   const panel = disclosure(page);
   const summary = panel.locator("summary");
@@ -145,7 +145,8 @@ test("disclosure starts closed, preserves the hero, toggles with pointer and key
   await summary.press("Space");
   await expect(summary).toHaveAttribute("aria-expanded","false");
   expect((await chart.boundingBox())!.y + await page.evaluate(() => scrollY)).toBe(chartBefore!.y + scrollBefore);
-  expect(requests).toEqual([]);
+  expect(requests.length).toBeGreaterThan(0);
+  expect(requests.every(url => new URL(url).pathname === "/alpha/events")).toBe(true);
 });
 
 test("context follows existing duration and imperial-unit formatting", async ({page}) => {
@@ -208,3 +209,59 @@ for (const locale of ["en","it"] as const) for (const width of [320,390,1440]) {
     expect(violations).toEqual([]);
   });
 }
+
+
+const recoverySnapshot: MetricTrend = {
+  ...rhr, metric: "recovery", reference_range: null, unit: "/100", points: [{ date: end, value: 80 }],
+  definition: { id: "recovery", display_name: "Recovery estimate", kind: "heuristic",
+    validation_level: "heuristic", formula_version: "recovery-v2", formula: "Recorded weighted components",
+    minimum_data_requirements: "Available components", missing_data_behavior: "Omit missing inputs",
+    limitations: [], prohibited_claims: [] },
+  calculation_provenance: { metric: "recovery", value: 80, as_of: end, formula_version: "recovery-v2",
+    inputs: { sleep_quality: 80, hrv_deviation: null },
+    components: { sleep_quality: { value: 0.8, active: true, weight: 0.2, normalized_weight: 1 },
+      hrv_deviation: { value: null, active: false, weight: 0.35, normalized_weight: null } },
+    weights: { sleep_quality: { value: 0.2, version: 2, id: 12, effective_from: "2026-10-01T00:00:00Z" } },
+    baselines: { hrv: { value: null, observed_days: 5, required_days: 7 } },
+    sources: { sleep_quality: { attribution: "apex_derived" }, hrv_deviation: { provider: null, attribution: "unavailable" } },
+    missing_inputs: ["hrv_deviation"], missing_components: ["hrv_deviation"],
+    coverage: { status: "limited_coverage", available_components: 1, total_components: 2 } },
+  calculation_inputs: { metric: "recovery", as_of: end, methodology: "recovery-v2",
+    contributors: [{ metric: "sleep_quality", value: 80, unit: "/100" }] },
+};
+
+test("canonical scientific kind and exact score record enrich the existing contract", () => {
+  const result = explainMetric(recoverySnapshot)!;
+  expect(result.semanticType).toBe("apex_derived");
+  expect(result.heuristic).toBe(true);
+  expect(result.actualCalculation?.contributors.map(item => item.display)).toEqual(recoverySnapshot.calculation_inputs!.contributors);
+  expect(result.methodology).toContainEqual({ key: "metricEducation.registry.formulaVersion", values: { version: "recovery-v2" } });
+  expect(result.provenance).toContainEqual({ key: "metricEducation.registry.baselineCoverageNamed", values: { baseline: "hrv", count: 5, required: 7 } });
+  expect(result.limitations.map(item => item.key)).not.toContain("metricEducation.limits.composite_inputs_unavailable");
+  expect(result.calculationDetails).toHaveLength(2);
+});
+
+test("wrong-date, mismatched-value, inactive and invented score operands stay unavailable", () => {
+  const snapshot = recoverySnapshot.calculation_provenance!;
+  for (const calculation_provenance of [null, { ...snapshot, as_of: "2026-10-03" }, { ...snapshot, value: 81 },
+    { ...snapshot, value: NaN }, { ...snapshot, components: null }]) {
+    expect(explainMetric({ ...recoverySnapshot, calculation_provenance } as MetricTrend)!.actualCalculation).toBeUndefined();
+  }
+  for (const contributor of [{ metric: "sleep_quality", value: 79, unit: "/100" },
+    { metric: "hrv_deviation", value: 55, unit: "ms" }]) {
+    expect(explainMetric({ ...recoverySnapshot, calculation_inputs: { metric: "recovery", as_of: end, contributors: [contributor] } })!.actualCalculation).toBeUndefined();
+  }
+});
+
+test("recorded recovery details render in Italian without reconstructing missing history", async ({ page }) => {
+  await showMetric(page, recoverySnapshot, { locale: "it" });
+  const panel = disclosure(page);
+  await panel.locator("summary").first().click();
+  await expect(panel.getByRole("heading", { name: "Perché oggi?", exact: true })).toBeVisible();
+  await expect(panel).toContainText("recovery-v2");
+  await expect(panel).toContainText("Stima euristica Apex");
+  await expect(panel).toContainText("5 giorni osservati, 7 richiesti");
+  await expect(panel).not.toContainText("Il calcolo storico esatto non è stato salvato");
+  const violations = (await new AxeBuilder({ page }).include('details:has(summary[aria-controls])').withTags(['wcag2a','wcag2aa']).analyze()).violations;
+  expect(violations).toEqual([]);
+});

@@ -134,11 +134,11 @@ def _select_diverse_exercises(exercises: list[dict]) -> list[dict]:
 def _italian_safety_reason(reason: str) -> str:
     """Translate known safety-interlock messages while retaining measured values."""
     patterns = (
-        (r"Illness-risk elevated \(([^)]+)\): rest or mobility only\.", r"Rischio di malattia elevato (\1): solo riposo o mobilità."),
-        (r"Acute load spike \(injury risk ([^)]+)\): cap intensity below Zone 3\.", r"Picco di carico acuto (rischio infortunio \1): intensità limitata sotto la zona 3."),
+        (r"Systemic stress signal elevated \(([^)]+)\): rest or mobility only\.", r"Segnale di stress sistemico elevato (\1): solo riposo o mobilità."),
+        (r"Acute load spike \(load spike indicator ([^)]+)\): cap intensity below Zone 3\.", r"Picco di carico acuto (indicatore di picco di carico \1): intensità limitata sotto la zona 3."),
         (r"ACWR ([^ ]+) > 1.5: replace high-impact work with low-impact volume\.", r"ACWR \1 > 1,5: sostituire il lavoro ad alto impatto con volume a basso impatto."),
         (r"Recovery suppressed \(HRV ([^,]+), RHR ([^)]+) vs baseline\): cap at moderate intensity\.", r"Recupero ridotto (HRV \1, RHR \2 rispetto al riferimento): intensità limitata a moderata."),
-        (r"ACWR ([^ ]+) < 0.8 indicates detraining — recommend progressive rebuild rather than peak intensity\.", r"ACWR \1 < 0,8 indica detraining: si consiglia una ripresa progressiva."),
+        (r"ACWR ([^ ]+) < 0.8: recent recorded load is lower than its longer-window average\. Consider training history before increasing intensity\.", r"ACWR \1 < 0,8: il carico recente registrato è inferiore alla media di lungo periodo. Considera la storia di allenamento prima di aumentare l’intensità."),
     )
     for pattern, replacement in patterns:
         if re.fullmatch(pattern, reason):
@@ -243,8 +243,8 @@ def adjust(
     veto_ceiling: str | None = None
     if safety is not None:
         veto = exertion_veto(
-            illness_risk=safety.get("illness_risk"),
-            injury_risk=safety.get("injury_risk"),
+            systemic_stress=safety.get("systemic_stress"),
+            load_spike=safety.get("load_spike"),
             acwr=safety.get("acwr"),
             hrv_dev_pct=safety.get("hrv_dev_pct"),
             rhr_dev_bpm=safety.get("rhr_dev_bpm"),
@@ -495,8 +495,8 @@ async def generate_day_plan(
     safety: dict | None = None
     if latest_feature is not None:
         safety = {
-            "illness_risk": latest_feature.illness_risk_score,
-            "injury_risk": latest_feature.injury_risk_score,
+            "systemic_stress": latest_feature.systemic_stress_signal,
+            "load_spike": latest_feature.load_spike_indicator,
             "acwr": latest_feature.acwr,
             "hrv_dev_pct": latest_feature.hrv_deviation_from_baseline,
         }

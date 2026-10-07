@@ -284,8 +284,8 @@
     "acwr_metric": "ACWR",
     "acute_load_metric": "Acute Load",
     "chronic_load_metric": "Chronic Load",
-    "illness_risk": "Illness risk score",
-    "injury_risk": "Injury risk score",
+    "systemic_stress": "Systemic stress signal",
+    "load_spike": "Load spike indicator",
     "labs": "Lab panels",
     "trend": "Trend",
     "stats": "Statistics",
@@ -985,7 +985,49 @@
     "document_wrong_type": "Use a TXT, Markdown or PDF file.",
     "document_too_large": "The file exceeds the 5 MB limit.",
     "document_drop": "Drop a TXT, Markdown or PDF report here, or click to browse",
-    "document_rules": "TXT · MD · PDF · maximum 5 MB"
+    "document_rules": "TXT · MD · PDF · maximum 5 MB",
+    "syncHealth": {
+      "title": "Sync health",
+      "subtitle": "Connection and measurement freshness for each provider feed.",
+      "empty": "No provider syncs are configured.",
+      "staleWindow": "Stale after {{hours}} hours",
+      "lastAttempt": "Last attempt",
+      "lastSuccess": "Last success",
+      "measurement": "Latest measurement",
+      "credentials": "Credentials",
+      "retry": "Retry state",
+      "checkpoint": "Checkpoint",
+      "failedAttempts": "Failed attempts",
+      "error": "Issue",
+      "states": {
+        "available": "Available",
+        "complete": "Complete",
+        "stale": "Stale",
+        "fetch_failed": "Fetch failed",
+        "partial": "Partial",
+        "not_measured": "Not measured",
+        "pending_sync": "Pending sync",
+        "unknown": "Unknown"
+      },
+      "retryStates": {
+        "unknown": "Unknown",
+        "scheduled": "Scheduled",
+        "reconnect_required": "Reconnect required",
+        "idle": "Idle"
+      },
+      "credentialsStates": {
+        "unknown": "Unknown",
+        "configured": "Stored",
+        "reconnect_required": "Reconnect required",
+        "not_required": "Not required"
+      },
+      "errors": {
+        "fetch_failed": "Fetch failed",
+        "normalization_pending": "Normalization pending",
+        "credentials_revoked": "Credentials revoked",
+        "sync_failed": "Sync failed"
+      }
+    }
   },
   "legal": {
     "eyebrow": "Your information",
@@ -1273,7 +1315,31 @@
     "delivery_delivered": "Delivered",
     "delivery_pending": "Pending",
     "delivery_retrying": "Retrying",
-    "metric_utilization_percent": "CPU utilization"
+    "metric_utilization_percent": "CPU utilization",
+    "alphaUsage": {
+      "title": "Alpha usage",
+      "window": "Last {{days}} days",
+      "loadError": "Could not load alpha usage.",
+      "providerFailures": "Provider failures",
+      "noProviderFailures": "No provider failures recorded",
+      "events": "Product events",
+      "noEvents": "No events recorded",
+      "influenceCaveat": "Reported influence is user-reported and does not measure physiological benefit.",
+      "metrics": {
+        "weeklyActiveUsers": "Weekly active alpha users",
+        "aiUsers": "AI users",
+        "proposals": "Proposals",
+        "acceptanceRate": "Acceptance rate",
+        "editRate": "Edit rate",
+        "rejectionRate": "Rejection rate",
+        "decisionInfluenceRate": "Reported decision influence",
+        "decisionFeedback": "Feedback responses"
+      },
+      "eventNames": {
+        "overview_viewed": "Overview viewed",
+        "metric_explanation_opened": "Metric explanation opened"
+      }
+    }
   },
   "feedback": {
     "button": "Feedback",
@@ -1328,7 +1394,8 @@
     "semantics": {
       "measured": "Measured / recorded metric",
       "apex_derived": "Apex-derived estimate",
-      "provider_proprietary": "Source-calculated estimate"
+      "provider_proprietary": "Source-calculated estimate",
+      "apex_heuristic": "Apex heuristic estimate"
     },
     "metrics": {
       "resting_hr": {
@@ -1404,6 +1471,12 @@
       },
       "hrv_deviation": {
         "definition": "HRV deviation is the percentage difference between the day’s HRV and the average of recorded HRV readings in the preceding baseline window."
+      },
+      "systemic_stress": {
+        "definition": "A heuristic blend of HRV, resting heart rate, respiration and reported fatigue signals. It is not an illness probability."
+      },
+      "load_spike": {
+        "definition": "A descriptive heuristic of recent load relative to personal load history. It does not predict injury."
       }
     },
     "factors": {
@@ -1430,10 +1503,10 @@
       "provider_estimate": "The source supplies this estimate. Apex does not have the exact calculation details for this record and does not reconstruct the source formula.",
       "load_aggregation": "Apex selects one best-covered load method for the window and sums its available daily values. Missing or incompatible sessions may be excluded; different load scales are not treated as equivalent or converted to a common TSS scale.",
       "acwr_ratio": "ACWR = 7-day load sum / (28-day load sum / 4). Both windows use the same selected load scale; this ratio is descriptive and does not establish a safe or optimal range.",
-      "edwards_trimp": "Edwards TRIMP estimates activity load from time spent in heart-rate zones, weighted by zone. It requires usable heart-rate data and a recorded maximum heart rate.",
+      "edwards_trimp": "Time in heart-rate zones weighted by intensity. The current method uses age-estimated maximum heart rate; an individually measured maximum is not recorded by this calculation.",
       "garmin_recorded": "Garmin recorded load uses the provider’s own load values. This scale remains separate from Edwards TRIMP and other providers’ scales.",
-      "recovery_blend": "Apex maps available HRV, resting-heart-rate, sleep-score and prior-day strain signals to fixed heuristic components, then blends available components with configured weights. The inputs and weights used for a particular day are not preserved for this explanation.",
-      "readiness_blend": "Apex blends the available recovery, sleep-architecture and workload-balance estimates with configured weights. The inputs and weights used for a particular day are not preserved for this explanation.",
+      "recovery_blend": "Heuristic blend of available physiological deviations, Apex sleep architecture and prior-day strain. Recorded calculation details are shown only when preserved.",
+      "readiness_blend": "Heuristic blend of available Apex recovery, sleep architecture and recent load context. Recorded calculation details are shown only when preserved.",
       "strain_peak": "Apex compares the day’s selected activity load with the rolling 28-day peak load, using a minimum ceiling so a short or quiet history does not automatically produce a maximal score.",
       "sleep_architecture": "Apex blends available REM proportion, deep-sleep proportion and sleep efficiency using configured weights. The components are estimates based on recorded sleep data.",
       "hrv_deviation": "Apex compares the day’s HRV with the mean of recorded readings in the preceding 28 days. At least seven prior readings are required; the assessed day is excluded."
@@ -1449,6 +1522,141 @@
       "estimate_not_clinical": "Treat this as a descriptive estimate, not a medical diagnosis or a calibrated probability of a health condition.",
       "measured_baseline_deviation": "This derived comparison depends on available readings and baseline coverage. It is not a clinical threshold or a diagnosis."
     },
-    "calculation_date": "Calculated for {{date}}"
+    "calculation_date": "Calculated for {{date}}",
+    "registry": {
+      "formulaVersion": "Formula version · {{version}}",
+      "validation": "Status · {{level}}",
+      "missingInputs": "Missing calculation inputs · {{inputs}}",
+      "legacy": "The exact historical calculation was not stored.",
+      "details": "Calculation record",
+      "weight": "Effective weight",
+      "components": "Normalized components",
+      "baselineCoverage": "Baseline · {{count}} observed days, {{required}} required",
+      "validationLevels": {
+        "measured": "Measured",
+        "deterministic_derived": "Deterministic calculation",
+        "established_formula": "Established formula",
+        "heuristic": "Heuristic estimate",
+        "experimental": "Experimental",
+        "research_only": "Research only",
+        "provider_proprietary": "Proprietary provider estimate"
+      },
+      "coverage": {
+        "sufficient_coverage": "All formula components available",
+        "limited_coverage": "Limited component coverage",
+        "see_source_coverage": "See source coverage"
+      },
+      "missingComponents": "Unavailable components · {{inputs}}",
+      "baselineCoverageNamed": "{{baseline}} baseline · {{count}} observed days, {{required}} required",
+      "inputSource": "{{input}} source · {{source}}",
+      "sourceUnavailable": "{{input}} · source attribution unavailable",
+      "weightVersion": "{{input}} weight configuration · version {{version}}",
+      "snapshotUnavailable": "Exact calculation record unavailable for this assessed value.",
+      "missingInput": "Unavailable input · {{input}}",
+      "componentValue": "{{input}} · normalized component",
+      "effectiveWeight": "{{input}} · effective weight",
+      "fraction": "fraction",
+      "missingComponent": "Unavailable component · {{input}}"
+    },
+    "inputNames": {
+      "hrv_deviation": "HRV deviation",
+      "hrv_drop": "HRV deviation",
+      "resting_hr_deviation": "Resting HR deviation",
+      "resting_hr_elevation": "Resting HR deviation",
+      "sleep_quality": "Apex sleep architecture estimate",
+      "prior_day_strain": "Prior-day Apex strain",
+      "respiration_elevation": "Respiration deviation",
+      "journal_soreness_fatigue": "Reported soreness/fatigue",
+      "recovery": "Apex recovery",
+      "sleep_architecture": "Apex sleep architecture",
+      "acwr": "ACWR",
+      "rem_pct": "Estimated REM share",
+      "deep_pct": "Estimated deep share",
+      "total_sleep_s": "Recorded sleep",
+      "awake_s": "Recorded awake time",
+      "active_days": "Prior active days",
+      "day_load": "Recorded load",
+      "mean28": "Prior load average",
+      "std28": "Prior load variability",
+      "hrv": "HRV",
+      "resting_hr": "Resting heart rate",
+      "respiration": "Respiration",
+      "acwr_spike": "ACWR load component",
+      "load_spike": "Load distribution component",
+      "efficiency": "Sleep efficiency",
+      "load_distribution": "Load distribution"
+    }
+  },
+  "decisionLearning": {
+    "today": "APEX / TODAY",
+    "details": "Evidence and alternatives",
+    "current": "Current",
+    "baseline": "Personal baseline",
+    "delta": "Change",
+    "noBaseline": "Comparable baseline unavailable",
+    "askApex": "Ask Apex about this decision",
+    "feedback": "Did this help your plan?",
+    "influence": "Influenced my plan",
+    "optional": "Optional",
+    "yes": "Yes",
+    "partly": "Partly",
+    "no": "No",
+    "useful": "Was this useful?",
+    "notes": "Reason or note (optional)",
+    "saveFeedback": "Save feedback",
+    "feedbackSaved": "Feedback saved",
+    "chooseState": "Choose Followed, Modified, Declined or Decide later first.",
+    "postSession": "After your session (optional)",
+    "completion": "Session completion",
+    "completed": "Completed",
+    "partial": "Partially completed",
+    "skipped": "Skipped",
+    "rpe": "Effort · RPE (0–10)",
+    "soreness": "Soreness (0–10)",
+    "plannedSession": "Related planned session",
+    "proposal": "Related proposal",
+    "noLink": "No related item",
+    "checkin": "Subjective check-in",
+    "editProposal": "Edit proposal",
+    "saveEdit": "Save replacement proposal",
+    "editReason": "Reason for the edit",
+    "newApprovalRequired": "Your edited proposal needs a new review and approval.",
+    "superseded": "Replaced by an edited proposal",
+    "editCaption": "Editing prepares a new proposal. Review its before and after values before approving.",
+    "sessionDescription": "Session description"
+  },
+  "providerSupport": {
+    "EXPERIMENTAL": "Experimental · live support unverified",
+    "MANUAL_IMPORT": "Manual import",
+    "DEVELOPMENT_ONLY": "Development only",
+    "PENDING_PROVIDER_APPROVAL": "Provider access dependent",
+    "ALPHA_SUPPORTED": "Alpha supported",
+    "DEPRECATED": "Deprecated"
+  },
+  "healthKit": {
+    "title": "Apple HealthKit companion",
+    "developmentOnly": "Development only",
+    "caveat": "The iOS companion source is implemented; signing, a Mac build and physical-device validation are still pending.",
+    "pairHelp": "Create a one-time code valid for 10 minutes, then enter it and your Apex API URL in the installed iPhone companion.",
+    "tokenHelp": "The companion stores its revocable, HealthKit-only sync token in iOS Keychain. Browser session cookies are never native credentials.",
+    "createCode": "Create pairing code",
+    "creatingCode": "Creating code…",
+    "codeLabel": "One-time pairing code",
+    "expiresIn": "Expires in {{seconds}} seconds. Use once and keep this code private.",
+    "codeExpired": "Code expired. Create a new one.",
+    "dismissCode": "Hide code",
+    "devices": "Paired iPhones",
+    "emptyDevices": "No HealthKit devices paired.",
+    "checkpoint": "Checkpoint",
+    "lastSync": "Last acknowledged sync",
+    "neverSynced": "Not yet acknowledged",
+    "revoked": "Revoked",
+    "expiredDevice": "Expired",
+    "activeDevice": "Active",
+    "revoke": "Revoke device",
+    "revoking": "Revoking…",
+    "revokeHelp": "Revocation immediately stops this device token from uploading. Previously synchronized data remains in Apex.",
+    "genericError": "The request could not complete. Please try again.",
+    "loadError": "Could not load paired devices. Please try again."
   }
 }

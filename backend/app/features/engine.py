@@ -9,7 +9,7 @@ Day D's inputs (all keyed on the USER'S LOCAL calendar):
   discipline rows for D
 - sleep_sessions with local_date in [D-28, D]  -> sleep quality/architecture
   (D's session = that morning's wake-up) + respiration baseline
-- hrv_readings mapped to local days via users.timezone  -> HRV daily mean
+- hrv_readings mapped to local days via users.timezone  -> a single-origin/method/context HRV aggregate
 - daily_biometrics rows in [D-28, D]  -> resting HR
 
 Row honesty rules:
@@ -21,7 +21,7 @@ Row honesty rules:
   HR signal at all (§17: incomplete sensor days are flagged, never silently
   scored as complete). Baseline warm-up (fewer than MIN_OBS observations)
   and a journal-free day do NOT flag partial — they are not sensor gaps.
-  The illness score's journal component (§7) activates on days the journal
+  The systemic-stress signal's journal component (§7) activates on days the journal
   carries soreness/energy scores.
 - iron_status_flag (§8.3 get_donation_status): the latest lab panel on/before
   D that carries a ferritin value decides — "low" below the panel's own
@@ -32,6 +32,8 @@ Row honesty rules:
 """
 
 import logging
+import math
+import statistics
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -41,10 +43,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features import baselines, discipline as discipline_metrics, load, scores
-from app.features.weights import cutoff_for_local_day, load_weights
+from app.connectors.semantics import provider_semantics
+from app.features.weights import cutoff_for_local_day, load_weight_selection
+from app.metrics.provenance import baseline_snapshot, metric_snapshot
 from app.medical.labs import ferritin_reference_low
 from app.models.activity import Activity, ActivityStream, Discipline
 from app.models.features import DailyFeature, DisciplineFeature
+from app.models.integration import Integration
 from app.models.journal import JournalEntry
 from app.models.medical import LabPanel
 from app.models.user import User
@@ -81,57 +86,92 @@ def _strain_ceiling(
     )
 
 
-def _readings_by_local_day(
-    readings: list[HrvReading], tz: ZoneInfo, first_day: date, last_day: date
-) -> dict[date, float]:
-    """Mean HRV per LOCAL day (§17: an instant belongs to the day its local
-    wall clock says — readings near midnight land on the right day).
+def _select_hrv_series(
+    readings: list[HrvReading], tz: ZoneInfo, first_day: date, last_day: date,
+    main_provider: str | None = None,
+) -> tuple[dict[date, float], dict[date, dict]]:
+    """One origin/method/measurement-context series for the assessed local day.
 
-    P-01/P-18 audit: OVERNIGHT-AVG PRIORITY. The previous implementation took
-    the arithmetic mean of ALL readings (overnight_avg + 5min daytime),
-    which mixed parasympathetic (~60-80 ms) and sympathetic (~20-50 ms)
-    readings and weighted the baseline by wear-time. Daytime wear
-    artificially lowered baselines; circadian confounding corrupted trends.
-
-    The new implementation:
-    - When overnight_avg readings exist for a day, use their mean
-      (parasympathetic, sleep-derived rMSSD — the consensus baseline).
-    - Otherwise fall back to the MEDIAN of 5min readings (median is robust
-      to the daytime sympathetic dips that pulled the mean down).
-    - Days with no readings at all are absent from the dict (baseline
-      computation correctly treats them as missing observations).
+    A source or daytime/overnight change rebuilds baseline support. Legacy
+    un-attributed rows form their own explicit context, never a known vendor's
+    baseline. Device identity is not persisted and remains a limitation.
     """
-    overnight: dict[date, list[float]] = {}
-    fivemin: dict[date, list[float]] = {}
+    eligible = []
     for reading in readings:
         local_day = reading.timestamp.astimezone(tz).date()
-        if not (first_day <= local_day <= last_day):
+        if not first_day <= local_day <= last_day:
             continue
-        # P-02 validators already filtered implausible values at ingest; the
-        # float() here is a defensive coercion for Decimal columns.
+        if reading.reading_type not in {"overnight_avg", "5min", "rmssd_overnight", "rmssd_5min"}:
+            continue
         try:
             value = float(reading.hrv_ms)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
-        if reading.reading_type == "overnight_avg":
-            overnight.setdefault(local_day, []).append(value)
-        else:
-            fivemin.setdefault(local_day, []).append(value)
+        if not math.isfinite(value) or value <= 0:
+            continue
+        origin = getattr(reading, "origin", None)
+        recorded_method = getattr(reading, "method", None)
+        method = recorded_method.upper() if isinstance(recorded_method, str) else None
+        if method is not None and method != "RMSSD":
+            continue
+        if origin is not None:
+            rule = provider_semantics(origin, "hrv")
+            if method != "RMSSD" or rule.canonical_metric != "hrv_overnight_rmssd":
+                continue
+        context = "overnight" if reading.reading_type in {"overnight_avg", "rmssd_overnight"} else "daytime"
+        key = (origin, method or "legacy_unknown", context)
+        eligible.append((reading, local_day, value, key))
+    if not eligible:
+        return {}, {}
+    current = [item for item in eligible if item[1] == last_day]
+    candidates = current or [item for item in eligible if item[1] == max(row[1] for row in eligible)]
+    if current and main_provider and any(item[3][0] == main_provider for item in current):
+        candidates = [item for item in current if item[3][0] == main_provider]
+    # Prefer overnight within eligible candidate day/provider; remaining ties
+    # use actual timestamp/row identity rather than database return order.
+    selected_context = max(candidates, key=lambda item: (
+        item[3][2] == "overnight", item[0].timestamp, item[3][0] or "", item[0].id or 0
+    ))[3]
+    grouped = {}
+    for reading, local_day, value, key in eligible:
+        if key == selected_context:
+            grouped.setdefault(local_day, []).append((reading, value))
+    values, provenance = {}, {}
+    origin, method, context = selected_context
+    for local_day, rows in grouped.items():
+        numbers = [value for _, value in rows]
+        values[local_day] = sum(numbers) / len(numbers) if context == "overnight" else statistics.median(numbers)
+        provenance[local_day] = {
+            "table": "hrv_readings", "provider": origin,
+            "attribution": "recorded" if origin is not None else "unavailable",
+            "measurement_method": method, "measurement_context": context,
+            "device_identity": None, "aggregation": "mean_overnight" if context == "overnight" else "median_daytime",
+            "observations": [{"id": reading.id, "timestamp": reading.timestamp.isoformat(),
+                              "reading_type": reading.reading_type, "origin": getattr(reading, "origin", None),
+                              "method": getattr(reading, "method", None)} for reading, _ in rows],
+        }
+    return values, provenance
 
-    out: dict[date, float] = {}
-    all_days = set(overnight) | set(fivemin)
-    for day in all_days:
-        if day in overnight:
-            # P-01: overnight_avg is the canonical baseline (parasympathetic,
-            # sleep-derived). Mean of multiple overnight rows (rare — most
-            # devices emit one per night).
-            out[day] = sum(overnight[day]) / len(overnight[day])
-        elif fivemin[day]:
-            # P-01 fallback: median of 5min readings. Median is robust to
-            # the daytime sympathetic dips that corrupted the arithmetic mean.
-            import statistics
-            out[day] = statistics.median(fivemin[day])
-    return out
+
+def _readings_by_local_day(
+    readings: list[HrvReading], tz: ZoneInfo, first_day: date, last_day: date,
+    main_provider: str | None = None,
+) -> dict[date, float]:
+    return _select_hrv_series(readings, tz, first_day, last_day, main_provider)[0]
+
+
+def _sleep_sessions_by_day(sessions: list[SleepSession], main_provider: str | None) -> dict[date, SleepSession]:
+    """Choose one coherent source/night, never mixed vendor stage totals."""
+    grouped = {}
+    for sleep in sessions:
+        grouped.setdefault(sleep.local_date, []).append(sleep)
+    selected = {}
+    for local_day, candidates in grouped.items():
+        preferred = [sleep for sleep in candidates if main_provider and getattr(sleep, "origin", None) == main_provider]
+        selected[local_day] = max(preferred or candidates, key=lambda sleep: (
+            sleep.total_sleep_s or 0, sleep.start_time, sleep.id or 0
+        ))
+    return selected
 
 
 async def _load_window(
@@ -140,6 +180,12 @@ async def _load_window(
     """Everything the computation for `day` needs, in one round of queries."""
     tz = ZoneInfo(user.timezone)
     first_day = day - timedelta(days=WINDOW_DAYS)
+    main_provider = None
+    if getattr(user, "main_integration_id", None) is not None:
+        main_provider = await session.scalar(select(Integration.provider).where(
+            Integration.id == user.main_integration_id, Integration.user_id == user.id,
+            Integration.status == "active",
+        ))
     window_start_utc, _ = _local_day_instant_bounds(first_day, tz)
     _, day_end_utc = _local_day_instant_bounds(day, tz)
 
@@ -216,7 +262,7 @@ async def _load_window(
         .unique()
         .all()
     )
-    # The illness score's journal component (§7) needs ONLY day D's entries —
+    # The systemic-stress signal's journal component (§7) needs ONLY day D's entries —
     # soreness/energy are same-day self-reports, no baseline involved. The
     # journal `date` is already the user's local date (§17), no conversion.
     journal_entries = (
@@ -253,8 +299,9 @@ async def _load_window(
     disciplines = {
         d.id: d for d in (await session.scalars(select(Discipline))).all()
     }
+    hrv_values, hrv_provenance = _select_hrv_series(hrv_readings, tz, first_day, day, main_provider)
     return {
-        "tz": tz,
+        "tz": tz, "main_provider": main_provider,
         "activities": activities,
         "streams_by_activity": streams_by_activity,
         "sleep_sessions": sleep_sessions,
@@ -262,9 +309,8 @@ async def _load_window(
         "journal_entries": journal_entries,
         "iron_panel": iron_panel,
         "iron_threshold": iron_threshold,
-        "hrv_by_local_day": _readings_by_local_day(
-            hrv_readings, tz, first_day, day
-        ),
+        "hrv_by_local_day": hrv_values,
+        "hrv_observation_provenance": hrv_provenance,
         "biometrics": {b.date: b for b in biometrics},
         "disciplines": disciplines,
     }
@@ -278,18 +324,25 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     disciplines: dict[int, Discipline] = window["disciplines"]
 
     hrv_by_day: dict[date, float] = window["hrv_by_local_day"]
+    from app.services.biometric_provenance import biometric_origin
+    rhr_context = window["biometrics"].get(day)
+    if rhr_context is None or rhr_context.resting_hr is None:
+        rhr_context = max((b for b in window["biometrics"].values()
+                           if b.date <= day and b.resting_hr is not None),
+                          key=lambda b: b.date, default=None)
+    rhr_origin = biometric_origin(rhr_context, "resting_hr") if rhr_context else None
     rhr_by_day: dict[date, float] = {
         b.date: float(b.resting_hr)
         for b in window["biometrics"].values()
-        if b.resting_hr is not None
+        if b.resting_hr is not None and biometric_origin(b, "resting_hr") == rhr_origin
     }
+    sleep_by_day = _sleep_sessions_by_day(window["sleep_sessions"], window.get("main_provider"))
+    context_sleep = sleep_by_day.get(day) or max(sleep_by_day.values(), key=lambda sleep: sleep.local_date, default=None)
+    sleep_origin = getattr(context_sleep, "origin", None)
     resp_by_day: dict[date, float] = {
-        s.local_date: float(s.respiration_avg)
-        for s in window["sleep_sessions"]
-        if s.respiration_avg is not None
-    }
-    sleep_by_day: dict[date, SleepSession] = {
-        s.local_date: s for s in window["sleep_sessions"]
+        local_day: float(sleep.respiration_avg)
+        for local_day, sleep in sleep_by_day.items()
+        if sleep.respiration_avg is not None and getattr(sleep, "origin", None) == sleep_origin
     }
 
     # --- age & load series -------------------------------------------------
@@ -312,10 +365,27 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
             day_loads.get(activity.local_date, 0.0) + trimp
         )
 
-    day_load = loads.get(day, 0.0)
-    acute7 = load.rolling_sum(loads, day, 7)
-    chronic28 = load.rolling_sum(loads, day, WINDOW_DAYS)
-    acwr = load.acwr_from(acute7, chronic28)
+    # A missing load source is not a measured rest day. A recorded-session
+    # history permits descriptive zero for dates without recorded sessions;
+    # sessions with no eligible load remain unknown rather than fabricated zero.
+    load_available = bool(selected_loads)
+    def load_on(local_day):
+        sessions = [activity for activity in activities if activity.local_date == local_day]
+        if sessions:
+            return loads.get(local_day) if any(a.id in selected_loads for a in sessions) else None
+        historical_evidence = any(a.id in selected_loads and a.local_date <= local_day for a in activities)
+        return 0.0 if historical_evidence else None
+    day_load = load_on(day)
+    acute7 = load.rolling_sum(loads, day, 7) if load_available else None
+    chronic28 = load.rolling_sum(loads, day, WINDOW_DAYS) if load_available else None
+    chronic_weekly = chronic28 / 4.0 if chronic28 is not None else None
+    acwr = load.acwr_from(acute7, chronic28) if load_available else None
+    load_metadata["availability"] = "available" if load_available else "unavailable"
+    if load_metadata["method"] == "edwards_trimp":
+        load_metadata["hr_max_bpm"] = hrm
+        load_metadata["hr_max_method"] = "tanaka_age_estimate" if hrm is not None else "unavailable"
+        load_metadata["limitation"] += " HRmax is an age-based estimate, not an individually measured maximum."
+    load_metadata["zero_day_assumption"] = "No recorded session is a descriptive zero only after selected-method session evidence; absent capture is not verified rest."
 
     # --- baselines (prior window [D-28, D-1], D excluded) -------------------
     hrv_baseline = baselines.mean_baseline(hrv_by_day, day)
@@ -324,7 +394,7 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
 
     hrv_dev = (
         None
-        if hrv_baseline is None or day not in hrv_by_day
+        if hrv_baseline is None or hrv_baseline <= 0 or day not in hrv_by_day
         else (hrv_by_day[day] - hrv_baseline) / hrv_baseline * 100.0
     )
     rhr_dev = (
@@ -334,49 +404,55 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     )
     resp_dev = (
         None
-        if resp_baseline is None or day not in resp_by_day
+        if resp_baseline is None or resp_baseline <= 0 or day not in resp_by_day
         else (resp_by_day[day] - resp_baseline) / resp_baseline * 100.0
     )
 
     # --- strain & ceiling ---------------------------------------------------
     # P-16 audit: shared strain-ceiling window function — both nightly and
-    # recompute paths use the SAME window definition ([D-28, D] inclusive
-    # for today's ceiling; [D-29, D-1] inclusive for prior day's ceiling).
+    # recompute paths use the SAME window definition ([D-27, D] inclusive
+    # for today's ceiling; [D-28, D-1] inclusive for prior day's ceiling).
     # The previous code had an off-by-one between nightly and recompute that
     # produced two different strain values for the same date.
     peak28 = _strain_ceiling(loads, day, WINDOW_DAYS)
     prior_day = day - timedelta(days=1)
     prior_peak = _strain_ceiling(loads, prior_day, WINDOW_DAYS)
-    prior_strain = scores.strain_score(loads.get(prior_day, 0.0), prior_peak)
+    prior_day_load = load_on(prior_day)
+    prior_strain = scores.strain_score(prior_day_load, prior_peak)
 
     # --- weights (§6.4 selection rule; loaded by the async caller with
     # cutoff = start of local day D) -----------------------------------------
     w = window["weights"]
 
     sleep_session = sleep_by_day.get(day)
-    sleep_score = (
-        float(sleep_session.sleep_score) if sleep_session and sleep_session.sleep_score is not None else None
-    )
-    recovery = scores.recovery_score(
-        w["recovery_score"], hrv_dev, rhr_dev, sleep_score, prior_strain
-    )
     strain = scores.strain_score(day_load, peak28)
-    sleep_architecture = scores.sleep_architecture_score(
-        w["sleep_architecture_score"],
-        rem_pct=(
+    sleep_inputs = {
+        "rem_pct": (
             float(sleep_session.rem_s) / float(sleep_session.total_sleep_s) * 100.0
-            if sleep_session and sleep_session.rem_s and sleep_session.total_sleep_s
+            if sleep_session and sleep_session.rem_s is not None and sleep_session.total_sleep_s
             else None
         ),
-        deep_pct=(
+        "deep_pct": (
             float(sleep_session.deep_s) / float(sleep_session.total_sleep_s) * 100.0
-            if sleep_session and sleep_session.deep_s and sleep_session.total_sleep_s
+            if sleep_session and sleep_session.deep_s is not None and sleep_session.total_sleep_s
             else None
         ),
-        total_sleep_s=(
-            float(sleep_session.total_sleep_s) if sleep_session and sleep_session.total_sleep_s is not None else None
+        "total_sleep_s": (
+            float(sleep_session.total_sleep_s)
+            if sleep_session and sleep_session.total_sleep_s is not None else None
         ),
-        awake_s=summary_awake(sleep_session, window.get("sleep_awake", {}).get(sleep_session.start_time)) if sleep_session else None,
+        "awake_s": summary_awake(
+            sleep_session, window.get("sleep_awake", {}).get(sleep_session.start_time)
+        ) if sleep_session else None,
+    }
+    sleep_architecture = scores.sleep_architecture_score(
+        w["sleep_architecture_score"], **sleep_inputs
+    )
+    # Proprietary vendor sleep scores have incompatible meanings. Recovery
+    # consumes the actual Apex architecture composite from one coherent night.
+    sleep_quality = sleep_architecture
+    recovery = scores.recovery_score(
+        w["recovery_score"], hrv_dev, rhr_dev, sleep_quality, prior_strain
     )
     readiness = scores.readiness_score(
         w["readiness_score"], recovery, sleep_architecture, acwr
@@ -394,16 +470,16 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         (sum(soreness_values) / len(soreness_values)) if soreness_values else None,
         (sum(energy_values) / len(energy_values)) if energy_values else None,
     )
-    illness = scores.illness_risk_score(
-        w["illness_risk_score"], hrv_dev, rhr_dev, resp_dev, journal_component
+    systemic_stress = scores.systemic_stress_signal(
+        w["systemic_stress_signal"], hrv_dev, rhr_dev, resp_dev, journal_component
     )
-    mean28, std28 = load.load_distribution(loads, day)
-    # P-13 audit: gate the injury-risk load-spike component on a minimum
+    mean28, std28 = load.load_distribution(loads, day) if load_available else (None, None)
+    # P-13 audit: gate the load-spike load-spike component on a minimum
     # active-day count so an athlete returning from a 4-week break does not
-    # max injury risk on their first normal session.
+    # maximize the indicator on their first normal session.
     active_days = load.active_day_count(loads, day)
-    injury = scores.injury_risk_score(
-        w["injury_risk_score"], acwr, day_load, mean28, std28, active_days=active_days
+    load_spike = scores.load_spike_indicator(
+        w["load_spike_indicator"], acwr, day_load, mean28, std28, active_days=active_days
     )
     cdfi = scores.cross_discipline_fatigue_index(loads_by_discipline, day)
 
@@ -443,15 +519,173 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         "readiness_score": readiness,
         "load_metadata": load_metadata,
         "training_load_acute": acute7,
-        "training_load_chronic": chronic28 / 4.0,
+        "training_load_chronic": chronic_weekly,
         "acwr": acwr,
         "sleep_architecture_score": sleep_architecture,
         "hrv_deviation_from_baseline": hrv_dev,
-        "illness_risk_score": illness,
-        "injury_risk_score": injury,
+        "systemic_stress_signal": systemic_stress,
+        "load_spike_indicator": load_spike,
         "iron_status_flag": iron_flag,
         "cross_discipline_fatigue_index": cdfi,
         "data_completeness": data_completeness,
+    }
+
+    # Persist the actual calculation operands during computation. Legacy rows
+    # have no such record and must never acquire reconstructed contributors.
+    baseline_records = {
+        "hrv": baseline_snapshot(hrv_by_day, day, hrv_baseline),
+        "resting_hr": baseline_snapshot(rhr_by_day, day, rhr_baseline),
+        "respiration": baseline_snapshot(resp_by_day, day, resp_baseline),
+    }
+    unknown_sensor = {"provider": None, "attribution": "unavailable",
+                      "reason": "Selected provider is unavailable for this legacy or un-attributed canonical observation."}
+    hrv_source = window.get("hrv_observation_provenance", {}).get(day, {
+        **unknown_sensor, "table": "hrv_readings", "measurement_method": "legacy_method_unavailable",
+    })
+    rhr_source = {**unknown_sensor, "provider": rhr_origin,
+                  "attribution": "recorded" if rhr_origin else "unavailable",
+                  "table": "daily_biometrics", "field": "resting_hr", "date": day.isoformat()}
+    sleep_provider = getattr(sleep_session, "origin", None) if sleep_session else None
+    sleep_source = {"provider": sleep_provider, "attribution": "recorded" if sleep_provider else "unavailable",
+                    "table": "sleep_sessions", "id": sleep_session.id if sleep_session else None,
+                    "start_time": sleep_session.start_time.isoformat() if sleep_session else None,
+                    "measurement_method": "vendor_estimated_sleep_stages", "device_identity": None}
+    for name, record in baseline_records.items():
+        record["sources_by_day"] = {}
+        for observation in record["observations"]:
+            observed_day = date.fromisoformat(observation)
+            if name == "hrv":
+                source = window.get("hrv_observation_provenance", {}).get(observed_day, unknown_sensor)
+            elif name == "resting_hr":
+                source = {**rhr_source, "date": observation}
+            else:
+                observed_sleep = sleep_by_day[observed_day]
+                provider = getattr(observed_sleep, "origin", None)
+                source = {"table": "sleep_sessions", "provider": provider, "id": observed_sleep.id,
+                          "attribution": "recorded" if provider else "unavailable"}
+            record["sources_by_day"][observation] = source
+    load_source = {"provider": "garmin" if load_metadata["method"] == "garmin_recorded" else None,
+                   "attribution": "recorded_method", "method": load_metadata["method"],
+                   "unit": load_metadata["unit"], "included_sessions": load_metadata["included_sessions"],
+                   "excluded_sessions": load_metadata["excluded_sessions"],
+                   "hr_max_bpm": load_metadata.get("hr_max_bpm"),
+                   "hr_max_method": load_metadata.get("hr_max_method"),
+                   "observations": [{"activity_id": activity.id, "date": activity.local_date.isoformat(),
+                                     "value": selected_loads[activity.id]}
+                                    for activity in activities if activity.id in selected_loads],
+                   "excluded_activity_ids": [activity.id for activity in activities if activity.id not in selected_loads]}
+    selections = window.get("weight_selection", {})
+    def composite(metric, value, feature, inputs, components, baseline_names=()):
+        return metric_snapshot(
+            metric, value, inputs, components=components, weights=w[feature],
+            weight_selection=selections.get(feature),
+            baselines={name: baseline_records[name] for name in baseline_names},
+            sources={name: {"attribution": "apex_derived", "metric": "sleep_score" if name == "sleep_quality" else name}
+                     if name in {"recovery", "sleep_architecture", "sleep_quality", "acwr", "prior_day_strain"}
+                     else load_source if name in {"day_load", "mean28", "std28", "active_days"}
+                     else {"attribution": "self_report", "provider": "journal"}
+                     if name == "journal_soreness_fatigue"
+                     else hrv_source if name in {"hrv_deviation", "hrv_drop"}
+                     else rhr_source if name in {"resting_hr_deviation", "resting_hr_elevation"}
+                     else sleep_source
+                     for name in inputs},
+        )
+    provenance_metrics = {
+        "recovery": composite(
+            "recovery", recovery, "recovery_score",
+            {"hrv_deviation": hrv_dev, "resting_hr_deviation": rhr_dev,
+             "sleep_quality": sleep_quality, "prior_day_strain": prior_strain},
+            scores.recovery_components(hrv_dev, rhr_dev, sleep_quality, prior_strain),
+            ("hrv", "resting_hr"),
+        ),
+        "sleep_score": composite(
+            "sleep_score", sleep_architecture, "sleep_architecture_score", sleep_inputs,
+            scores.sleep_architecture_components(**sleep_inputs),
+        ),
+        "readiness": composite(
+            "readiness", readiness, "readiness_score",
+            {"recovery": recovery, "sleep_architecture": sleep_architecture, "acwr": acwr},
+            scores.readiness_components(recovery, sleep_architecture, acwr),
+        ),
+        "systemic_stress": composite(
+            "systemic_stress", systemic_stress, "systemic_stress_signal",
+            {"hrv_drop": hrv_dev, "resting_hr_elevation": rhr_dev,
+             "respiration_elevation": resp_dev, "journal_soreness_fatigue": journal_component},
+            scores.systemic_stress_components(hrv_dev, rhr_dev, resp_dev, journal_component),
+            ("hrv", "resting_hr", "respiration"),
+        ),
+        "load_spike": composite(
+            "load_spike", load_spike, "load_spike_indicator",
+            {"acwr": acwr, "day_load": day_load, "mean28": mean28,
+             "std28": std28, "active_days": active_days},
+            scores.load_spike_components(acwr, day_load, mean28, std28, active_days=active_days),
+        ),
+    }
+    prior_strain_snapshot = metric_snapshot(
+        "strain", prior_strain,
+        {"day_load": prior_day_load, "peak28": prior_peak,
+         "ceiling_floor": load.STRAIN_CEILING_FLOOR},
+        sources={"day_load": load_source, "peak28": load_source,
+                 "ceiling_floor": {"attribution": "formula_constant", "formula_version": "strain-v1"}},
+        methodology={"as_of": prior_day.isoformat(), "window_start": (prior_day - timedelta(days=27)).isoformat(),
+                     "window_end": prior_day.isoformat()},
+    )
+    provenance_metrics["recovery"]["methodology"] = {
+        "prior_day_strain": prior_strain_snapshot, "sleep_quality_metric": "sleep_score",
+        "source_policy": "apex_architecture_not_proprietary_sleep_score",
+    }
+    provenance_metrics["systemic_stress"]["methodology"] = {
+        "journal_soreness_mean": sum(soreness_values) / len(soreness_values) if soreness_values else None,
+        "journal_energy_mean": sum(energy_values) / len(energy_values) if energy_values else None,
+        "soreness_observations": len(soreness_values), "energy_observations": len(energy_values),
+    }
+    provenance_metrics["load_spike"]["baselines"] = {
+        "load_distribution": {"value": mean28, "population_std": std28, "active_days": active_days,
+                              "window_days": 28, "window_start": (day - timedelta(days=28)).isoformat(),
+                              "window_end": (day - timedelta(days=1)).isoformat(),
+                              "aggregation": "zero_filled_recorded_load_days",
+                              "required_active_days": 7, "sufficient": active_days >= 7,
+                              "gate_behavior": "component_unavailable_below_7_active_days"}
+    }
+    for metric, value, inputs in (
+        ("acute_load", acute7, {"daily_loads": {d.isoformat(): v for d, v in loads.items()
+                                               if day - timedelta(days=6) <= d <= day}}),
+        ("chronic_load", chronic_weekly, {"daily_loads": {d.isoformat(): v for d, v in loads.items()
+                                                        if day - timedelta(days=27) <= d <= day},
+                                          "weekly_scale_divisor": 4.0}),
+        ("acwr", acwr, {"acute_load": acute7, "chronic_load": chronic_weekly}),
+        ("strain", strain, {"day_load": day_load, "peak28": peak28,
+                             "ceiling_floor": load.STRAIN_CEILING_FLOOR}),
+        ("cross_discipline_fatigue", cdfi,
+         {"discipline_daily_loads": {name: {d.isoformat(): v for d, v in values.items()
+                                              if day - timedelta(days=27) <= d <= day}
+                                     for name, values in loads_by_discipline.items()},
+          "half_life_days": 3.0, "normalization_floor": 1.0}),
+    ):
+        provenance_metrics[metric] = metric_snapshot(
+            metric, value, inputs,
+            sources={name: {"attribution": "formula_constant", "formula_version": f"{metric}-v1"}
+                     if name in {"ceiling_floor", "half_life_days", "normalization_floor", "weekly_scale_divisor"}
+                     else load_source for name in inputs}, methodology=dict(load_metadata)
+        )
+    for metric, value, today_value, baseline_value, baseline_name in (
+        ("hrv_deviation", hrv_dev, hrv_by_day.get(day), hrv_baseline, "hrv"),
+        ("resting_hr_deviation", rhr_dev, rhr_by_day.get(day), rhr_baseline, "resting_hr"),
+        ("respiration_deviation", resp_dev, resp_by_day.get(day), resp_baseline, "respiration"),
+    ):
+        provenance_metrics[metric] = metric_snapshot(
+            metric, value, {"today": today_value, "baseline": baseline_value},
+            baselines={baseline_name: baseline_records[baseline_name]},
+            sources={"today": hrv_source if baseline_name == "hrv" else rhr_source if baseline_name == "resting_hr" else sleep_source,
+                     "baseline": {"attribution": "apex_derived", "metric": f"{baseline_name}_baseline"}},
+        )
+    provenance_metrics["hrv_baseline"] = metric_snapshot(
+        "hrv_baseline", hrv_baseline, {"observed_days": baseline_records["hrv"]["observed_days"]},
+        baselines={"hrv": baseline_records["hrv"]}, sources={"hrv": hrv_source},
+    )
+    daily_row["calculation_provenance"] = {
+        "schema_version": 1, "as_of": day.isoformat(), "timezone": str(tz),
+        "metrics": provenance_metrics,
     }
 
     # --- discipline rows for D (§17: scoped by discipline, never pooled) ---
@@ -533,15 +767,16 @@ async def compute_user_day(
     window = await _load_window(session, user, day)
     tz = window["tz"]
     cutoff = cutoff_for_local_day(day, tz)
-    window["weights"] = {
-        feature: await load_weights(session, feature, cutoff)
+    window["weight_selection"] = {
+        feature: await load_weight_selection(session, feature, cutoff)
         for feature in (
-            "recovery_score",
-            "readiness_score",
-            "sleep_architecture_score",
-            "illness_risk_score",
-            "injury_risk_score",
+            "recovery_score", "readiness_score", "sleep_architecture_score",
+            "systemic_stress_signal", "load_spike_indicator",
         )
+    }
+    window["weights"] = {
+        feature: {component: row["value"] for component, row in selected.items()}
+        for feature, selected in window["weight_selection"].items()
     }
     computed = _compute_day(user, day, window)
     if computed is None:

@@ -1,5 +1,5 @@
 """Composite daily scores (§7): recovery, strain, readiness, sleep
-architecture, illness risk, injury risk, cross-discipline fatigue index.
+architecture, systemic-stress signal, load-spike indicator, cross-discipline fatigue index.
 
 Design laws:
 - Blend weights ALWAYS come from feature_weights via the §6.4 selection rule
@@ -9,7 +9,7 @@ Design laws:
   never padded with invented values. None components are simply absent; a
   composite over zero available components is None.
 - Functional-form constants (saturation points like "a 30% HRV drop is a
-  full illness signal") are code constants, versioned by the golden-dataset
+  full heuristic systemic-stress component") are code constants, versioned by the golden-dataset
   regression tests — the weights table owns blend weights, not formulas.
 - All scores are 0..100; the cross-discipline fatigue index is an unbounded
   unitless index.
@@ -46,7 +46,7 @@ def prior_day_strain_component(prior_strain_score: float) -> float:
 
 
 def rem_component(rem_pct: float) -> float:
-    """10% -> 0, 25% -> 1 (typical healthy REM sits near the top)."""
+    """10% -> 0, 25% -> 1 (heuristic normalization constants)."""
     return clamp01((rem_pct - 10.0) / 15.0)
 
 
@@ -63,7 +63,7 @@ def efficiency_component(total_sleep_s: float, awake_s: float) -> float:
 
 
 def hrv_drop_component(dev_pct: float) -> float:
-    """A 30% drop below baseline is a full illness signal; rises count 0."""
+    """A 30% drop below baseline is a full heuristic systemic-stress component; rises count 0."""
     return clamp01(-dev_pct / 30.0)
 
 
@@ -87,7 +87,8 @@ def journal_soreness_fatigue_component(
     10 -> 1; energy maps inversely (low reported energy IS the fatigue
     signal, 10 -> 0, 1 -> 1). When only one is present it stands alone —
     never padded with an invented value. None when the day has no journal
-    scores at all."""
+    scores at all.
+    """
     signals: list[float] = []
     if soreness_score is not None:
         signals.append(clamp01((soreness_score - 1.0) / 9.0))
@@ -99,8 +100,10 @@ def journal_soreness_fatigue_component(
 
 
 def acwr_readiness_component(acwr: float) -> float:
-    """Sweet spot 0.8-1.3 -> 1.0; ramping above 1.3 folds to 0 at 2.0;
-    detraining below 0.8 scales linearly to 0 at 0.0."""
+    """Heuristic transform: 0.8-1.3 -> 1.0; above 1.3 folds to 0 at 2.0;
+    below 0.8 scales linearly to 0 at 0.0. These constants are not
+    a validated optimal range, injury predictor, or training prescription.
+    """
     if acwr > 1.3:
         return clamp01(1.0 - (acwr - 1.3) / 0.7)
     if acwr < 0.8:
@@ -109,7 +112,7 @@ def acwr_readiness_component(acwr: float) -> float:
 
 
 def acwr_spike_component(acwr: float) -> float:
-    """Injury-signal side only: 1.3 -> 0, 2.0 -> 1."""
+    """Heuristic high-ratio component only: 1.3 -> 0, 2.0 -> 1."""
     return clamp01((acwr - 1.3) / 0.7)
 
 
@@ -119,20 +122,20 @@ def load_spike_component(
     std28: float,
     *,
     active_days: int | None = None,
-) -> float:
+) -> float | None:
     """Today's load vs. the personal distribution; 2 std above the mean is a
     full spike. A degenerate (zero-variance) distribution spikes only if
     today actually exceeds the mean.
 
     P-13 audit: when ``active_days`` is provided and < 7 (baseline
-    rebuilding — e.g. returning from a 4-week break), the component returns
-    0.0 (neutral) instead of the degenerate std=0 spike=1.0 path. An athlete
-    returning from a break should NOT max injury risk on their first normal
+    rebuilding — e.g. returning from a 4-week break), the component is unavailable
+    (None), instead of the degenerate std=0 spike=1.0 path. An athlete
+    returning from a break should NOT maximize the load-spike indicator on their first normal
     session — the baseline is rebuilding, not established.
     """
     # P-13: baseline-rebuilding gate — require ≥7 active days in the window.
     if active_days is not None and active_days < 7:
-        return 0.0
+        return None
     if std28 <= 0:
         return 1.0 if day_load > mean28 else 0.0
     return clamp01((day_load - mean28) / (2.0 * std28))
@@ -146,7 +149,8 @@ def blend(
 ) -> float | None:
     """Weighted mean over available components, renormalized by their active
     weights. None if nothing usable survives (missing weight rows count as
-    absent — the weights table is the source of truth)."""
+    absent — the weights table is the source of truth).
+    """
     active = [
         (weights[name], value)
         for name, value in components.items()
@@ -163,6 +167,20 @@ def blend(
 # --- composites ------------------------------------------------------------
 
 
+def recovery_components(
+    hrv_dev_pct: float | None,
+    resting_hr_dev_bpm: float | None,
+    sleep_score: float | None,
+    prior_strain_score: float | None,
+) -> dict:
+    return {
+        'hrv_deviation': None if hrv_dev_pct is None else hrv_recovery_component(hrv_dev_pct),
+        'resting_hr_deviation': None if resting_hr_dev_bpm is None else resting_hr_component(resting_hr_dev_bpm),
+        'sleep_quality': None if sleep_score is None else sleep_quality_component(sleep_score),
+        'prior_day_strain': None if prior_strain_score is None else prior_day_strain_component(prior_strain_score),
+    }
+
+
 def recovery_score(
     weights: dict[str, float],
     hrv_dev_pct: float | None,
@@ -170,33 +188,33 @@ def recovery_score(
     sleep_score: float | None,
     prior_strain_score: float | None,
 ) -> float | None:
-    value = blend(
-        {
-            "hrv_deviation": None
-            if hrv_dev_pct is None
-            else hrv_recovery_component(hrv_dev_pct),
-            "resting_hr_deviation": None
-            if resting_hr_dev_bpm is None
-            else resting_hr_component(resting_hr_dev_bpm),
-            "sleep_quality": None
-            if sleep_score is None
-            else sleep_quality_component(sleep_score),
-            "prior_day_strain": None
-            if prior_strain_score is None
-            else prior_day_strain_component(prior_strain_score),
-        },
-        weights,
-    )
+    value = blend(recovery_components(hrv_dev_pct, resting_hr_dev_bpm, sleep_score, prior_strain_score), weights)
     return None if value is None else value * 100.0
 
 
-def strain_score(day_load: float, peak28: float | None) -> float:
+def strain_score(day_load: float | None, peak28: float | None) -> float | None:
     """Daily cardiovascular load normalized against a personal ceiling: the
     28-day peak daily load, floored so early history (or a deload block) can
     never make a normal day read as maximal. Including today keeps the scale
-    self-consistent — the hardest day of the window reads 100."""
+    self-consistent — a window peak above the floor reads 100.
+    """
+    if day_load is None:
+        return None
     ceiling = max(peak28 if peak28 is not None else 0.0, STRAIN_CEILING_FLOOR)
     return min(100.0, max(0.0, day_load / ceiling * 100.0))
+
+
+def sleep_architecture_components(
+    rem_pct: float | None,
+    deep_pct: float | None,
+    total_sleep_s: float | None,
+    awake_s: float | None,
+) -> dict:
+    return {
+        'rem_pct': None if rem_pct is None else rem_component(rem_pct),
+        'deep_pct': None if deep_pct is None else deep_component(deep_pct),
+        'efficiency': None if total_sleep_s is None or awake_s is None else efficiency_component(total_sleep_s, awake_s),
+    }
 
 
 def sleep_architecture_score(
@@ -206,21 +224,25 @@ def sleep_architecture_score(
     total_sleep_s: float | None,
     awake_s: float | None,
 ) -> float | None:
-    """REM%, deep% and efficiency vs. personal baselines (§7). Latency and
+    """REM%, deep% and efficiency with heuristic fixed transforms (§7). Latency and
     circadian regularity need fields the §6.4 schema does not carry yet —
     v1 covers the three measurable components; the gap is structural, not a
-    data-completeness issue."""
-    value = blend(
-        {
-            "rem_pct": None if rem_pct is None else rem_component(rem_pct),
-            "deep_pct": None if deep_pct is None else deep_component(deep_pct),
-            "efficiency": None
-            if total_sleep_s is None or awake_s is None
-            else efficiency_component(total_sleep_s, awake_s),
-        },
-        weights,
-    )
+    data-completeness issue.
+    """
+    value = blend(sleep_architecture_components(rem_pct, deep_pct, total_sleep_s, awake_s), weights)
     return None if value is None else value * 100.0
+
+
+def readiness_components(
+    recovery: float | None,
+    sleep_architecture: float | None,
+    acwr: float | None,
+) -> dict:
+    return {
+        'recovery': None if recovery is None else recovery / 100.0,
+        'sleep_architecture': None if sleep_architecture is None else sleep_architecture / 100.0,
+        'acwr': None if acwr is None else acwr_readiness_component(acwr),
+    }
 
 
 def readiness_score(
@@ -229,22 +251,28 @@ def readiness_score(
     sleep_architecture: float | None,
     acwr: float | None,
 ) -> float | None:
-    """The single most important daily number (§7): recovery, sleep
-    architecture and acute:chronic balance."""
-    value = blend(
-        {
-            "recovery": None if recovery is None else recovery / 100.0,
-            "sleep_architecture": None
-            if sleep_architecture is None
-            else sleep_architecture / 100.0,
-            "acwr": None if acwr is None else acwr_readiness_component(acwr),
-        },
-        weights,
-    )
+    """A heuristic daily composite (§7): recovery, sleep
+    architecture and acute:chronic balance.
+    """
+    value = blend(readiness_components(recovery, sleep_architecture, acwr), weights)
     return None if value is None else value * 100.0
 
 
-def illness_risk_score(
+def systemic_stress_components(
+    hrv_dev_pct: float | None,
+    resting_hr_dev_bpm: float | None,
+    respiration_dev_pct: float | None,
+    journal_soreness_fatigue: float | None = None,
+) -> dict:
+    return {
+        'hrv_drop': None if hrv_dev_pct is None else hrv_drop_component(hrv_dev_pct),
+        'resting_hr_elevation': None if resting_hr_dev_bpm is None else resting_hr_elevation_component(resting_hr_dev_bpm),
+        'respiration_elevation': None if respiration_dev_pct is None else respiration_elevation_component(respiration_dev_pct),
+        'journal_soreness_fatigue': journal_soreness_fatigue,
+    }
+
+
+def systemic_stress_signal(
     weights: dict[str, float],
     hrv_dev_pct: float | None,
     resting_hr_dev_bpm: float | None,
@@ -256,26 +284,27 @@ def illness_risk_score(
     actually carries soreness/energy scores (any source — the voice pipeline
     writes them on draft confirmation); a journal-free day simply lacks the
     component, which does NOT flag the day partial (that flag tracks sensor
-    data, §17)."""
-    value = blend(
-        {
-            "hrv_drop": None
-            if hrv_dev_pct is None
-            else hrv_drop_component(hrv_dev_pct),
-            "resting_hr_elevation": None
-            if resting_hr_dev_bpm is None
-            else resting_hr_elevation_component(resting_hr_dev_bpm),
-            "respiration_elevation": None
-            if respiration_dev_pct is None
-            else respiration_elevation_component(respiration_dev_pct),
-            "journal_soreness_fatigue": journal_soreness_fatigue,
-        },
-        weights,
-    )
+    data, §17).
+    """
+    value = blend(systemic_stress_components(hrv_dev_pct, resting_hr_dev_bpm, respiration_dev_pct, journal_soreness_fatigue), weights)
     return None if value is None else value * 100.0
 
 
-def injury_risk_score(
+def load_spike_components(
+    acwr: float | None,
+    day_load: float | None,
+    mean28: float | None,
+    std28: float | None,
+    *,
+    active_days: int | None = None,
+) -> dict:
+    return {
+        'acwr_spike': None if acwr is None else acwr_spike_component(acwr),
+        'load_spike': None if day_load is None or mean28 is None or std28 is None else load_spike_component(day_load, mean28, std28, active_days=active_days),
+    }
+
+
+def load_spike_indicator(
     weights: dict[str, float],
     acwr: float | None,
     day_load: float | None,
@@ -284,15 +313,7 @@ def injury_risk_score(
     *,
     active_days: int | None = None,
 ) -> float | None:
-    value = blend(
-        {
-            "acwr_spike": None if acwr is None else acwr_spike_component(acwr),
-            "load_spike": None
-            if day_load is None or mean28 is None or std28 is None
-            else load_spike_component(day_load, mean28, std28, active_days=active_days),
-        },
-        weights,
-    )
+    value = blend(load_spike_components(acwr, day_load, mean28, std28, active_days=active_days), weights)
     return None if value is None else value * 100.0
 
 
@@ -305,8 +326,9 @@ def cross_discipline_fatigue_index(
     discipline's own 28-day peak daily load INCLUDING today (floored at 1.0)
     — including today keeps a discipline's first-ever session from dividing
     by the floor and exploding, the same self-consistent scale the strain
-    ceiling uses. A discipline bleeding fatigue into another is what
-    single-sport platforms cannot see (§7). None when nothing was active."""
+    ceiling uses. This is descriptive load carryover, not a validated measure of physiological
+    fatigue or cross-sport interference. None when nothing was active.
+    """
     total = 0.0
     any_active = False
     for loads in discipline_loads.values():

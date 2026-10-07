@@ -13,8 +13,8 @@ export const METRIC_LABELS: Record<string, string> = {
   acwr: "biometrics.acwr_metric",
   acute_load: "biometrics.acute_load_metric",
   chronic_load: "biometrics.chronic_load_metric",
-  illness_risk: "biometrics.illness_risk",
-  injury_risk: "biometrics.injury_risk",
+  systemic_stress: "biometrics.systemic_stress",
+  load_spike: "biometrics.load_spike",
   weight: "biometrics.weight",
   body_fat: "biometrics.body_fat",
   vo2max: "biometrics.vo2max",
@@ -38,8 +38,8 @@ export const LEGACY_HEURISTICS = [
   "recovery",
   "strain",
   "sleep_score",
-  "illness_risk",
-  "injury_risk",
+  "systemic_stress",
+  "load_spike",
 ];
 export function assess(key: string, value: number | null): Assessment {
   if (value === null) return { tone: "neutral", key: "design.no_data" };

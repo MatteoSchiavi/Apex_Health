@@ -256,6 +256,8 @@ class MetricTrendOut(BaseModel):
     stats: dict[str, Any] = {}
     reference_range: dict[str, Any] | None = None
     calculation_inputs: MetricCalculationInputs | None = None
+    definition: dict[str, Any] | None = None
+    calculation_provenance: dict[str, Any] | None = None
 
 
 # --- /coach/chats --------------------------------------------------------------
@@ -297,6 +299,7 @@ class DeviceOut(BaseModel):
     status: str
     last_synced_at: datetime | None
     is_main: bool
+    support: dict[str, Any] | None = None
     connected_at: datetime
 
 

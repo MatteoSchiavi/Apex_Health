@@ -31,6 +31,7 @@ from app.connectors.validation import (
 from app.models.integration import RawIngest
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from app.services.biometric_provenance import set_biometric
 
 logger = logging.getLogger("connectors.oura.normalize")
 
@@ -117,6 +118,7 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
         await session.scalars(
             select(SleepSession).where(
                 SleepSession.user_id == user_id,
+                SleepSession.origin == "oura",
                 SleepSession.local_date == day,
                 SleepSession.start_time == start,
             )
@@ -129,6 +131,7 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
             await session.scalars(
                 select(SleepSession).where(
                     SleepSession.user_id == user_id,
+                SleepSession.origin == "oura",
                     SleepSession.local_date == day,
                     SleepSession.start_time >= start - timedelta(minutes=30),
                     SleepSession.start_time <= start + timedelta(minutes=30),
@@ -145,6 +148,7 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
         session.add(
             SleepSession(
                 user_id=user_id,
+                origin="oura",
                 local_date=day,
                 start_time=start,
                 end_time=end,
@@ -197,6 +201,7 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
                     and_(
                         HrvReading.user_id == user_id,
                         HrvReading.timestamp == mid,
+                        HrvReading.origin == "oura",
                     )
                 )
             )
@@ -208,6 +213,7 @@ async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> Non
                     timestamp=mid,
                     hrv_ms=avg_hrv,
                     reading_type="overnight_avg",
+                    origin="oura", method="RMSSD",
                 )
             )
             stats.hrv_upserted += 1
@@ -254,7 +260,7 @@ async def _upsert_personal(session, raw, payload, stats) -> None:
         existing = DailyBiometric(user_id=user_id, date=day)
         session.add(existing)
     if weight_kg and existing.weight_kg is None:
-        existing.weight_kg = weight_kg  # already validated+rounded
+        set_biometric(existing, "weight_kg", weight_kg, "oura")
     merged = dict(existing.source_metrics or {})
     merged["oura"] = {**merged.get("oura", {}), "height_m": height_m}
     existing.source_metrics = merged

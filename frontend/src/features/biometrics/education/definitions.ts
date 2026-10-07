@@ -47,11 +47,19 @@ const definition = (
 });
 
 /**
- * Current centralized education metadata source. A future canonical metric registry
- * may replace/enrich this source. Consumers depend on MetricExplanation, not this table.
- * Curated explanations describe existing semantics; calculations remain in the backend.
+ * Localized prose adapter. Backend registry metadata controls scientific kind,
+ * validation and formula versions; exact calculation records supply operands.
+ * Consumers retain MetricExplanation; no physiological formulas run here.
  */
 export const metricEducationDefinitions: Record<string, MetricEducationDefinition> = {
+  systemic_stress: definition("biometrics.systemic_stress", "apex_derived", "systemic_stress", {
+    factors: ["sleep", "recent_training", "measurement_context"],
+    methods: [], limits: ["estimate_not_clinical"],
+  }),
+  load_spike: definition("biometrics.load_spike", "apex_derived", "load_spike", {
+    factors: ["recent_training", "load_method"],
+    methods: [], limits: ["load_aggregate", "estimate_not_clinical"],
+  }),
   resting_hr: definition("biometrics.resting_hr", "measured", "resting_hr", {
     whyItMatters: true,
     factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "measurement_context"],

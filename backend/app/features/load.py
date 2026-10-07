@@ -6,6 +6,7 @@ unchanged. Window metadata declares exclusions and method.
 """
 
 from datetime import date, timedelta
+from math import isfinite
 
 from app.models.activity import Activity, ActivityStream
 
@@ -40,16 +41,11 @@ def zone_bounds() -> tuple[float, ...]:
 
 
 def hr_max_for(age_years: int | None) -> int | None:
-    """P-05 audit: Tanaka HRmax formula (208 − 0.7·age).
+    """Tanaka population HRmax estimate: 208 − 0.7·age.
 
-    Tanaka et al. (2001) is the consensus formula — SD ≈ 7 bpm vs the
-    220−age formula's SD ≈ 10-12 bpm, and it removes the systematic bias
-    (220−age overestimates young athletes and underestimates masters).
-
-    Returns None when age is unknown — callers MUST handle this (the load
-    is marked unreliable instead of inventing a magic 190 constant). The
-    golden-dataset tests pin the new formula; the old HRMAX_FALLBACK=190
-    constant is kept for backward-compat imports but should not be used.
+    This is an age-based estimate, not an athlete's measured maximum; its
+    individual error can materially affect zone-based load. Unknown age
+    yields unavailable HRmax rather than an invented constant.
     """
     if age_years is None:
         return None
@@ -110,13 +106,25 @@ def activity_trimp(
     return None
 
 
+def _eligible_load(value) -> float | None:
+    """A corrupt or absent source quantity is unknown, never a rest-day zero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if isfinite(number) and number >= 0 else None
+
+
 def consistent_window_loads(activities_with_streams, hrm):
     """Choose the best-covered single method for both rolling windows.
 
     Recorded Garmin load wins coverage ties. Unidentified provider values
     never become Garmin units; excluded sessions are disclosed as partial.
     """
-    derived = {a.id: activity_trimp(a, streams, hrm) for a, streams in activities_with_streams}
+    derived = {a.id: _eligible_load(activity_trimp(a, streams, hrm))
+               for a, streams in activities_with_streams}
     recorded = {}
     for activity, _ in activities_with_streams:
         garmin = (activity.source_metrics or {}).get("garmin")
@@ -129,8 +137,9 @@ def consistent_window_loads(activities_with_streams, hrm):
             # Legacy Garmin rows: Garmin was the sole adapter populating
             # canonical training_load; other adapters retain their own scales.
             value = activity.training_load
-        if value is not None:
-            recorded[activity.id] = float(value)
+        eligible = _eligible_load(value)
+        if eligible is not None:
+            recorded[activity.id] = eligible
     valid_derived = {key: value for key, value in derived.items() if value is not None}
     method = 'garmin_recorded' if recorded and len(recorded) >= len(valid_derived) else 'edwards_trimp'
     selected = recorded if method == 'garmin_recorded' else valid_derived
@@ -198,9 +207,9 @@ def load_distribution(
 def active_day_count(loads: dict[date, float], day: date, days: int = 28) -> int:
     """P-13 audit: count of non-zero-load days in [day - days, day - 1].
 
-    The injury-risk load-spike component requires a minimum number of
+    The descriptive load-spike component requires a minimum number of
     active days before activation — otherwise an athlete returning from a
-    4-week break (28-day window all zeros) instantly maxes injury risk on
+    4-week break (28-day window all zeros) can overstate a descriptive load spike on
     their first normal session because std=0 makes the spike formula
     degenerate. ``active_day_count >= 7`` is the gate.
     """

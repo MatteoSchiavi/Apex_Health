@@ -45,7 +45,7 @@ def test_safety_veto_can_return_empty_and_does_not_claim_medical_safety():
         [],
         [],
         date(2026, 10, 7),
-        safety={"illness_risk": 90},
+        safety={"systemic_stress": 90},
         locale="it",
     )
 

@@ -284,8 +284,8 @@
     "acwr_metric": "ACWR",
     "acute_load_metric": "Carico acuto",
     "chronic_load_metric": "Carico cronico",
-    "illness_risk": "Punteggio rischio di malattia",
-    "injury_risk": "Punteggio rischio di infortunio",
+    "systemic_stress": "Segnale di stress sistemico",
+    "load_spike": "Indicatore di aumento del carico",
     "labs": "Esami di laboratorio",
     "trend": "Andamento",
     "stats": "Statistiche",
@@ -985,7 +985,49 @@
     "document_wrong_type": "Usa un file TXT, Markdown o PDF.",
     "document_too_large": "Il file supera il limite di 5 MB.",
     "document_drop": "Trascina qui un referto TXT, Markdown o PDF, oppure scegli un file",
-    "document_rules": "TXT · MD · PDF · massimo 5 MB"
+    "document_rules": "TXT · MD · PDF · massimo 5 MB",
+    "syncHealth": {
+      "title": "Salute sincronizzazione",
+      "subtitle": "Connessione e aggiornamento delle misurazioni per ogni flusso dati.",
+      "empty": "Nessuna sincronizzazione provider configurata.",
+      "staleWindow": "Obsoleto dopo {{hours}} ore",
+      "lastAttempt": "Ultimo tentativo",
+      "lastSuccess": "Ultimo successo",
+      "measurement": "Ultima misurazione",
+      "credentials": "Credenziali",
+      "retry": "Stato nuovo tentativo",
+      "checkpoint": "Checkpoint",
+      "failedAttempts": "Tentativi falliti",
+      "error": "Problema",
+      "states": {
+        "available": "Disponibile",
+        "complete": "Completato",
+        "stale": "Obsoleto",
+        "fetch_failed": "Recupero non riuscito",
+        "partial": "Parziale",
+        "not_measured": "Non misurato",
+        "pending_sync": "Sincronizzazione in attesa",
+        "unknown": "Sconosciuto"
+      },
+      "retryStates": {
+        "unknown": "Sconosciuto",
+        "scheduled": "Pianificato",
+        "reconnect_required": "Ricollega account",
+        "idle": "Inattivo"
+      },
+      "credentialsStates": {
+        "unknown": "Sconosciuto",
+        "configured": "Salvate",
+        "reconnect_required": "Ricollega account",
+        "not_required": "Non richieste"
+      },
+      "errors": {
+        "fetch_failed": "Recupero non riuscito",
+        "normalization_pending": "Normalizzazione in attesa",
+        "credentials_revoked": "Credenziali revocate",
+        "sync_failed": "Sincronizzazione non riuscita"
+      }
+    }
   },
   "legal": {
     "eyebrow": "Le tue informazioni",
@@ -1273,7 +1315,31 @@
     "delivery_delivered": "Consegnato",
     "delivery_pending": "In attesa",
     "delivery_retrying": "Nuovo tentativo",
-    "metric_utilization_percent": "Utilizzo CPU"
+    "metric_utilization_percent": "Utilizzo CPU",
+    "alphaUsage": {
+      "title": "Uso alpha",
+      "window": "Ultimi {{days}} giorni",
+      "loadError": "Impossibile caricare uso alpha.",
+      "providerFailures": "Errori provider",
+      "noProviderFailures": "Nessun errore provider registrato",
+      "events": "Eventi prodotto",
+      "noEvents": "Nessun evento registrato",
+      "influenceCaveat": "L’influenza riferita deriva dal feedback e non misura un beneficio fisiologico.",
+      "metrics": {
+        "weeklyActiveUsers": "Utenti alpha attivi settimanali",
+        "aiUsers": "Utenti AI",
+        "proposals": "Proposte",
+        "acceptanceRate": "Tasso di accettazione",
+        "editRate": "Tasso di modifica",
+        "rejectionRate": "Tasso di rifiuto",
+        "decisionInfluenceRate": "Influenza riferita",
+        "decisionFeedback": "Risposte al feedback"
+      },
+      "eventNames": {
+        "overview_viewed": "Panoramica vista",
+        "metric_explanation_opened": "Spiegazione metrica aperta"
+      }
+    }
   },
   "feedback": {
     "button": "Feedback",
@@ -1328,7 +1394,8 @@
     "semantics": {
       "measured": "Metrica misurata / registrata",
       "apex_derived": "Stima derivata da Apex",
-      "provider_proprietary": "Stima calcolata dalla fonte"
+      "provider_proprietary": "Stima calcolata dalla fonte",
+      "apex_heuristic": "Stima euristica Apex"
     },
     "metrics": {
       "resting_hr": {
@@ -1404,6 +1471,12 @@
       },
       "hrv_deviation": {
         "definition": "La deviazione HRV è la differenza percentuale tra l’HRV del giorno e la media delle letture registrate nella finestra di baseline precedente."
+      },
+      "systemic_stress": {
+        "definition": "Un insieme euristico di HRV, frequenza a riposo, respirazione e fatica riferita. Non è una probabilità di malattia."
+      },
+      "load_spike": {
+        "definition": "Un indicatore euristico descrittivo del carico recente rispetto alla storia personale. Non predice infortuni."
       }
     },
     "factors": {
@@ -1430,10 +1503,10 @@
       "provider_estimate": "La fonte fornisce questa stima. Apex non dispone dei dettagli esatti del calcolo per questo dato e non ricostruisce la formula della fonte.",
       "load_aggregation": "Apex seleziona per la finestra un solo metodo di carico con copertura migliore e somma i valori giornalieri disponibili. Le sessioni mancanti o incompatibili possono essere escluse; scale diverse non sono considerate equivalenti né convertite in una scala TSS comune.",
       "acwr_ratio": "ACWR = somma carico 7 giorni / (somma carico 28 giorni / 4). Entrambe le finestre usano la stessa scala di carico selezionata; il rapporto è descrittivo e non definisce un intervallo sicuro o ottimale.",
-      "edwards_trimp": "Edwards TRIMP stima il carico dell’attività dal tempo trascorso nelle zone di frequenza cardiaca, ponderato per zona. Richiede dati cardiaci utilizzabili e una frequenza cardiaca massima registrata.",
+      "edwards_trimp": "Tempo nelle zone di frequenza cardiaca ponderato per intensità. Il metodo attuale usa la frequenza massima stimata dall’età; questo calcolo non registra una massima misurata individualmente.",
       "garmin_recorded": "Il carico Garmin registrato usa i valori del provider. Questa scala resta separata da Edwards TRIMP e dalle scale degli altri provider.",
-      "recovery_blend": "Apex converte i segnali disponibili di HRV, frequenza cardiaca a riposo, punteggio del sonno e strain del giorno precedente in componenti euristiche fisse, poi combina le componenti disponibili con pesi configurati. Gli input e i pesi usati per un giorno specifico non sono conservati per questa spiegazione.",
-      "readiness_blend": "Apex combina le stime disponibili di recupero, architettura del sonno ed equilibrio del carico con pesi configurati. Gli input e i pesi usati per un giorno specifico non sono conservati per questa spiegazione.",
+      "recovery_blend": "Combinazione euristica delle variazioni fisiologiche disponibili, architettura del sonno Apex e strain del giorno precedente. I dettagli esatti vengono mostrati solo quando salvati.",
+      "readiness_blend": "Combinazione euristica di recupero Apex, architettura del sonno e contesto del carico recente disponibili. I dettagli esatti vengono mostrati solo quando salvati.",
       "strain_peak": "Apex confronta il carico di attività selezionato del giorno con il picco mobile dei 28 giorni, usando un limite minimo affinché uno storico breve o poco attivo non produca automaticamente il punteggio massimo.",
       "sleep_architecture": "Apex combina la proporzione REM disponibile, quella del sonno profondo e l’efficienza del sonno con pesi configurati. Le componenti sono stime basate sui dati del sonno registrati.",
       "hrv_deviation": "Apex confronta l’HRV del giorno con la media delle letture registrate nei 28 giorni precedenti. Servono almeno sette letture precedenti; il giorno valutato è escluso."
@@ -1449,6 +1522,141 @@
       "estimate_not_clinical": "Considerala una stima descrittiva, non una diagnosi medica o una probabilità calibrata di una condizione di salute.",
       "measured_baseline_deviation": "Questo confronto derivato dipende dalle letture disponibili e dalla copertura della baseline. Non è una soglia clinica né una diagnosi."
     },
-    "calculation_date": "Calcolo del {{date}}"
+    "calculation_date": "Calcolo del {{date}}",
+    "registry": {
+      "formulaVersion": "Versione formula · {{version}}",
+      "validation": "Stato · {{level}}",
+      "missingInputs": "Dati mancanti nel calcolo · {{inputs}}",
+      "legacy": "Il calcolo storico esatto non è stato salvato.",
+      "details": "Dettagli del calcolo",
+      "weight": "Peso effettivo",
+      "components": "Componenti normalizzati",
+      "baselineCoverage": "Baseline · {{count}} giorni osservati, {{required}} richiesti",
+      "validationLevels": {
+        "measured": "Misurato",
+        "deterministic_derived": "Calcolo deterministico",
+        "established_formula": "Formula consolidata",
+        "heuristic": "Stima euristica",
+        "experimental": "Sperimentale",
+        "research_only": "Solo ricerca",
+        "provider_proprietary": "Stima proprietaria del fornitore"
+      },
+      "coverage": {
+        "sufficient_coverage": "Tutti i componenti della formula disponibili",
+        "limited_coverage": "Copertura dei componenti limitata",
+        "see_source_coverage": "Consulta la copertura delle fonti"
+      },
+      "missingComponents": "Componenti non disponibili · {{inputs}}",
+      "baselineCoverageNamed": "Baseline {{baseline}} · {{count}} giorni osservati, {{required}} richiesti",
+      "inputSource": "Fonte {{input}} · {{source}}",
+      "sourceUnavailable": "{{input}} · attribuzione della fonte non disponibile",
+      "weightVersion": "Configurazione peso {{input}} · versione {{version}}",
+      "snapshotUnavailable": "Il calcolo esatto non è disponibile per questo valore.",
+      "missingInput": "Dato non disponibile · {{input}}",
+      "componentValue": "{{input}} · componente normalizzato",
+      "effectiveWeight": "{{input}} · peso effettivo",
+      "fraction": "frazione",
+      "missingComponent": "Componente non disponibile · {{input}}"
+    },
+    "inputNames": {
+      "hrv_deviation": "Variazione HRV",
+      "hrv_drop": "Variazione HRV",
+      "resting_hr_deviation": "Variazione FC riposo",
+      "resting_hr_elevation": "Variazione FC riposo",
+      "sleep_quality": "Stima Apex dell’architettura del sonno",
+      "prior_day_strain": "Strain Apex del giorno precedente",
+      "respiration_elevation": "Variazione respirazione",
+      "journal_soreness_fatigue": "Indolenzimento/fatica riferiti",
+      "recovery": "Recupero Apex",
+      "sleep_architecture": "Architettura sonno Apex",
+      "acwr": "ACWR",
+      "rem_pct": "Quota REM stimata",
+      "deep_pct": "Quota sonno profondo stimata",
+      "total_sleep_s": "Sonno registrato",
+      "awake_s": "Tempo sveglio registrato",
+      "active_days": "Giorni attivi precedenti",
+      "day_load": "Carico registrato",
+      "mean28": "Media carico precedente",
+      "std28": "Variabilità carico precedente",
+      "hrv": "HRV",
+      "resting_hr": "Frequenza cardiaca a riposo",
+      "respiration": "Respirazione",
+      "acwr_spike": "Componente di carico ACWR",
+      "load_spike": "Componente della distribuzione del carico",
+      "efficiency": "Efficienza del sonno",
+      "load_distribution": "Distribuzione del carico"
+    }
+  },
+  "decisionLearning": {
+    "today": "APEX / OGGI",
+    "details": "Misurazioni e alternative",
+    "current": "Attuale",
+    "baseline": "Baseline personale",
+    "delta": "Variazione",
+    "noBaseline": "Baseline comparabile non disponibile",
+    "askApex": "Chiedi ad Apex questa decisione",
+    "feedback": "Ti è stato utile per il piano?",
+    "influence": "Ha influenzato il mio piano",
+    "optional": "Facoltativo",
+    "yes": "Sì",
+    "partly": "In parte",
+    "no": "No",
+    "useful": "È stato utile?",
+    "notes": "Motivo o nota (facoltativo)",
+    "saveFeedback": "Salva feedback",
+    "feedbackSaved": "Feedback salvato",
+    "chooseState": "Scegli prima Seguita, Modificata, Rifiutata o Decidi più tardi.",
+    "postSession": "Dopo la sessione (facoltativo)",
+    "completion": "Completamento della sessione",
+    "completed": "Completata",
+    "partial": "Completata in parte",
+    "skipped": "Saltata",
+    "rpe": "Sforzo · RPE (0–10)",
+    "soreness": "Indolenzimento (0–10)",
+    "plannedSession": "Sessione pianificata collegata",
+    "proposal": "Proposta collegata",
+    "noLink": "Nessun elemento collegato",
+    "checkin": "Check-in soggettivo",
+    "editProposal": "Modifica proposta",
+    "saveEdit": "Salva proposta sostitutiva",
+    "editReason": "Motivo della modifica",
+    "newApprovalRequired": "La proposta modificata richiede una nuova revisione e approvazione.",
+    "superseded": "Sostituita da una proposta modificata",
+    "editCaption": "La modifica prepara una nuova proposta. Rivedi i valori prima e dopo prima di approvarla.",
+    "sessionDescription": "Descrizione della sessione"
+  },
+  "providerSupport": {
+    "EXPERIMENTAL": "Sperimentale · supporto live non verificato",
+    "MANUAL_IMPORT": "Importazione manuale",
+    "DEVELOPMENT_ONLY": "Solo sviluppo",
+    "PENDING_PROVIDER_APPROVAL": "Dipende dall’accesso provider",
+    "ALPHA_SUPPORTED": "Supportata in alpha",
+    "DEPRECATED": "Deprecata"
+  },
+  "healthKit": {
+    "title": "Companion Apple HealthKit",
+    "developmentOnly": "Solo sviluppo",
+    "caveat": "Il codice del companion iOS è implementato; firma, compilazione su Mac e verifica su dispositivo fisico sono ancora da completare.",
+    "pairHelp": "Crea un codice monouso valido per 10 minuti, poi inseriscilo con l'URL API di Apex nel companion installato sull'iPhone.",
+    "tokenHelp": "Il companion conserva il token revocabile, limitato alla sincronizzazione HealthKit, nel Portachiavi iOS. I cookie del browser non sono credenziali native.",
+    "createCode": "Crea codice di abbinamento",
+    "creatingCode": "Creazione codice…",
+    "codeLabel": "Codice di abbinamento monouso",
+    "expiresIn": "Scade tra {{seconds}} secondi. Usalo una sola volta e mantienilo riservato.",
+    "codeExpired": "Codice scaduto. Creane uno nuovo.",
+    "dismissCode": "Nascondi codice",
+    "devices": "iPhone abbinati",
+    "emptyDevices": "Nessun dispositivo HealthKit abbinato.",
+    "checkpoint": "Checkpoint",
+    "lastSync": "Ultima sincronizzazione confermata",
+    "neverSynced": "Nessuna conferma ricevuta",
+    "revoked": "Revocato",
+    "expiredDevice": "Scaduto",
+    "activeDevice": "Attivo",
+    "revoke": "Revoca dispositivo",
+    "revoking": "Revoca in corso…",
+    "revokeHelp": "La revoca impedisce immediatamente gli upload con questo token. I dati già sincronizzati rimangono in Apex.",
+    "genericError": "La richiesta non è stata completata. Riprova.",
+    "loadError": "Impossibile caricare i dispositivi abbinati. Riprova."
   }
 }

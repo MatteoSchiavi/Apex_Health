@@ -27,6 +27,7 @@ from app.connectors.validation import (
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from app.services.biometric_provenance import set_biometric
 from app.connectors.garmin.normalize import NormalizerStats
 
 logger = logging.getLogger("connectors.whoop.normalize")
@@ -145,6 +146,8 @@ async def _upsert_sleep(
     )
     values = dict(
         user_id=getattr(raw, "user_id"),
+        origin="whoop",
+        source_metrics={"whoop": {"sleep_performance_pct": valid_sleep_score(score.get("sleep_performance_percentage"))}},
         local_date=end.astimezone(tz).date(),  # wake-up day, local calendar
         start_time=start,
         end_time=end,
@@ -153,10 +156,8 @@ async def _upsert_sleep(
         light_s=light_s,
         rem_s=rem_s,
         awake_s=awake_s,
-        # sleep_performance_percentage is 0-100 — same scale as Garmin's
-        # sleep score band, so it maps onto sleep_score directly. P-02 audit:
-        # validators drop implausible values (negative, >100).
-        sleep_score=valid_sleep_score(score.get("sleep_performance_percentage")),
+        # Sleep need performance is provider context, not generic sleep quality.
+        sleep_score=None,
         respiration_avg=valid_respiration_bpm(score.get("respiratory_rate")),
         spo2_avg=None,  # Whoop does not report SpO2 per sleep
         restlessness=None,  # Whoop does not report restlessness
@@ -165,6 +166,7 @@ async def _upsert_sleep(
     existing = await session.scalar(
         select(SleepSession).where(
             SleepSession.user_id == values["user_id"],
+            SleepSession.origin == "whoop",
             SleepSession.local_date == values["local_date"],
             SleepSession.start_time >= start - timedelta(hours=4),
             SleepSession.start_time <= start + timedelta(hours=4),
@@ -222,6 +224,7 @@ async def _upsert_recovery(
                 HrvReading.timestamp >= day_start,
                 HrvReading.timestamp < day_end,
                 HrvReading.reading_type == "overnight_avg",
+                HrvReading.origin == "whoop",
             ).order_by(HrvReading.timestamp.desc()).limit(1)
         )
         if existing is None:
@@ -231,6 +234,7 @@ async def _upsert_recovery(
                     timestamp=ts,
                     hrv_ms=hrv,
                     reading_type="overnight_avg",
+                    origin="whoop", method="RMSSD",
                     rolling_baseline_ms=None,
                 )
             )
@@ -252,9 +256,9 @@ async def _upsert_recovery(
         session.add(bio)
     # The main device updates canonical values; secondary measurements fill gaps.
     if rhr is not None and (main or bio.resting_hr is None):
-        bio.resting_hr = rhr  # already validated+rounded by valid_resting_hr_bpm
+        set_biometric(bio, "resting_hr", rhr, "whoop")
     if spo2 is not None and (main or bio.spo2_avg is None):
-        bio.spo2_avg = spo2  # already validated by valid_spo2_pct
+        set_biometric(bio, "spo2_avg", spo2, "whoop")
     metrics = dict(bio.source_metrics or {})
     whoop = dict(metrics.get("whoop") or {})
     for key, value in {
@@ -468,7 +472,7 @@ async def _upsert_body(
         bio = DailyBiometric(user_id=user_id, date=day)
         session.add(bio)
     if bio.weight_kg is None or await _is_main(session, user_id):
-        bio.weight_kg = weight  # already validated by valid_weight_kg
+        set_biometric(bio, "weight_kg", weight, "whoop")
     metrics = dict(bio.source_metrics or {})
     whoop = dict(metrics.get("whoop") or {})
     whoop.update({"weight_kg": weight, "body_measurement_fetched_at": fetched.isoformat()})

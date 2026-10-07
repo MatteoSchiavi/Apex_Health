@@ -104,17 +104,17 @@ def test_none_inputs_return_none() -> None:
 # ---- P-04: Safety interlock ----------------------------------------------
 
 
-def test_high_illness_risk_triggers_rest_veto() -> None:
-    """P-04: illness_risk ≥ 70 → ceiling='rest', verdict blocks all work."""
-    decision = exertion_veto(illness_risk=88, hrv_dev_pct=-31, rhr_dev_bpm=9)
+def test_high_systemic_stress_triggers_rest_veto() -> None:
+    """P-04: systemic_stress ≥ 70 → ceiling='rest', verdict blocks all work."""
+    decision = exertion_veto(systemic_stress=88, hrv_dev_pct=-31, rhr_dev_bpm=9)
     assert decision.vetoed is True
     assert decision.intensity_ceiling == "rest"
     assert any("illness" in r.lower() or "rest" in r.lower() for r in decision.reasons)
 
 
-def test_high_injury_risk_caps_below_zone_3() -> None:
-    """P-04: injury_risk ≥ 75 → ceiling='low' (cap below Zone 3)."""
-    decision = exertion_veto(injury_risk=80)
+def test_high_load_spike_caps_below_zone_3() -> None:
+    """P-04: load_spike ≥ 75 → ceiling='low' (cap below Zone 3)."""
+    decision = exertion_veto(load_spike=80)
     assert decision.vetoed is True
     assert decision.intensity_ceiling == "low"
 
@@ -134,11 +134,12 @@ def test_combined_hrv_rhr_deviation_caps_at_moderate() -> None:
     assert decision.intensity_ceiling == "moderate"
 
 
-def test_low_acwr_does_not_veto_but_notes_detraining() -> None:
-    """P-03: ACWR < 0.8 is detraining — informative note, NOT a veto."""
+def test_low_acwr_is_descriptive_context_without_detraining_claim() -> None:
+    """A low ratio alone does not establish detraining or trigger a veto."""
     decision = exertion_veto(acwr=0.5)
     assert decision.vetoed is False
-    assert any("detraining" in r.lower() for r in decision.reasons)
+    assert any("recent recorded load" in r.lower() for r in decision.reasons)
+    assert all("detraining" not in r.lower() for r in decision.reasons)
 
 
 def test_no_risk_scores_no_veto() -> None:
@@ -170,30 +171,30 @@ def test_safety_block_with_high_illness_returns_rest() -> None:
     """W-02: the watch/agent contract surfaces verdict='rest' on illness."""
 
     class _StubFeature:
-        illness_risk_score = Decimal("88")
-        injury_risk_score = Decimal("30")
+        systemic_stress_signal = Decimal("88")
+        load_spike_indicator = Decimal("30")
         acwr = Decimal("1.1")
         hrv_deviation_from_baseline = Decimal("-31")
 
     block = safety_block(_StubFeature())
     assert block["verdict"] == "rest"
     assert block["intensity_ceiling"] == "rest"
-    assert block["risk_scores"]["illness_risk"] == 88.0
+    assert block["risk_scores"]["systemic_stress"] == 88.0
 
 
 # ---- P-13: Degenerate-spike injury alarm ---------------------------------
 
 
-def test_return_from_break_does_not_max_injury_risk() -> None:
+def test_return_from_break_does_not_max_load_spike() -> None:
     """P-13: an athlete returning from a 4-week break (active_days < 7)
     does NOT max injury risk on their first normal session.
 
-    Before the fix: std=0 → spike=1.0 → injury_risk saturated.
-    After the fix: active_days < 7 → load_spike_component returns 0.0.
+    Before the fix: std=0 → spike=1.0 → load_spike saturated.
+    With insufficient history the component is unavailable, never an invented normal value.
     """
     # Day load 50, mean28 0, std28 0, active_days 0 — degenerate baseline.
     component = scores.load_spike_component(50.0, 0.0, 0.0, active_days=0)
-    assert component == 0.0  # no full alarm on zero-variance baseline
+    assert component is None
 
 
 def test_active_days_above_threshold_enables_spike() -> None:
@@ -204,12 +205,12 @@ def test_active_days_above_threshold_enables_spike() -> None:
     assert component == 1.0
 
 
-def test_injury_risk_score_passes_active_days() -> None:
-    """P-13: the composite injury_risk_score honors the active_days gate."""
+def test_load_spike_indicator_passes_active_days() -> None:
+    """P-13: the composite load_spike_indicator honors the active_days gate."""
     weights = {"acwr_spike": 0.5, "load_spike": 0.5}
     # With active_days=0 the load_spike component is 0; with acwr=1.0 (no
     # spike) the composite should be 0.
-    risk = scores.injury_risk_score(weights, acwr=1.0, day_load=50.0, mean28=0.0, std28=0.0, active_days=0)
+    risk = scores.load_spike_indicator(weights, acwr=1.0, day_load=50.0, mean28=0.0, std28=0.0, active_days=0)
     assert risk == 0.0
 
 
