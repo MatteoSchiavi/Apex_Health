@@ -60,6 +60,7 @@ from app.core.db import get_session
 from app.core.redis import get_redis_dependency
 from app.models.integration import Integration
 from app.models.user import User
+from app.services.alpha_events import record_event
 
 logger = logging.getLogger("api.integrations")
 
@@ -104,9 +105,11 @@ async def _revoke_strava_access_token(credentials: dict) -> bool:
 
 
 def _to_dict(integration: Integration) -> dict:
+    from app.connectors.support import support_for
     return {
         "id": integration.id,
         "provider": integration.provider,
+        "support": support_for(integration.provider),
         "status": integration.status,
         "credentials_stored": integration.credentials_encrypted is not None,
         "last_synced_at": integration.last_synced_at,
@@ -119,6 +122,39 @@ def _connection_result(request: Request, result: dict) -> dict | Response:
     if "text/html" in request.headers.get("accept", ""):
         return RedirectResponse("/app/settings?tab=devices", status_code=303)
     return result
+
+
+async def _record_oauth_connection(session: AsyncSession, result: dict, provider: str):
+    # OAuth state determines account ownership inside the flow. The callback
+    # does not infer the account from a browser cookie or provider payload.
+    try:
+        if result.get("provider") != provider:
+            return
+        if provider == "oura":
+            ident = result.get("integration_id")
+            if not isinstance(ident, int) or isinstance(ident, bool) or ident <= 0:
+                return
+            integration = await session.get(Integration, ident)
+        else:
+            # Technogym, WHOOP and Strava return the user bound to consumed
+            # OAuth state; Oura returns the committed integration's ID.
+            user_id = result.get("user_id")
+            if (result.get("status") != "connected" or not isinstance(user_id, int)
+                    or isinstance(user_id, bool) or user_id <= 0):
+                return
+            integration = await session.scalar(select(Integration).where(
+                Integration.user_id == user_id, Integration.provider == provider,
+                Integration.status == "active",
+            ))
+        if (integration is not None and integration.provider == provider
+                and integration.status == "active"):
+            record_event(session, integration.user_id, "integration_connected", {"provider": provider})
+            await session.commit()
+    except Exception:
+        # The flow already committed credentials. An event-storage outage
+        # must not tell the athlete that the completed connection failed.
+        await session.rollback()
+        logger.warning("connection outcome event unavailable")
 
 
 @router.get("/settings/integrations")
@@ -256,6 +292,7 @@ async def technogym_oauth_callback(
         )
     try:
         result = await complete_authorization(session, redis, code=code, state=state)
+        await _record_oauth_connection(session, result, "technogym")
         return _connection_result(request, result)
     except OAuthFlowError as exc:
         raise HTTPException(
@@ -317,6 +354,7 @@ async def whoop_oauth_callback(
         )
     try:
         result = await whoop_complete(session, redis, code=code, state=state)
+        await _record_oauth_connection(session, result, "whoop")
         return _connection_result(request, result)
     except WhoopFlowError as exc:
         raise HTTPException(
@@ -374,6 +412,7 @@ async def strava_oauth_callback(
         )
     try:
         result = await strava_complete(session, redis, code=code, state=state)
+        await _record_oauth_connection(session, result, "strava")
         return _connection_result(request, result)
     except StravaFlowError as exc:
         raise HTTPException(
@@ -433,6 +472,7 @@ async def oura_oauth_callback(
         )
     try:
         result = await oura_complete(session, redis, code=code, state=state)
+        await _record_oauth_connection(session, result, "oura")
         return _connection_result(request, result)
     except OuraFlowError as exc:
         raise HTTPException(
@@ -492,6 +532,7 @@ async def connect_coros_mcp(
     integration.consecutive_failures = 0
     integration.last_synced_at = None
     await _discard_pending_oauth_states(redis, "coros", user.id)
+    record_event(session, user.id, "integration_connected", {"provider": "coros"})
     await session.commit()
     return {"connected": True, "provider": "coros"}
 
@@ -607,6 +648,7 @@ async def connect_garmin(
     integration.status = "active"
     integration.consecutive_failures = 0
     integration.last_synced_at = None  # next sync = full history walk
+    record_event(session, user.id, "integration_connected", {"provider": "garmin"})
     await session.commit()
     logger.info("garmin connect: integration %s activated for user %s", integration.id, user.id)
 

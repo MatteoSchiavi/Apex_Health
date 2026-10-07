@@ -1,3 +1,4 @@
+import AlphaUsagePanel from "./AlphaUsagePanel";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -56,6 +57,7 @@ export default function AdminPage() {
     <PageHeader title={t("admin.title")} subtitle={t("admin.subtitle")} />
     {error && <ErrorNote message={error instanceof Error ? error.message : t("admin.load_error")} />}
     {mutationError && <ErrorNote message={mutationError instanceof Error ? mutationError.message : t("admin.action_error")} />}
+    <AlphaUsagePanel />
     <Card><CardHeader title={t("admin.system")} right={<span className="text-xs text-muted">{t("admin.refreshing")}</span>} />
       {system.isLoading ? <Loading /> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(systemData).flatMap(([key, value]) => {
         const fields = value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value as Record<string, unknown>) : [[key, value] as [string, unknown]];

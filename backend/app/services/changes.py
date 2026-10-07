@@ -203,6 +203,8 @@ async def propose(session, user_id, payload: ProposeIn, *, now=None):
     )
     session.add(row)
     await session.flush()
+    from app.services.alpha_events import record_event
+    record_event(session, user_id, "change_proposed", {"draft_id": row.id})
     session.add(
         ChangeAudit(
             user_id=user_id,
@@ -330,6 +332,8 @@ async def apply(session, user_id, ident, payload_hash, *, now=None):
                 )
             )
     row.status = "applied_locally"
+    from app.services.alpha_events import record_event
+    record_event(session, user_id, "change_accepted", {"draft_id": row.id})
     row.receipt = {
         "state": "applied_locally",
         "target_id": target,
@@ -358,6 +362,8 @@ async def reject(session, user_id, ident):
     if row.status != "draft":
         raise EvidenceError("CONFLICT", "This draft has already been applied")
     row.status = "rejected"
+    from app.services.alpha_events import record_event
+    record_event(session, user_id, "change_rejected", {"draft_id": row.id})
     session.add(
         ChangeAudit(user_id=user_id, draft_id=row.id, action="rejected", payload={})
     )

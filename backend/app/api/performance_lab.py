@@ -24,6 +24,7 @@ from app.schemas.lab import EntryIn, NotificationAction, ObservationIn, OutcomeI
 from app.agent.tools import AnalyticsIn, PreviewIn, RepairIn
 from app.services import analytics, changes, evidence
 from app.services.decisions import daily_decision
+from app.services.alpha_events import record_event
 from app.services.jobs import job_dict, request_job
 from app.services.notifications import notification_dict, refresh_notifications
 
@@ -358,6 +359,8 @@ async def create_entry(
             payload={"entry_id": row.id, "kind": row.kind},
         )
     )
+    if row.kind == "experiment":
+        record_event(session, user.id, "experiment_created", {"experiment_id": row.id})
     await session.commit()
     return entry_dict(row)
 

@@ -8,6 +8,7 @@ from app.models.activity import Activity, ActivitySourceLink, ActivityStream, Di
 from app.models.coach import UserEvent
 from app.models.lab import AnalysisResult, AthleteEntry
 from app.models.training import PlannedSession, TrainingPlan
+from app.services.alpha_events import record_event
 from app.services.evidence import (
     EvidenceError,
     eligible_activity_conditions,
@@ -372,6 +373,7 @@ async def run_recipe(
     activity_id=None,
     experiment_id=None,
     for_ai=False,
+    job_id=None,
 ):
     if recipe not in RECIPES:
         raise EvidenceError("INVALID_ARGUMENTS", "Unknown analysis recipe")
@@ -382,6 +384,8 @@ async def run_recipe(
     start = start or end - timedelta(days=27)
     if start > end or (end - start).days > 365:
         raise EvidenceError("INVALID_ARGUMENTS", "Analysis range is capped at 366 days")
+    if job_id is None:
+        record_event(session, user.id, "analysis_started")
     if recipe == "personal_baseline":
         result = await baseline(
             session, user, metric, start, end, origin=origin, for_ai=for_ai
@@ -521,6 +525,7 @@ async def run_recipe(
     )
     session.add(row)
     await session.flush()
+    record_event(session, user.id, "analysis_completed", {"job_id": job_id} if job_id else {})
     return {
         "handle": f"analysis:{row.id}",
         "recipe": recipe,

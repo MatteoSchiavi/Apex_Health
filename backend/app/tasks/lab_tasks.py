@@ -80,6 +80,7 @@ async def _run(ident):
                 session,
                 user,
                 args.recipe,
+                job_id=ident,
                 metric=args.metric,
                 start=args.start_date,
                 end=args.end_date,

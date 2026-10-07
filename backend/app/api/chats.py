@@ -45,6 +45,7 @@ from app.core.llm import LLMError, LLMUnavailableError
 from app.models.chat import AiChatMessage, AiChatSession
 from app.models.user import User
 from app.queries.usage import user_day_spend
+from app.services.alpha_events import record_event
 from app.schemas.ui import (
     ChatMessageOut,
     ChatPostIn,
@@ -70,6 +71,35 @@ AGENT_TURN_TIMEOUT_S = 200
 # (a worker crash mid-turn would otherwise leave the user locked out).
 _AGENT_LOCK_KEY = "agent_turn_lock:user:{user_id}"
 _AGENT_LOCK_TTL_S = AGENT_TURN_TIMEOUT_S + 30  # auto-expire after the wall cap
+
+
+async def _record_answer_outcome(user_id, event, session_id=None, error_class=None):
+    # The agent owns its transactions; a failed turn must not roll back the
+    # already-recorded question or make its outcome reuse a failed session.
+    try:
+        async with app_sessionmaker() as event_session:
+            metadata = {"session_id": session_id, "error_class": error_class}
+            record_event(event_session, user_id, event, metadata)
+            await event_session.commit()
+    except Exception:
+        logger.warning("agent outcome event unavailable")
+
+
+async def _response_from_turn(result, text):
+    async with app_sessionmaker() as session:
+        row = await session.get(AiChatSession, result.session_id)
+        if row.title is None:
+            row.title = _title_from(text)
+            await session.commit()
+        messages = (await session.scalars(select(AiChatMessage).where(
+            AiChatMessage.session_id == row.id).order_by(AiChatMessage.id))).all()
+        return ChatSessionDetailOut(
+            id=row.id, title=row.title, started_at=row.started_at,
+            last_activity_at=row.last_activity_at, message_count=len(messages),
+            messages=[ChatMessageOut(id=m.id, role=m.role, content=m.content,
+                model_tier=m.model_tier, referenced_data=m.referenced_data,
+                created_at=m.created_at) for m in messages],
+        )
 
 
 def _title_from(text: str) -> str:
@@ -200,6 +230,8 @@ async def post_message(
     llm = None
     embeddings = None
     try:
+        record_event(session, user.id, "agent_question_asked", {"session_id": chat.id} if chat else {})
+        await session.commit()
         llm = build_llm_client()
         embeddings = None  # Private context search is local and bounded.
         if chat is None:
@@ -247,6 +279,14 @@ async def post_message(
             raise HTTPException(
                 502, "The AI provider could not finish this turn; try again shortly."
             ) from None
+    except Exception as exc:
+        error_class = "timeout" if isinstance(exc, TimeoutError) or getattr(exc, "status_code", None) == 504 else "unknown"
+        await _record_answer_outcome(user.id, "agent_answer_failed", chat.id if chat else None, error_class)
+        if isinstance(exc, LLMUnavailableError):
+            raise HTTPException(503, "The AI provider is not configured.") from None
+        if isinstance(exc, LLMError):
+            raise HTTPException(502, "The AI provider could not finish this turn; try again shortly.") from None
+        raise
     finally:
         # Always release the lock — a crash between acquire and release
         # still auto-expires via the TTL.
@@ -268,36 +308,16 @@ async def post_message(
 
     # Title: the first exchange names the conversation (local truncation —
     # no extra LLM call; the cheap model budget goes to the answer).
-    async with app_sessionmaker() as s2:
-        row = await s2.get(AiChatSession, result.session_id)
-        if row.title is None:
-            row.title = _title_from(payload.text)
-            await s2.commit()
-        messages = (
-            await s2.scalars(
-                select(AiChatMessage)
-                .where(AiChatMessage.session_id == row.id)
-                .order_by(AiChatMessage.id)
-            )
-        ).all()
-        return ChatSessionDetailOut(
-            id=row.id,
-            title=row.title,
-            started_at=row.started_at,
-            last_activity_at=row.last_activity_at,
-            message_count=len(messages),
-            messages=[
-                ChatMessageOut(
-                    id=m.id,
-                    role=m.role,
-                    content=m.content,
-                    model_tier=m.model_tier,
-                    referenced_data=m.referenced_data,
-                    created_at=m.created_at,
-                )
-                for m in messages
-            ],
-        )
+    try:
+        response = await _response_from_turn(result, payload.text)
+    except Exception:
+        await _record_answer_outcome(user.id, "agent_answer_failed", result.session_id, "unknown")
+        raise
+    loop_result = getattr(result, "loop", None)
+    grounded_status = getattr(loop_result, "grounding", {}).get("status")
+    failed = grounded_status in {"invalid", "incomplete"}
+    await _record_answer_outcome(user.id, "agent_answer_failed" if failed else "agent_answer_completed", result.session_id)
+    return response
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

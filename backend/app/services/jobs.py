@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from app.models.lab import LabJob
 from app.models.integration import Integration
 from app.services.evidence import EvidenceError, scope_lock
+from app.services.alpha_events import record_event
 
 
 def job_dict(row):
@@ -122,4 +123,5 @@ async def request_analysis(session, user, parameters):
     )
     session.add(row)
     await session.flush()
+    record_event(session, user.id, "analysis_started", {"job_id": row.id})
     return job_dict(row)
