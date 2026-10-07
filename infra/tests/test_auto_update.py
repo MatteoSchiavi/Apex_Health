@@ -3,8 +3,13 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+import subprocess
+import os
+import fcntl
+import io
 
-from infra.auto_update import BACKUP_READY, DEFAULT_IMAGE, SOURCE, UpdateError, Updater
+from infra.auto_update import BACKUP_READY, DEFAULT_IMAGE, SOURCE, Docker, UpdateError, Updater, main
 
 
 OLD_IMAGE = "sha256:" + "1" * 64
@@ -35,6 +40,7 @@ class FakeDocker:
         self.schema_value = list(OLD_SCHEMA)
         self.fail = set()
         self.pulled = False
+        self.project_label = None
 
     def _service_override(self, args):
         indexes = [i for i, value in enumerate(args) if value == "-f"]
@@ -66,6 +72,10 @@ class FakeDocker:
                 raise UpdateError("fake pull failed")
             self.pulled = True
             return ""
+        if args[:2] == ("manifest", "inspect"):
+            if "registry" in self.fail:
+                raise UpdateError("registry error including sensitive-token")
+            return "{}"
         if args[:2] == ("image", "inspect"):
             reference = args[2]
             image, labels = self.images[reference]
@@ -74,7 +84,8 @@ class FakeDocker:
             return ""
         if args[:1] == ("container",):
             image = self.services[args[2]]
-            return json.dumps([{"Image": image, "State": {"Running": image is not None}}])
+            labels = {"com.docker.compose.project": self.project_label} if self.project_label else {}
+            return json.dumps([{"Image": image, "State": {"Running": image is not None}, "Config": {"Labels": labels}}])
         if args[:1] != ("compose",):
             raise AssertionError(f"unexpected docker command: {args}")
 
@@ -307,6 +318,90 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertEqual(self.updater.state["current"]["schema"], NEW_SCHEMA)
         self.assertFalse(self.updater.state["paused"])
         self.assertIsNone(self.updater.state["in_progress"])
+
+    @staticmethod
+    def healthy_host(command, **kwargs):
+        if command[0] == "loginctl":
+            return subprocess.CompletedProcess(command, 0, "yes\n", "")
+        stdout = "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n" if "apex-health-update.timer" in command else "Result=success\n"
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    def test_doctor_checks_runtime_without_downloading_or_deploying(self):
+        (self.state_dir / 'auto_update.py').write_text('installed')
+        report = self.updater.diagnose(host_run=self.healthy_host)
+        self.assertFalse(any(c['status'] == 'error' for c in report['checks']))
+        self.assertEqual(report['running']['image'], OLD_IMAGE)
+        self.assertTrue(any(e[:2] == ('manifest', 'inspect') for e in self.docker.events))
+        self.assertEqual(self.count('pull'), 0)
+        self.assertEqual(self.count('stop'), 0)
+        self.assertEqual(self.count('up'), 0)
+        self.assertEqual(self.count('run'), 0)
+        self.assertFalse(self.updater.state_path.exists())
+
+    def test_doctor_reports_missing_timer_pause_and_registry_without_secrets(self):
+        self.updater.state = {'paused': True, 'failed_image': NEW_IMAGE}
+        self.docker.fail.add('registry')
+        def unavailable(command, **kwargs):
+            return subprocess.CompletedProcess(command, 1, '', 'sensitive-token')
+        report = self.updater.diagnose(host_run=unavailable)
+        checks = {c['check']: c for c in report['checks']}
+        for name in ('installation', 'timer', 'automation', 'registry'):
+            self.assertEqual(checks[name]['status'], 'error')
+        self.assertEqual(checks['linger']['status'], 'warning')
+        self.assertEqual(checks['failed_image']['status'], 'warning')
+        self.assertNotIn('sensitive-token', json.dumps(report))
+        self.assertEqual(self.count('stop'), 0)
+
+    def test_project_cleanup_uses_actual_container_label(self):
+        self.docker.project_label = 'custom-home'
+        self.updater.running()
+        self.updater.legacy_bot_containers()
+        self.assertIn('label=com.docker.compose.project=custom-home', self.docker.events[-1])
+
+    def test_docker_context_is_explicit_in_every_daemon_command(self):
+        with patch('infra.auto_update.subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'ok', '')) as run:
+            self.assertEqual(Docker('home-rootless').run('compose', 'version'), 'ok')
+        self.assertEqual(run.call_args.args[0], ['docker', '--context', 'home-rootless', 'compose', 'version'])
+
+    def test_installer_preserves_terminal_project_and_context_in_timer(self):
+        installer = Path(__file__).resolve().parents[1] / 'install-auto-update.sh'
+        with patch.dict(os.environ, {'COMPOSE_PROJECT_NAME': 'custom-home', 'DOCKER_CONTEXT': 'home-rootless'}):
+            result = subprocess.run(['bash', str(installer), '--dry-run'], text=True, capture_output=True, check=True)
+        self.assertIn('"--project-name" "custom-home"', result.stdout)
+        self.assertIn('"--docker-context" "home-rootless"', result.stdout)
+
+    def test_installer_explicit_options_override_terminal_defaults(self):
+        installer = Path(__file__).resolve().parents[1] / 'install-auto-update.sh'
+        with patch.dict(os.environ, {'COMPOSE_PROJECT_NAME': 'other', 'DOCKER_CONTEXT': 'other'}):
+            result = subprocess.run(['bash', str(installer), '--dry-run', '--project-name', 'chosen', '--docker-context', 'chosen'], text=True, capture_output=True, check=True)
+        self.assertIn('"--project-name" "chosen"', result.stdout)
+        self.assertIn('"--docker-context" "chosen"', result.stdout)
+
+    def test_installer_preserves_compose_file_order_and_custom_separator(self):
+        installer = Path(__file__).resolve().parents[1] / 'install-auto-update.sh'
+        paths = [self.updater.repo / 'base.yml', self.updater.repo / 'home.yml']
+        with patch.dict(os.environ, {'COMPOSE_FILE': ';'.join(map(str, paths)), 'COMPOSE_PATH_SEPARATOR': ';'}):
+            result = subprocess.run(['bash', str(installer), '--dry-run'], text=True, capture_output=True, check=True)
+        self.assertIn(f'"--compose-file" "{paths[0]}" "--compose-file" "{paths[1]}"', result.stdout)
+
+    def test_status_remains_available_during_an_update(self):
+        self.updater.state = {'in_progress': 'migrating'}
+        self.updater.save()
+        with (self.state_dir / 'update.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            output = io.StringIO()
+            with patch('sys.stdout', output):
+                code = main(['status', '--repo', str(self.updater.repo), '--state-dir', str(self.state_dir)])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.getvalue())['in_progress'], 'migrating')
+
+    def test_doctor_reports_missing_backup_key_separately(self):
+        self.docker.fail.add('backup_ready')
+        report = self.updater.diagnose(host_run=self.healthy_host)
+        checks = {c['check']: c for c in report['checks']}
+        self.assertEqual(checks['application']['status'], 'ok')
+        self.assertEqual(checks['backup_key']['status'], 'error')
+        self.assertEqual(self.count('stop'), 0)
 
 
 if __name__ == "__main__":

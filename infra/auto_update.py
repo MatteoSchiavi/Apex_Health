@@ -46,9 +46,14 @@ class UpdateError(RuntimeError):
 
 
 class Docker:
+    def __init__(self, context=None, timeout=1800):
+        self.context = context
+        self.timeout = timeout
+
     def run(self, *args: str) -> str:
-        result = subprocess.run(["docker", *args], text=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=1800)
+        prefix = ["docker"] + (["--context", self.context] if self.context else [])
+        result = subprocess.run([*prefix, *args], text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=self.timeout)
         if result.returncode:
             # Docker errors can contain deployment details: keep the journal private.
             raise UpdateError(f"docker {' '.join(args[:3])} failed: {result.stderr[-2000:].strip()}")
@@ -119,6 +124,12 @@ class Updater:
         info = json.loads(self.docker.run("container", "inspect", ids[0]))[0]
         if not info["State"].get("Running"):
             raise UpdateError(f"{service} is not running")
+        if service == "api":
+            # The rendered Compose project can come from an override's name:
+            # or .env. Use the actual container label for legacy cleanup.
+            actual = (info.get("Config", {}).get("Labels") or {}).get("com.docker.compose.project")
+            if actual:
+                self.project_name = actual
         return info["Image"]
 
     def schema(self):
@@ -176,6 +187,73 @@ class Updater:
         self.state.update(current=current, paused=False, in_progress=None, failed_image=None)
         self.save()
         print("Healthy running deployment adopted; automatic updates resumed")
+
+    def diagnose(self, host_run=subprocess.run):
+        """Inspect prerequisites without pulling, deploying or modifying state.
+
+        Return static explanations, never raw Compose output, environment
+        values, registry credentials or potentially sensitive stderr.
+        """
+        checks = []
+        report = {"checks": checks, "state": self.state, "running": None}
+
+        def add(name, status, detail):
+            checks.append({"check": name, "status": status, "detail": detail})
+
+        installed = self.directory / "auto_update.py"
+        add("installation", "ok" if installed.is_file() else "error",
+            "Installed updater exists" if installed.is_file() else
+            "Recurring updater is not installed here; run infra/install-auto-update.sh")
+        if installed.is_file():
+            source = self.repo / "infra/auto_update.py"
+            if source.is_file() and installed.read_bytes() != source.read_bytes():
+                add("updater_version", "warning", "Installed updater differs from this checkout; reinstall to apply script fixes")
+        add("automation", "error" if self.state.get("paused") or self.state.get("in_progress") else "ok",
+            "Paused or interrupted: inspect status and recover before resuming" if
+            self.state.get("paused") or self.state.get("in_progress") else "No recorded pause or interrupted deployment")
+        if self.state.get("failed_image"):
+            add("failed_image", "warning", "A failed image is blocked; diagnose before retrying or wait for a newer release")
+
+        def host(*command):
+            try:
+                result = host_run(list(command), text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, timeout=10)
+                return result.stdout.strip() if result.returncode == 0 else None
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+
+        timer = host("systemctl", "--user", "show", "apex-health-update.timer",
+                     "--property=LoadState,ActiveState,UnitFileState")
+        properties = dict(line.split("=", 1) for line in (timer or "").splitlines() if "=" in line)
+        active = properties.get("LoadState") == "loaded" and properties.get("ActiveState") == "active"
+        enabled = properties.get("UnitFileState") in ("enabled", "enabled-runtime")
+        add("timer", "ok" if active and enabled else "error",
+            "Five-minute timer is active and enabled" if active and enabled else
+            "Timer unavailable, inactive or disabled; check systemctl --user status apex-health-update.timer")
+        service = host("systemctl", "--user", "show", "apex-health-update.service", "--property=Result")
+        if service and service != "Result=success":
+            add("last_service_run", "warning", "Last updater service run failed; inspect its journal")
+        linger = host("loginctl", "show-user", str(os.getuid()), "--property=Linger", "--value")
+        add("linger", "ok" if linger == "yes" else "warning",
+            "User services remain available after logout" if linger == "yes" else
+            "Linger is disabled or unverifiable; enable it for this installation user to survive logout/reboot")
+        try:
+            report["running"] = self.running()
+            add("application", "ok", "API, worker, database and queue probes passed")
+        except (UpdateError, OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+            add("application", "error", "Docker/Compose or application health check failed; verify the Docker context and original Compose options")
+        else:
+            try:
+                self.compose("exec", "-T", "api", "python", "-c", BACKUP_READY)
+                add("backup_key", "ok", "Running API has a backup encryption key")
+            except (UpdateError, OSError, subprocess.TimeoutExpired):
+                add("backup_key", "error", "Backup key check failed; set BACKUP_ENCRYPTION_KEY securely and recreate the existing API/worker before installing updates")
+        try:
+            self.docker.run("manifest", "inspect", self.image)
+            add("registry", "ok", "Registry manifest is readable with this user's Docker credentials; no image was downloaded")
+        except (UpdateError, OSError, subprocess.TimeoutExpired):
+            add("registry", "error", "Registry access failed; check connectivity, image name and Docker login for this installation user")
+        return report
 
     def rollback(self):
         if self.state.get("in_progress"):
@@ -281,27 +359,37 @@ class Updater:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["update", "status", "pause", "resume", "rollback"], nargs="?", default="update")
+    parser.add_argument("action", choices=["update", "status", "doctor", "pause", "resume", "rollback"], nargs="?", default="update")
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--image", default=DEFAULT_IMAGE)
     parser.add_argument("--compose-file", action="append", type=Path)
     parser.add_argument("--project-name")
+    parser.add_argument("--docker-context", help="Use the same named Docker context as the existing installation")
     parser.add_argument("--retry", action="store_true")
     args = parser.parse_args(argv)
     directory = args.state_dir or args.repo / ".apex-updater"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(directory, 0o700)
     with (directory / "update.lock").open("a") as lock:
+        # State is atomically replaced. Read-only diagnostics must remain
+        # available while an update owns the deployment lock.
+        if args.action not in ("status", "doctor"):
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("Another update is already running")
+                return 0
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print("Another update is already running")
-            return 0
-        try:
-            updater = Updater(args.repo, directory, image=args.image, compose_files=args.compose_file, project=args.project_name)
+            updater = Updater(args.repo, directory, image=args.image, compose_files=args.compose_file,
+                              project=args.project_name,
+                              docker=Docker(args.docker_context, timeout=60 if args.action == "doctor" else 1800))
             if args.action == "status":
                 print(json.dumps(updater.state, indent=2))
+            elif args.action == "doctor":
+                report = updater.diagnose()
+                print(json.dumps(report, indent=2))
+                return 1 if any(c["status"] == "error" for c in report["checks"]) else 0
             elif args.action == "pause":
                 updater.state["paused"] = True
                 updater.save()

@@ -18,8 +18,19 @@ parser = argparse.ArgumentParser(description='Verify the first update, then inst
 parser.add_argument('repo', type=Path)
 parser.add_argument('--dry-run', action='store_true', help='Print the units without deploying or writing files')
 parser.add_argument('--compose-file', action='append', type=Path)
-parser.add_argument('--project-name')
+parser.add_argument('--project-name', default=os.environ.get('COMPOSE_PROJECT_NAME'))
+parser.add_argument('--docker-context', default=os.environ.get('DOCKER_CONTEXT'))
 args = parser.parse_args()
+if args.compose_file is None and os.environ.get('COMPOSE_FILE'):
+    separator = os.environ.get('COMPOSE_PATH_SEPARATOR', os.pathsep)
+    args.compose_file = [Path(value) for value in os.environ['COMPOSE_FILE'].split(separator) if value]
+if not args.dry_run and not args.docker_context:
+    if os.environ.get('DOCKER_HOST'):
+        raise SystemExit('A session-only DOCKER_HOST cannot be preserved safely. Create/use a named Docker context and pass --docker-context NAME.')
+    args.docker_context = subprocess.run(['docker', 'context', 'show'], text=True,
+                                         stdout=subprocess.PIPE, check=True).stdout.strip()
+    if not args.docker_context:
+        raise SystemExit('Cannot identify the Docker context used by this installation')
 repo = args.repo.resolve()
 state = repo / '.apex-updater'
 source = repo / 'infra/auto_update.py'
@@ -29,6 +40,8 @@ for file in args.compose_file or []:
     command += ['--compose-file', str(file.resolve())]
 if args.project_name:
     command += ['--project-name', args.project_name]
+if args.docker_context:
+    command += ['--docker-context', args.docker_context]
 
 def unit_argument(value):
     # systemd parses quoted arguments and expands %/$, even without a shell.
@@ -60,8 +73,9 @@ if args.dry_run:
     raise SystemExit(0)
 
 subprocess.run(['systemctl', '--user', 'show-environment'], stdout=subprocess.DEVNULL, check=True)
-subprocess.run(['docker', 'compose', 'version'], check=True)
-subprocess.run(['docker', 'info'], stdout=subprocess.DEVNULL, check=True)
+docker = ['docker', '--context', args.docker_context]
+subprocess.run([*docker, 'compose', 'version'], check=True)
+subprocess.run([*docker, 'info'], stdout=subprocess.DEVNULL, check=True)
 # Verify registry access, the healthy existing stack, encryption and the first
 # deployment before installing a recurring job. Do not log .env or keys.
 first = [sys.executable, str(source), *command[2:]]

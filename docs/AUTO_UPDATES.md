@@ -107,12 +107,84 @@ every provider, account or existing production database works with a release.
    stable version of the updater to `.apex-updater/auto_update.py`; reinstall
    deliberately after pulling infrastructure/updater changes.
 
+   The installer preserves an exported `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`
+   (including file order and `COMPOSE_PATH_SEPARATOR`) and the selected named
+   Docker context in the service command. Explicit installer options take
+   precedence. This matters because systemd does not automatically inherit
+   variables from the terminal that installed the timer. Use
+   `--docker-context NAME` to select another named context. A session-only
+   `DOCKER_HOST` is rejected unless a named context is explicitly selected;
+   configure the connection as a Docker context first. Keep other Compose
+   interpolation settings in the deployment `.env`, rather than relying on
+   temporary shell exports.
+
+## When updates appear stuck
+
+The Git checkout on the host deliberately stays at its old revision. That
+does not mean the running application is old: updates replace the Docker
+image, whose revision is reported by the runtime diagnostic below.
+
+After fetching the latest tools with `git pull --ff-only origin main`, run:
+
+```sh
+python3 infra/auto_update.py doctor
+```
+
+Include your original `--compose-file`, `--project-name` and
+`--docker-context` options when applicable. `doctor` checks the installed
+script, user timer, linger, recorded pause/interruption/failed-image state,
+actual running revision, application/queue health, backup-key presence and
+registry-manifest access. It does not download images, stop containers, run
+migrations, resume automation or rewrite deployment state. It returns a
+nonzero exit code for failed checks; warnings do not authorize a retry or
+database restore. A service outage can naturally change between a diagnostic
+and deployment. `status` and `doctor` remain available during an active update.
+
+Common outcomes:
+
+- **Installation/timer missing:** install the timer with
+  `bash infra/install-auto-update.sh`, using the existing deployment options.
+  Pulling a commit or running Docker Compose alone does not install a timer.
+- **Linger warning:** run `sudo loginctl enable-linger "$USER"` for the same
+  Linux user that installed the timer. Without linger it can stop after logout.
+- **Registry error:** verify connectivity and Docker login as that same user.
+  Successful authentication in another user's terminal is not sufficient.
+- **Application error:** verify the recorded Docker context and project/files;
+  ensure API and worker are running the same image. Do not reset the database.
+- **Backup-key error:** preserve an existing key; if none exists, configure
+  one securely and recreate the existing API/worker as described above.
+- **Paused/interrupted or blocked image:** inspect `status` and the service
+  journal and follow the recovery procedure. Do not blindly resume or retry.
+- **Installed updater differs:** reinstall after pulling script changes.
+  Application-image updates do not replace the installed host script.
+
+The original installer could successfully run its first update using exported
+Compose settings, then install a timer without those settings. The timer could
+subsequently select the wrong project or miss an override. The corrected
+installer freezes those choices and the Docker context. Existing installations
+need one deliberate reinstall to receive this host-side fix:
+
+```sh
+git pull --ff-only origin main
+bash infra/install-auto-update.sh
+sudo loginctl enable-linger "$USER"
+python3 infra/auto_update.py doctor
+```
+
+Supply the existing custom options to both commands where required. Reinstalling
+does not clear a paused/interrupted deployment, reset secrets or replace the
+database. Diagnose failures before repeating installation. To read the original
+error locally, use `journalctl --user -u apex-health-update.service -n 60 --no-pager`.
+If sharing diagnostics, redact credentials and private deployment details;
+never send `.env`.
+
 ## Status, pause and recovery
 
 From the checkout (include your custom Compose options if any):
 
 ```sh
 python3 infra/auto_update.py status
+python3 infra/auto_update.py doctor
 python3 infra/auto_update.py pause
 python3 infra/auto_update.py update
 python3 infra/auto_update.py rollback
@@ -176,10 +248,17 @@ to the deployment. A backup on the same disk does not protect against disk loss.
 
 ## Verification boundaries
 
-The updater's 18 offline failure/recovery tests pass. Installer dry-run output
+The updater's 27 offline failure/recovery/diagnostic tests pass. Installer dry-run output
 passes `systemd-analyze verify`; real Compose accepts the image overrides and
-an isolated Docker container verified the pinned-image startup flags. The
-GitHub release job is the final production-image gate. Cloud Docker build verification may require
+an isolated Docker container verified the pinned-image startup flags. An
+isolated Compose deployment also exercised a real GHCR main-image download,
+encrypted backup, migration, API/worker restart and unchanged-image recheck.
+The corrected updater also completed application-only rollback, explicit resume
+and a second real update on that disposable deployment, preserving its database.
+Registry metadata was verified against successful GitHub CI and the actual
+published revision. These are cloud checks, not evidence that the timer is
+installed or healthy on the home server. The GitHub release job is the final
+production-image gate. Cloud Docker build verification may require
 allowing `www.postgresql.org` and `apt.postgresql.org` in the environment's
 network settings; a policy denial is not a passed production build. Installation
 and deployment on the actual home server require the one-time steps above.
