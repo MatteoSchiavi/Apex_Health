@@ -17,8 +17,10 @@ The deployed application is a single stack:
 ## What it does
 
 - Imports Garmin data and original FIT files; supports source-aware manual,
-  CSV, Apple Health ZIP and laboratory observations. Optional device services
-  require their own credentials and provider access.
+  CSV, Apple Health ZIP and laboratory observations. The repository also
+  contains a native HealthKit bridge source project and pairing API; Xcode,
+  Apple signing, device installation and live synchronization still need a
+  compatible Mac/iPhone verification.
 - Shows activities, sleep, biometrics, training, gear and data coverage in a
   clean Swiss-modern interface.
 - Produces an evidence-backed daily decision and a Performance Lab for trends,
@@ -36,7 +38,9 @@ The deployed application is a single stack:
   popover in the top bar. Food reads an optional external Fitbit diary rather
   than providing a separate food-logging application.
 - Provides an owner-only `/admin` dashboard for users, permissions, sessions,
-  invitations, feedback, measured server resources and filtered operational logs.
+  invitations, feedback, measured server resources, filtered operational logs
+  and aggregate alpha-utility signals. Those signals describe use and reported
+  influence; they do not establish product acceptance or health benefit.
 - Collects feedback throughout the app and optionally sends owner Telegram
   notifications with durable retries. This is an outbound notification bot.
 - Supports rolling 30-day Remember Me sessions, capped at 90 days; ordinary
@@ -160,11 +164,16 @@ in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Integration boundaries
 
-Live Garmin and LLM credentials are not bundled with the project.
-The UI and local stack work without them, but live provider behaviour must be
-verified with the account owner’s credentials before relying on it. The
-[Performance Lab contract](docs/PERFORMANCE_LAB.md) records the remaining
-provider and calibration work explicitly.
+Provider credentials are not bundled. Fixture tests and repository code do not
+establish a live provider connection, complete data delivery, provider approval
+or device acceptance. Verify each intended connector with the account owner's
+credentials and the target device before relying on it. The native HealthKit
+source project also needs Xcode signing and physical-device verification. See
+the [Performance Lab contract](docs/PERFORMANCE_LAB.md) and
+[Apple Health guide](docs/APPLE_HEALTH.md) for current boundaries.
+
+This repository describes implementation and planned validation; it is not a
+private-alpha acceptance statement for this code revision or any deployment.
 
 Corrected load calculations apply when days are recomputed. Existing historical
 features may need the bounded account/date-range repair described in the

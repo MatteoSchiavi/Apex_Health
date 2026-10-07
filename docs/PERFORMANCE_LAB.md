@@ -1,17 +1,21 @@
 # Performance lab and agent runtime
 
-The redesign runs in the authenticated FastAPI/PostgreSQL/Timescale/Celery
-platform and the bundled React/Vite UI. This is the only supported runtime.
+The current implementation uses the authenticated FastAPI/PostgreSQL/Timescale/
+Celery platform and the bundled React/Vite UI. This inventory describes code
+and deterministic tests, not private-alpha acceptance or validation on a
+particular deployment.
 
 ## What ships
 
 - **Today:** a deterministic training decision, measured evidence, coverage, comparable personal baselines, declared availability, pain/illness check-ins, event constraints, alternatives, limitations and durable outcomes. Incomplete evidence produces `collect_more_data`. Planning rules are versioned heuristics, not medical diagnoses or calibrated probabilities.
-- **Data health:** per-metric availability, measurement/fetch times, source lineage, original immutable revisions, separate athlete annotations, device changes, manual measurements, original FIT import, bounded repair/reindex jobs, original document downloads, exports and source-erasure review.
+- **Data health:** per-metric availability, measurement/fetch times, source lineage, original immutable revisions, separate athlete annotations, device changes, manual measurements, original FIT and Apple Health ZIP imports, bounded repair/reindex jobs, original document downloads, exports and source-erasure review. The repository also contains an iOS HealthKit bridge and pairing API; Xcode signing, installation and live synchronization require external Mac/iPhone verification.
 - **Lab:** robust personal baselines, recorded trend, separate multisport load tracks, session recording quality, sleep timing/debt against an explicit personal target, gym progression, experiments and matched observational associations, nutrition, recorded lab markers/reference ranges, reviewed documents, outcomes and daily/weekly/monthly/quarterly reports.
 - **Calendar:** owned events with priority/taper, declared availability, upcoming sessions, exact session-change drafts, minimal deterministic replanning and downloadable workout descriptions.
 - **Coach:** source-aware analysis and a separate Changes tab. A draft displays the exact diff, reason, evidence, expiry and approval hash. Approval applies a local change through the application executor; rejection and local undo have distinct audit receipts.
 - **Notifications and gear:** durable in-app notification history, evidence/actions, deduplication, expiry, snooze, class mute, quiet hours and daily caps; equipment registration, maintenance and retirement.
 - **Privacy and language:** encrypted original files/document text, explicit export whitelists, source deletion bound to a current preview, configurable observation/tool-audit retention, comfortable/compact spacing, account locale, English/Italian controls and deterministic decision explanations.
+- **Scientific presentation:** metric values use neutral presentation; signal names and explanatory text distinguish observations and heuristic estimates from diagnosis or calibrated prediction. The language does not establish clinical validity.
+- **Alpha utility measures:** an owner-only aggregate reports fixed-vocabulary usage events, weekly active users, AI users, proposal acceptance/edit/rejection rates, provider failure counts and user-reported decision influence. Event metadata excludes prompts and health payloads; decision influence is self-reported and is not a physiological benefit measure.
 
 ## Agent execution contract
 
@@ -52,9 +56,18 @@ Alembic `0010_performance_lab` adds ten tables and owned tool audit IDs and exte
 
 Celery beat dispatches committed job rows. Worker/account advisory locks prevent duplicate execution; cursors and heartbeat progress survive worker restarts. A stale running job can be dispatched again. Cancel is cooperative at chunk boundaries. Analysis result and completion commit atomically. Authentication failures retain the cursor and request reconnection. Source erasure refuses to race an active provider import; it disconnects the source, clears derived caches/notifications/job results and cancels outstanding jobs.
 
-Deletion intentionally removes a canonical activity linked to the source even if it has merged provenance. Legacy wellness tables lack reliable source lineage and are cleared for wearable-source erasure. The UI preview explains this broader scope. Reconnecting can import the upstream data again. Export responses disclose row caps; exported account data contains decrypted owned notes but excludes sessions and integration secrets. Downloaded private files must be stored appropriately by the athlete.
+For existing non-HealthKit source paths, deletion intentionally removes a canonical activity linked to the source even if it has merged provenance. Legacy wellness tables lack reliable source lineage and are cleared for wearable-source erasure; the preview explains this broader scope. The new native HealthKit path instead deletes its UUID ledger/projections, revokes native access and removes only its owned canonical fields or sole-source activities, preserving other providers. Export includes active native records and excludes native tokens, pairing codes and batch receipts. Reconnecting can import upstream data again. Export responses disclose row caps; exported account data contains decrypted owned notes but excludes sessions and integration secrets. Downloaded private files must be stored appropriately by the athlete.
 
 Observation and tool-audit retention are opt-in preferences for those two stores. They are not a promise that every original/raw record or applied-change audit is erased after the same interval; existing raw/stream retention and encrypted backup policy remain separate.
+
+Alpha utility events use a fixed vocabulary and minimal whitelisted metadata.
+The scheduled cleanup removes events older than 400 days. The owner rollup's
+acceptance, edit and rejection rates describe proposal workflow. Its decision
+influence rate counts yes/partly feedback among recorded yes/partly/no outcomes
+for decisions created in the requested window; unanswered outcomes are
+excluded. These are
+usage and self-report measures, not product acceptance, causal evidence,
+physiological outcomes or clinical benefit.
 
 ## Specification coverage and remaining work
 
@@ -73,8 +86,10 @@ Observation and tool-audit retention are opt-in preferences for those two stores
 | Notifications | In-app durable rules and fatigue controls | Opt-in per-channel consent/verification and new email/push delivery adapters |
 | Agent runtime | Bounded calls, owned audits, serialized drafts and durable analysis/repair jobs | Durable checkpoint/resume of an entire interrupted LLM conversation; atomic spend reservations; live-model evaluation telemetry |
 | Localization/privacy | Bilingual UI/decision behavior, export/deletion/retention controls | Complete translation of every analytical/provider sentence and coordinated upstream/backup erasure |
+| Apple Health companion | Pairing API, scoped device token, HealthKit ingestion contracts and Swift source project | Xcode build/signing, physical iOS install, background-delivery behavior and live synchronization on a Mac/iPhone |
+| Alpha utility measures | Owner-only aggregates for fixed usage events, proposal workflow, provider failures and self-reported decision influence | Complete telemetry coverage, stable alpha cohort and evidence for product utility; these aggregates do not establish acceptance or health benefit |
 
-These limits are deliberate release boundaries, not claims that Phase 5 calibrated personalization or every roadmap item is finished. Real Garmin/LLM credentials were unavailable during implementation, so fixture tests do not establish live provider performance, latency, spend or device acceptance.
+These limits are deliberate release boundaries, not claims that personalization is calibrated or every roadmap item is finished. The repository and fixture tests do not establish live provider connection, complete delivery, provider approval, model quality, latency, spend or device acceptance. Verify each intended provider with its authorized account and target deployment.
 
 ## Fixed release cases
 
@@ -103,8 +118,13 @@ The deterministic set is implemented in `backend/tests/test_performance_lab.py`,
 
 Release gates include schema downgrade/upgrade, backend regressions, production frontend build, translation-key parity and Chromium flows with light/dark, mobile and automated WCAG checks. Live model grounded-claim correctness, unsupported semantic claims, p95 latency and cost per completed task need a separate recorded production evaluation; no results are invented here.
 
-## Verified implementation build
+## Earlier verification record
 
-Validation on 2026-10-04: **514 backend tests** passed with SPA hosting disabled, and **29 Chromium browser tests** passed. All four GitHub CI jobs passed, including the production frontend build, English/Italian key parity, container release, repeated worker execution, real encrypted backup/restore checksums and restore atomicity. Targeted API/migration and final source-policy regressions also passed. Real HTTP smoke tests passed against the bundled FastAPI SPA and disposable Timescale/Redis services, including authentication, CSRF, invites, ownership, exact approval/undo, private export and the durable analysis worker. These numbers describe deterministic fixture tests, not a live-model benchmark.
+The previous project validation record reports 514 backend tests, 29 Chromium
+browser tests and four GitHub CI jobs passing on 2026-10-04, plus targeted API,
+migration and release smoke checks. That is a historical report for the tested
+revision; it does not verify later changes, the current checkout, a live
+provider, native iOS behavior or private-alpha acceptance. Re-run the release
+gates for the exact revision and target deployment before making those claims.
 
 Review screenshots use synthetic records: [Today](ui/performance-today.png), [Lab](ui/performance-lab.png), [Changes](ui/performance-changes.png), [Data health on mobile](ui/performance-data-mobile.png).
