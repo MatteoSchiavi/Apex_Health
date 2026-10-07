@@ -44,7 +44,13 @@ export interface Decision {
   next_step: string;
   formula_version: string;
   limitations: string[];
-  outcome: { state: string } | null;
+  state?: string;
+  headline?: string;
+  key_changes?: { metric: string; current: number | null; baseline: number | null; delta: number | null; origin: string | null }[];
+  contributors?: string[];
+  data_coverage?: { coverage_pct: number; missing: string[] };
+  recommended_action?: { action: string; reason: string; duration_factor?: number; planned_session_id?: number };
+  outcome: { state: string; notes?: string; influenced_plan?: "yes" | "partly" | "no"; useful?: boolean; completion?: "completed" | "partial" | "skipped"; rpe?: number; soreness?: number; pain?: boolean; felt_unwell?: boolean; activity_id?: number; draft_id?: number; planned_session_id?: number; recorded_at?: string } | null;
 }
 export interface Draft {
   id: number;

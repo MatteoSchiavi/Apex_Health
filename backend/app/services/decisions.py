@@ -10,6 +10,51 @@ from app.services.evidence import EvidenceError, coverage, scope_lock, snapshot_
 VERSION = "daily-decision-v1"
 
 
+def _interpretation(output, signals, locale):
+    """Stable presentation contract; preserve the underlying rule output."""
+    action = output["action"]
+    headlines = {
+        "train_normally": ("Keep your planned training", "Mantieni l’allenamento pianificato"),
+        "reduce_volume": ("Keep the focus, reduce the volume", "Mantieni l’obiettivo, riduci il volume"),
+        "swap_session": ("Review a gentler session", "Valuta una sessione più leggera"),
+        "recover": ("Make room for recovery today", "Dedica oggi al recupero"),
+        "collect_more_data": ("Add current evidence before adjusting training", "Aggiungi misurazioni attuali prima di adattare l’allenamento"),
+    }
+    changes = []
+    for metric, signal in signals.items():
+        latest = signal.get("latest")
+        current = latest["value"] if latest and signal["availability"] == "available" else None
+        reference = output["baselines"].get(metric, {})
+        median = reference.get("median") if reference.get("state") == "available" else None
+        changes.append({
+            "metric": metric,
+            "current": current,
+            "baseline": median,
+            "delta": round(current - median, 3) if current is not None and median is not None else None,
+            "origin": latest["origin"] if latest else None,
+        })
+    recommendation = {"action": action, "reason": output["next_step"]}
+    if action == "reduce_volume":
+        recommendation["duration_factor"] = 0.7
+    today_sessions = [s for s in output["constraints"]["sessions"] if s["date"] == output["date"]]
+    if today_sessions:
+        recommendation["planned_session_id"] = today_sessions[0]["id"]
+    return {
+        "state": {
+            "collect_more_data": "insufficient_data",
+            "train_normally": "stable",
+            "reduce_volume": "adjustment_suggested",
+            "swap_session": "adjustment_suggested",
+            "recover": "recovery_suggested",
+        }[action],
+        "headline": headlines[action][locale == "it"],
+        "key_changes": changes,
+        "contributors": output["reasons"],
+        "data_coverage": output["data_completeness"],
+        "recommended_action": recommendation,
+    }
+
+
 async def daily_decision(session, user, *, now=None, for_ai=False, persist=False):
     now = now or datetime.now(UTC)
     day = now.astimezone(ZoneInfo(user.timezone)).date()
@@ -163,6 +208,7 @@ async def daily_decision(session, user, *, now=None, for_ai=False, persist=False
     from app.services.lab_language import translate_decision
 
     output = translate_decision(output, user.locale)
+    output.update(_interpretation(output, signals, user.locale))
     if persist:
         await scope_lock(session, user.id, "decision")
         row = await session.scalar(

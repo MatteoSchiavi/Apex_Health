@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 
 from app.api import (
     admin,
+    draft_edits,
     alpha,
     sync_health,
     feedback,
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(admin.router)
+    app.include_router(draft_edits.router)
     app.include_router(alpha.router)
     app.include_router(sync_health.router)
     app.include_router(feedback.router)

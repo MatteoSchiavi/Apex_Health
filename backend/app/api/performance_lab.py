@@ -19,6 +19,7 @@ from app.models.lab import (
     Observation,
 )
 from app.models.user import User
+from app.models.training import PlannedSession, TrainingPlan
 from app.schemas.changes import ApproveIn, ProposeIn
 from app.schemas.lab import EntryIn, NotificationAction, ObservationIn, OutcomeIn
 from app.agent.tools import AnalyticsIn, PreviewIn, RepairIn
@@ -71,19 +72,88 @@ async def decision_outcome(
     )
     if row is None:
         raise HTTPException(404, "Decision not found")
-    if payload.activity_id and not await session.scalar(
-        select(Activity.id).where(
-            Activity.id == payload.activity_id, Activity.user_id == user.id
-        )
-    ):
-        raise HTTPException(404, "Activity not found")
-    row.outcome = {
-        **payload.model_dump(mode="json"),
-        "recorded_at": datetime.now(UTC).isoformat(),
-        "interpretation": "Execution/adherence is not proof of physiological benefit.",
+    feedback = {
+        **(row.outcome or {}),
+        **payload.model_dump(mode="json", exclude_unset=True),
     }
+    await _validate_outcome_links(session, user, row, feedback)
+    row.outcome = {
+        **feedback,
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "interpretation": (
+            "Esecuzione, aderenza e utilità percepita non dimostrano un beneficio fisiologico."
+            if user.locale == "it"
+            else "Execution, adherence and perceived usefulness are not proof of physiological benefit."
+        ),
+    }
+    record_event(
+        session, user.id, "decision_feedback_submitted", {"decision_id": row.id}
+    )
     await session.commit()
     return {"id": row.id, "outcome": row.outcome}
+
+
+async def _validate_outcome_links(session, user, decision, feedback):
+    """Feedback describes this day's owned records; it has no approval authority."""
+    activity_id = feedback.get("activity_id")
+    if activity_id is not None:
+        activity = await session.scalar(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.user_id == user.id
+            )
+        )
+        if activity is None:
+            raise HTTPException(404, "Activity not found")
+        if activity.local_date != decision.date:
+            raise HTTPException(422, "Activity date does not match decision date")
+    draft_id = feedback.get("draft_id")
+    related_plan_id = None
+    if draft_id is not None:
+        draft = await session.scalar(
+            select(ChangeDraft).where(
+                ChangeDraft.id == draft_id, ChangeDraft.user_id == user.id
+            )
+        )
+        if draft is None:
+            raise HTTPException(404, "Proposal not found")
+        if draft.kind == "session_patch":
+            target = draft.payload.get("target_id", draft.after.get("target_id"))
+            if (
+                feedback.get("planned_session_id") is not None
+                and feedback["planned_session_id"] != target
+            ):
+                raise HTTPException(422, "Proposal and planned session do not match")
+            feedback["planned_session_id"] = target
+        linked_date = draft.after.get("date")
+        if linked_date is not None:
+            coherent = linked_date == str(decision.date)
+        elif draft.kind == "plan_create" and draft.after.get("week_start"):
+            start = date.fromisoformat(draft.after["week_start"])
+            coherent = start <= decision.date <= start + timedelta(days=6)
+            related_plan_id = (draft.receipt or {}).get("target_id")
+        else:
+            coherent = (
+                draft.created_at.astimezone(ZoneInfo(user.timezone)).date()
+                == decision.date
+            )
+        if not coherent:
+            raise HTTPException(422, "Proposal date does not match decision date")
+    planned_session_id = feedback.get("planned_session_id")
+    if planned_session_id is not None:
+        planned = await session.scalar(
+            select(PlannedSession)
+            .join(TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id)
+            .where(
+                PlannedSession.id == planned_session_id,
+                TrainingPlan.user_id == user.id,
+            )
+        )
+        if planned is None:
+            raise HTTPException(404, "Planned session not found")
+        if planned.date != decision.date:
+            raise HTTPException(422, "Planned session date does not match decision date")
+        if related_plan_id is not None and planned.training_plan_id != related_plan_id:
+            raise HTTPException(422, "Proposal and planned session do not match")
 
 
 @router.get("/decisions")
@@ -360,7 +430,9 @@ async def create_entry(
         )
     )
     if row.kind == "experiment":
-        record_event(session, user.id, "experiment_created", {"experiment_id": row.id})
+        record_event(
+            session, user.id, "experiment_created", {"experiment_id": row.id}
+        )
     await session.commit()
     return entry_dict(row)
 

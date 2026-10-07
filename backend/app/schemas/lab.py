@@ -132,6 +132,15 @@ class OutcomeIn(Strict):
     state: Literal["accepted", "modified", "rejected", "snoozed", "ignored"]
     activity_id: int | None = Field(default=None, gt=0)
     notes: str = Field(default="", max_length=2000)
+    influenced_plan: Literal["yes", "partly", "no"] | None = None
+    useful: bool | None = None
+    completion: Literal["completed", "partial", "skipped"] | None = None
+    rpe: float | None = Field(default=None, ge=0, le=10)
+    soreness: int | None = Field(default=None, ge=0, le=10)
+    pain: bool | None = None
+    felt_unwell: bool | None = None
+    draft_id: int | None = Field(default=None, gt=0)
+    planned_session_id: int | None = Field(default=None, gt=0)
 
 
 class NotificationAction(Strict):

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -7,11 +8,13 @@ import {
   ErrorNote,
 } from "../../components/kit";
 import type { Draft } from "./types";
-import { human, QueryState, useAction, useLab, Value } from "./shared";
+import { Form, human, inputClass, num, QueryState, str, useAction, useLab, Value } from "./shared";
 export default function ChangesPanel() {
   const { t } = useTranslation();
   const q = useLab<Draft[]>("/lab/changes");
   const action = useAction();
+  const [editing, setEditing] = useState<number | null>(null);
+  const [replacementId, setReplacementId] = useState<number | null>(null);
   return (
     <div className="flex flex-col gap-5">
       <Card>
@@ -25,6 +28,11 @@ export default function ChangesPanel() {
         error={q.isError}
         empty={q.data?.length === 0}
       />
+      {q.data?.some((d) => d.id === replacementId && d.status === "draft") && (
+        <p role="status" className="text-[13px] text-muted">
+          {t("decisionLearning.newApprovalRequired")}
+        </p>
+      )}
       {q.data?.map((d) => (
         <Card key={d.id}>
           <CardHeader
@@ -41,7 +49,9 @@ export default function ChangesPanel() {
                       : "neutral"
                 }
               >
-                {t("lab.states." + d.status, { defaultValue: human(d.status) })}
+                {d.status === "superseded"
+                  ? t("decisionLearning.superseded")
+                  : t("lab.states." + d.status, { defaultValue: human(d.status) })}
               </Badge>
             }
           />
@@ -80,8 +90,43 @@ export default function ChangesPanel() {
               {t("lab.delivery." + d.receipt.external_delivery)}
             </p>
           )}
-          <div className="flex gap-3">
-            {d.status === "draft" && (
+          {editing === d.id && d.kind === "session_patch" && d.status === "draft" && (
+            <div className="mb-5 border border-hairline p-4">
+              <p className="mb-4 text-[13px] text-muted">{t("decisionLearning.editCaption")}</p>
+              <Form label={t("decisionLearning.saveEdit")} pending={action.isPending} onSave={(f) => {
+                const body: Record<string, unknown> = {
+                  reason: str(f, "reason"),
+                };
+                if (str(f, "description") !== (d.after.description ?? "")) {
+                  body.description = str(f, "description");
+                }
+                const duration = num(f, "target_duration_min");
+                if (duration != null) body.target_duration_min = duration;
+                action.mutate({ path: `/lab/changes/${d.id}/edit`, body }, {
+                  onSuccess: (result) => {
+                    setEditing(null);
+                    setReplacementId((result as Draft).id);
+                  },
+                });
+              }}>
+                <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
+                  <span>{t("lab.duration")}</span>
+                  <input name="target_duration_min" className={inputClass} type="number" min={0} max={1440} step={1} defaultValue={typeof d.after.target_duration_min === "number" ? d.after.target_duration_min : ""} />
+                </label>
+                <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
+                  <span>{t("decisionLearning.sessionDescription")}</span>
+                  <textarea name="description" className={inputClass} maxLength={2000} rows={3} defaultValue={typeof d.after.description === "string" ? d.after.description : ""} />
+                </label>
+                <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
+                  <span>{t("decisionLearning.editReason")}</span>
+                  <textarea name="reason" className={inputClass} maxLength={2000} rows={2} required defaultValue={d.reason} />
+                </label>
+                <Button variant="ghost" type="button" disabled={action.isPending} onClick={() => setEditing(null)}>{t("lab.cancel")}</Button>
+              </Form>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-3">
+            {d.status === "draft" && editing !== d.id && (
               <>
                 <Button
                   disabled={
@@ -105,6 +150,11 @@ export default function ChangesPanel() {
                 >
                   {t("lab.reject")}
                 </Button>
+                {d.kind === "session_patch" && (
+                  <Button variant="ghost" disabled={action.isPending || Date.parse(d.expires_at) < Date.now()} onClick={() => setEditing(d.id)}>
+                    {t("decisionLearning.editProposal")}
+                  </Button>
+                )}
               </>
             )}
             {d.status === "applied_locally" && d.receipt?.undo_available && (

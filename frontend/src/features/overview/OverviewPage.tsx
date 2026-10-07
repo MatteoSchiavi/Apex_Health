@@ -28,7 +28,7 @@ import { localDay, shiftDay, useUnits } from "../../components/data";
 import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
 import { METRIC_LABELS } from "../../components/data";
 import { DecisionCard } from "../lab/DecisionCard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function More({ to, children }: { to: string; children: string }) {
   return (
@@ -125,6 +125,9 @@ export default function OverviewPage() {
   const { t } = useTranslation();
   const units = useUnits();
   const me = useUi((s) => s.me);
+  useEffect(() => {
+    if (me) void api.post("/alpha/events", { event: "overview_viewed" }).catch(() => {});
+  }, [me]);
   const setupDevices = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.get<{ integration_id: number; provider: string; status?: string }[]>("/settings/devices"),
@@ -194,14 +197,14 @@ export default function OverviewPage() {
         { done: setupComplete[2], label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
       ].map((item) => <li key={item.label}><Link to={item.to} className="flex min-h-11 items-center gap-3 border border-hairline px-3 py-2 hover:bg-surface2"><span aria-hidden="true" className={item.done ? "text-positiveText" : "text-faint"}>{item.done ? "✓" : "○"}</span><span className="min-w-0"><span className="block font-medium text-ink">{item.label}</span><span className="block text-[12px] text-muted">{item.state}</span></span><ArrowRight size={14} className="ml-auto shrink-0" /></Link></li>)}</ul>
     </Card>}
-    {!hasData ? <><Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card>{date && <DecisionCard date={date} />}</> : <>
+    {date ? <DecisionCard date={date} /> : <DecisionCard />}
+    {!hasData ? <><Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card></> : <>
       {!!o.alerts.length && <div className="flex flex-col gap-2" role="status">{o.alerts.map((a, i) => <div key={i} className="flex items-start gap-4 border-l-2 border-alert px-5 py-3 text-[13px]"><Badge tone={a.severity === "critical" || a.severity === "high" ? "alert" : "warning"}>{a.severity}</Badge><span>{a.message}</span></div>)}</div>}
       <section aria-label={t("refinement.recorded_signals")}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
         <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
       </section>
-      {date ? <DecisionCard date={date} /> : <DecisionCard />}
       <div className="grid gap-6 xl:grid-cols-[1fr_1.25fr]">
         <Card><CardHeader title={t("design.body_activity")} right={<More to="/app/biometrics?tab=body">{t("design.all_metrics")}</More>} />
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">{body.map((b) => <Link key={b.key} to={`/app/biometrics/${b.key}`}><StatPod label={t(METRIC_LABELS[b.key])} value={fmtNum(b.value, ["steps", "floors", "hydration"].includes(b.key) ? 0 : 1)} unit={b.unit} /></Link>)}</div>
