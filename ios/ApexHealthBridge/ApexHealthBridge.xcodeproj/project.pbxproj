@@ -1,0 +1,41 @@
+// !$*UTF8*$!
+{
+archiveVersion = 1;
+classes = {};
+objectVersion = 56;
+objects = {
+A89E5BEAB1838BDDE343103A = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/ApexHealthBridgeApp.swift"; sourceTree = "<group>"; };
+9C8FE7878210E0DC20AAB0BC = { isa = PBXBuildFile; fileRef = A89E5BEAB1838BDDE343103A; };
+0559CB7CDB944FE75D446A9B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/BridgeAPI.swift"; sourceTree = "<group>"; };
+D4D2DF5FCB3337A7DA3119AD = { isa = PBXBuildFile; fileRef = 0559CB7CDB944FE75D446A9B; };
+04B2AE5A793B490D91C26125 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/BridgeModel.swift"; sourceTree = "<group>"; };
+B283A76C41CC66E752122DD6 = { isa = PBXBuildFile; fileRef = 04B2AE5A793B490D91C26125; };
+4B194C292830C980543FD3CE = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/HealthKitReader.swift"; sourceTree = "<group>"; };
+584EC0549C6B76FB12D0B199 = { isa = PBXBuildFile; fileRef = 4B194C292830C980543FD3CE; };
+244E4FF29E1E3D30BF7DCE00 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/SecureStorage.swift"; sourceTree = "<group>"; };
+BA12338F29DDF8F9FBA8D236 = { isa = PBXBuildFile; fileRef = 244E4FF29E1E3D30BF7DCE00; };
+5D92EBC835ACCC9F7EF697A8 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/App/SyncCoordinator.swift"; sourceTree = "<group>"; };
+9442D89EDD7924062F8D2C2B = { isa = PBXBuildFile; fileRef = 5D92EBC835ACCC9F7EF697A8; };
+DD0FD5A8725F1D2CF30C574E = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Core/Contract.swift"; sourceTree = "<group>"; };
+5C9547A95006B56E56BF1A0B = { isa = PBXBuildFile; fileRef = DD0FD5A8725F1D2CF30C574E; };
+3984B7CBF2FDF5311B4A616D = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Core/SyncState.swift"; sourceTree = "<group>"; };
+A4940719F984A0A15B1C49BB = { isa = PBXBuildFile; fileRef = 3984B7CBF2FDF5311B4A616D; };
+A4CC6BC01A927E2A78FD3BEC = { isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+CE592D926B548708CFD0C61E = { isa = PBXBuildFile; fileRef = A4CC6BC01A927E2A78FD3BEC; };
+41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (CE592D926B548708CFD0C61E,); runOnlyForDeploymentPostprocessing = 0; };
+A8792157CB4F27FB949C035F = { isa = PBXFileReference; explicitFileType = wrapper.application; path = ApexHealthBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+0A3E27B8CA818264D75C8D81 = { isa = PBXGroup; children = (A8792157CB4F27FB949C035F,); name = Products; sourceTree = "<group>"; };
+AD936FCBED631FA67E05C3EA = { isa = PBXGroup; children = (A89E5BEAB1838BDDE343103A,0559CB7CDB944FE75D446A9B,04B2AE5A793B490D91C26125,4B194C292830C980543FD3CE,244E4FF29E1E3D30BF7DCE00,5D92EBC835ACCC9F7EF697A8,DD0FD5A8725F1D2CF30C574E,3984B7CBF2FDF5311B4A616D,A4CC6BC01A927E2A78FD3BEC,0A3E27B8CA818264D75C8D81,); sourceTree = "<group>"; };
+878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (9C8FE7878210E0DC20AAB0BC,D4D2DF5FCB3337A7DA3119AD,B283A76C41CC66E752122DD6,584EC0549C6B76FB12D0B199,BA12338F29DDF8F9FBA8D236,9442D89EDD7924062F8D2C2B,5C9547A95006B56E56BF1A0B,A4940719F984A0A15B1C49BB,); runOnlyForDeploymentPostprocessing = 0; };
+E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+B00CCDD09424E369308D67FA = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = "org.apexhealth.bridge"; INFOPLIST_FILE = "Info.plist"; CODE_SIGN_ENTITLEMENTS = "ApexHealthBridge.entitlements"; CODE_SIGN_STYLE = "Automatic"; DEVELOPMENT_TEAM = ""; SWIFT_VERSION = "5.0"; SWIFT_STRICT_CONCURRENCY = "targeted"; IPHONEOS_DEPLOYMENT_TARGET = "17.0"; TARGETED_DEVICE_FAMILY = "1"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SDKROOT = "iphoneos"; GENERATE_INFOPLIST_FILE = "NO"; ENABLE_USER_SCRIPT_SANDBOXING = "YES"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG"; ENABLE_TESTABILITY = "YES"; }; name = Debug; };
+73EBF6644258C120893E685D = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = "YES"; CLANG_ENABLE_OBJC_ARC = "YES"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = "dwarf"; }; name = Debug; };
+1B104479E55E37CF8A63CBDF = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = "org.apexhealth.bridge"; INFOPLIST_FILE = "Info.plist"; CODE_SIGN_ENTITLEMENTS = "ApexHealthBridge.entitlements"; CODE_SIGN_STYLE = "Automatic"; DEVELOPMENT_TEAM = ""; SWIFT_VERSION = "5.0"; SWIFT_STRICT_CONCURRENCY = "targeted"; IPHONEOS_DEPLOYMENT_TARGET = "17.0"; TARGETED_DEVICE_FAMILY = "1"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SDKROOT = "iphoneos"; GENERATE_INFOPLIST_FILE = "NO"; ENABLE_USER_SCRIPT_SANDBOXING = "YES"; }; name = Release; };
+0B0C687DF8B6B8DC790B519C = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = "YES"; CLANG_ENABLE_OBJC_ARC = "YES"; SWIFT_OPTIMIZATION_LEVEL = "-O"; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; }; name = Release; };
+7BCEE9A04133D8A2FED7D4D3 = { isa = XCConfigurationList; buildConfigurations = (B00CCDD09424E369308D67FA,1B104479E55E37CF8A63CBDF,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+B4E10CAA9C5E22150B71559C = { isa = XCConfigurationList; buildConfigurations = (73EBF6644258C120893E685D,0B0C687DF8B6B8DC790B519C,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+C1E9827DB735CA9BAA54A540 = { isa = PBXNativeTarget; buildConfigurationList = 7BCEE9A04133D8A2FED7D4D3; buildPhases = (878A52FC5FF6A57D50B7B870,E2AA269EB967A8853A258BFA,41D311A605520FC7B8B9A980,); buildRules = (); dependencies = (); name = ApexHealthBridge; productName = ApexHealthBridge; productReference = A8792157CB4F27FB949C035F; productType = "com.apple.product-type.application"; };
+244210E48437B6556980A702 = { isa = PBXProject; attributes = { LastUpgradeCheck = 1600; TargetAttributes = { C1E9827DB735CA9BAA54A540 = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = B4E10CAA9C5E22150B71559C; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = AD936FCBED631FA67E05C3EA; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = ""; targets = (C1E9827DB735CA9BAA54A540,); };
+};
+rootObject = 244210E48437B6556980A702;
+}

@@ -87,8 +87,10 @@ def _exempt(route) -> bool:
     # §17: /health + bootstrap/auth endpoints; the Technogym callback is a
     # provider browser redirect whose single-use `state` IS the credential
     # (documented in the handler) and it 400s without it.
+    # Native pairing exchange authenticates the one-use code, not a session.
+    # Its own security suite verifies missing, expired and consumed credentials.
     # Only deployment notice facts are public; no health/configuration secrets.
-    return path in {"/health", "/legal/config"} or path.startswith("/auth") or "callback" in path
+    return path in {"/health", "/legal/config", "/healthkit/exchange"} or path.startswith("/auth") or "callback" in path
 
 
 async def test_every_route_denies_unauthenticated_access(client: AsyncClient):

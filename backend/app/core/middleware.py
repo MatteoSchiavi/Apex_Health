@@ -74,6 +74,19 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if not _same_origin(request):
             return JSONResponse(status_code=403, content={"detail": "Cross-origin request rejected."})
+        # Native routes authenticate a separate scoped capability. Browser sessions
+        # cannot use this exemption, and no other write route accepts bearer auth.
+        if request.url.path in {"/healthkit/exchange", "/healthkit/deltas"}:
+            if request.cookies.get("hcc_session"):
+                return JSONResponse(status_code=403, content={"detail": "Native device authentication required."})
+            limit = 2 * 1024 * 1024
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > limit:
+                    return JSONResponse(status_code=413, content={"detail": "HealthKit batch too large."})
+            request._body = bytes(body)
+            return await call_next(request)
         if request.url.path in _EXEMPT_PATHS:
             return await call_next(request)
         header = request.headers.get(CSRF_HEADER, "")

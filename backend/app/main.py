@@ -3,14 +3,17 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from redis.exceptions import RedisError
 from starlette.responses import JSONResponse
 
 from app.api import (
     admin,
-    draft_edits,
     alpha,
+    draft_edits,
     sync_health,
+    healthkit,
     feedback,
     activities,
     apple_health,
@@ -62,6 +65,12 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="Health Control Center", lifespan=lifespan)
 
+    @app.exception_handler(RequestValidationError)
+    async def safe_native_validation(request, exc):
+        if request.url.path.startswith("/healthkit/"):
+            return JSONResponse(status_code=422, content={"detail": "Invalid HealthKit request."})
+        return await request_validation_exception_handler(request, exc)
+
     from app.services.evidence import EvidenceError
 
     @app.exception_handler(EvidenceError)
@@ -110,9 +119,10 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(admin.router)
-    app.include_router(draft_edits.router)
     app.include_router(alpha.router)
+    app.include_router(draft_edits.router)
     app.include_router(sync_health.router)
+    app.include_router(healthkit.router)
     app.include_router(feedback.router)
     app.include_router(health.router)
     app.include_router(auth.router)

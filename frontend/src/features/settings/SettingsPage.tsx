@@ -1,3 +1,4 @@
+import HealthKitPanel from "./HealthKitPanel";
 /**
  * Settings — personalization + account management hub (owner spec: "a good
  * settings page where personalization and settings management are easy").
@@ -877,7 +878,7 @@ export default function SettingsPage() {
       <div className="max-w-4xl">
         {tab === "profile" && <ProfileSection me={me} />}
         {tab === "appearance" && <div className="flex flex-col gap-6"><AppearanceSection /><InstallApp /></div>}
-        {tab === "devices" && <DevicesSection />}
+        {tab === "devices" && <div className="flex flex-col gap-6"><DevicesSection /><HealthKitPanel /></div>}
         {tab === "notifications" && <NotificationPreferences />}
         {tab === "data-health" && <DataHealthPage embedded />}
         {tab === "account" && (

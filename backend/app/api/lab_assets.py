@@ -18,7 +18,7 @@ from app.models.lab import LabDocument, Observation, ChangeAudit
 from app.models.training import PlannedSession, TrainingPlan
 from app.models.user import AuthCredential, User
 from app.schemas.changes import Strict, ApproveIn
-from app.services.evidence import digest, scope_lock, snapshot_revision
+from app.services.evidence import canonical, digest, scope_lock, snapshot_revision
 
 router = APIRouter(prefix="/lab", tags=["lab-assets"])
 
@@ -288,6 +288,11 @@ async def export_account(
                 )
             ).mappings()
         ]
+    # Active source samples are portable health data; security tokens, pairing
+    # hashes and delivery receipts are deliberately excluded from this export.
+    result["healthkit_samples"] = [dict(row) for row in (await session.execute(text(
+        "SELECT uuid,payload,received_at FROM healthkit_samples WHERE user_id=:owner AND NOT deleted ORDER BY uuid LIMIT 100000"
+    ), {"owner": user.id})).mappings()]
     # Chat messages have no user_id of their own. Restrict them through the
     # user's chat sessions rather than exposing another person's messages.
     for table, columns, owner_filter in (
@@ -411,12 +416,18 @@ SOURCES = {
     "technogym",
     "csv_import",
     "manual",
+    "apple_healthkit",
 }
 
 
 async def source_preview(session, user_id, source):
     if source not in SOURCES:
         raise HTTPException(422, "Unknown source")
+    if source == "apple_healthkit":
+        # Native ingestion takes these in this order. The lock covers both
+        # preview contents and the approved deletion, including absent rows.
+        await scope_lock(session, user_id, "changes")
+        await scope_lock(session, user_id, "apple_health_import")
     counts = {}
     for table, column in (
         ("lab_observations", "origin"),
@@ -430,11 +441,44 @@ async def source_preview(session, user_id, source):
             {"owner": user_id, "source": source},
         )
     revision = await snapshot_revision(session, user_id)
+    content_revision = None
+    scope = "Source observations/raw records and canonical activities linked to this source, including merged rows. Legacy wellness has no reliable per-source lineage and is erased for wearable sources. Cached analyses, chats and reports are erased. Disconnect pauses new imports; reconnecting can restore upstream data."
+    if source == "apple_healthkit":
+        for table, predicate in (
+            ("healthkit_samples", "user_id=:owner"),
+            ("healthkit_pairings", "user_id=:owner"),
+            ("healthkit_batches", "device_id IN (SELECT id FROM device_tokens WHERE user_id=:owner)"),
+            ("device_tokens", "user_id=:owner AND scope='healthkit_sync'"),
+        ):
+            counts[table] = await session.scalar(text(f"SELECT count(*) FROM {table} WHERE {predicate}"), {"owner": user_id})
+        counts["healthkit_active_samples"] = await session.scalar(text(
+            "SELECT count(*) FROM healthkit_samples WHERE user_id=:owner AND NOT deleted"
+        ), {"owner": user_id})
+        root = hashlib.sha256()
+        # Stream the ledger instead of materializing a multi-year payload list.
+        stream = await session.stream(text(
+            "SELECT uuid,payload,deleted,received_at FROM healthkit_samples WHERE user_id=:owner ORDER BY uuid"
+        ), {"owner": user_id})
+        async for row in stream.mappings():
+            root.update(canonical(dict(row)).encode())
+            root.update(b"\n")
+        for query in (
+            "SELECT id,sync_checkpoint,revoked_at,absolute_expires_at FROM device_tokens WHERE user_id=:owner AND scope='healthkit_sync' ORDER BY id",
+            "SELECT id,expires_at,consumed_at FROM healthkit_pairings WHERE user_id=:owner ORDER BY id",
+            "SELECT device_id,batch_id,content_hash,checkpoint FROM healthkit_batches WHERE device_id IN (SELECT id FROM device_tokens WHERE user_id=:owner) ORDER BY device_id,batch_id",
+        ):
+            rows = await session.stream(text(query), {"owner": user_id})
+            async for row in rows.mappings():
+                root.update(canonical(dict(row)).encode())
+                root.update(b"\n")
+        content_revision = root.hexdigest()
+        scope = "Revoke all Apple Health native tokens and pending pairings; erase this account's HealthKit UUID ledger, tombstones, batches, source observations and source-owned projections. Preserve other-provider activity links, fields and legacy wellness of unknown origin. Cached analyses, chats and reports are erased. Re-pairing can restore upstream data."
     return {
         "source": source,
         "counts": counts,
-        "scope": "Source observations/raw records and canonical activities linked to this source, including merged rows. Legacy wellness has no reliable per-source lineage and is erased for wearable sources. Cached analyses, chats and reports are erased. Disconnect pauses new imports; reconnecting can restore upstream data.",
-        "payload_hash": digest([user_id, source, counts, revision]),
+        "scope": scope,
+        "content_revision": content_revision,
+        "payload_hash": digest([user_id, source, counts, revision, content_revision]),
         "irreversible": True,
     }
 
@@ -476,18 +520,21 @@ async def erase_source(
     if preview["payload_hash"] != payload.payload_hash:
         raise HTTPException(409, "Source changed; review a fresh deletion preview")
     params = {"owner": user.id, "source": source}
+    if source == "apple_healthkit":
+        from app.services.healthkit_ingest import erase_healthkit_source
+        await erase_healthkit_source(session, user)
     ids = "SELECT activity_id FROM activity_source_links WHERE user_id=:owner AND source=:source"
     # Delete dependent canonical rows before source links, so provenance is never orphaned.
-    for table in (
+    for table in (() if source == "apple_healthkit" else (
         "activity_streams",
         "activity_laps",
         "activity_gear_links",
         "segment_efforts",
-    ):
+    )):
         await session.execute(
             text(f"DELETE FROM {table} WHERE activity_id IN ({ids})"), params
         )
-    activity_ids = list((await session.scalars(text(ids), params)).all())
+    activity_ids = [] if source == "apple_healthkit" else list((await session.scalars(text(ids), params)).all())
     if activity_ids:
         await session.execute(
             text(
