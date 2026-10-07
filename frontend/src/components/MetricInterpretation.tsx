@@ -39,8 +39,8 @@ export function PersonalRange({ trend, compact = false }: { trend: MetricTrend; 
       <span className={`absolute -top-1 h-3.5 w-0.5 ${state === "within" ? "bg-positiveText" : state === "above" && trend.metric === "spo2" ? "bg-ink2" : "bg-warningText"}`} style={{ left: `${position}%` }} />
     </div>
     {!compact && <>
-      <div className="mt-3 flex justify-between text-[11px] text-muted"><span>{t("metricView.below")}</span><span>{t("metricView.personal_range")}</span><span>{t("metricView.above")}</span></div>
-      <p className="mt-2 text-[12px] text-muted">{t("metricView.range_note", { low: fmtNum(low, 1), high: fmtNum(high, 1), unit: trend.unit, count: ref.sample_count })}</p>
+      <div className="mt-3 flex justify-between text-[12px] text-muted"><span>{t("metricView.below")}</span><span>{t("metricView.personal_range")}</span><span>{t("metricView.above")}</span></div>
+      <p className="mt-2 text-[12px] text-muted">{t(trend.metric === "hrv_ms" ? "metricView.hrv_range_note" : "metricView.range_note", { low: fmtNum(low, 1), high: fmtNum(high, 1), unit: trend.unit, count: ref.sample_count })}</p>
     </>}
   </div>;
 }

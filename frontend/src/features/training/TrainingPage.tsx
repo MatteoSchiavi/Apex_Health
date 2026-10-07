@@ -14,7 +14,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "../../app/api";
+import { api, type Overview } from "../../app/api";
 import {
   Badge,
   Button,
@@ -246,6 +246,16 @@ function EventCalendar() {
 function LoadChart() {
   const { t } = useTranslation();
   const [metric, setMetric] = useState("acute_load");
+  const overview = useQuery({
+    queryKey: ["overview", "latest"],
+    queryFn: () => api.get<Overview>("/dashboard/overview"),
+  });
+  const load = overview.data?.load_metadata;
+  const method = load?.method === "garmin_recorded"
+    ? t("training.load_garmin")
+    : load?.method === "edwards_trimp"
+      ? t("training.load_edwards")
+      : t("training.load_method_unavailable");
   const query = useQuery({
     queryKey: ["metric", metric, 56],
     queryFn: () =>
@@ -267,7 +277,7 @@ function LoadChart() {
         ]}
       />
       <p className="mt-4 text-[12px] text-muted">
-        {metric === "acwr" ? t("design.ratio") : t("lab.legacy_load_unit")} · {t("design.days56")}
+        {metric === "acwr" ? t("design.ratio") : t("training.load_week_unit")} · {t("design.days56")}
       </p>
       {query.isLoading ? (
         <Loading />
@@ -279,9 +289,19 @@ function LoadChart() {
           start={query.data?.start_date}
           end={query.data?.end_date}
           label={t("training.load_chart")}
-          unit={metric === "acwr" ? t("design.ratio") : t("lab.legacy_load_unit")}
+          unit={metric === "acwr" ? t("design.ratio") : t("training.load_week_unit")}
           height={280}
         />
+      )}
+      {load && (
+        <p className="mt-4 text-sm text-muted">
+          {t("training.load_provenance", {
+            method,
+            unit: load.method === "garmin_recorded" ? t("training.load_unit_garmin") : load.unit,
+            included: load.included_sessions,
+            excluded: load.excluded_sessions,
+          })}
+        </p>
       )}
       <p className="mt-4 text-[12px] text-muted">{t("design.load_note")}</p>
     </Card>

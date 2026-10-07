@@ -78,6 +78,8 @@ class AuthCredential(Base):
     share_segments: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_login_count: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, default=0, server_default="0"
     )

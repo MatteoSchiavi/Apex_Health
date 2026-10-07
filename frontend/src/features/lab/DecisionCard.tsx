@@ -13,9 +13,9 @@ import {
 } from "../../components/kit";
 import type { Decision } from "./types";
 import { useAction, useLab, useToday, Form, Field, num, str } from "./shared";
-export function DecisionCard() {
+export function DecisionCard({ date }: { date?: string } = {}) {
   const { t } = useTranslation();
-  const q = useLab<Decision>("/lab/decision");
+  const q = useLab<Decision | null>("/lab/decision" + (date ? `?day=${encodeURIComponent(date)}` : ""));
   const save = useAction();
   const today = useToday();
   if (q.isLoading)
@@ -28,7 +28,7 @@ export function DecisionCard() {
     return (
       <Card>
         <CardHeader title={t("lab.daily_decision")} />
-        <ErrorNote />
+        {q.isError ? <ErrorNote /> : <p className="text-[13px] text-muted">{t("lab.no_historical_decision", { date })}</p>}
       </Card>
     );
   const d = q.data;
@@ -41,7 +41,7 @@ export function DecisionCard() {
   return (
     <Card className="!p-6 md:!p-8">
       <CardHeader
-        eyebrow="APEX / TODAY"
+        eyebrow={date ? `${t("lab.historical_decision")} / ${date}` : "APEX / TODAY"}
         title={t("lab.daily_decision")}
         right={<Badge tone={tone}>{t("lab.actions." + d.action)}</Badge>}
       />
@@ -61,12 +61,13 @@ export function DecisionCard() {
               <li key={r}>{r}</li>
             ))}
           </ul>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             {["accepted", "modified", "rejected", "snoozed"].map((state) => (
               <Button
                 key={state}
                 variant="ghost"
                 disabled={save.isPending || d.outcome?.state === state}
+                className="min-h-11 w-full sm:w-auto"
                 onClick={() =>
                   save.mutate({
                     path: `/lab/decision/${d.id}/outcome`,

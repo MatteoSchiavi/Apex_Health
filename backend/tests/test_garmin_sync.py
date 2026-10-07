@@ -355,6 +355,16 @@ async def test_malformed_payload_stays_unprocessed_others_normalize(db_session):
     )
     assert report is not None
     assert report.raw_rows_unprocessed == 1
+    assert report.state == "partial"
+    assert report.normalized_raw_rows > 0
+    assert integration.last_synced_at == SYNC_NOW
+    assert integration.consecutive_failures == 0
+    from app.models.lab import FeedState
+    state = await db_session.scalar(select(FeedState).where(
+        FeedState.user_id == user.id, FeedState.feed == "normalization"
+    ))
+    assert state.availability == "partial"
+    assert state.details["pending_error_count"] == 1
     assert report.stats is not None
     # every non-malformed payload still normalized
     assert report.stats.activities_upserted == 4

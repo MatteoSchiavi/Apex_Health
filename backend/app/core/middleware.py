@@ -7,6 +7,10 @@ also require a matching signed token bound to the current session cookie.
 import hashlib
 import hmac
 import secrets
+import base64
+from pathlib import Path
+import os
+import re
 from urllib.parse import urlsplit
 
 from app.core.config import get_settings
@@ -141,3 +145,57 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
                     if real_ip:
                         request.scope["client"] = (real_ip, 0)
         return await call_next(request)
+
+
+class SecurityHeadersMiddleware:
+    """Security headers for the single API/SPA server, including errors.
+
+    Hash the shipped first-paint script instead of allowing arbitrary inline
+    scripts. HSTS is emitted only on HTTPS (after trusted proxy resolution).
+    """
+
+    def __init__(self, app):
+        self.app = app
+        repo = Path(__file__).resolve().parents[3]
+        dist = Path(os.environ.get("SPA_DIST_DIR") or repo / "frontend" / "dist")
+        hashes = set()
+        for path in (dist / "index.html", repo / "frontend" / "index.html"):
+            if path.is_file():
+                for attrs, script in re.findall(r"<script\b([^>]*)>(.*?)</script>", path.read_text(), re.S):
+                    if not re.search(r"\bsrc\s*=", attrs) and script.strip():
+                        hashes.add("'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'")
+        self.csp = (
+            "default-src 'self'; script-src 'self' " + " ".join(sorted(hashes)) + "; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org; "
+            "font-src 'self' data:; connect-src 'self'; worker-src 'self'; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        )
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start":
+                from starlette.datastructures import MutableHeaders
+                headers = MutableHeaders(scope=message)
+                headers["X-Frame-Options"] = "DENY"
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                headers["Content-Security-Policy"] = self.csp
+                headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=(self)"
+                if scope.get("scheme") == "https":
+                    headers["Strict-Transport-Security"] = "max-age=31536000"
+                if (
+                    "application/json" in headers.get("content-type", "")
+                    or scope.get("path", "").startswith((
+                        "/api/", "/app", "/admin", "/me", "/auth", "/coach",
+                        "/lab", "/dashboard", "/activities", "/metrics", "/sleep",
+                        "/settings", "/imports", "/integrations", "/gym", "/events",
+                        "/schedule", "/gear", "/watch", "/challenges", "/leaderboard",
+                    ))
+                ):
+                    headers["Cache-Control"] = "no-store"
+            await send(message)
+
+        await self.app(scope, receive, with_headers)

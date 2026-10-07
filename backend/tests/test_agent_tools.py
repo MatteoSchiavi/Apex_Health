@@ -10,6 +10,7 @@ from app.models.training import TrainingPlan
 from app.services.evidence import EvidenceError
 
 EXPECTED_TOOLS = {
+    "data_get_recovery_summary": "read",
     "data_get_coverage": "read",
     "data_query": "read",
     "data_get_evidence": "read",
@@ -25,7 +26,7 @@ EXPECTED_TOOLS = {
 
 def test_registry_has_no_approval_execution_or_arbitrary_code():
     assert {k: v.kind for k, v in TOOL_REGISTRY.items()} == EXPECTED_TOOLS
-    assert len(tool_schemas()) == 10
+    assert len(tool_schemas()) == 11
     for spec in TOOL_REGISTRY.values():
         assert spec.parameters["additionalProperties"] is False
     with pytest.raises(ValidationError):

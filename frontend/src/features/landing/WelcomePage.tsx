@@ -1,4 +1,4 @@
-import { ArrowRight, Database, FlaskConical, ShieldCheck } from "lucide-react";
+import { ArrowRight, Database, FlaskConical, ShieldCheck, Moon, Activity, HeartPulse } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "../../components/layout/AppShell";
@@ -73,7 +73,15 @@ export default function WelcomePage() {
           </div>
 
           <aside className="border-t border-hairline bg-surface lg:border-l lg:border-t-0">
-            <div className="grid h-full content-center divide-y divide-hairline px-5 sm:px-8 lg:px-10">
+            <div className="grid h-full content-center px-5 py-10 sm:px-8 lg:px-10">
+              <section className="mb-8 border border-hairline bg-bg p-4 sm:p-5" aria-label={t("landing.preview_label")}>
+                <div className="flex items-center justify-between border-b border-hairline pb-3"><span className="eyebrow">{t("landing.preview_title")}</span><span className="text-[11px] text-faint">{t("landing.preview_example")}</span></div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {[{ icon: HeartPulse, label: t("landing.preview_recovery"), value: "—" }, { icon: Moon, label: t("landing.preview_sleep"), value: "—" }, { icon: Activity, label: t("landing.preview_load"), value: "—" }].map(({ icon: Icon, label, value }) => <div key={label} className="min-w-0 border border-hairline p-2"><div className="flex items-center gap-1.5 text-faint"><Icon size={13} aria-hidden="true"/><span className="truncate text-[11px]">{label}</span></div><div className="num mt-3 text-[20px]">{value}</div></div>)}
+                </div>
+                <div className="mt-3 flex items-center gap-3 border-t border-hairline pt-3"><span className="h-2 w-2 rounded-full bg-warningText"/><span className="text-[12px] text-muted">{t("landing.preview_empty")}</span></div>
+              </section>
+              <div className="divide-y divide-hairline">
               {principles.map(({ icon: Icon, key }, index) => (
                 <article key={key} className="py-7 first:pt-0 last:pb-0">
                   <div className="mb-4 flex items-center justify-between">
@@ -90,6 +98,7 @@ export default function WelcomePage() {
                   </p>
                 </article>
               ))}
+              </div>
             </div>
           </aside>
         </section>

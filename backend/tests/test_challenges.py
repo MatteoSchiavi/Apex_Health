@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.models.activity import Activity, Discipline
 from app.models.challenge import Challenge, ChallengeMember
-from app.models.user import User
+from app.models.user import User, AuthCredential
 from app.models.wellness import DailyBiometric, SleepSession
 from app.queries.rankings import compute_metric, global_records, leaderboard
 from tests.conftest import csrf_headers
@@ -33,6 +33,8 @@ async def _make_user(db_session, name: str, seed: bool = True) -> User:
     user = User(name=name)
     db_session.add(user)
     await db_session.flush()
+    db_session.add(AuthCredential(user_id=user.id, email=f"challenge-{user.id}@example.test",
+                                  password_hash="test-only-unused-hash", role="friend", disabled=False))
     if seed:
         # two activities: a 5k run (1500s) and a 60min ride at 130 bpm
         run_discipline = (
@@ -200,8 +202,30 @@ async def test_challenge_api_rejects_unknown_metric(client: AsyncClient):
 async def test_rankings_endpoint_global_records(client: AsyncClient, db_session):
     await _make_user(db_session, "records-athlete")
     await _login(client)
-    resp = await client.get("/rankings", params={"metric": "distance_m"})
+    resp = await client.get("/rankings", params={"metric": "distance_m", "period": "all_time"})
     assert resp.status_code == 200
     entries = resp.json()
     assert entries and entries[0]["rank"] == 1
     assert entries[0]["value"] == 5010 + 28000
+
+
+async def test_weekly_monthly_rankings_exclude_lifetime_and_ghosts(db_session):
+    athlete = await _make_user(db_session, "period-athlete", seed=False)
+    ghost = User(name="ghost-account")
+    db_session.add(ghost)
+    await db_session.flush()
+    db_session.add_all([
+        DailyBiometric(user_id=athlete.id, date=date(2026, 8, 1), steps=4_000_000),
+        DailyBiometric(user_id=athlete.id, date=date(2026, 9, 20), steps=5000),
+        DailyBiometric(user_id=athlete.id, date=date(2026, 9, 21), steps=7000),
+        DailyBiometric(user_id=athlete.id, date=date(2026, 9, 22), steps=3000),
+        DailyBiometric(user_id=ghost.id, date=date(2026, 9, 22), steps=99999),
+    ])
+    await db_session.commit()
+    weekly = await global_records(db_session, "steps", period="weekly", now=NOW)
+    monthly = await global_records(db_session, "steps", period="monthly", now=NOW)
+    lifetime = await global_records(db_session, "steps", period="all_time", now=NOW)
+    assert [(r["user_id"], r["value"]) for r in weekly] == [(athlete.id, 10000)]
+    assert monthly[0]["value"] == 15000
+    assert lifetime[0]["value"] == 4_015_000
+    assert all(r["user_id"] != ghost.id for r in lifetime)

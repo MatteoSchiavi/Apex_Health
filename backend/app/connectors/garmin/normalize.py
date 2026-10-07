@@ -56,6 +56,7 @@ from app.connectors.validation import (
     valid_weight_kg,
 )
 from app.gear.service import auto_link_gear
+from app.services.sleep_summary import awake_seconds
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream
 from app.models.integration import RawIngest
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession, StressReading
@@ -203,7 +204,9 @@ async def _upsert_activity(
     local_date = local_start.date()  # §17: local calendar day of the start
     tz_offset_minutes = round((local_start.utcoffset() or timedelta(0)).total_seconds() / 60)
 
-    type_key = (payload.get("activityType") or {}).get("typeKey")
+    activity_type = payload.get("activityType") or {}
+    type_key = activity_type.get("typeKey") if isinstance(activity_type, dict) else activity_type
+    type_key = type_key or payload.get("sub_sport_type") or payload.get("sport_type")
     discipline_id, source = resolve_type_key(type_key, discipline_index)
     if source == "fallback":
         stats.discipline_fallbacks.append(f"{external_id}:{type_key!r}")
@@ -298,6 +301,10 @@ async def _upsert_activity(
     source_metrics = dict(activity.source_metrics or {})
     garmin_metrics = dict(source_metrics.get("garmin") or {})
     garmin_metrics["type_key"] = type_key
+    if (recorded_load := _num(payload.get("activityTrainingLoad"))) is not None:
+        garmin_metrics["training_load"] = recorded_load
+        garmin_metrics["training_load_method"] = "garmin_activity_training_load"
+        garmin_metrics["training_load_unit"] = "Garmin load"
     # Preserve recorded provider summary fields in their original units. The
     # presentation layer only displays a sport-specific field when it exists.
     for upstream, canonical in (("averageSpeed", "avg_speed_m_s"), ("maxSpeed", "max_speed_m_s")):
@@ -439,7 +446,11 @@ async def _upsert_sleep(
         deep_s=_int_or_none(dto.get("deepSleepSeconds")),
         light_s=_int_or_none(dto.get("lightSleepSeconds")),
         rem_s=_int_or_none(dto.get("remSleepSeconds")),
-        awake_s=_int_or_none(dto.get("awakeSleepSeconds")),
+        awake_s=(
+            awake_seconds(payload, start, end)
+            if dto.get("awakeSleepSeconds") in (None, 0) and awake_seconds(payload, start, end) is not None
+            else _int_or_none(dto.get("awakeSleepSeconds"))
+        ),
         sleep_score=valid_sleep_score(score),
         respiration_avg=valid_respiration_bpm(dto.get("avgRespirationValue")),
         spo2_avg=valid_spo2_pct(dto.get("avgSpO2Value")),
@@ -455,7 +466,8 @@ async def _upsert_sleep(
         session.add(SleepSession(**values))
     else:
         for key, val in values.items():
-            setattr(existing, key, val)
+            if val is not None:
+                setattr(existing, key, val)
     stats.sleep_upserted += 1
 
 

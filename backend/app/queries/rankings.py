@@ -6,14 +6,14 @@ All metric semantics are documented inline; ordering: lowest for times
 (5k), highest for everything else.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.activity import Activity
+from app.models.activity import Activity, Discipline
 from app.models.challenge import Challenge, ChallengeMember
-from app.models.user import User
+from app.models.user import User, AuthCredential
 from app.models.wellness import DailyBiometric, SleepSession
 
 METRICS = {
@@ -45,22 +45,30 @@ def period_window(
         start = (now - timedelta(days=now.weekday())).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-        return start, None
+        return start, now
     if challenge.period == "monthly":
         start = now.replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
         )
-        return start, None
+        return start, now
     return challenge.starts_at, challenge.ends_at
 
 
 async def _member_ids(session: AsyncSession, challenge_id: int) -> list[int]:
     rows = await session.scalars(
-        select(ChallengeMember.user_id).where(
-            ChallengeMember.challenge_id == challenge_id
-        )
+        select(ChallengeMember.user_id)
+        .join(AuthCredential, AuthCredential.user_id == ChallengeMember.user_id)
+        .where(ChallengeMember.challenge_id == challenge_id, AuthCredential.disabled.is_(False))
     )
     return list(rows.all())
+
+
+def _exclusive_end_day(end):
+    # Daily aggregates observed today belong to a period ending mid-day now.
+    # A configured midnight boundary stays exclusive.
+    if isinstance(end, datetime):
+        return end.date() + (timedelta(days=1) if any((end.hour, end.minute, end.second, end.microsecond)) else timedelta())
+    return end
 
 
 async def compute_metric(
@@ -126,7 +134,7 @@ async def compute_metric(
         if start:
             q = q.where(DailyBiometric.date >= start.date() if isinstance(start, datetime) else start)
         if end:
-            q = q.where(DailyBiometric.date < end.date() if isinstance(end, datetime) else end)
+            q = q.where(DailyBiometric.date < _exclusive_end_day(end))
         value = await session.scalar(q)
         return float(value or 0)
 
@@ -138,14 +146,16 @@ async def compute_metric(
         if start:
             q = q.where(SleepSession.local_date >= start.date())
         if end:
-            q = q.where(SleepSession.local_date < end.date())
+            q = q.where(SleepSession.local_date < _exclusive_end_day(end))
         value = await session.scalar(q)
         return float(value) if value is not None else None
 
     if metric == "5k_time_s":
         q = (
             select(Activity.duration_s)
+            .join(Discipline, Discipline.id == Activity.discipline_id)
             .where(
+                Discipline.name == "running",
                 Activity.user_id == user_id,
                 Activity.distance_m.is_not(None),
                 Activity.distance_m >= _FIVE_K_LOW_M,
@@ -157,6 +167,8 @@ async def compute_metric(
         )
         if start:
             q = q.where(Activity.start_time >= start)  # type: ignore[call-arg]
+        if end:
+            q = q.where(Activity.start_time < end)
         best = await session.scalar(q)
         return float(best) if best else None
 
@@ -177,6 +189,8 @@ async def leaderboard(
         value = await compute_metric(
             session, user_id, challenge.metric, start=start, end=end
         )
+        if user is None or not user.name or not user.name.strip() or value is None:
+            continue
         entries.append(
             {
                 "user_id": user_id,
@@ -184,13 +198,7 @@ async def leaderboard(
                 "value": value,
             }
         )
-    entries.sort(
-        key=lambda e: (
-            e["value"] is None,  # users without data rank last
-            e["value"] if e["value"] is not None else 0,
-        ),
-        reverse=challenge.metric not in _SORT_ASC,
-    )
+    entries.sort(key=lambda e: e["value"], reverse=challenge.metric not in _SORT_ASC)
     for rank, entry in enumerate(entries, start=1):
         entry["rank"] = rank if entry["value"] is not None else None
     return {
@@ -203,16 +211,25 @@ async def leaderboard(
 
 
 async def global_records(
-    session: AsyncSession, metric: str, *, limit: int = 10
+    session: AsyncSession, metric: str, *, limit: int = 10,
+    period: str = "all_time", now: datetime | None = None
 ) -> list[dict]:
     """All-time leaderboard across ALL accounts (the 'who holds the record'
     surface — independent of any challenge)."""
-    rows = await session.scalars(select(User.id).order_by(User.id))
+    now = now or datetime.now(UTC)
+    start, end = (None, None)
+    if period != "all_time":
+        start, end = period_window(Challenge(period=period), now)
+    rows = await session.scalars(
+        select(User.id).join(AuthCredential, AuthCredential.user_id == User.id)
+        .where(AuthCredential.disabled.is_(False), func.length(func.trim(User.name)) > 0)
+        .order_by(User.id)
+    )
     entries = []
     for user_id in rows.all():
         user = await session.get(User, user_id)
-        v = await compute_metric(session, user_id, metric, start=None, end=None)
-        if v is not None:
+        v = await compute_metric(session, user_id, metric, start=start, end=end)
+        if v is not None and v > 0:
             entries.append(
                 {
                     "user_id": user_id,

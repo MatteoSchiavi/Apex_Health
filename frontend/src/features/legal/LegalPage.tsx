@@ -58,6 +58,7 @@ function Privacy({ config }: { config?: LegalConfig }) {
       </Section>
       <Section name="recipients">
         <p>{t("legal.recipients.body")}</p>
+        <p>{t("legal.recipients.telegram")}</p>
         <p>{t("legal.recipients.ai")} <Value value={config?.ai_processor} /></p>
         <p>{t("legal.recipients.hosting")} <Value value={config?.hosting_region} /></p>
         <p>{t("legal.recipients.backup")} <Value value={config?.backup_location} /></p>

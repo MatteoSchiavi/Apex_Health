@@ -28,12 +28,15 @@ import {
   Trophy,
   Users,
   X,
+  ShieldCheck,
+  MoreHorizontal,
 } from "lucide-react";
 import { api, type DeviceOut } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { useLab } from "../../features/lab/shared";
 import { ErrorNote, timeAgo } from "../kit";
 import { NotificationPopover, type NotificationsData } from "../../features/lab/NotificationsPage";
+import { FeedbackButton } from "../../features/feedback/FeedbackDialog";
 
 const NAV = [
   { to: "/app", icon: Activity, key: "nav.overview", end: true },
@@ -179,6 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [search, setSearch] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const notificationRoot = useRef<HTMLDivElement>(null);
   const notificationButton = useRef<HTMLButtonElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -193,6 +197,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     refetchInterval: 120_000,
   });
   const searchOpener = useRef<HTMLElement | null>(null);
+  const mobileMoreButton = useRef<HTMLButtonElement>(null);
   const latestSync = (devices.data ?? [])
     .map((d) => d.last_synced_at)
     .filter((v): v is string => !!v)
@@ -240,13 +245,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [sidebarCollapsed]);
   useEffect(() => {
     setNotificationsOpen(false);
+    setMobileMoreOpen(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   const closeSearch = useCallback(() => setSearch(false), []);
   const current =
     NAV.find((n) =>
       n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),
-    ) ?? NAV[0];
+    ) ?? (location.pathname === "/admin" ? { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true } : NAV[0]);
+  const visibleNav = me?.role === "owner" ? [...NAV, { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true }] : NAV;
+  const mobilePrimary = visibleNav.filter((n) => ["/app", "/app/biometrics", "/app/activities", "/app/sleep"].includes(n.to));
+  const mobileMore = visibleNav.filter((n) => !mobilePrimary.includes(n));
+  const mobileMoreActive = mobileMore.some((n) => location.pathname === n.to || location.pathname.startsWith(`${n.to}/`));
   async function logout() {
     try {
       await api.post("/auth/logout");
@@ -289,7 +299,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           aria-label={t("design.navigation")}
           className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
         >
-          {NAV.map(({ to, icon: Icon, key, end }) => (
+          {visibleNav.map(({ to, icon: Icon, key, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -350,6 +360,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {t(current.key)}
           </div>
           <div className="flex items-center gap-4">
+            <FeedbackButton />
             <span className="hidden text-[13px] text-muted md:inline">
               {new Date().toLocaleDateString(undefined, {
                 weekday: "short",
@@ -384,42 +395,25 @@ export function AppShell({ children }: { children: ReactNode }) {
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
             <button
+              className="hidden items-center gap-3 p-2 text-muted hover:text-ink md:flex"
               aria-label={t("search.placeholder")}
               onClick={(e) => {
                 searchOpener.current = e.currentTarget;
                 setSearch(true);
               }}
-              className="flex items-center gap-3 p-2 text-muted hover:text-ink"
             >
               <Search size={18} />
               <span className="hidden text-[12px] xl:inline">⌘ K</span>
             </button>
           </div>
         </header>
-        <nav
-          aria-label={t("design.navigation")}
-          className="flex gap-6 overflow-x-auto border-b border-hairline px-5 lg:hidden"
-        >
-          {NAV.map((n) => (
-            <NavLink
-              to={n.to}
-              end={n.end}
-              key={n.to}
-              className={({ isActive }) =>
-                "shrink-0 border-b-2 py-4 text-[13px] " +
-                (isActive
-                  ? "border-ink font-semibold text-ink"
-                  : "border-transparent text-muted")
-              }
-            >
-              {t(n.key)}
-            </NavLink>
-          ))}
+        <nav aria-label={t("design.navigation")} className="hidden gap-6 overflow-x-auto border-b border-hairline px-5 md:flex lg:hidden">
+          {visibleNav.map((n) => <NavLink to={n.to} end={n.end} key={n.to} className={({ isActive }) => "shrink-0 border-b-2 py-4 text-[13px] " + (isActive ? "border-ink font-semibold text-ink" : "border-transparent text-muted")}>{t(n.key)}</NavLink>)}
         </nav>
         <main
           id="main"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1600px] px-5 py-8 focus:outline-none md:px-8 lg:px-10 lg:py-10"
+          className="mx-auto w-full max-w-[1600px] px-5 py-8 pb-24 focus:outline-none md:px-8 md:pb-8 lg:px-10 lg:py-10"
         >
           {preferenceError && (
             <div className="mb-5">
@@ -434,6 +428,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             {t("auth.logout")}
           </button>
         </footer>
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+          {mobileMoreOpen && <nav aria-label={t("admin.more_navigation")} className="absolute bottom-full right-3 mb-2 flex max-h-[65dvh] w-64 flex-col overflow-y-auto border border-hairline bg-surface p-2 shadow-xl">
+            {mobileMore.map(({ to, icon: Icon, key, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex items-center gap-3 px-3 py-3 text-sm ${isActive ? "bg-ink text-canvas" : "text-muted hover:bg-surface2"}`}><Icon size={17} aria-hidden="true" />{t(key)}</NavLink>)}
+            <button type="button" onClick={() => { searchOpener.current = mobileMoreButton.current; setMobileMoreOpen(false); setSearch(true); }} className="flex items-center gap-3 px-3 py-3 text-left text-sm text-muted hover:bg-surface2"><Search size={17} aria-hidden="true" />{t("search.placeholder")}</button>
+            <button type="button" onClick={logout} className="border-t border-hairline px-3 py-3 text-left text-sm text-muted">{t("auth.logout")}</button>
+          </nav>}
+          <nav aria-label={t("design.navigation")} className="mx-auto grid max-w-xl grid-cols-5">
+            {mobilePrimary.map(({ to, icon: Icon, key, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${isActive ? "text-ink" : "text-muted"}`}><Icon size={18} aria-hidden="true" /><span>{t(key)}</span></NavLink>)}
+            <button ref={mobileMoreButton} type="button" aria-label={t("admin.more_navigation")} aria-expanded={mobileMoreOpen} aria-haspopup="true" onClick={() => setMobileMoreOpen((open) => !open)} className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${mobileMoreActive || mobileMoreOpen ? "text-ink" : "text-muted"}`}><MoreHorizontal size={18} aria-hidden="true" /><span>{t("admin.more_navigation")}</span></button>
+          </nav>
+        </div>
       </div>
     </div>
   );

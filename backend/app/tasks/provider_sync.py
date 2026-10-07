@@ -89,9 +89,9 @@ async def _sync_account(provider: str, user_id: int) -> dict:
                     await close()
         if report is None:
             raise SyncTaskError("Provider sync failed; retrying may recover it")
-        return {"status": "partial" if report.raw_rows_unprocessed else "ok",
+        return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) else "ok",
                 "mode": report.mode, "raw_stored": report.raw_rows_stored,
-                "unprocessed": report.raw_rows_unprocessed}
+                "unprocessed": getattr(report, "raw_rows_unprocessed", 0)}
 
 
 async def enqueue_active(provider: str) -> dict:
@@ -112,5 +112,14 @@ def register_tasks(provider: str):
     @celery_app.task(name=f"{provider}.sync_user", autoretry_for=(SyncTaskError,),
                      retry_backoff=60, retry_backoff_max=600, retry_jitter=True, max_retries=3)
     def sync_user(user_id: int):
-        return run_async(sync_account(provider, user_id))
+        try:
+            return run_async(sync_account(provider, user_id))
+        except Exception as exc:
+            if not isinstance(exc, SyncTaskError) or sync_user.request.retries >= 3:
+                from app.services.owner_notifications import critical_connector_error
+                try:
+                    run_async(critical_connector_error(provider, user_id))
+                except Exception:
+                    pass
+            raise
     return sync_all, sync_user

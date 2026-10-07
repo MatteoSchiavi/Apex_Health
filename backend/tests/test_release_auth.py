@@ -111,7 +111,7 @@ async def test_remembered_login_has_bounded_persistent_cookie_and_session(client
     ))
     assert row is not None
     assert row.remember_me is True
-    assert row.absolute_expires_at == row.expires_at
+    assert row.absolute_expires_at > row.expires_at
     fixed_expiry = row.expires_at
 
     renewed = await client.get("/me")
@@ -128,6 +128,31 @@ async def test_remembered_login_has_bounded_persistent_cookie_and_session(client
     assert "Max-Age=" in renewed_csrf_cookie
     await db_session.refresh(row)
     assert row.expires_at == fixed_expiry
+
+
+async def test_remembered_session_renews_after_activity_and_stops_at_absolute_cap(client, db_session):
+    await reset_owner_auth_state(db_session)
+    login = await client.post('/auth/login', json={
+        'email':os.environ['OWNER_EMAIL'], 'password':os.environ['OWNER_PASSWORD'], 'remember_me':True,
+    })
+    row = await db_session.scalar(select(UserSession).where(
+        UserSession.token_hash == hash_session_token(login.cookies['hcc_session'],get_settings().session_secret),
+    ))
+    now = datetime.now(UTC)
+    row.expires_at = now + timedelta(days=20)
+    absolute = row.absolute_expires_at
+    await db_session.commit()
+    response = await client.get('/me')
+    assert response.status_code == 200 and response.json()['is_owner'] is True
+    await db_session.refresh(row)
+    assert row.expires_at > now + timedelta(days=29)
+    assert row.absolute_expires_at == absolute
+    row.expires_at = now + timedelta(days=2)
+    row.absolute_expires_at = now + timedelta(days=3)
+    await db_session.commit()
+    assert (await client.get('/me')).status_code == 200
+    await db_session.refresh(row)
+    assert row.expires_at == row.absolute_expires_at
 
 
 async def test_nonremembered_session_stays_session_cookie_at_absolute_cap(client, db_session):

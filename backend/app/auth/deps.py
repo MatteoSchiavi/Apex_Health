@@ -38,8 +38,8 @@ async def get_current_session(
         # without ever extending it beyond the row's absolute lifetime.
         cookie_options: dict[str, int] = {}
         max_age = None
-        # Keep remembered browser cookies synchronized with the session's
-        # fixed server expiry. Ordinary logins remain browser-session cookies.
+        # Keep remembered cookies synchronized with the renewed server expiry.
+        # Ordinary logins remain browser-session cookies.
         if resolved[1].remember_me:
             max_age = max(
                 0, int((resolved[1].expires_at - datetime.now(UTC)).total_seconds())

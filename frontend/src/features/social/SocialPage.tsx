@@ -45,7 +45,7 @@ const METRICS: {
     unit: "min",
   },
   { key: "sleep_score_avg", labelKey: "social.metric_sleep", unit: "/100" },
-  { key: "training_load_sum", labelKey: "social.metric_load", unit: "TSS" },
+  { key: "training_load_sum", labelKey: "social.metric_load", unit: "" },
 ];
 
 function fmtValue(metric: string, v: number | null): string {
@@ -61,7 +61,7 @@ function fmtValue(metric: string, v: number | null): string {
 
 interface RankingRow {
   user_id: number;
-  name: string;
+  display_name: string;
   value: number | null;
 }
 
@@ -69,11 +69,12 @@ function Rankings() {
   const { t } = useTranslation();
   const me = useUi((s) => s.me);
   const [metric, setMetric] = useState("steps");
+  const [period, setPeriod] = useState("weekly");
   const meta = METRICS.find((m) => m.key === metric)!;
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["rankings", metric],
-    queryFn: () => api.get<RankingRow[]>(`/rankings?metric=${metric}`),
+    queryKey: ["rankings", metric, period],
+    queryFn: () => api.get<RankingRow[]>(`/rankings?metric=${metric}&period=${period}`),
   });
 
   return (
@@ -94,6 +95,21 @@ function Rankings() {
           </select>
         }
       />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <label className="text-sm text-muted">
+          {t("social.period")}
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            className="ml-2 h-10 rounded-control border border-hairline bg-surface2 px-3 text-sm text-ink"
+          >
+            {["weekly", "monthly", "all_time"].map((option) => (
+              <option key={option} value={option}>{t(`social.${option}`)}</option>
+            ))}
+          </select>
+        </label>
+        <span className="text-xs text-muted">{t("social.period_utc")}</span>
+      </div>
       {isLoading ? (
         <Loading />
       ) : isError ? (
@@ -119,7 +135,7 @@ function Rankings() {
               >
                 <td className="py-2 pr-3 font-bold text-muted">{i + 1}</td>
                 <td className="py-2 pr-3 font-medium text-ink">
-                  {r.name}
+                  {r.display_name}
                   {r.user_id === me?.user_id && (
                     <span className="ml-2">
                       <Badge tone="primary">{t("social.you")}</Badge>

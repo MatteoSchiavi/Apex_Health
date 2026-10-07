@@ -23,6 +23,7 @@ when no LLM is configured.
 """
 
 import logging
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -90,6 +91,59 @@ _REP_TARGETS = {
     "isolation": (12, 15),
 }
 _DEFAULT_REPS = (8, 12)
+
+
+def _select_diverse_exercises(exercises: list[dict]) -> list[dict]:
+    """Keep a varied catalog-backed session without stacking axial load."""
+    selected: list[dict] = []
+    axial_used = unilateral_used = isolation_used = core_used = False
+    group_counts: dict[str, int] = {}
+    used_ids: set[int] = set()
+    axial = {"squat", "hinge", "hinge_explosive"}
+    unilateral = {"lunge", "single_leg", "unilateral"}
+    for exercise in exercises:
+        pattern = exercise.get("movement_pattern", "")
+        group = exercise.get("muscle_group", "")
+        exercise_id = exercise.get("exercise_id")
+        if exercise_id in used_ids:
+            continue
+        if group_counts.get(group, 0) >= 4:
+            continue
+        if pattern in axial:
+            if axial_used:
+                continue
+            axial_used = True
+        elif pattern in unilateral:
+            if unilateral_used:
+                continue
+            unilateral_used = True
+        elif pattern == "isolation":
+            if isolation_used:
+                continue
+            isolation_used = True
+        elif group == "core":
+            if core_used:
+                continue
+            core_used = True
+        selected.append(dict(exercise))
+        used_ids.add(exercise_id)
+        group_counts[group] = group_counts.get(group, 0) + 1
+    return selected
+
+
+def _italian_safety_reason(reason: str) -> str:
+    """Translate known safety-interlock messages while retaining measured values."""
+    patterns = (
+        (r"Illness-risk elevated \(([^)]+)\): rest or mobility only\.", r"Rischio di malattia elevato (\1): solo riposo o mobilità."),
+        (r"Acute load spike \(injury risk ([^)]+)\): cap intensity below Zone 3\.", r"Picco di carico acuto (rischio infortunio \1): intensità limitata sotto la zona 3."),
+        (r"ACWR ([^ ]+) > 1.5: replace high-impact work with low-impact volume\.", r"ACWR \1 > 1,5: sostituire il lavoro ad alto impatto con volume a basso impatto."),
+        (r"Recovery suppressed \(HRV ([^,]+), RHR ([^)]+) vs baseline\): cap at moderate intensity\.", r"Recupero ridotto (HRV \1, RHR \2 rispetto al riferimento): intensità limitata a moderata."),
+        (r"ACWR ([^ ]+) < 0.8 indicates detraining — recommend progressive rebuild rather than peak intensity\.", r"ACWR \1 < 0,8 indica detraining: si consiglia una ripresa progressiva."),
+    )
+    for pattern, replacement in patterns:
+        if re.fullmatch(pattern, reason):
+            return re.sub(pattern, replacement, reason)
+    return "Valutazione di sicurezza applicata; intensità ridotta secondo i dati disponibili."
 
 
 async def upcoming_events(
@@ -164,6 +218,7 @@ def adjust(
     today: date,
     *,
     safety: dict | None = None,
+    locale: str = "en",
 ) -> tuple[list[dict], list[str]]:
     """Pure, testable adjustment core.
 
@@ -179,6 +234,7 @@ def adjust(
     top — both can drop high-impact work, neither can resurrect it.
     """
     notes: list[str] = []
+    italian = locale == "it"
     rows = [dict(e) for e in exercises]
     if not rows:
         return rows, notes
@@ -195,7 +251,11 @@ def adjust(
         )
         if veto.vetoed:
             veto_ceiling = veto.intensity_ceiling
-            notes.extend(veto.reasons)
+            notes.extend(
+                [_italian_safety_reason(reason) for reason in veto.reasons]
+                if italian
+                else veto.reasons
+            )
             if veto_ceiling == "rest":
                 # Rest verdict: cap every row at 2 sets and drop all
                 # high/moderate impact — the athlete needs recovery, not load.
@@ -231,14 +291,19 @@ def adjust(
                     light_groups |= _SORENESS_GROUP_MAP.get(key, set())
                 note_bits = ", ".join(sorted(patterns))
                 notes.append(
-                    f"soreness '{key}' reported — keep {note_bits} patterns light "
-                    "(low impact, no grinding sets)"
+                    (f"indolenzimento '{key}' segnalato — mantenere leggeri i movimenti "
+                     "({note_bits}), a basso impatto e senza serie forzate")
+                    if italian else
+                    f"soreness '{key}' reported — keep {note_bits} patterns light (low impact, no grinding sets)"
                 )
             if fb.get("injury_flag"):
                 dropped_groups |= _SORENESS_GROUP_MAP.get(key, set())
+                groups_text = ", ".join(sorted(_SORENESS_GROUP_MAP.get(key, set()))) or "affected"
                 notes.append(
-                    f"injury flag on '{key}' — {_SORENESS_GROUP_MAP.get(key, set()) or 'affected'} "
-                    "work dropped for today; see the note from your feedback"
+                    (f"segnalazione di infortunio per '{key}' — lavoro ({groups_text}) escluso per oggi; "
+                     "consulta la nota del tuo feedback")
+                    if italian else
+                    f"injury flag on '{key}' — {groups_text} work dropped for today; see the note from your feedback"
                 )
 
     # ---- event taper rules ------------------------------------------------
@@ -252,16 +317,19 @@ def adjust(
         if days_to <= 1 and ev.get("priority") == 1:
             rest_day_advised = True
             notes.append(
-                f"'{ev.get('title')}' is {'today' if days_to == 0 else 'tomorrow'} — "
-                "rest or very-light mobility only"
+                (f"'{ev.get('title')}' è {'oggi' if days_to == 0 else 'domani'} — solo riposo o mobilità molto leggera")
+                if italian else
+                f"'{ev.get('title')}' is {'today' if days_to == 0 else 'tomorrow'} — rest or very-light mobility only"
             )
         elif ev.get("priority") == 1 and ev.get("kind") in LEG_HEAVY_KINDS and days_to <= ev.get(
             "taper_days", 3
         ):
             leg_taper = True
             notes.append(
-                f"taper for '{ev.get('title')}' ({ev.get('kind')}) in {days_to} day(s) — "
-                "leg volume halved, no high-impact plyometrics, fresh legs first"
+                (f"scarico per '{ev.get('title')}' ({ev.get('kind')}) tra {days_to} giorni — volume gambe dimezzato, "
+                 "niente pliometria ad alto impatto, priorità a gambe fresche")
+                if italian else
+                f"taper for '{ev.get('title')}' ({ev.get('kind')}) in {days_to} day(s) — leg volume halved, no high-impact plyometrics, fresh legs first"
             )
 
     # ---- apply ------------------------------------------------------------
@@ -321,12 +389,16 @@ def adjust(
     kept = [r for r in rows if not r.pop("_drop", False)]
     if dropped_groups and not any(r["muscle_group"] not in dropped_groups for r in rows):
         # everything was dropped — never hand back an empty session
-        kept = [r for r in rows]
-        for r in kept:
-            r["sets"] = max(2, min(r["sets"], 3))
-        notes.append("all target groups were protected — kept a minimal light session instead")
+        notes.append(
+            "tutti i gruppi muscolari interessati sono protetti — sessione di riposo o mobilità leggera consigliata"
+            if italian else
+            "all target groups are protected — rest or light mobility is recommended"
+        )
     if not notes:
-        notes.append(_NO_ADJUSTMENT_NOTE)
+        notes.append(
+            "nessuna modifica — sessione completa del programma (nessun evento prioritario imminente, nessun indolenzimento)"
+            if italian else _NO_ADJUSTMENT_NOTE
+        )
     return kept, notes
 
 
@@ -357,7 +429,9 @@ async def generate_day_plan(
         return existing, rows, "existing plan returned unchanged"
 
     tz = ZoneInfo(user.timezone)
-    today = datetime.now(tz).date()
+    # All advisory lookups must be anchored to the requested plan date. This
+    # avoids applying today's feedback or future feature data to backdated plans.
+    today = day
     template = await resolve_day(session, user.id, day)
     title = template[0]["title"] if template else DEFAULT_WEEK_SPLIT[day.weekday()][0].title()
     groups = DEFAULT_WEEK_SPLIT[day.weekday()][1]
@@ -368,7 +442,7 @@ async def generate_day_plan(
     exercises: list[dict] = []
     for group in groups:
         pool = [e for e in catalog if e.muscle_group == group]
-        for e in pool[:4]:
+        for e in pool:
             reps_min, reps_max = _REP_TARGETS.get(e.movement_pattern, _DEFAULT_REPS)
             exercises.append(
                 {
@@ -384,6 +458,8 @@ async def generate_day_plan(
                     "notes": None,
                 }
             )
+    catalog_exercises = exercises
+    exercises = _select_diverse_exercises(catalog_exercises)
 
     events = [
         {
@@ -412,7 +488,7 @@ async def generate_day_plan(
     from app.models.features import DailyFeature
     latest_feature = await session.scalar(
         select(DailyFeature)
-        .where(DailyFeature.user_id == user.id)
+        .where(DailyFeature.user_id == user.id, DailyFeature.date <= day)
         .order_by(DailyFeature.date.desc())
         .limit(1)
     )
@@ -425,14 +501,26 @@ async def generate_day_plan(
             "hrv_dev_pct": latest_feature.hrv_deviation_from_baseline,
         }
 
-    adjusted, notes = adjust(exercises, events, feedback, today, safety=safety)
+    adjusted, notes = adjust(
+        exercises, events, feedback, today, safety=safety, locale=user.locale
+    )
+    if len(exercises) < len(catalog_exercises):
+        notes.append(
+            "selezione varia dal catalogo: limitate le varianti di squat e hip hinge nella stessa sessione"
+            if user.locale == "it" else
+            "varied catalog selection: limited squat and hip-hinge variations in one session"
+        )
     season = await season_plan_note(session, user.id)
     if season:
         notes.append(f"season plan on file: {season}")
 
     # 'ai' when the advisor changed anything (or a season plan informed the
     # day); 'template' when the session is straight from the catalog split.
-    changed = notes != [_NO_ADJUSTMENT_NOTE]
+    unchanged_note = (
+        "nessuna modifica — sessione completa del programma (nessun evento prioritario imminente, nessun indolenzimento)"
+        if user.locale == "it" else _NO_ADJUSTMENT_NOTE
+    )
+    changed = adjusted != exercises or notes != [unchanged_note] or bool(season)
     plan = GymDayPlan(
         user_id=user.id,
         date=day,

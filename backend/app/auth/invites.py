@@ -111,8 +111,15 @@ async def redeem_invite(
     session.add(cred)
 
     invite.used_by = user.id
+    from app.services.owner_notifications import enqueue, best_effort_dispatch
+    notification = enqueue(session, "invite_redeemed", f"Apex Health invite #{invite.id} redeemed by user #{user.id}")
     await session.commit()
     await session.refresh(user)
+    # Delivery uses a separate session so a rollback cannot expire the
+    # already-created account objects returned to the login handler.
+    from app.core.db import sessionmaker
+    async with sessionmaker() as delivery_session:
+        await best_effort_dispatch(delivery_session, notification.id)
     return user, cred, invite
 
 

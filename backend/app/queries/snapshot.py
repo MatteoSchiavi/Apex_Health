@@ -15,6 +15,7 @@ from app.models.alert import Alert
 from app.models.features import DailyFeature
 from app.models.gear import Gear
 from app.models.integration import Integration
+from app.models.lab import FeedState
 from app.models.wellness import SleepSession
 
 
@@ -42,8 +43,14 @@ async def integrations_overview(session: AsyncSession, user_id: int) -> list[dic
     rows = await session.scalars(
         select(Integration).where(Integration.user_id == user_id).order_by(Integration.provider)
     )
+    feed_rows = (await session.scalars(select(FeedState).where(
+        FeedState.user_id == user_id, FeedState.feed == "normalization"
+    ))).all()
+    normalization = {row.provider: row for row in feed_rows}
     return [
         {
+            "sync_state": normalization[i.provider].availability if i.provider in normalization else None,
+            "normalization": normalization[i.provider].details if i.provider in normalization else None,
             "provider": i.provider,
             "status": i.status,
             "last_synced_at": i.last_synced_at,

@@ -155,6 +155,12 @@ export interface Overview {
   body_fat_pct?: number | null;
   floors?: number | null;
   hydration_ml?: number | null;
+  load_metadata?: {
+    method: string;
+    unit: string;
+    included_sessions: number;
+    excluded_sessions: number;
+  } | null;
   acute_load: number | null;
   chronic_load: number | null;
   acwr: number | null;

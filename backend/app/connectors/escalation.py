@@ -68,5 +68,12 @@ async def run_sync_with_escalation(
         )
         return None
     integration.consecutive_failures = 0
+    # Successful recovery resolves this provider's previous operational alerts.
+    # A different connector's alerts and user journal entries remain intact.
+    from app.models.alert import Alert
+    await session.execute(update(Alert).where(
+        Alert.user_id == user_id, Alert.type == "sync_failure",
+        Alert.acknowledged.is_(False), Alert.message.startswith(f"{source_label} sync failed "),
+    ).values(acknowledged=True))
     await session.commit()
     return report

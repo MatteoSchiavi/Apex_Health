@@ -34,6 +34,10 @@ TYPE_KEY_MAP: dict[str, str] = {
     "downhill_biking": "mountain_biking",
     "e_mountain_biking": "mountain_biking",
     "gravel_cycling": "gravel_cycling",
+    "gravel_biking": "gravel_cycling",
+    "e_bike_fitness": "road_cycling",
+    "e_bike_mountain": "mountain_biking",
+    "bmx": "road_cycling",
     # strength and indoor activities
     "strength_training": "strength",
     "indoor_strength": "strength",
@@ -90,7 +94,7 @@ def resolve_type_key(
     case. The second item remains ``mapped`` / ``fallback`` for sync reporting;
     ``fallback`` now means the source sport is unknown and was left unmapped.
     """
-    normalized = (type_key or "").strip().lower()
+    normalized = (type_key if isinstance(type_key, str) else "").strip().lower().replace("-", "_").replace(" ", "_")
     name = TYPE_KEY_MAP.get(normalized)
     if name is None:
         return None, "fallback"

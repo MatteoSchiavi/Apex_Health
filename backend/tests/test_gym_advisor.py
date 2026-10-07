@@ -107,11 +107,11 @@ def test_rest_day_advice_for_event_tomorrow():
     assert any("tomorrow" in n for n in notes)
 
 
-def test_never_returns_empty_session():
+def test_injury_veto_never_resurrects_dropped_exercises():
     event = _event("race", 0, title="10k race")
     feedback = [{"date": TODAY, "activity_kind": "ski", "rpe": 10, "soreness": ["knees"], "injury_flag": True}]
     kept, notes = adjust(_leg_day(), [event], feedback[0:1], TODAY)
-    assert kept  # always something to do
+    assert all(row["muscle_group"] != "legs" for row in kept)
 
 
 # ---- P-04 audit: safety interlock wired into adjust() --------------------

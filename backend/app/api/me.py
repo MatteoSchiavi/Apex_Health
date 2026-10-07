@@ -32,6 +32,7 @@ def _me_out(user: User, cred: AuthCredential) -> MeOut:
         theme=user.theme,
         units=user.units,
         role=cred.role,
+        is_owner=cred.role == "owner",
         ai_access_tier=cred.ai_access_tier,
         main_integration_id=user.main_integration_id,
     )

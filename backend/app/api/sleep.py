@@ -23,6 +23,8 @@ from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.schemas.ui import SleepDayOut, SleepListOut, SleepSessionOut, SleepStagesOut
 
+from app.services.sleep_summary import recorded_awake_totals, summary_awake
+
 router = APIRouter(prefix="/sleep", tags=["sleep"])
 
 
@@ -30,19 +32,17 @@ def _fl(value) -> float | None:
     return float(value) if value is not None else None
 
 
-def _session_out(s: SleepSession) -> SleepSessionOut:
+def _session_out(s: SleepSession, recorded_awake=None) -> SleepSessionOut:
     # Derive awake_s and restlessness when the connector did not populate
     # them — Garmin often omits awake_s and almost never emits restlessness
     # directly. The derived values keep the UI's "awake duration" and
     # "restlessness" tiles honest instead of showing "—".
-    awake_s = s.awake_s
+    awake_s = summary_awake(s, recorded_awake)
     in_bed_s: int | None = None
     if s.start_time is not None and s.end_time is not None:
         in_bed_s = int((s.end_time - s.start_time).total_seconds())
     total_sleep_s = s.total_sleep_s
 
-    if (awake_s is None or awake_s == 0) and in_bed_s and total_sleep_s:
-        awake_s = max(0, in_bed_s - total_sleep_s)
 
     restlessness = _fl(s.restlessness)
     if restlessness is None and awake_s is not None and in_bed_s:
@@ -93,7 +93,8 @@ async def list_sleep(
             best[s.local_date].total_sleep_s or 0
         ):
             best[s.local_date] = s
-    items = [_session_out(best[d]) for d in sorted(best, reverse=True)]
+    awake = await recorded_awake_totals(session, list(best.values()))
+    items = [_session_out(best[d], awake.get(best[d].start_time)) for d in sorted(best, reverse=True)]
     return SleepListOut(
         items=items, start_date=start_d.isoformat(), end_date=end_d.isoformat()
     )
@@ -113,7 +114,8 @@ async def sleep_day(
             .order_by(SleepSession.end_time.desc())
         )
     ).all()
-    night = rows[0] if rows else None
+    night = max(rows, key=lambda s: (s.total_sleep_s or 0, s.end_time)) if rows else None
+    awake = await recorded_awake_totals(session, [night] if night else [])
 
     biometric = (
         await session.scalars(
@@ -149,7 +151,7 @@ async def sleep_day(
 
     return SleepDayOut(
         date=day.isoformat(),
-        session=_session_out(night) if night else None,
+        session=_session_out(night, awake.get(night.start_time)) if night else None,
         biometrics=bio_out,
         hrv_readings=[
             {

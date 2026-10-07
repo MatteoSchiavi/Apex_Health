@@ -10,8 +10,9 @@ tool calls surfaces as `LLMResponse.tool_calls` for the agent loop to
 execute. Token accounting (§8.6) is written by call sites from the response's
 usage fields (`tokens_in/out`, `cached_tokens`).
 
-Tier → model mapping (§9.1): free and cheap both ride the flash model (free
-tier routing hardcodes it per the §8.1 note), powerful comes from settings.
+Tier → model mapping: the free routing alias uses the ordinary endpoint;
+all tiers resolve configured model/vendor/key pairs. DeepSeek is selected
+when its key is present and per-tier model/endpoint overrides are empty.
 
 §0/§20: tests never hit a live provider — they inject a fixture client.
 """
@@ -49,6 +50,7 @@ class LLMResponse:
     tokens_out: int = 0
     cached_tokens: int = 0
     tool_calls: list[ToolCallRequest] | None = None
+    reasoning_content: str | None = None
 
     @property
     def wants_tools(self) -> bool:
@@ -76,11 +78,9 @@ class LLMClient(Protocol):
 class LiveGLMClient:
     """OpenAI-compatible chat-completions client with per-tier endpoints.
 
-    Harness v3: each tier may point at a different vendor (owner decision:
-    DeepSeek serves the main 'cheap' tier, GLM-5.2 stays powerful, and an
-    optional 'medical' tier rides a MedGemma-compatible endpoint). Per-tier
-    (base_url, api_key) pairs fall back to the shared GLM endpoint when the
-    specific override is empty — one key still runs the whole stack.
+    The legacy class name is retained for compatibility. Production uses
+    resolve_llm_endpoint to provide complete per-tier model/vendor/key pairs;
+    optional medical routing has a separately configured compatible endpoint.
     """
 
     def __init__(
@@ -97,9 +97,10 @@ class LiveGLMClient:
         provider_medical: str = "",
         api_key_medical: str = "",
         api_base_medical: str = "",
+        deepseek_thinking: bool = False,
     ) -> None:
-        if not api_key:
-            raise LLMError("GLM_API_KEY is not set — live LLM calls are unavailable")
+        if not any((api_key, api_key_cheap, api_key_powerful, api_key_medical)):
+            raise LLMUnavailableError("No LLM provider is configured")
         shared = (api_base.rstrip("/"), api_key)
         self._endpoints: dict[str, tuple[str, str]] = {
             "cheap": (
@@ -118,6 +119,8 @@ class LiveGLMClient:
                 api_base_medical.rstrip("/"),
                 api_key_medical,
             )
+        self._endpoints["free"] = self._endpoints["cheap"]
+        self._deepseek_thinking = deepseek_thinking
         # §9.1: the free tier IS the flash model — free-tier call sites pass
         # tier="free" and ride the same endpoint as cheap.
         self._models = {
@@ -150,6 +153,10 @@ class LiveGLMClient:
             payload_messages.append({"role": "system", "content": system})
         payload_messages.extend(messages)
         payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages, "max_tokens": 4096}
+        if self._models[tier].startswith("deepseek-"):
+            # Thinking defaults to enabled on current DeepSeek models; keep
+            # ordinary lookups fast, with an explicit operator opt-in.
+            payload["thinking"] = {"type": "enabled" if self._deepseek_thinking else "disabled"}
         if tools:
             payload["tools"] = tools
         try:
@@ -196,43 +203,55 @@ def parse_completion(body: dict[str, Any], fallback_model: str) -> LLMResponse:
     degradation handler can convert the failure into a graceful retry or
     fallback rather than a 500."""
     usage = body.get("usage") or {} if isinstance(body, dict) else {}
+    if not isinstance(usage, dict):
+        raise LLMError("Malformed completion usage")
     try:
         choices = body["choices"]
         message = choices[0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
-        preview = str(body)[:200]
-        raise LLMError(
-            f"malformed completion body (no choices[0].message): {preview}"
-        ) from exc
+        raise LLMError("Malformed completion body: no assistant message") from exc
     if not isinstance(message, dict):
-        raise LLMError(
-            f"malformed completion body (message is not an object): {str(body)[:200]}"
-        )
+        raise LLMError("Malformed completion body: message is not an object")
+    if message.get("content") is not None and not isinstance(message["content"], str):
+        raise LLMError("Malformed assistant content")
     cached = 0
     details = usage.get("prompt_tokens_details") or {}
     if isinstance(details, dict):
-        cached = int(details.get("cached_tokens") or 0)
+        cached = details.get("cached_tokens") or usage.get("prompt_cache_hit_tokens") or 0
     tool_calls = None
     raw_calls = message.get("tool_calls") or []
+    if not isinstance(raw_calls, list):
+        raise LLMError("Malformed tool calls")
     if raw_calls:
         tool_calls = []
         for call in raw_calls:
+            if not isinstance(call, dict) or not isinstance(call.get("function"), dict):
+                raise LLMError("Malformed tool call")
             fn = call.get("function") or {}
             raw_args = fn.get("arguments") or "{}"
             try:
                 arguments = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
-            except json.JSONDecodeError as exc:
-                raise LLMError(f"tool call {fn.get('name')!r}: unparsable arguments: {exc}") from exc
+            except (ValueError, TypeError) as exc:
+                raise LLMError("Unparsable tool arguments") from exc
+            if not isinstance(arguments, dict):
+                raise LLMError("Tool arguments must be an object")
             tool_calls.append(
                 ToolCallRequest(id=call.get("id") or "", name=fn.get("name") or "", arguments=arguments)
             )
+    try:
+        tokens_in = max(0, int(usage.get("prompt_tokens") or 0))
+        tokens_out = max(0, int(usage.get("completion_tokens") or 0))
+        cached = min(tokens_in, max(0, int(cached)))
+    except (ValueError, TypeError, OverflowError):
+        raise LLMError("Malformed token usage") from None
     return LLMResponse(
         content=message.get("content"),
         model=body.get("model", fallback_model),
-        tokens_in=int(usage.get("prompt_tokens", 0)),
-        tokens_out=int(usage.get("completion_tokens", 0)),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
         cached_tokens=cached,
         tool_calls=tool_calls,
+        reasoning_content=message.get("reasoning_content") if isinstance(message.get("reasoning_content"), str) else None,
     )
 
 
@@ -249,20 +268,65 @@ def extract_json_object(content: str) -> dict[str, Any]:
     return json.loads(text[start : end + 1])
 
 
+def resolve_llm_endpoint(settings, tier: str) -> tuple[str, str, str]:
+    """Resolve one complete vendor/model/key pair, never leak keys across vendors.
+
+    Explicit per-tier settings win. DEEPSEEK_API_KEY alone selects DeepSeek
+    for all ordinary tiers; GLM remains usable when explicitly selected.
+    """
+    tier = "cheap" if tier == "free" else tier
+    model = getattr(settings, f"llm_provider_{tier}").strip()
+    base = getattr(settings, f"llm_api_base_{tier}").strip()
+    key = getattr(settings, f"llm_api_key_{tier}").strip()
+    if tier == "medical":
+        return base.rstrip("/"), key, model
+    from urllib.parse import urlsplit
+    host = urlsplit(base).hostname if base else None
+    if host == "api.deepseek.com" and model.startswith("glm-"):
+        raise LLMUnavailableError("GLM models require a GLM endpoint")
+    if host and host != "api.deepseek.com" and host == urlsplit(settings.glm_api_base).hostname and model.startswith("deepseek-"):
+        raise LLMUnavailableError("DeepSeek models require a DeepSeek endpoint")
+    is_deepseek = (
+        host == "api.deepseek.com" if host
+        else model.startswith("deepseek-") if model
+        else bool(settings.deepseek_api_key)
+    )
+    # An arbitrary explicitly configured compatible endpoint gets only its
+    # explicitly configured key, never an unrelated GLM/DeepSeek secret.
+    if base and host not in {"api.deepseek.com", urlsplit(settings.glm_api_base).hostname}:
+        if not key or not model:
+            raise LLMUnavailableError("Custom LLM endpoints require a model and per-tier key")
+        return base.rstrip("/"), key, model
+    if is_deepseek:
+        return (
+            (base or settings.deepseek_api_base).rstrip("/"),
+            key or settings.deepseek_api_key,
+            model or (settings.deepseek_model_powerful if tier == "powerful" else "") or settings.deepseek_model,
+        )
+    return (
+        (base or settings.glm_api_base).rstrip("/"),
+        key or settings.glm_api_key,
+        model or ("glm-5.2" if tier == "powerful" else "glm-4.7-flash"),
+    )
+
+
 def build_llm_client() -> LLMClient:
     """Production client from settings; call sites (tasks, bot process) own
     the lifecycle. Tests never call this — they inject fixture clients."""
     settings = get_settings()
+    cheap_base, cheap_key, cheap_model = resolve_llm_endpoint(settings, "cheap")
+    powerful_base, powerful_key, powerful_model = resolve_llm_endpoint(settings, "powerful")
     return LiveGLMClient(
-        api_key=settings.glm_api_key,
-        api_base=settings.glm_api_base,
-        model_cheap=settings.llm_provider_cheap,
-        model_powerful=settings.llm_provider_powerful,
-        api_key_cheap=settings.llm_api_key_cheap,
-        api_base_cheap=settings.llm_api_base_cheap,
-        api_key_powerful=settings.llm_api_key_powerful,
-        api_base_powerful=settings.llm_api_base_powerful,
+        api_key="",
+        api_base="",
+        model_cheap=cheap_model,
+        model_powerful=powerful_model,
+        api_key_cheap=cheap_key,
+        api_base_cheap=cheap_base,
+        api_key_powerful=powerful_key,
+        api_base_powerful=powerful_base,
         provider_medical=settings.llm_provider_medical,
         api_key_medical=settings.llm_api_key_medical,
         api_base_medical=settings.llm_api_base_medical,
+        deepseek_thinking=settings.deepseek_thinking,
     )

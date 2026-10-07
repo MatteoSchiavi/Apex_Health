@@ -1,32 +1,8 @@
-"""Daily training load — Edwards-style TRIMP, rolling windows, ACWR (§7).
+"""Comparable load windows: Edwards TRIMP or recorded Garmin load.
 
-Load metric law (§17): ACWR uses exactly ONE load metric for both windows.
-That metric is the daily TRIMP series defined here; acute (7d) and chronic
-(28d) windows both sum the same series. Chronic is stored on a weekly-average
-scale (28d sum / 4) so the ratio reads ~1.0 at steady state.
-
-TRIMP source priority per activity:
-1. HR streams — zone seconds via sample-interval integration (Edwards zones:
-   5 points at 90-100% HRmax down to 1 point below 60%), which is exact for
-   piecewise-constant HR regardless of sampling rate.
-2. avg_hr — duration x zone factor of the average (no stream detail).
-3. activity.training_load — the source's own load number, kept verbatim.
-
-P-06 audit: Garmin's proprietary ``training_load`` is EPOC-derived and
-numerically 2-4× higher than Edwards TRIMP. Without conversion, mixing the
-two produces spurious 3× day-to-day load spikes when a day's best source
-flips between modes. The conversion factor (LOAD_SCALE_GARMIN_TO_EDWARDS)
-pins Garmin load onto the Edwards scale empirically; mixed-scale windows
-are flagged in DailyFeature metadata when both sources contribute.
-
-P-05 audit: HRmax uses Tanaka (208 − 0.7·age) instead of the biased
-220−age formula (SD ≈ 10-12 bpm, systematic overestimate for young,
-underestimate for masters). When age is unknown the load is marked
-unreliable (None) instead of falling back to a magic 190 constant — the
-golden-dataset tests pin the new formula.
-
-An activity with none of the three contributes 0 load and is a sensor gap
-(the engine flags the day data_completeness='partial', §17).
+Both acute and chronic use one selected method; provider units are never
+converted using an unsupported multiplier. Recorded source values remain
+unchanged. Window metadata declares exclusions and method.
 """
 
 from datetime import date, timedelta
@@ -47,11 +23,6 @@ STRAIN_CEILING_FLOOR = 300.0
 HRMAX_FALLBACK = 190  # deprecated — do not use; see hr_max_for
 
 
-# P-06 audit: empirical conversion factor pinning Garmin's proprietary
-# training_load (EPOC-derived, ~2-4× higher than Edwards TRIMP) onto the
-# Edwards scale. Calibrated against cohort data where both stream-derived
-# TRIMP and Garmin training_load were available for the same activity.
-LOAD_SCALE_GARMIN_TO_EDWARDS = 0.35
 
 
 def zone_factor(pct_hrmax: float) -> int:
@@ -125,17 +96,7 @@ def _zone_seconds_from_streams(streams: list[ActivityStream], duration_s: int, h
 def activity_trimp(
     activity: Activity, streams: list[ActivityStream], hrm: int | None
 ) -> float | None:
-    """TRIMP-style load for one activity; None only when the activity carries
-    no load signal at all (no HR streams, no avg_hr, no training_load).
-
-    P-05 audit: when ``hrm`` is None (age unknown), HR-based TRIMP is
-    unavailable — fall through to training_load only. The caller can detect
-    the degraded mode by checking ``hrm is None`` before calling.
-
-    P-06 audit: Garmin's ``training_load`` is converted to Edwards-equivalent
-    via LOAD_SCALE_GARMIN_TO_EDWARDS so mixing stream-TRIMP and Garmin-load
-    days does not produce spurious 3× spikes.
-    """
+    """Edwards load from measured HR only; provider load stays separate."""
     # P-05: HR-based TRIMP requires a real HRmax — None means age unknown.
     if hrm is not None and hrm > 0:
         zone_seconds = _zone_seconds_from_streams(streams, activity.duration_s, hrm)
@@ -144,24 +105,53 @@ def activity_trimp(
         if activity.avg_hr is not None:
             minutes = activity.duration_s / 60.0
             return minutes * zone_factor(activity.avg_hr / hrm)
-    # P-06: convert Garmin proprietary training_load onto the Edwards scale.
-    if activity.training_load is not None:
-        return float(activity.training_load) * LOAD_SCALE_GARMIN_TO_EDWARDS
+    # Proprietary provider load is not Edwards TRIMP and has no validated
+    # conversion. Keep it on its recorded scale in a separate series.
     return None
+
+
+def consistent_window_loads(activities_with_streams, hrm):
+    """Choose the best-covered single method for both rolling windows.
+
+    Recorded Garmin load wins coverage ties. Unidentified provider values
+    never become Garmin units; excluded sessions are disclosed as partial.
+    """
+    derived = {a.id: activity_trimp(a, streams, hrm) for a, streams in activities_with_streams}
+    recorded = {}
+    for activity, _ in activities_with_streams:
+        garmin = (activity.source_metrics or {}).get("garmin")
+        if not isinstance(garmin, dict):
+            continue
+        # New rows retain the source quantity itself, independent of a
+        # canonical activity merged with another selected provider.
+        value = garmin.get("training_load")
+        if value is None and "training_load_method" not in garmin:
+            # Legacy Garmin rows: Garmin was the sole adapter populating
+            # canonical training_load; other adapters retain their own scales.
+            value = activity.training_load
+        if value is not None:
+            recorded[activity.id] = float(value)
+    valid_derived = {key: value for key, value in derived.items() if value is not None}
+    method = 'garmin_recorded' if recorded and len(recorded) >= len(valid_derived) else 'edwards_trimp'
+    selected = recorded if method == 'garmin_recorded' else valid_derived
+    loads = {}
+    for activity, _ in activities_with_streams:
+        if activity.id in selected:
+            loads[activity.local_date] = loads.get(activity.local_date, 0.0) + selected[activity.id]
+    metadata = {
+        'method': method, 'unit': 'Garmin load' if method == 'garmin_recorded' else 'Edwards TRIMP',
+        'included_sessions': len(selected), 'excluded_sessions': len(activities_with_streams) - len(selected),
+        'acute_window_days': 7, 'chronic_window_days': 28, 'chronic_scale': '28d sum / 4',
+        'limitation': 'One best-covered method per window; incompatible or missing load observations are excluded.',
+    }
+    return loads, selected, metadata
 
 
 def daily_loads(
     activities_with_streams: list[tuple[Activity, list[ActivityStream]]],
     hrm: int | None,
 ) -> dict[date, float]:
-    """Daily TRIMP series keyed by the activity's LOCAL date (§17).
-
-    P-06 audit: marks days where the load came from Garmin training_load
-    (proprietary) vs stream-derived TRIMP so the engine can flag
-    mixed-scale windows in DailyFeature metadata. For now the metadata is
-    not surfaced (the conversion factor handles the scale mismatch); a
-    future enhancement can expose it.
-    """
+    """Daily Edwards TRIMP series keyed by the activity's local date."""
     loads: dict[date, float] = {}
     for activity, streams in activities_with_streams:
         trimp = activity_trimp(activity, streams, hrm)

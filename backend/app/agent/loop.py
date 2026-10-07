@@ -46,7 +46,7 @@ def _dumps(payload):
 
 
 def _assistant_tool_call_message(response):
-    return {
+    message = {
         "role": "assistant",
         "content": response.content,
         "tool_calls": [
@@ -58,6 +58,9 @@ def _assistant_tool_call_message(response):
             for c in response.tool_calls or []
         ],
     }
+    if response.reasoning_content is not None:
+        message["reasoning_content"] = response.reasoning_content
+    return message
 
 
 def _tool_result_message(call, payload):
@@ -314,11 +317,15 @@ async def run_agent_loop(
     max_iterations=MAX_ITERATIONS,
     tool_budget_chars=12000,
     initial_evidence=None,
+    locale="en",
 ):
     messages = list(history or []) + [{"role": "user", "content": text}]
     audit, drafts, evidence_objects = [], [], list(initial_evidence or [])
     repeated, calls, tokens, last_model, iteration = {}, 0, 0, "unknown", 0
+    read_cache = {}
+    pending_reads = {}
     semaphore = asyncio.Semaphore(4)
+    deadline = time.monotonic() + TURN_TIMEOUT_S
 
     async def complete(*, closing=False):
         nonlocal tokens, last_model
@@ -337,7 +344,7 @@ async def run_agent_loop(
                 tier=tier,
                 tools=None if closing else tool_schemas(),
             ),
-            timeout=MODEL_TIMEOUT_S,
+            timeout=max(0.1, min(MODEL_TIMEOUT_S, deadline - time.monotonic() - 1)),
         )
         tokens += response.tokens_in + response.tokens_out
         last_model = response.model
@@ -360,6 +367,12 @@ async def run_agent_loop(
         calls += 1
         spec = TOOL_REGISTRY.get(call.name)
         signature = digest([call.name, call.arguments])
+        if spec and spec.kind == "read" and signature in read_cache:
+            result, entry = read_cache[signature]
+            return result, {**entry, "cached": True, "latency_ms": 0}
+        if spec and spec.kind == "read" and signature in pending_reads:
+            result, entry = await pending_reads[signature]
+            return result, {**entry, "cached": True, "latency_ms": 0}
         repeated[signature] = repeated.get(signature, 0) + 1
         ceiling = 1 if spec and spec.kind == "write" else 2
         if calls > MAX_TOOL_CALLS or repeated[signature] > ceiling:
@@ -368,15 +381,29 @@ async def run_agent_loop(
             )
             return result, {
                 "tool": call.name,
-                "input": call.arguments,
+                "input": audit_input(call),
                 "output": result,
                 "error": _dumps(result["error"]),
                 "latency_ms": 0,
             }
-        async with semaphore:
-            return await _execute_tool_bounded(
-                sessionmaker, user_id, today, session_id, call, embedding_client
-            )
+        async def perform():
+            async with semaphore:
+                return await _execute_tool_bounded(
+                    sessionmaker, user_id, today, session_id, call, embedding_client
+                )
+        if spec and spec.kind == "read":
+            task = asyncio.create_task(perform())
+            pending_reads[signature] = task
+            try:
+                outcome = await task
+                if "error" not in outcome[0]:
+                    read_cache[signature] = outcome
+                return outcome
+            finally:
+                pending_reads.pop(signature, None)
+        # A write can invalidate previous reads, including projected plans.
+        read_cache.clear()
+        return await perform()
 
     def record(call, outcome):
         result, entry = outcome
@@ -396,6 +423,9 @@ async def run_agent_loop(
     try:
         async with asyncio.timeout(TURN_TIMEOUT_S):
             for iteration in range(1, min(max_iterations, MAX_ITERATIONS) + 1):
+                # Reserve time for the final evidence-backed answer.
+                if deadline - time.monotonic() <= MODEL_TIMEOUT_S + TOOL_TIMEOUT_S + 5:
+                    break
                 response = await complete()
                 if not response.wants_tools:
                     reply, grounding = validate_answer(
@@ -433,7 +463,12 @@ async def run_agent_loop(
                     for c, outcome in zip(pending, outcomes):
                         record(c, outcome)
                 messages = _enforce_tool_budget(messages, tool_budget_chars)
-                if calls >= MAX_TOOL_CALLS:
+                # Close promptly when a model re-requests only already-seen
+                # reads instead of spending all remaining iterations.
+                if calls >= MAX_TOOL_CALLS or (batch and all(
+                    e.get("cached") or 'Repeated tool call' in (e.get("error") or '')
+                    for e in audit[-len(batch):]
+                )):
                     break
             messages.append(
                 {
@@ -446,16 +481,19 @@ async def run_agent_loop(
             return AgentLoopResult(
                 reply, tier, response.model, audit, drafts, iteration, False, grounding
             )
-    except (TimeoutError, EvidenceError):
+    except (TimeoutError, EvidenceError) as exc:
         return AgentLoopResult(
-            NO_CONVERGENCE_REPLY,
+            "Non è stato possibile completare l'analisi entro i limiti disponibili. Riprova con una domanda più specifica."
+            if locale == "it" else
+            "The analysis could not be completed within the available limits. Try a more specific question.",
             tier,
             last_model,
             audit,
             drafts,
             iteration,
             False,
-            {"status": "incomplete", "verified_claims": []},
+            {"status": "incomplete", "verified_claims": [], "error_code":
+             exc.code if isinstance(exc, EvidenceError) else "TIMEOUT"},
         )
 
 

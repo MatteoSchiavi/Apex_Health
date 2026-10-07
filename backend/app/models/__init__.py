@@ -1,5 +1,6 @@
 """ORM models."""
 
+from app.models.admin import Feedback, OwnerNotification
 from app.models.activity import (
     Activity,
     ActivityLap,

@@ -3,7 +3,7 @@
 Sessions are server-side rows (§2, §22.2): the cookie carries a random token,
 only its peppered SHA-256 hash is stored. Ordinary session expiry slides: once
 more than half the TTL has passed, a valid request extends it to a full TTL.
-Remembered sessions instead expire at their fixed 30-day bound.
+Remembered sessions renew for 30 days of inactivity, capped at 90 days.
 """
 
 import logging
@@ -28,6 +28,7 @@ from app.models.user import AuthCredential, User, UserSession
 
 logger = logging.getLogger("auth.service")
 REMEMBERED_SESSION_DAYS = 30
+REMEMBERED_ABSOLUTE_DAYS = 90
 
 
 class AuthError(Exception):
@@ -113,7 +114,7 @@ async def authenticate(
 
     password_hash = cred.password_hash if cred else await run_in_threadpool(_dummy_password_hash)
     valid = await run_in_threadpool(verify_password, password_hash, password)
-    if cred is None or not valid:
+    if cred is None or not valid or cred.disabled:
         failures = await limiter.record_failure(email)
         if cred is not None:
             # F-05: atomic SQL increment — concurrent failures no longer
@@ -140,7 +141,7 @@ async def authenticate(
     await session.execute(
         update(AuthCredential)
         .where(AuthCredential.user_id == cred.user_id)
-        .values(failed_login_count=0, locked_until=None)
+        .values(failed_login_count=0, locked_until=None, last_login_at=datetime.now(UTC))
     )
     # F-06: gradual argon2 parameter upgrade — if the stored hash was
     # produced with weaker params than the current defaults, rehash on
@@ -165,18 +166,20 @@ async def create_session(
 ) -> tuple[str, datetime]:
     """Create a server-side session row; returns (raw_token, expires_at).
 
-    F-21 audit: sets ``absolute_expires_at`` (30-day cap from creation) so
+    F-21 audit: sets ``absolute_expires_at`` (30d normal / 90d remembered) so
     sliding-expiry refresh cannot keep a stolen session alive forever.
     """
     settings = get_settings()
     token = new_session_token()
     now = datetime.now(UTC)
     # A normal login keeps the existing sliding server lifetime and absolute
-    # cap. Remembered logins get a fixed, bounded 30-day lifetime so that the
+    # cap. Remembered logins get a renewable, bounded 30-day lifetime so that the
     # browser cookie and the server-side session expire together.
-    absolute_expires_at = now + timedelta(days=REMEMBERED_SESSION_DAYS)
+    absolute_expires_at = now + timedelta(days=(
+        REMEMBERED_ABSOLUTE_DAYS if remember_me else REMEMBERED_SESSION_DAYS
+    ))
     expires_at = (
-        absolute_expires_at
+        now + timedelta(days=REMEMBERED_SESSION_DAYS)
         if remember_me
         else now + timedelta(minutes=settings.session_ttl_minutes)
     )
@@ -200,7 +203,7 @@ async def resolve_session(
 
     F-21 audit: rejects sessions past their ``absolute_expires_at`` regardless
     of sliding-refresh activity. A stolen session is therefore bounded to a
-    maximum 30-day lifetime even if used continuously.
+    maximum 90-day lifetime (30 days for normal logins) even if used continuously.
     """
     settings = get_settings()
     row = await session.scalar(
@@ -216,9 +219,25 @@ async def resolve_session(
     if row.absolute_expires_at is not None and row.absolute_expires_at <= datetime.now(UTC):
         return None
 
-    # Remembered sessions use the full 30-day bound without sliding; normal
-    # sessions retain the short sliding expiry (§22.2).
+    credential = await session.get(AuthCredential, row.user_id)
+    if credential is None or credential.disabled:
+        return None
+    # Renew remembered sessions at most once a day, up to the absolute cap.
+    # Existing remembered sessions keep their previously assigned cap.
     if row.remember_me:
+        now = datetime.now(UTC)
+        renewal_at = row.expires_at - timedelta(days=REMEMBERED_SESSION_DAYS - 1)
+        if now >= renewal_at:
+            new_expiry = min(
+                now + timedelta(days=REMEMBERED_SESSION_DAYS),
+                row.absolute_expires_at or row.created_at + timedelta(days=REMEMBERED_ABSOLUTE_DAYS),
+            )
+            await session.execute(update(UserSession).where(
+                UserSession.id == row.id,
+                UserSession.expires_at > now,
+            ).values(expires_at=new_expiry))
+            await session.commit()
+            row.expires_at = new_expiry
         user = await session.get(User, row.user_id)
         if user is None:
             return None

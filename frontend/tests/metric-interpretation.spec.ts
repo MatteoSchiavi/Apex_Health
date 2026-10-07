@@ -90,7 +90,7 @@ test("HRV interpretation labels an in-range result and shows its measured band",
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(/45\.0–65\.0 ms · 20 comparable days/),
+    page.getByText(/45\.0–65\.0 ms · 20 comparable nights/),
   ).toBeVisible();
 });
 

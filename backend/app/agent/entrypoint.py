@@ -45,6 +45,10 @@ Return JSON with {"answer": "concise explanation", "claims": [{"evidence_id":
 matching claim. Separate hypotheses from measurements; predictions need a tested recipe.
 For a registered analysis claim, use its analysis:ID handle and the exact dot-separated
 field path inside the recipe data as metric. Never add unclaimed numbers to the prose.
+For recovery/trend questions call data_get_recovery_summary once before individual
+queries. It batches recent sleep, overnight RMSSD, resting HR and recorded provider
+load with evidence handles. Missing metrics remain missing. Reuse returned results;
+do not re-query the same arguments. Answer from available evidence instead of looping.
 """
 
 
@@ -202,6 +206,7 @@ async def run_agent_turn(
             history=history,
             initial_evidence=[snapshot],
             embedding_client=embedding_client,
+            locale=snapshot["profile"]["locale"],
         )
     except LLMError:
         async with sessionmaker() as session:
@@ -228,6 +233,7 @@ async def run_agent_turn(
         result.reply = prefix + result.reply
     referenced = {
         "harness_version": HARNESS_VERSION,
+        "model": result.model,
         "source_policy": "ai_eligible_v1",
         "snapshot_revision": snapshot["snapshot_revision"],
         "grounding": result.grounding,

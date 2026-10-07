@@ -60,13 +60,14 @@ def test_celery_sync_retries_then_reports_failure(monkeypatch):
     from app.tasks.garmin_sync import sync_user_garmin
     attempts = []
     def fail(job):
+        attempts.append(job.cr_code.co_name)
         job.close()
-        attempts.append(1)
         raise SyncTaskError("Provider temporarily unavailable")
     monkeypatch.setattr("app.tasks.provider_sync.run_async", fail)
     result = sync_user_garmin.apply(args=[123], throw=False)
     assert result.state == "FAILURE"
-    assert len(attempts) == 4  # initial attempt + three configured retries
+    assert attempts.count('sync_account') == 4  # initial sync plus three retries
+    assert attempts.count('critical_connector_error') == 1
 
 
 async def test_oura_driver_uses_stored_credentials_and_real_sync(db_session, monkeypatch):

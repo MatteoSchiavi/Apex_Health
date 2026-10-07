@@ -343,6 +343,10 @@ async def coverage(session, user: User, *, now=None, for_ai=False):
             {
                 "provider": i.provider,
                 "status": i.status,
+                "normalization": next((
+                    {"state": f.availability, **f.details}
+                    for f in feeds if f.provider == i.provider and f.feed == "normalization"
+                ), None),
                 "last_successful_fetch": i.last_synced_at.isoformat()
                 if i.last_synced_at
                 else None,

@@ -7,6 +7,8 @@ from redis.exceptions import RedisError
 from starlette.responses import JSONResponse
 
 from app.api import (
+    admin,
+    feedback,
     activities,
     apple_health,
     auth,
@@ -36,7 +38,7 @@ from app.auth.service import ensure_owner
 from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
 from app.core.logging import configure_logging
-from app.core.middleware import CSRFMiddleware, ProxyHeadersMiddleware
+from app.core.middleware import CSRFMiddleware, ProxyHeadersMiddleware, SecurityHeadersMiddleware
 from app.core.secret_validation import validate_startup_secrets
 
 
@@ -84,6 +86,7 @@ def create_app() -> FastAPI:
         )
 
     app.add_middleware(CSRFMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     # §15: behind Tailscale Funnel/Caddy, honor X-Forwarded-* from the local
     # terminator when configured to (infra/tailscale-funnel-setup.md).
     app.add_middleware(
@@ -91,6 +94,20 @@ def create_app() -> FastAPI:
         trusted=get_settings().trust_proxy_headers,
         trusted_ips=get_settings().trusted_proxy_ips,
     )
+    @app.middleware("http")
+    async def capture_operational_failures(request, call_next):
+        import logging
+        try:
+            response = await call_next(request)
+        except Exception:
+            logging.getLogger("api.runtime").error("Request failed", extra={"event_code": "request_failed"})
+            raise
+        if response.status_code >= 500:
+            logging.getLogger("api.runtime").error("Request failed", extra={"event_code": "request_failed"})
+        return response
+
+    app.include_router(admin.router)
+    app.include_router(feedback.router)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(labs.router)

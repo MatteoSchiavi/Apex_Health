@@ -25,6 +25,8 @@ from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.queries.snapshot import integrations_overview, open_alerts
 from app.schemas.ui import OverviewOut, ScoreBlock
 
+from app.services.sleep_summary import recorded_awake_totals, summary_awake
+
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 WINDOW_DAYS = 7
@@ -243,6 +245,7 @@ async def dashboard_overview(
 
     sleep_block = None
     if night is not None:
+        awake = await recorded_awake_totals(session, [night])
         sleep_block = {
             "start_time": night.start_time.isoformat(),
             "end_time": night.end_time.isoformat(),
@@ -252,7 +255,7 @@ async def dashboard_overview(
                 "deep_s": night.deep_s,
                 "light_s": night.light_s,
                 "rem_s": night.rem_s,
-                "awake_s": night.awake_s,
+                "awake_s": summary_awake(night, awake.get(night.start_time)),
             },
             "respiration_avg": _fl(night.respiration_avg),
             "spo2_avg": _fl(night.spo2_avg),
@@ -308,6 +311,7 @@ async def dashboard_overview(
         body_fat_pct=_fl(biometric.body_fat_pct) if biometric else None,
         floors=biometric.floors if biometric else None,
         hydration_ml=_fl(biometric.hydration_ml) if biometric else None,
+        load_metadata=feature.load_metadata if feature else None,
         acute_load=_fl(feature.training_load_acute) if feature else None,
         chronic_load=_fl(feature.training_load_chronic) if feature else None,
         acwr=_fl(feature.acwr) if feature else None,

@@ -39,8 +39,18 @@ async def get_coverage(
 
 @router.get("/decision")
 async def get_decision(
+    day: date | None = None,
     session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)
 ):
+    today = datetime.now(ZoneInfo(user.timezone)).date()
+    if day is not None and day != today:
+        if day > today:
+            raise HTTPException(422, "Decision date cannot be in the future")
+        row = await session.scalar(
+            select(DecisionRecord).where(DecisionRecord.user_id == user.id, DecisionRecord.date == day)
+            .order_by(DecisionRecord.id.desc()).limit(1)
+        )
+        return {**row.output, "id": row.id, "outcome": row.outcome} if row else None
     result = await daily_decision(session, user, for_ai=True, persist=True)
     await session.commit()
     return result
@@ -83,7 +93,8 @@ async def list_decisions(
         await session.scalars(
             select(DecisionRecord)
             .where(DecisionRecord.user_id == user.id)
-            .order_by(DecisionRecord.id.desc())
+            .distinct(DecisionRecord.date)
+            .order_by(DecisionRecord.date.desc(), DecisionRecord.id.desc())
             .limit(90)
         )
     ).all()

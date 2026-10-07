@@ -29,10 +29,19 @@ EMBEDDING_USD_PER_MTOK = 0.02
 
 
 def estimate_llm_cost_usd(
-    tier: str, tokens_in: int, tokens_out: int, cached_tokens: int = 0
+    tier: str, tokens_in: int, tokens_out: int, cached_tokens: int = 0, *, model: str | None = None
 ) -> Decimal:
     """§9.1 rate table → estimated cost. Unknown tiers use the conservative paid estimate; they must not bypass budgets."""
     in_rate, out_rate, cached_rate = TIER_RATES_PER_MTOK.get(tier, TIER_RATES_PER_MTOK["medical"])
+    # Published peak prices checked 2026-10-07. Routing's logical 'free'
+    # tier is NOT free when it calls a paid DeepSeek model.
+    if model and model.startswith(("deepseek-flash", "deepseek-v4-flash")):
+        in_rate, out_rate, cached_rate = 0.30, 1.20, 0.006
+    elif model and model.startswith("deepseek-v4-pro"):
+        in_rate, out_rate, cached_rate = 1.32, 3.96, 0.044
+    elif model and model.startswith("deepseek-"):
+        # Unknown/legacy DeepSeek name: conservative provisional estimate.
+        in_rate, out_rate, cached_rate = TIER_RATES_PER_MTOK["medical"]
     billable_in = max(tokens_in - cached_tokens, 0)
     cost = (
         billable_in / 1_000_000 * in_rate
@@ -68,7 +77,7 @@ async def log_llm_usage(
             tokens_in=tokens_in or None,
             tokens_out=tokens_out or None,
             cached_tokens=cached_tokens or None,
-            cost_estimate_usd=estimate_llm_cost_usd(tier, tokens_in, tokens_out, cached_tokens),
+            cost_estimate_usd=estimate_llm_cost_usd(tier, tokens_in, tokens_out, cached_tokens, model=model),
         )
     )
 

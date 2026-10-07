@@ -39,6 +39,7 @@ class MeOut(BaseModel):
     theme: str
     units: str
     role: str
+    is_owner: bool
     ai_access_tier: str
     main_integration_id: int | None
 
@@ -76,6 +77,7 @@ class OverviewOut(BaseModel):
     body_fat_pct: float | None = None
     floors: int | None = None
     hydration_ml: float | None = None
+    load_metadata: dict[str, Any] | None = None
     acute_load: float | None
     chronic_load: float | None
     acwr: float | None

@@ -125,6 +125,19 @@ export default function OverviewPage() {
   const { t } = useTranslation();
   const units = useUnits();
   const me = useUi((s) => s.me);
+  const setupDevices = useQuery({
+    queryKey: ["devices"],
+    queryFn: () => api.get<{ integration_id: number; provider: string; status?: string }[]>("/settings/devices"),
+    staleTime: 60_000,
+  });
+  const setupSleep = useQuery({
+    queryKey: ["setup-sleep-baseline"],
+    queryFn: () => api.get<MetricTrend>("/metrics/sleep_duration?days=28"),
+    staleTime: 60_000,
+  });
+  const [setupHidden, setSetupHidden] = useState(() => {
+    try { return localStorage.getItem("apex.setup-checklist.dismissed") === "1"; } catch { return false; }
+  });
   const [params, setParams] = useSearchParams();
   const date = params.get("date");
   const [range, setRange] = useState("7");
@@ -153,6 +166,9 @@ export default function OverviewPage() {
     { key: "hydration", value: units.metric("hydration", o.hydration_ml ?? null), unit: units.metricUnit("hydration", "ml") },
   ];
   const hasData = signals.some((r) => r.fallback != null) || body.some((r) => r.value != null) || o.activities.length > 0 || !!o.sleep || o.readiness.value != null || o.recovery.value != null || o.strain.value != null || o.acute_load != null;
+  const connectedSources = setupDevices.data?.filter((device) => device.status === "active").length ?? 0;
+  const recordedNights = setupSleep.data?.points.filter((p) => p.value != null).length ?? 0;
+  const setupComplete = [connectedSources > 0, !!(me?.name?.trim() && me.timezone), recordedNights >= 14];
   const stageParts = o.sleep ? [
     { key: "deep", value: o.sleep.stages.deep_s ?? 0, color: "var(--c-stage-deep)" },
     { key: "rem", value: o.sleep.stages.rem_s ?? 0, color: "var(--c-stage-rem)" },
@@ -170,14 +186,22 @@ export default function OverviewPage() {
       {[{ to: "/app/calendar", key: "lab.calendar" }, { to: "/app/training", key: "design.view_training" }, { to: "/app/biometrics?tab=labs", key: "biometrics.labs" }, { to: "/app/coach", key: "nav.coach" }, { to: "/app/settings?tab=devices", key: "settings.devices" }].map((link) => <More key={link.to} to={link.to}>{t(link.key)}</More>)}
     </nav>
     {!o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
-    {!hasData ? <Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card> : <>
+    {!setupHidden && !setupComplete.every(Boolean) && <Card className="!p-4 sm:!p-5">
+      <div className="flex items-start justify-between gap-4"><div><p className="eyebrow text-primaryText">{t("setup.eyebrow")}</p><h2 className="mt-1 text-[18px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[13px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
+      <ul className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">{[
+        { done: setupComplete[0], label: t("setup.connect"), to: "/app/settings?tab=devices", state: setupDevices.isLoading ? t("setup.checking") : setupComplete[0] ? t("setup.connected", { count: connectedSources }) : t("setup.not_connected") },
+        { done: setupComplete[1], label: t("setup.profile"), to: "/app/settings?tab=profile", state: setupComplete[1] ? t("setup.profile_ready") : t("setup.profile_missing") },
+        { done: setupComplete[2], label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
+      ].map((item) => <li key={item.label}><Link to={item.to} className="flex min-h-11 items-center gap-3 border border-hairline px-3 py-2 hover:bg-surface2"><span aria-hidden="true" className={item.done ? "text-positiveText" : "text-faint"}>{item.done ? "✓" : "○"}</span><span className="min-w-0"><span className="block font-medium text-ink">{item.label}</span><span className="block text-[12px] text-muted">{item.state}</span></span><ArrowRight size={14} className="ml-auto shrink-0" /></Link></li>)}</ul>
+    </Card>}
+    {!hasData ? <><Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card>{date && <DecisionCard date={date} />}</> : <>
       {!!o.alerts.length && <div className="flex flex-col gap-2" role="status">{o.alerts.map((a, i) => <div key={i} className="flex items-start gap-4 border-l-2 border-alert px-5 py-3 text-[13px]"><Badge tone={a.severity === "critical" || a.severity === "high" ? "alert" : "warning"}>{a.severity}</Badge><span>{a.message}</span></div>)}</div>}
       <section aria-label={t("refinement.recorded_signals")}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
         <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
       </section>
-      {!date && <DecisionCard />}
+      {date ? <DecisionCard date={date} /> : <DecisionCard />}
       <div className="grid gap-6 xl:grid-cols-[1fr_1.25fr]">
         <Card><CardHeader title={t("design.body_activity")} right={<More to="/app/biometrics?tab=body">{t("design.all_metrics")}</More>} />
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">{body.map((b) => <Link key={b.key} to={`/app/biometrics/${b.key}`}><StatPod label={t(METRIC_LABELS[b.key])} value={fmtNum(b.value, ["steps", "floors", "hydration"].includes(b.key) ? 0 : 1)} unit={b.unit} /></Link>)}</div>

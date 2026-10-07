@@ -169,10 +169,12 @@ export async function installApi(
     theme?: "light" | "dark";
     locale?: "en" | "it";
     units?: "metric" | "imperial";
+    role?: "owner" | "friend";
   } = {},
 ) {
   let me = {
     ...account,
+    ...(options.role ? { role: options.role } : {}),
     ...Object.fromEntries(
       Object.entries(options).filter(([k]) =>
         ["theme", "locale", "units"].includes(k),
@@ -272,7 +274,7 @@ export async function installApi(
       url = new URL(req.url()),
       path = url.pathname;
     if (
-      !/^\/(me|auth|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs|lab|gear|imports)(\/|$)/.test(
+      !/^\/(me|auth|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs|lab|gear|imports|api\/admin|api\/feedback)(\/|$)/.test(
         path,
       )
     )
@@ -346,8 +348,23 @@ export async function installApi(
           status_url: "/settings/integrations/garmin/sync/test-sync",
         };
       else if (path === "/auth/login") data = { ok: true };
+      else if (path === "/api/feedback") {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        data = { id: 91, created_at: today + "T12:00:00Z", notification_status: "pending" };
+      }
       else data = { ok: true };
-    } else if (path === "/lab/coverage")
+    } else if (path === "/api/admin/users" || path === "/api/admin/sessions" || path === "/api/admin/invites" || path === "/api/admin/feedback") {
+      const offset = Number(url.searchParams.get("offset") ?? 0), limit = Number(url.searchParams.get("limit") ?? 50);
+      const total = 25;
+      const allRows = path.endsWith("/users") ? Array.from({ length: total }, (_, i) => ({ id: i + 2, name: `Friend ${i + 1}`, email: `friend${i + 1}@example.com`, role: "friend", ai_access_tier: "full", share_segments: true, active_sessions: 2, disabled: false, last_login_at: today + "T08:00:00Z", created_at: today + "T00:00:00Z" }))
+        : path.endsWith("/sessions") ? Array.from({ length: total }, (_, i) => ({ id: i + 1, user_id: i + 2, created_at: today + "T00:00:00Z", expires_at: today + "T23:00:00Z", absolute_expires_at: today + "T23:00:00Z", active: true, remember_me: false }))
+        : path.endsWith("/invites") ? Array.from({ length: total }, (_, i) => ({ id: i + 1, used_by: i % 2 ? i : null, expired: false, expires_at: today + "T23:00:00Z" }))
+        : Array.from({ length: total }, (_, i) => ({ id: i + 1, user_id: i + 2, category: "idea", message: `Feedback ${i + 1}`, page_url: "/app", created_at: today + "T00:00:00Z", notification_status: i % 3 ? "delivered" : "retrying" }));
+      data = { items: allRows.slice(offset, offset + limit), total, limit, offset };
+    } else if (path === "/api/admin/system") data = { scope: "container", cpu: { utilization_percent: 13.4, load_1m: 0.4, logical_cpus: 4 }, memory: { scope: "container cgroup", total_bytes: 1000, used_bytes: 500 }, disk: { scope: "container filesystem", total_bytes: 1000, used_bytes: 500 }, postgres: { connections: 4, active_connections: 1, max_connections: 100 }, celery: { available: true, workers: [{ name: "worker1", status: "online" }] } };
+    else if (path === "/api/admin/logs") data = { items: [{ timestamp: today + "T00:00:00Z", level: "INFO", source: "test", event: "event" }] };
+    else if (path === "/api/admin/notifications") data = { configured: true, pending: 2, failed: 1 };
+    else if (path === "/lab/coverage")
       data = {
         timezone: "Europe/Rome",
         local_date: today,

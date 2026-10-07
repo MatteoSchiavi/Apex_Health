@@ -60,8 +60,7 @@ def test_garmin_training_load_is_scaled() -> None:
     streams: list = []
     # P-06: 200 × 0.35 = 70 Edwards-equivalent.
     trimp = load.activity_trimp(_Activity(), streams, hrm=None)
-    assert trimp is not None
-    assert abs(trimp - 70.0) < 0.01
+    assert trimp is None  # provider units are not Edwards TRIMP
 
 
 def test_stream_trimp_takes_priority_over_garmin_load() -> None:
@@ -88,7 +87,7 @@ def test_stream_trimp_takes_priority_over_garmin_load() -> None:
 
 def test_load_scale_constant_documented() -> None:
     """P-06: the conversion factor is a named, documented constant."""
-    assert load.LOAD_SCALE_GARMIN_TO_EDWARDS == 0.35
+    assert not hasattr(load, "LOAD_SCALE_GARMIN_TO_EDWARDS")
 
 
 # ---- P-08: EF drift decoupling --------------------------------------------

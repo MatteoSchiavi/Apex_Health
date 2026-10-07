@@ -23,6 +23,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[
+        "app.tasks.owner_notifications",
         "app.tasks.health_tasks",
         "app.tasks.garmin_sync",
         "app.tasks.technogym_sync",
@@ -82,6 +83,8 @@ celery_app.conf.update(
     # so every timezone is served from this single UTC schedule; DST
     # fall-back double-runs are harmless (the engine upserts idempotently).
     beat_schedule={
+        "owner-outbox-minute": {"task": "owner.dispatch", "schedule": crontab(minute="*")},
+        "owner-summary-daily": {"task": "owner.daily_summary", "schedule": crontab(hour=8, minute=0)},
         "lab-retention-daily": {"task":"lab.prune_retained_data","schedule":crontab(hour=2,minute=10)},
         "lab-outbox-every-minute": {"task": "lab.dispatch_jobs", "schedule": crontab(minute="*")},
         "garmin-sync-every-6h": {

@@ -17,6 +17,7 @@ surprises must cost less, never more.
 """
 
 import logging
+import asyncio
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -150,13 +151,13 @@ async def _classify(
 ) -> str:
     """Free-tier classification (§9.2 step 2). Any failure → 'lookup'."""
     try:
-        response = await llm.complete(
+        response = await asyncio.wait_for(llm.complete(
             messages=[{"role": "user", "content": text}],
             system=CLASSIFY_SYSTEM_PROMPT,
             tier="free",
-        )
-    except LLMError as exc:
-        logger.warning("classification call failed — defaulting to lookup: %s", exc)
+        ), timeout=15)
+    except (LLMError, TimeoutError):
+        logger.warning("classification unavailable — defaulting to lookup")
         return "lookup"
     await log_llm_usage(
         session,

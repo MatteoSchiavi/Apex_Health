@@ -44,6 +44,7 @@ def _challenge_dict(challenge: Challenge, member_count: int, user: User) -> dict
 @router.get("/rankings")
 async def get_rankings(
     metric: str,
+    period: str = "weekly",
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
@@ -53,7 +54,9 @@ async def get_rankings(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"metric must be one of {', '.join(sorted(METRICS))}",
         )
-    return await global_records(session, metric)
+    if period not in {"weekly", "monthly", "all_time"}:
+        raise HTTPException(422, "period must be weekly, monthly or all_time")
+    return await global_records(session, metric, period=period, now=datetime.now(UTC))
 
 
 @router.get("/challenges")

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import { api } from "../../app/api";
 import {
   Badge,
@@ -31,6 +32,42 @@ import {
   useToday,
   Value,
 } from "./shared";
+function inlineMarkdown(text: string): ReactNode[] {
+  const token = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  return text.split(token).filter(Boolean).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("*") && part.endsWith("*")) return <em key={index}>{part.slice(1, -1)}</em>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index} className="bg-surface2 px-1">{part.slice(1, -1)}</code>;
+    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (link) {
+      try {
+        const url = new URL(link[2], window.location.origin);
+        if (["https:", "http:"].includes(url.protocol)) return <a key={index} className="text-link underline" href={url.href} target="_blank" rel="noreferrer">{link[1]}</a>;
+      } catch { /* Render unsafe or malformed targets as plain text. */ }
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+function SafeMarkdown({ source }: { source: string }) {
+  const lines = source.split(/\r?\n/);
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+  let numbered = false;
+  const flushParagraph = () => { if (paragraph.length) { blocks.push(<p key={`p-${blocks.length}`}>{paragraph.map(inlineMarkdown).flatMap((nodes, i) => i ? [<br key={`br-${i}`} />, ...nodes] : nodes)}</p>); paragraph = []; } };
+  const flushList = () => { if (list.length) { const Tag = numbered ? "ol" : "ul"; blocks.push(<Tag key={`l-${blocks.length}`} className="my-2 list-inside list-disc space-y-1">{list.map((item, i) => <li key={i}>{inlineMarkdown(item)}</li>)}</Tag>); list = []; } };
+  lines.forEach((line) => {
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const bullet = line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (!line.trim() || heading || bullet || ordered) { flushParagraph(); if (!bullet && !ordered) flushList(); }
+    if (heading) { const level = heading[1].length; const Tag = (`h${level + 2}`) as "h3" | "h4" | "h5"; blocks.push(<Tag key={`h-${blocks.length}`} className="my-3 font-medium">{inlineMarkdown(heading[2])}</Tag>); }
+    else if (bullet || ordered) { const isNumbered = !!ordered; if (list.length && numbered !== isNumbered) flushList(); numbered = isNumbered; list.push((bullet ?? ordered)![1]); }
+    else if (line.trim()) paragraph.push(line);
+  });
+  flushParagraph(); flushList();
+  return <div className="space-y-2 text-[14px] leading-7">{blocks}</div>;
+}
 function AnalysisResult({ r }: { r: Analysis }) {
   const { t } = useTranslation();
   const d = r.data;
@@ -462,6 +499,9 @@ function Documents() {
   const { t } = useTranslation();
   const docs = useLab<Doc[]>("/lab/documents");
   const action = useAction();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
+  const [fileError, setFileError] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -471,18 +511,23 @@ function Documents() {
         </p>
         <Form
           pending={action.isPending}
-          error={action.error}
+          error={action.error ?? (fileError ? new Error(fileError) : null)}
           label={t("lab.upload")}
-          onSave={(f) => action.mutate({ path: "/lab/documents", body: f })}
+          onSave={(f) => {
+            const file = f.get("file");
+            if (!(file instanceof File) || !file.size) { setFileError(t("lab.document_choose_file")); return; }
+            const extension = file.name.split(".").pop()?.toLowerCase();
+            if (!extension || !["txt", "md", "pdf"].includes(extension)) { setFileError(t("lab.document_wrong_type")); return; }
+            if (file.size > 5 * 1024 * 1024) { setFileError(t("lab.document_too_large")); return; }
+            setFileError(null);
+            action.mutate({ path: "/lab/documents", body: f });
+          }}
         >
-          <input
-            className={inputClass}
-            name="file"
-            type="file"
-            accept=".txt,.md,.pdf"
-            aria-label={t("lab.file")}
-            required
-          />
+          <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-hairline2 bg-surface px-4 py-5 text-center hover:bg-surface2 focus-within:outline focus-within:outline-2 focus-within:outline-primary" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const files = e.dataTransfer.files; if (files.length && fileInput.current) { fileInput.current.files = files; setFileName(files[0].name); setFileError(null); } }}>
+            <span className="text-[14px] font-medium text-ink">{fileName || t("lab.document_drop")}</span>
+            <span className="text-[12px] text-muted">{t("lab.document_rules")}</span>
+            <input ref={fileInput} className="sr-only" name="file" type="file" accept=".txt,.md,.pdf" aria-label={t("lab.file")} onChange={(e) => { setFileError(null); setFileName(e.target.files?.[0]?.name ?? ""); }} required />
+          </label>
         </Form>
       </Card>
       <QueryState
@@ -740,9 +785,7 @@ function Reports() {
             title={`${t("lab.report_types." + r.type)} · ${r.start} — ${r.end}`}
             right={<Badge>{r.source_policy}</Badge>}
           />
-          <p className="whitespace-pre-wrap text-[14px] leading-7">
-            {r.content}
-          </p>
+          <SafeMarkdown source={r.content} />
         </Card>
       ))}
     </div>

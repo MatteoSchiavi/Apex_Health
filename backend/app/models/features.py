@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models.base import Base
 
@@ -44,6 +45,7 @@ class DailyFeature(Base):
     recovery_score: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     strain_score: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     readiness_score: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    load_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     training_load_acute: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     training_load_chronic: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     acwr: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)

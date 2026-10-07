@@ -36,7 +36,7 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
         height={200}
         option={{
         animation: false,
-        grid: { left: 54, right: 12, top: 8, bottom: 30 },
+        grid: { left: 88, right: 12, top: 8, bottom: 30, containLabel: true },
         tooltip: {
           trigger: "item",
           confine: true,
@@ -84,7 +84,7 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
           data: names.map((n) => t("stage." + n)),
           axisLine: { show: false },
           axisTick: { show: false },
-          axisLabel: { color: c.muted, fontSize: 12 },
+          axisLabel: { color: c.muted, fontSize: 12, width: 68, overflow: "truncate", margin: 8 },
           splitLine: { show: false },
         },
         series: [

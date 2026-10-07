@@ -61,6 +61,8 @@ class SyncReport:
     wellness_days: int = 0
     raw_rows_stored: int = 0
     raw_rows_unprocessed: int = 0
+    normalized_raw_rows: int = 0
+    state: str = "complete"
     stats: NormalizerStats | None = None
     notes: list[str] = field(default_factory=list)
 
@@ -397,6 +399,7 @@ async def normalize_pending(
         try:
             async with session.begin_nested():
                 stats = await normalize_raw_row(session, row, tz, discipline_index)
+                report.normalized_raw_rows += 1
                 totals.activities_upserted += stats.activities_upserted
                 totals.activity_streams_upserted += stats.activity_streams_upserted
                 totals.sleep_upserted += stats.sleep_upserted
@@ -531,12 +534,26 @@ async def sync_user_garmin(
 
     await normalize_pending(session, user.id, tz, discipline_index, report)
 
-    integration.last_synced_at = now
     if report.streams_failed:
         # Keep successfully normalized data, but retry the account job rather
         # than marking a partially fetched provider response as full success.
         await session.commit()
-        raise RuntimeError("Some activity streams could not be fetched")
+        raise RuntimeError("Some Garmin payloads could not be fetched or normalized")
+    # A malformed historical row does not invalidate successfully fetched
+    # observations or provider authentication. Keep it pending and expose
+    # partial normalization separately from the successful fetch timestamp.
+    report.state = "partial" if report.raw_rows_unprocessed else "complete"
+    from app.services.evidence import update_feed
+    from app.models.lab import FeedState
+    await update_feed(session, user.id, SOURCE, "normalization", report.state, now)
+    feed = await session.scalar(select(FeedState).where(
+        FeedState.user_id == user.id, FeedState.provider == SOURCE, FeedState.feed == "normalization"
+    ))
+    feed.last_success_at = now
+    feed.details = {"normalized_raw_rows": report.normalized_raw_rows,
+                    "pending_error_count": report.raw_rows_unprocessed,
+                    "state": report.state, "retry": "Pending raw payloads are retried on the next sync."}
+    integration.last_synced_at = now
     return report
 
 

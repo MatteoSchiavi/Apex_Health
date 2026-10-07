@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -44,6 +44,12 @@ export default function DataHealthPage({ embedded = false }: { embedded?: boolea
     scope: string;
   } | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importFormat, setImportFormat] = useState("csv");
+  const [importName, setImportName] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
+  const importLimit = importFormat === "apple-health" ? 100 : 20;
+  const importAccept = importFormat === "fit" ? ".fit" : importFormat === "csv" ? ".csv,text/csv" : ".zip,application/zip";
   async function inspect(obs: Observation) {
     try {
       setLookupError(null);
@@ -361,29 +367,32 @@ export default function DataHealthPage({ embedded = false }: { embedded?: boolea
           <CardHeader title={t("lab.import_export")} />
           <Form
             pending={action.isPending}
-            error={action.error}
+            error={action.error ?? (importError ? new Error(importError) : null)}
             label={t("lab.import")}
-            onSave={(f) =>
-              action.mutate({
-                path:
-                  str(f, "format") === "apple-health" ? "/imports/apple-health" : str(f, "format") === "fit" ? "/imports/fit" : "/imports/csv",
-                body: f,
-              })
-            }
+            onSave={(f) => {
+              const format = str(f, "format");
+              const file = f.get("file");
+              if (!(file instanceof File) || !file.size) { setImportError(t("lab.import_choose_file")); return; }
+              const ext = file.name.split(".").pop()?.toLowerCase();
+              const valid = format === "fit" ? ext === "fit" : format === "csv" ? ext === "csv" : ext === "zip";
+              if (!valid) { setImportError(t("lab.import_wrong_type")); return; }
+              const limit = format === "apple-health" ? 100 : 20;
+              if (file.size > limit * 1024 * 1024) { setImportError(t("lab.import_too_large", { size: limit })); return; }
+              setImportError(null);
+              const body = new FormData(); body.append("file", file);
+              action.mutate({ path: format === "apple-health" ? "/imports/apple-health" : format === "fit" ? "/imports/fit" : "/imports/csv", body });
+            }}
           >
-            <Field name="format" label={t("lab.format")} value="fit">
+            <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">{t("lab.format")}<select name="format" value={importFormat} onChange={(e) => { setImportFormat(e.target.value); setImportName(""); setImportError(null); }} className={inputClass + " bg-surface text-ink"}>
+              <option value="csv">CSV · {t("lab.import_csv_desc")}</option>
               <option value="fit">FIT</option>
-              <option value="csv">CSV</option>
               <option value="apple-health">Apple Health · export.zip</option>
-            </Field>
-            <input
-              className={inputClass}
-              type="file"
-              name="file"
-              accept=".fit,.csv,.zip"
-              aria-label={t("lab.file")}
-              required
-            />
+            </select></label>
+            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-hairline2 bg-surface px-4 py-5 text-center hover:bg-surface2 focus-within:outline focus-within:outline-2 focus-within:outline-primary" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const files = e.dataTransfer.files; if (files.length && importInput.current) { importInput.current.files = files; setImportName(files[0].name); setImportError(null); } }}>
+              <span className="text-[14px] font-medium text-ink">{importName || t("lab.drop_file")}</span>
+              <span className="text-[12px] text-muted">{t("lab.import_file_rules", { type: importFormat === "fit" ? "FIT" : importFormat === "csv" ? "CSV" : "ZIP", size: importLimit })}</span>
+              <input ref={importInput} className="sr-only" type="file" name="file" accept={importAccept} aria-label={t("lab.file")} onChange={(e) => { setImportError(null); setImportName(e.target.files?.[0]?.name ?? ""); }} required />
+            </label>
           </Form>
           <p className="mt-3 text-[12px] text-muted">{t("refinement.apple_import_note")}</p>
           <div className="mt-6 flex flex-col gap-3">

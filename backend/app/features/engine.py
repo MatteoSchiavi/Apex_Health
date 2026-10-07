@@ -36,7 +36,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,7 @@ from app.models.journal import JournalEntry
 from app.models.medical import LabPanel
 from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+from app.services.sleep_summary import recorded_awake_totals, summary_awake
 
 logger = logging.getLogger("features.engine")
 
@@ -188,6 +189,7 @@ async def _load_window(
         .unique()
         .all()
     )
+    sleep_awake = await recorded_awake_totals(session, list(sleep_sessions))
     hrv_readings = (
         (
             await session.scalars(
@@ -256,6 +258,7 @@ async def _load_window(
         "activities": activities,
         "streams_by_activity": streams_by_activity,
         "sleep_sessions": sleep_sessions,
+        "sleep_awake": sleep_awake,
         "journal_entries": journal_entries,
         "iron_panel": iron_panel,
         "iron_threshold": iron_threshold,
@@ -294,11 +297,13 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     activities_with_streams = [
         (a, window["streams_by_activity"].get(a.id, [])) for a in activities
     ]
-    loads = load.daily_loads(activities_with_streams, hrm)
+    loads, selected_loads, load_metadata = load.consistent_window_loads(activities_with_streams, hrm)
     loads_by_discipline: dict[str, dict[date, float]] = {}
     for activity, _streams in activities_with_streams:
+        if activity.discipline_id not in disciplines:
+            continue
         name = disciplines[activity.discipline_id].name
-        trimp = load.activity_trimp(activity, _streams, hrm)
+        trimp = selected_loads.get(activity.id)
         if trimp is None:
             continue
         loads_by_discipline.setdefault(name, {})
@@ -369,9 +374,9 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
             else None
         ),
         total_sleep_s=(
-            float(sleep_session.total_sleep_s) if sleep_session else None
+            float(sleep_session.total_sleep_s) if sleep_session and sleep_session.total_sleep_s is not None else None
         ),
-        awake_s=float(sleep_session.awake_s) if sleep_session else None,
+        awake_s=summary_awake(sleep_session, window.get("sleep_awake", {}).get(sleep_session.start_time)) if sleep_session else None,
     )
     readiness = scores.readiness_score(
         w["readiness_score"], recovery, sleep_architecture, acwr
@@ -415,7 +420,7 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         if activity.local_date == day
     )
     data_completeness = (
-        "partial" if (missing_wellness or activity_hr_gaps) else "full"
+        "partial" if (missing_wellness or activity_hr_gaps or load_metadata["excluded_sessions"]) else "full"
     )
 
     # iron_status_flag: latest known ferritin as of D (see module docstring).
@@ -436,6 +441,7 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
         "recovery_score": recovery,
         "strain_score": strain,
         "readiness_score": readiness,
+        "load_metadata": load_metadata,
         "training_load_acute": acute7,
         "training_load_chronic": chronic28 / 4.0,
         "acwr": acwr,
@@ -453,6 +459,8 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     ftp_estimates: dict[int, list[float]] = {}
     for activity, streams in activities_with_streams:
         if activity.local_date != day:
+            continue
+        if activity.discipline_id not in disciplines:
             continue
         disc = disciplines[activity.discipline_id]
         values = per_discipline.setdefault(activity.discipline_id, {})
@@ -540,7 +548,8 @@ async def compute_user_day(
         existing = await session.get(DailyFeature, {"user_id": user.id, "date": day})
         if existing is not None:
             await session.delete(existing)
-            await session.commit()
+        await session.execute(delete(DisciplineFeature).where(DisciplineFeature.user_id == user.id, DisciplineFeature.date == day))
+        await session.commit()
         return None
     await _upsert_rows(session, user.id, [computed])
     return computed
@@ -552,6 +561,8 @@ async def compute_user_range(
     """Recompute a closed local-date range (the §6.4 correction path:
     'fix the feature_weights row, then manually re-run the nightly
     feature-engine task for the affected date range'). Idempotent per day."""
+    if end < start or (end - start).days > 365:
+        raise ValueError("Recompute requires a closed range of at most 366 days")
     computed_days = 0
     discipline_rows_written = 0
     day = start
@@ -595,6 +606,7 @@ async def _upsert_rows(
                 index_elements=["user_id", "date"], set_=update_cols
             )
         )
+        await session.execute(delete(DisciplineFeature).where(DisciplineFeature.user_id == user_id, DisciplineFeature.date == daily["date"]))
         for row in result["discipline_rows"]:
             stmt_d = pg_insert(DisciplineFeature).values(
                 **{

@@ -73,7 +73,11 @@ async def test_nightly_computes_prior_local_day(db_session: AsyncSession):
     assert float(row.acwr) == pytest.approx(
         golden_value(fixture, "2025-04-11", "acwr"), abs=2e-6
     )
-    assert row.data_completeness == "full"
+    # The March17 source-unidentified load is within this day's input window;
+    # coverage is partial even though all same-day wellness is available.
+    assert row.data_completeness == "partial"
+    assert row.load_metadata["method"] == "edwards_trimp"
+    assert row.load_metadata["excluded_sessions"] == 1
 
 
 def golden_value(fixture, day: str, field: str) -> float:

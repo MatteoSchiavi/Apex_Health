@@ -120,11 +120,19 @@ class Settings(BaseSettings):
     coros_mcp_timeout_seconds: float = 30.0
 
     # --- LLM providers (§5, §8.1, §9): env-var swappable, no code change ---
-    llm_provider_cheap: str = "glm-4.7-flash"
-    llm_provider_powerful: str = "glm-5.2"
+    # Blank selects the configured vendor's default. Explicit model names win.
+    llm_provider_cheap: str = ""
+    llm_provider_powerful: str = ""
     glm_api_key: str = ""
     # OpenAI-compatible chat-completions endpoint for the GLM family.
     glm_api_base: str = "https://open.bigmodel.cn/api/paas/v4"
+
+    deepseek_api_key: str = ""
+    deepseek_api_base: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-flash"
+    # Use the same model unless the operator explicitly enables a costlier one.
+    deepseek_model_powerful: str = ""
+    deepseek_thinking: bool = False
 
     # Harness v3 (2026-09): per-tier endpoints so the MAIN model can be a
     # different vendor than the strategic one. Owner decision: DeepSeek is the
@@ -208,6 +216,9 @@ class Settings(BaseSettings):
     # lab-provided reference low. A judgment call the spec leaves open —
     # surfaced here as the single documented tunable.
     low_ferritin_ng_ml: float = 30.0
+
+    owner_telegram_bot_token: str = ""
+    owner_telegram_chat_id: str = ""
 
 
 @lru_cache

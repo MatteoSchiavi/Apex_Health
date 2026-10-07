@@ -209,8 +209,8 @@ export default function CoachPage() {
               <span className="text-[13px] font-medium">
                 {active.data?.title ?? t("coach.conversation")}
               </span>
-              {active.data?.messages.at(-1)?.model_tier && (
-                <Badge>{active.data.messages.at(-1)!.model_tier}</Badge>
+              {typeof active.data?.messages.at(-1)?.referenced_data?.model === "string" && (
+                <Badge>{String(active.data.messages.at(-1)!.referenced_data!.model)}</Badge>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
@@ -259,7 +259,8 @@ export default function CoachPage() {
                         {m.role === "user" ? t("social.you") : t("nav.coach")}
                       </span>
                       <p className="whitespace-pre-wrap break-words text-[14px] leading-7">
-                        {m.content}
+                        {m.content.startsWith("I couldn't finish this request within the tool budget")
+                          ? t("coach.incomplete_reply") : m.content}
                       </p>
                       {m.role === "assistant" &&
                         !!m.referenced_data?.grounding && (

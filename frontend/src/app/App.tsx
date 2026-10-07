@@ -43,6 +43,7 @@ const CalendarPage = lazy(() => import("../features/lab/CalendarPage"));
 const GearPage = lazy(() => import("../features/lab/GearPage"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage"));
 const LegalPage = lazy(() => import("../features/legal/LegalPage"));
+const AdminPage = lazy(() => import("../features/admin/AdminPage"));
 
 import { queryClient } from "./query";
 import { Button, ErrorNote, Loading } from "../components/kit";
@@ -107,6 +108,9 @@ export default function App() {
           <Route path="/legal/privacy" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
           <Route path="/legal/terms" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
           <Route path="/legal/cookies" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
+          <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
+          <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
+          <Route path="/cookies" element={<Navigate to="/legal/cookies" replace />} />
           <Route
             path="/app"
             element={
@@ -123,6 +127,7 @@ export default function App() {
               </Protected>
             }
           />
+          <Route path="/admin" element={<Protected><OwnerAdmin /></Protected>} />
           <Route
             path="/app/activities/:id"
             element={
@@ -240,4 +245,9 @@ export default function App() {
       </BrowserRouter>
     </QueryClientProvider>
   );
+}
+
+function OwnerAdmin() {
+  const me = useUi((s) => s.me);
+  return me?.role === "owner" ? <AdminPage /> : <Navigate to="/app" replace />;
 }

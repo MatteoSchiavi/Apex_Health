@@ -1,7 +1,7 @@
 """Typed capability registry. The model has no approval or execution tool."""
 
 from dataclasses import dataclass
-from datetime import UTC, date as CalendarDate, datetime
+from datetime import UTC, date as CalendarDate, datetime, timedelta
 from typing import Any, Awaitable, Callable, Literal
 from pydantic import Field
 from sqlalchemy import select
@@ -37,6 +37,33 @@ class ToolSpec:
 
 class Empty(Strict):
     pass
+
+
+class RecoveryIn(Strict):
+    days: int = Field(default=7, ge=1, le=28)
+
+
+async def _recovery_summary(ctx, days=7):
+    """One bounded retrieval for common questions, retaining measured handles.
+
+    There is deliberately no fabricated efficiency or ACWR: those require
+    compatible, source-eligible inputs and a registered analytical recipe.
+    """
+    user = await _user(ctx)
+    start = ctx.today - timedelta(days=days - 1)
+    metrics = ("hrv_overnight_rmssd", "resting_hr", "sleep_duration", "provider_load")
+    data, refs = {}, []
+    for metric in metrics:
+        rows = await evidence.query_observations(
+            ctx.session, user.id, metric, start, ctx.today, for_ai=True, limit=days * 2,
+        )
+        observations = [evidence.observation_dict(r, datetime.now(UTC)) for r in rows]
+        data[metric] = {"observations": observations, "available": bool(observations)}
+        refs.extend(r["id"] for r in observations)
+    return envelope(
+        data, user=user, refs=refs, period={"start": str(start), "end": str(ctx.today)},
+        summary="Recorded observations grouped by metric, not diagnoses. Distinct sources and devices must not be combined into a baseline. Missing efficiency/ACWR require compatible eligible inputs; do not invent them.",
+    )
 
 
 class QueryIn(Strict):
@@ -517,6 +544,11 @@ async def _repair(ctx, kind, start_date, end_date):
 TOOL_REGISTRY = {
     s.name: s
     for s in [
+        ToolSpec(
+            "data_get_recovery_summary", "read",
+            "Batch recent overnight RMSSD, resting HR, sleep duration and provider load with measured evidence handles. Use first for recovery questions, avoid repeated atomic metric queries.",
+            RecoveryIn, _recovery_summary,
+        ),
         ToolSpec(
             "data_get_coverage",
             "read",
