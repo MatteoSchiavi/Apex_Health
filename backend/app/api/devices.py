@@ -26,9 +26,11 @@ router = APIRouter(prefix="/settings/devices", tags=["devices"])
 
 
 def _device_out(integration: Integration, user: User) -> DeviceOut:
+    from app.connectors.support import support_for
     return DeviceOut(
         integration_id=integration.id,
         provider=integration.provider,
+        support=support_for(integration.provider),
         status=integration.status,
         last_synced_at=integration.last_synced_at,
         is_main=(
@@ -56,6 +58,11 @@ async def list_devices(
     ).all()
     return [_device_out(i, user) for i in rows]
 
+
+@router.get("/support")
+async def provider_support(user: User = Depends(get_current_user)):
+    from app.connectors.support import SUPPORT, support_for
+    return {provider: support_for(provider) for provider in SUPPORT}
 
 @router.put("/main", response_model=list[DeviceOut])
 async def set_main_device(

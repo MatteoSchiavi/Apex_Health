@@ -356,6 +356,11 @@ function DevicesSection() {
     queryKey: ["devices"],
     queryFn: () => api.get<DeviceOut[]>("/settings/devices"),
   });
+  const maturity = useQuery({
+    queryKey: ["provider-support"],
+    queryFn: () => api.get<Record<string, NonNullable<DeviceOut["support"]>>>("/settings/devices/support"),
+    staleTime: 300_000,
+  });
   const [flowError, setFlowError] = useState<string | null>(null);
   const [garminOpen, setGarminOpen] = useState(false);
   const [corosOpen, setCorosOpen] = useState(false);
@@ -494,6 +499,7 @@ function DevicesSection() {
         <div className="flex flex-col">
           {PROVIDERS.map(({ key, name }) => {
             const d = byProvider.get(key);
+            const support = d?.support ?? maturity.data?.[key];
             const connected = d?.status === "active";
             return (
               <Fragment key={key}>
@@ -503,6 +509,7 @@ function DevicesSection() {
                       <span className="text-[13px] font-medium text-ink">
                         {name}
                       </span>
+                      {support && <Badge tone="warning">{t("providerSupport." + support.status)}</Badge>}
                       {d?.is_main && (
                         <Badge tone="primary">
                           {t("settings.main_device")}

@@ -1,3 +1,4 @@
+import SyncHealthPanel from "./SyncHealthPanel";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -66,6 +67,7 @@ export default function DataHealthPage({ embedded = false }: { embedded?: boolea
         subtitle={t("lab.data_health_sub")}
       />}
       <QueryState loading={q.isLoading} error={q.isError} />
+      <SyncHealthPanel />
       <Card>
         <CardHeader
           title={t("lab.coverage")}
