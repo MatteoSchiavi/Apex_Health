@@ -233,6 +233,19 @@ class MetricPoint(BaseModel):
     value: float | None
 
 
+class MetricCalculationContributor(BaseModel):
+    metric: str
+    value: float
+    unit: str
+
+
+class MetricCalculationInputs(BaseModel):
+    metric: str
+    as_of: str
+    contributors: list[MetricCalculationContributor]
+    methodology: str | None = None
+
+
 class MetricTrendOut(BaseModel):
     metric: str
     label: str
@@ -242,6 +255,7 @@ class MetricTrendOut(BaseModel):
     points: list[MetricPoint]
     stats: dict[str, Any] = {}
     reference_range: dict[str, Any] | None = None
+    calculation_inputs: MetricCalculationInputs | None = None
 
 
 # --- /coach/chats --------------------------------------------------------------

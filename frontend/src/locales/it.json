@@ -1305,5 +1305,150 @@
     "profile_missing": "Aggiungi nome e fuso orario",
     "baseline": "Crea una baseline del sonno",
     "baseline_count": "{{count}}/14 notti registrate negli ultimi 28 giorni"
+  },
+  "metricEducation": {
+    "understand": "Capire questa metrica",
+    "your_context": "Il tuo contesto",
+    "why_today": "Perché oggi?",
+    "what_is_it": "Cos’è questa metrica?",
+    "what_affects_it": "Cosa la influenza?",
+    "what_you_can_influence": "Cosa puoi influenzare",
+    "how_interpreted": "Come Apex interpreta questa metrica",
+    "how_calculated": "Come Apex calcola questa metrica",
+    "about_calculation": "Informazioni sul calcolo",
+    "current_value": "Valore attuale",
+    "vs_baseline": "rispetto alla baseline personale (mediana)",
+    "range_status": "Stato rispetto al range personale",
+    "comparable_data": "Dati confrontabili",
+    "coverage_days": "{{count}} giorni / ultime 4 settimane",
+    "coverage_nights": "{{count}} notti / ultime 4 settimane",
+    "source": "Fonte",
+    "source_value": "{{source}}",
+    "influences_note": "Sono possibili influenze in generale, non fattori che Apex ha identificato come cause oggi.",
+    "semantics": {
+      "measured": "Metrica misurata / registrata",
+      "apex_derived": "Stima derivata da Apex",
+      "provider_proprietary": "Stima calcolata dalla fonte"
+    },
+    "metrics": {
+      "resting_hr": {
+        "definition": "La frequenza cardiaca a riposo è il numero di battiti al minuto mentre sei a riposo.",
+        "why": "Per seguire i cambiamenti, il tuo andamento recente è spesso più utile del confronto con un’altra persona."
+      },
+      "hrv_ms": {
+        "definition": "La variabilità della frequenza cardiaca (HRV) descrive le variazioni del tempo tra battiti consecutivi.",
+        "why": "Misurazioni ripetute mostrano come il valore varia nel tempo; un singolo dato non identifica una causa o il livello di prontezza."
+      },
+      "respiration": {
+        "definition": "È la frequenza respiratoria media registrata, in respiri al minuto, per la misurazione o la sessione di sonno associata."
+      },
+      "spo2": {
+        "definition": "È una lettura del sensore che stima la saturazione di ossigeno nel sangue, espressa in percentuale."
+      },
+      "sleep_duration": {
+        "definition": "La durata del sonno è la stima registrata dal dispositivo del tempo trascorso dormendo durante una sessione. Può differire dal tempo a letto."
+      },
+      "weight": {
+        "definition": "Il peso è il valore della massa corporea registrato dalla fonte collegata."
+      },
+      "body_fat": {
+        "definition": "La percentuale di massa grassa è una stima fornita da un dispositivo o servizio. Il metodo dipende dalla fonte."
+      },
+      "vo2max": {
+        "definition": "Il VO₂ max è una stima del massimo consumo di ossigeno durante l’esercizio, fornita da un dispositivo o servizio."
+      },
+      "steps": {
+        "definition": "I passi sono il conteggio registrato dalla fonte collegata per il periodo della misurazione."
+      },
+      "floors": {
+        "definition": "I piani sono il conteggio registrato dalla fonte collegata. I dispositivi possono applicare criteri diversi per l’aumento di quota."
+      },
+      "hydration": {
+        "definition": "L’idratazione è la quantità di liquidi registrata nella fonte collegata. Non misura direttamente l’idratazione corporea."
+      },
+      "provider_sleep_score": {
+        "definition": "Questo punteggio del sonno è calcolato dalla fonte con un proprio modello. Formula e interpretazione della scala non sono standardizzate tra le fonti."
+      },
+      "sleep_deep": {
+        "definition": "È il tempo stimato dal dispositivo come sonno profondo. Le fasi del sonno sono dedotte dai dati dei sensori."
+      },
+      "sleep_rem": {
+        "definition": "È il tempo stimato dal dispositivo come sonno REM. Le fasi del sonno sono dedotte dai dati dei sensori."
+      },
+      "sleep_light": {
+        "definition": "È il tempo stimato dal dispositivo come sonno leggero o core. Le fasi del sonno sono dedotte dai dati dei sensori."
+      },
+      "restlessness": {
+        "definition": "È una stima della fonte dei movimenti o dell’irrequietezza durante il sonno. Scala e metodo dipendono dalla fonte."
+      },
+      "acute_load": {
+        "definition": "Il carico acuto è la somma dei valori di carico delle attività selezionate nella finestra più recente di 7 giorni."
+      },
+      "chronic_load": {
+        "definition": "Il carico cronico è la somma dei valori di carico delle attività selezionate negli ultimi 28 giorni, divisa per quattro per ottenere una media settimanale."
+      },
+      "acwr": {
+        "definition": "L’ACWR confronta il carico acuto recente con quello cronico a lungo termine usando la stessa scala di carico selezionata. È un rapporto descrittivo, non un obiettivo."
+      },
+      "recovery": {
+        "definition": "Il recupero è una stima Apex ottenuta con una combinazione euristica fissa di segnali disponibili. Non è una misurazione diretta del recupero."
+      },
+      "readiness": {
+        "definition": "La prontezza è una stima Apex che combina le componenti disponibili di recupero, architettura del sonno ed equilibrio del carico."
+      },
+      "strain": {
+        "definition": "Lo strain è una stima Apex che esprime il carico di attività del giorno rispetto al picco personale mobile."
+      },
+      "sleep_score": {
+        "definition": "Questa stima Apex dell’architettura del sonno combina le proporzioni disponibili delle fasi e l’efficienza del sonno."
+      },
+      "hrv_deviation": {
+        "definition": "La deviazione HRV è la differenza percentuale tra l’HRV del giorno e la media delle letture registrate nella finestra di baseline precedente."
+      }
+    },
+    "factors": {
+      "sleep": "Sonno",
+      "recent_training": "Allenamento recente",
+      "stress": "Stress",
+      "illness": "Malattia",
+      "temperature": "Temperatura",
+      "hydration": "Idratazione",
+      "measurement_context": "Orario della misurazione, vestibilità del dispositivo, tempo di utilizzo e trattamento specifico della fonte",
+      "sleep_timing": "Orario del sonno e modalità con cui il dispositivo identifica la sessione",
+      "load_method": "Metodo di carico compatibile e registrazioni di attività disponibili"
+    },
+    "actions": {
+      "resting_hr": "Regolarità del sonno, recupero adeguato dall’allenamento e idratazione regolare sono fattori su cui puoi agire. Questo valore da solo non identifica una causa e non giustifica tentativi di abbassare la frequenza cardiaca.",
+      "hrv_ms": "Mantieni condizioni di misurazione coerenti e considera il contesto generale. L’HRV varia naturalmente: non è necessario massimizzare una singola lettura.",
+      "consistent_measurement": "Segui le istruzioni della fonte e confronta letture ottenute in condizioni simili. Un singolo dato non stabilisce una causa.",
+      "sleep_duration": "Un’opportunità di sonno regolare e una registrazione coerente aiutano a interpretare le tendenze; la stima del dispositivo non misura la qualità del sonno."
+    },
+    "methods": {
+      "observed_range": "Apex confronta il valore più recente con osservazioni confrontabili dei 28 giorni precedenti, escludendo il giorno valutato. Il range personale è P10–P90; il confronto con la baseline usa la mediana. Servono almeno 14 osservazioni confrontabili.",
+      "recorded_value": "Il valore è mostrato come registrato dalla fonte collegata; Apex non ne calcola una direzione né una raccomandazione.",
+      "sleep_session_estimate": "La fonte stima la sessione di sonno e il tempo totale dormito dai segnali disponibili. Apex mostra la durata registrata.",
+      "provider_estimate": "La fonte fornisce questa stima. Apex non dispone dei dettagli esatti del calcolo per questo dato e non ricostruisce la formula della fonte.",
+      "load_aggregation": "Apex seleziona per la finestra un solo metodo di carico con copertura migliore e somma i valori giornalieri disponibili. Le sessioni mancanti o incompatibili possono essere escluse; scale diverse non sono considerate equivalenti né convertite in una scala TSS comune.",
+      "acwr_ratio": "ACWR = somma carico 7 giorni / (somma carico 28 giorni / 4). Entrambe le finestre usano la stessa scala di carico selezionata; il rapporto è descrittivo e non definisce un intervallo sicuro o ottimale.",
+      "edwards_trimp": "Edwards TRIMP stima il carico dell’attività dal tempo trascorso nelle zone di frequenza cardiaca, ponderato per zona. Richiede dati cardiaci utilizzabili e una frequenza cardiaca massima registrata.",
+      "garmin_recorded": "Il carico Garmin registrato usa i valori del provider. Questa scala resta separata da Edwards TRIMP e dalle scale degli altri provider.",
+      "recovery_blend": "Apex converte i segnali disponibili di HRV, frequenza cardiaca a riposo, punteggio del sonno e strain del giorno precedente in componenti euristiche fisse, poi combina le componenti disponibili con pesi configurati. Gli input e i pesi usati per un giorno specifico non sono conservati per questa spiegazione.",
+      "readiness_blend": "Apex combina le stime disponibili di recupero, architettura del sonno ed equilibrio del carico con pesi configurati. Gli input e i pesi usati per un giorno specifico non sono conservati per questa spiegazione.",
+      "strain_peak": "Apex confronta il carico di attività selezionato del giorno con il picco mobile dei 28 giorni, usando un limite minimo affinché uno storico breve o poco attivo non produca automaticamente il punteggio massimo.",
+      "sleep_architecture": "Apex combina la proporzione REM disponibile, quella del sonno profondo e l’efficienza del sonno con pesi configurati. Le componenti sono stime basate sui dati del sonno registrati.",
+      "hrv_deviation": "Apex confronta l’HRV del giorno con la media delle letture registrate nei 28 giorni precedenti. Servono almeno sette letture precedenti; il giorno valutato è escluso."
+    },
+    "limits": {
+      "measured": "Il range osservato descrive la tua storia registrata, non soglie cliniche. Dispositivo, fonte e contesto di misurazione possono influire sulla confrontabilità.",
+      "recorded": "Un valore registrato può essere incompleto o specifico della fonte. Conteggi e quantità annotate non determinano lo stato di salute né un obiettivo consigliato.",
+      "sleep_estimate": "La durata del sonno è una stima del dispositivo e può differire dal sonno effettivo o dal tempo a letto. Non identifica la qualità del sonno né la causa di un cambiamento.",
+      "provider_estimate": "È una stima fornita dalla fonte, non una misura diretta. Metodi e interpretazione possono cambiare tra fonti e nel tempo; la fonte potrebbe non essere nota in questa vista.",
+      "load_aggregate": "Le unità di carico dipendono dal metodo selezionato. Il carico del provider e Edwards TRIMP non sono intercambiabili; le attività mancanti o incompatibili possono essere escluse. Questo aggregato non è necessariamente TSS.",
+      "acwr_not_target": "L’ACWR non è una soglia personale di sicurezza convalidata né una prescrizione. Il solo rapporto non può prevedere un infortunio o stabilire l’allenamento appropriato.",
+      "composite_inputs_unavailable": "È una stima euristica, non una misura clinica. Gli input e i pesi effettivi per questa data non sono conservati, quindi questa spiegazione non può identificare cosa abbia determinato il punteggio.",
+      "estimate_not_clinical": "Considerala una stima descrittiva, non una diagnosi medica o una probabilità calibrata di una condizione di salute.",
+      "measured_baseline_deviation": "Questo confronto derivato dipende dalle letture disponibili e dalla copertura della baseline. Non è una soglia clinica né una diagnosi."
+    },
+    "calculation_date": "Calcolo del {{date}}"
   }
 }

@@ -82,7 +82,7 @@ test("HRV interpretation labels an in-range result and shows its measured band",
   await page.goto("/app/biometrics/hrv_ms");
 
   await expect(
-    page.getByText("Within your usual range", { exact: true }),
+    page.getByText("Within your usual range", { exact: true }).filter({ visible: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", {
@@ -114,7 +114,7 @@ test("HRV interpretation calls out a value above the measured band", async ({
   await page.goto("/app/biometrics/hrv_ms");
 
   await expect(
-    page.getByText("Above your usual range", { exact: true }),
+    page.getByText("Above your usual range", { exact: true }).filter({ visible: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Above your usual range · 45.0–65.0 ms" }),

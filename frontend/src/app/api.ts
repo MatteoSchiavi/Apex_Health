@@ -300,6 +300,12 @@ export interface MetricTrend {
     origin: string;
     as_of: string;
   } | null;
+  calculation_inputs?: {
+    metric: string;
+    as_of: string;
+    contributors: { metric: string; value: number; unit: string }[];
+    methodology?: string | null;
+  } | null;
 }
 
 export interface ChatSessionOut {

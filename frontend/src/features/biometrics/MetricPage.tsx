@@ -24,6 +24,8 @@ import {
   useUnits,
 } from "../../components/data";
 import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
+import { explainMetric } from "./education/explain";
+import { MetricEducationDisclosure } from "./education/MetricEducationDisclosure";
 export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
@@ -40,6 +42,7 @@ export default function MetricPage() {
   if (trend.isLoading) return <Loading />;
   if (trend.isError || !trend.data) return <ErrorNote />;
   const data = trend.data;
+  const education = explainMetric(data);
   const latest = [...data.points].reverse().find((p) => p.value != null);
   const label = METRIC_LABELS[key]
     ? t(METRIC_LABELS[key])
@@ -101,6 +104,7 @@ export default function MetricPage() {
                 {data.start_date} – {data.end_date}
               </p>
             </div>
+            {education && <MetricEducationDisclosure key={key} education={education} />}
             <TrendChart
               label={label}
               unit={unit}

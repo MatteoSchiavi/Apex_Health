@@ -24,7 +24,7 @@ from app.models.user import User
 from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.models.lab import Observation
 from app.services.analytics import robust_baseline
-from app.schemas.ui import MetricPoint, MetricTrendOut
+from app.schemas.ui import MetricPoint, MetricTrendOut, MetricCalculationInputs
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -100,9 +100,23 @@ async def metric_trend(
     start_d = end_d - timedelta(days=days - 1)
     history_start = min(start_d, end_d - timedelta(days=30))
     reference_range = None
+    acwr_snapshots = {}
 
     if spec["model"] == "hrv":
         rows, reference_range = await _hrv_series(session, user, history_start, end_d)
+    elif key == "acwr":
+        snapshots = (await session.execute(
+            select(DailyFeature.date, DailyFeature.acwr,
+                   DailyFeature.training_load_acute, DailyFeature.training_load_chronic,
+                   DailyFeature.load_metadata)
+            .where(DailyFeature.user_id == user.id, DailyFeature.date >= history_start,
+                   DailyFeature.date <= end_d)
+            .order_by(DailyFeature.date)
+        )).all()
+        # Keep the constituent snapshot from the same SELECT as each point;
+        # a concurrent recompute cannot mix rows from two calculation versions.
+        rows = [(row[0], row[1]) for row in snapshots]
+        acwr_snapshots = {row[0]: row for row in snapshots}
     elif spec["model"] == "feature":
         rows = (
             await session.execute(
@@ -188,6 +202,37 @@ async def metric_trend(
         points=[p for p in points],
         stats=stats,
         reference_range=reference_range,
+        calculation_inputs=(
+            _acwr_calculation_inputs(acwr_snapshots.get(latest_day))
+            if key == "acwr" and values else None
+        ),
+    )
+
+
+def _acwr_calculation_inputs(snapshot):
+    """Expose persisted constituents only; never reconstruct a missing snapshot."""
+    if snapshot is None:
+        return None
+    day, ratio, acute, chronic, metadata = snapshot
+    if any(value is None for value in (ratio, acute, chronic)):
+        return None
+    try:
+        ratio, acute, chronic = float(ratio), float(acute), float(chronic)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not all(math.isfinite(value) for value in (ratio, acute, chronic)):
+        return None
+    if ratio < 0 or acute < 0 or chronic <= 0 or not isinstance(metadata, dict):
+        return None
+    method, unit = metadata.get("method"), metadata.get("unit")
+    if not isinstance(method, str) or not method.strip() or not isinstance(unit, str) or not unit.strip():
+        return None
+    return MetricCalculationInputs(
+        metric="acwr", as_of=day.isoformat(), methodology=method,
+        contributors=[
+            {"metric": "acute_load", "value": acute, "unit": unit + "/week"},
+            {"metric": "chronic_load", "value": chronic, "unit": unit + "/week"},
+        ],
     )
 
 

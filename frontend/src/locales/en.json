@@ -1305,5 +1305,150 @@
     "profile_missing": "Add your name and time zone",
     "baseline": "Build a sleep baseline",
     "baseline_count": "{{count}}/14 recorded nights in the last 28 days"
+  },
+  "metricEducation": {
+    "understand": "Understand this metric",
+    "your_context": "Your context",
+    "why_today": "Why today?",
+    "what_is_it": "What is this metric?",
+    "what_affects_it": "What affects it?",
+    "what_you_can_influence": "What you can influence",
+    "how_interpreted": "How Apex interprets this",
+    "how_calculated": "How Apex calculates this",
+    "about_calculation": "About this calculation",
+    "current_value": "Current value",
+    "vs_baseline": "vs personal baseline (median)",
+    "range_status": "Personal-range status",
+    "comparable_data": "Comparable data",
+    "coverage_days": "{{count}} days / previous 4 weeks",
+    "coverage_nights": "{{count}} nights / previous 4 weeks",
+    "source": "Source",
+    "source_value": "{{source}}",
+    "influences_note": "These are possible influences in general, not factors Apex has identified as causes today.",
+    "semantics": {
+      "measured": "Measured / recorded metric",
+      "apex_derived": "Apex-derived estimate",
+      "provider_proprietary": "Source-calculated estimate"
+    },
+    "metrics": {
+      "resting_hr": {
+        "definition": "Resting heart rate is the number of heartbeats per minute while you are at rest.",
+        "why": "Your own recent pattern is usually more useful for tracking change than a comparison with another person."
+      },
+      "hrv_ms": {
+        "definition": "Heart rate variability (HRV) describes variation in the time between consecutive heartbeats.",
+        "why": "Repeated readings can show how your measurements vary over time; one value does not identify a cause or readiness."
+      },
+      "respiration": {
+        "definition": "This is the recorded average breathing rate, in breaths per minute, for the associated measurement or sleep session."
+      },
+      "spo2": {
+        "definition": "This is a sensor reading of estimated blood oxygen saturation, shown as a percentage."
+      },
+      "sleep_duration": {
+        "definition": "Sleep duration is the device-recorded estimate of time asleep during a sleep session. It can differ from time in bed."
+      },
+      "weight": {
+        "definition": "Weight is the body-mass value recorded by the connected source."
+      },
+      "body_fat": {
+        "definition": "Body fat percentage is an estimate supplied by a device or service. Its measurement method depends on that source."
+      },
+      "vo2max": {
+        "definition": "VO₂ max is an estimate of the maximum rate of oxygen use during exercise, supplied by a device or service."
+      },
+      "steps": {
+        "definition": "Steps are the count recorded by the connected source for the measurement period."
+      },
+      "floors": {
+        "definition": "Floors are the count recorded by the connected source. Devices can use different rules for counting elevation gain."
+      },
+      "hydration": {
+        "definition": "Hydration is the fluid amount recorded in the connected source. It is not a direct measurement of body hydration."
+      },
+      "provider_sleep_score": {
+        "definition": "This sleep score is calculated by the data source using its own model. The formula and scale interpretation are not standardized across sources."
+      },
+      "sleep_deep": {
+        "definition": "This is the device’s estimated time classified as deep sleep. Sleep-stage labels are inferred from sensor data."
+      },
+      "sleep_rem": {
+        "definition": "This is the device’s estimated time classified as REM sleep. Sleep-stage labels are inferred from sensor data."
+      },
+      "sleep_light": {
+        "definition": "This is the device’s estimated time classified as light or core sleep. Sleep-stage labels are inferred from sensor data."
+      },
+      "restlessness": {
+        "definition": "This is a source-reported estimate of movement or restlessness during sleep. Its scale and method depend on the source."
+      },
+      "acute_load": {
+        "definition": "Acute load is the sum of the selected activity-load values in the most recent 7-day window."
+      },
+      "chronic_load": {
+        "definition": "Chronic load is the sum of selected activity-load values in the most recent 28-day window, divided by four to express a weekly average."
+      },
+      "acwr": {
+        "definition": "ACWR compares recent acute load with the longer-term chronic load using the same selected load scale. It is a descriptive ratio, not a target."
+      },
+      "recovery": {
+        "definition": "Recovery is an Apex estimate produced by a fixed heuristic blend of available signals. It is not a direct measurement of recovery."
+      },
+      "readiness": {
+        "definition": "Readiness is an Apex estimate that blends available recovery, sleep-architecture and workload-balance components."
+      },
+      "strain": {
+        "definition": "Strain is an Apex estimate that expresses a day’s activity load relative to a rolling personal load peak."
+      },
+      "sleep_score": {
+        "definition": "This Apex sleep-architecture estimate blends available sleep-stage proportions and sleep efficiency."
+      },
+      "hrv_deviation": {
+        "definition": "HRV deviation is the percentage difference between the day’s HRV and the average of recorded HRV readings in the preceding baseline window."
+      }
+    },
+    "factors": {
+      "sleep": "Sleep",
+      "recent_training": "Recent training",
+      "stress": "Stress",
+      "illness": "Illness",
+      "temperature": "Temperature",
+      "hydration": "Hydration",
+      "measurement_context": "Measurement timing, device fit, wear time and source-specific processing",
+      "sleep_timing": "Sleep timing and how the device identifies the sleep session",
+      "load_method": "Which compatible activity-load method and records are available"
+    },
+    "actions": {
+      "resting_hr": "Sleep consistency, appropriate training recovery and regular hydration are factors you can influence. This value alone does not identify a cause or justify trying to lower your heart rate.",
+      "hrv_ms": "Keep measurement conditions consistent and consider the broader context. HRV varies naturally; there is no need to maximize a single reading.",
+      "consistent_measurement": "Use the source as directed and compare readings taken in similar conditions. A single reading does not establish a cause.",
+      "sleep_duration": "A regular sleep opportunity and consistent recording can make duration trends easier to interpret; the device estimate is not a measure of sleep quality."
+    },
+    "methods": {
+      "observed_range": "Apex compares the latest value with comparable observations from the preceding 28 days, excluding the assessed day. The personal band is P10–P90; the baseline comparison uses the median. At least 14 comparable observations are needed.",
+      "recorded_value": "The value is shown as recorded by the connected source; Apex does not calculate a direction or recommendation from it.",
+      "sleep_session_estimate": "The source estimates a sleep session and its total time asleep from its available signals. Apex displays the recorded duration.",
+      "provider_estimate": "The source supplies this estimate. Apex does not have the exact calculation details for this record and does not reconstruct the source formula.",
+      "load_aggregation": "Apex selects one best-covered load method for the window and sums its available daily values. Missing or incompatible sessions may be excluded; different load scales are not treated as equivalent or converted to a common TSS scale.",
+      "acwr_ratio": "ACWR = 7-day load sum / (28-day load sum / 4). Both windows use the same selected load scale; this ratio is descriptive and does not establish a safe or optimal range.",
+      "edwards_trimp": "Edwards TRIMP estimates activity load from time spent in heart-rate zones, weighted by zone. It requires usable heart-rate data and a recorded maximum heart rate.",
+      "garmin_recorded": "Garmin recorded load uses the provider’s own load values. This scale remains separate from Edwards TRIMP and other providers’ scales.",
+      "recovery_blend": "Apex maps available HRV, resting-heart-rate, sleep-score and prior-day strain signals to fixed heuristic components, then blends available components with configured weights. The inputs and weights used for a particular day are not preserved for this explanation.",
+      "readiness_blend": "Apex blends the available recovery, sleep-architecture and workload-balance estimates with configured weights. The inputs and weights used for a particular day are not preserved for this explanation.",
+      "strain_peak": "Apex compares the day’s selected activity load with the rolling 28-day peak load, using a minimum ceiling so a short or quiet history does not automatically produce a maximal score.",
+      "sleep_architecture": "Apex blends available REM proportion, deep-sleep proportion and sleep efficiency using configured weights. The components are estimates based on recorded sleep data.",
+      "hrv_deviation": "Apex compares the day’s HRV with the mean of recorded readings in the preceding 28 days. At least seven prior readings are required; the assessed day is excluded."
+    },
+    "limits": {
+      "measured": "The observed band describes your recorded history, not clinical thresholds. Device, source and measurement context can affect comparability.",
+      "recorded": "A recorded value can be incomplete or source-specific. Counts and logged amounts do not establish health status or a recommended target.",
+      "sleep_estimate": "Sleep duration is a device estimate and may differ from actual sleep or time in bed. It does not identify sleep quality or a cause of change.",
+      "provider_estimate": "This is a source estimate, not a direct measurement. Methods and interpretation can differ by source and may change over time; the source may be unknown in this view.",
+      "load_aggregate": "Load units depend on the selected method. Provider load and Edwards TRIMP are not interchangeable; missing or incompatible activities can be excluded. This aggregate is not necessarily TSS.",
+      "acwr_not_target": "ACWR is not a validated personal safety threshold or a prescription. A ratio alone cannot predict injury or determine appropriate training.",
+      "composite_inputs_unavailable": "This is a heuristic estimate, not a clinical measure. The actual inputs and weights for this date are not preserved, so this explanation cannot identify what drove the score.",
+      "estimate_not_clinical": "Treat this as a descriptive estimate, not a medical diagnosis or a calibrated probability of a health condition.",
+      "measured_baseline_deviation": "This derived comparison depends on available readings and baseline coverage. It is not a clinical threshold or a diagnosis."
+    },
+    "calculation_date": "Calculated for {{date}}"
   }
 }

@@ -41,6 +41,10 @@ The deployed application is a single stack:
   notifications with durable retries. This is an outbound notification bot.
 - Supports rolling 30-day Remember Me sessions, capped at 90 days; ordinary
   logins use browser-session cookies.
+- Explains supported health metrics in a collapsed “Understand this metric”
+  section, using local English/Italian education and recorded context with no
+  AI calls. Actual ACWR inputs are shown when available; measured and provider
+  metrics do not claim causal contributors.
 
 ## Run it locally
 
@@ -126,6 +130,7 @@ wiki/          user-facing operating notes
 - [UI system and screenshots](docs/UI_REDESIGN.md)
 - [UI refinements and sport-specific detail views](docs/UI_REFINEMENTS.md)
 - [UI/data changes and external food diary setup](docs/UI_DATA_CHANGES.md)
+- [Metric education, deterministic context and current limitations](docs/METRIC_EDUCATION.md)
 - [WHOOP setup](docs/WHOOP_SETUP.md) · [COROS MCP](docs/COROS_MCP.md) · [Apple Health import](docs/APPLE_HEALTH.md)
 - [Release checklist](docs/BACKEND_RELEASE.md)
 - [Security and privacy posture](docs/SECURITY.md)
