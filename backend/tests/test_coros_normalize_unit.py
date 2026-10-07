@@ -19,6 +19,9 @@ class FakeSession:
     async def scalar(self, _statement):
         return self.link
 
+    async def execute(self, _statement, _parameters):
+        return None
+
     async def get(self, model, _identity):
         return self.activity if model is Activity else None
 

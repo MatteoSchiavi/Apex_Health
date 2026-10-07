@@ -152,10 +152,16 @@ async def test_daily_csv_merges_biometrics_and_hrv(db_session):
         .all()
     )
     assert len(hrvs) == 2
-    assert hrvs[0].reading_type == "overnight_avg"
+    assert hrvs[0].reading_type == "unspecified"
+    assert hrvs[0].origin == "csv_import" and hrvs[0].method is None
     assert float(hrvs[0].hrv_ms) == 98.4
     # timestamptz comes back in UTC; the stored instant is 07:00 Europe/Rome
     assert hrvs[0].timestamp.astimezone(ZoneInfo("Europe/Rome")).hour == 7
+    from app.features.engine import _select_hrv_series
+    values, _ = _select_hrv_series(hrvs, ZoneInfo("Europe/Rome"), date(2026, 9, 1), date(2026, 9, 16))
+    assert values == {}  # An unspecified HRV column cannot support RMSSD recovery.
+    repeated = await import_csv(db_session, user_id, "daily.csv", DAILY_CSV)
+    assert repeated.hrv_upserted == 0
 
 
 async def test_unrecognized_shape_is_reported_not_thrown(db_session):

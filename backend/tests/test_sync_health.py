@@ -12,6 +12,15 @@ from app.models.user import AuthCredential, User
 from tests.conftest import csrf_headers
 
 
+@pytest.mark.parametrize('availability', ['permission_denied', 'not_supported', 'not_exposed', 'not_measured', 'pending_sync'])
+def test_sync_status_preserves_capability_and_permission_boundaries(availability):
+    from app.services.sync_health import _state_from_feed
+    now = datetime.now(UTC)
+    feed = FeedState(user_id=1, provider='oura', feed='sleep', availability=availability,
+        latest_measurement_at=now - timedelta(days=7))
+    assert _state_from_feed(feed, now) == availability
+
+
 @pytest.mark.asyncio
 async def test_sync_health_is_private_redacted_and_measurement_staleness_wins(
     db_session, client

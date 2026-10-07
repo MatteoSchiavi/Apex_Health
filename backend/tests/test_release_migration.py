@@ -64,3 +64,48 @@ async def test_populated_upgrade_preserves_links_and_downgrade_refuses_collision
         async with admin.connect() as connection:
             await connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
         await admin.dispose()
+
+
+async def test_native_tokens_remain_revoked_after_scope_downgrade_and_reupgrade():
+    base = make_url(os.environ['DATABASE_URL'])
+    name = f'apex_scope_migration_{uuid4().hex}'
+    admin = create_async_engine(base.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = base.set(database=name)
+    async with admin.connect() as connection:
+        await connection.execute(text(f'CREATE DATABASE "{name}"'))
+    engine = create_async_engine(target)
+    env = {**os.environ, 'DATABASE_URL': target.render_as_string(hide_password=False)}
+
+    def migrate(*args):
+        result = subprocess.run(['uv', 'run', 'alembic', *args], env=env, capture_output=True)
+        assert result.returncode == 0, result.stderr.decode()
+
+    try:
+        migrate('upgrade', 'head')
+        async with engine.begin() as connection:
+            user = await connection.scalar(text("INSERT INTO users(name) VALUES ('scope-downgrade') RETURNING id"))
+            await connection.execute(text("""INSERT INTO device_tokens(user_id,name,token_hash,scope)
+                VALUES (:owner,'watch','watch-test-hash','watch_read'),
+                       (:owner,'native','native-test-hash','healthkit_sync')"""), {'owner': user})
+        migrate('downgrade', '0018')
+        async with engine.connect() as connection:
+            rows = dict((await connection.execute(text('SELECT name, revoked_at FROM device_tokens'))).all())
+            assert rows['watch'] is None
+            assert rows['native'] is not None  # Legacy watch auth must reject it.
+        migrate('upgrade', 'head')
+        async with engine.connect() as connection:
+            assert await connection.scalar(text("SELECT revoked_at FROM device_tokens WHERE name='native'")) is not None
+        async with engine.begin() as connection:
+            await connection.execute(text("""INSERT INTO hrv_readings(user_id,timestamp,hrv_ms,reading_type,origin)
+                VALUES (:owner,now(),50,'unspecified','csv_import')"""), {'owner': user})
+        rejected = subprocess.run(['uv', 'run', 'alembic', 'downgrade', '0021'], env=env, capture_output=True)
+        assert rejected.returncode != 0
+        assert b'Cannot downgrade' in rejected.stderr
+        async with engine.connect() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM hrv_readings WHERE reading_type='unspecified'")) == 1
+            assert await connection.scalar(text('SELECT version_num FROM alembic_version')) == '0022'
+    finally:
+        await engine.dispose()
+        async with admin.connect() as connection:
+            await connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+        await admin.dispose()

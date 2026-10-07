@@ -91,6 +91,9 @@ async def normalize_raw_row(
 ) -> NormalizerStats:
     """Consume one raw row. Raises NormalizationError to leave the row
     unprocessed (§3: parser breaks, history doesn't)."""
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     stats = NormalizerStats()
     payload = raw.raw_json
     base_type = raw.payload_type.split(":", 1)[0]

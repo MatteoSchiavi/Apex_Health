@@ -107,7 +107,8 @@ public struct HealthSample: Codable, Equatable, Sendable {
     public func validate() throws {
         try JSONValue.object(metadata).validate()
         guard endAt >= startAt, value?.isFinite ?? true, !type.isEmpty, !sourceBundle.isEmpty,
-              metadata.count <= 32, sourceName.count <= 500, sourceBundle.count <= 500,
+              metadata.count <= 32, !sourceName.isEmpty,
+              sourceName.unicodeScalars.count <= 256, sourceBundle.unicodeScalars.count <= 256,
               device.map({ $0.count <= 500 }) ?? true,
               try JSONEncoder().encode(metadata).count <= 8192 else { throw BridgeError.invalidPayload }
     }

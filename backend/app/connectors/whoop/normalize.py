@@ -87,6 +87,9 @@ async def normalize_raw_row(
 ) -> None:
     """Dispatch one raw_ingest row to its typed upsert. Raises on payloads
     that cannot be parsed — the caller's savepoint keeps history intact."""
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     if not isinstance(payload, dict):
         raise NormalizationError("WHOOP payload must be an object")
     score = payload.get("score")

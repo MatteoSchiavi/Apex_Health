@@ -62,6 +62,9 @@ async def normalize_raw_row(
     discipline_index: dict[str, int],
     stats: NormalizerStats,
 ) -> None:
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     from app.connectors.strava.type_map import resolve_discipline
 
     if getattr(raw, "payload_type", "") != "activity_summary":

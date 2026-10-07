@@ -68,3 +68,17 @@ Legacy ACWR's authentic same-row `training_load_acute`, `training_load_chronic`,
 ## Verification
 
 `backend/tests/test_metric_registry.py` provides database-independent cases for catalog and scientific metadata coverage, exact weighted-score reproduction, selected weight version identities, baseline warm-up, missing load evidence, excluded sessions, HRV method separation, stale/invalid provenance, provider/method/measurement-context separation, coherent night selection, proprietary-score independence and second-half decoupling offsets. Existing feature-engine golden, API same-row ACWR, migration and frontend disclosure tests remain the integration gates. There are no runtime LLM calls in definition or provenance construction.
+
+## Independent review corrections
+
+CSV HRV without declared method/context is retained with origin `csv_import`,
+null method and `reading_type=unspecified`. It cannot enter the RMSSD recovery
+series. Migration 0022 adds this context; downgrade refuses while such readings
+exist instead of relabeling or deleting them. Historical unattributed readings
+are preserved and are not retroactively assigned a provider or method.
+
+Composite weights must be finite and positive to participate. Disabled or invalid
+weights do not claim active coverage. Canonical imports and calculation writes
+share the account erasure lock. Native HealthKit deletions invalidate affected
+calculation caches and their 28-day dependents, including adjacent sleep wake
+dates; later computation uses the remaining recorded sources.

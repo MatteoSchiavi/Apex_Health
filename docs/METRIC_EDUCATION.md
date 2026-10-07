@@ -1,5 +1,10 @@
 # Understand this metric
 
+> Historical record of the disclosure before alpha hardening. The current
+> registry, renamed heuristic signals and persisted composite contributors are
+> documented in [METRIC_REGISTRY.md](METRIC_REGISTRY.md). Limits described below
+> belong to that earlier implementation, not the current calculation contract.
+
 Metric detail pages include a collapsed educational disclosure after the latest
 value, personal range and immediate interpretation, and before the history chart.
 It uses native disclosure semantics, the existing design tokens, and English and

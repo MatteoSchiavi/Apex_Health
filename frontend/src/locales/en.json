@@ -84,7 +84,7 @@
     "light": "Light",
     "awake": "Awake",
     "eff": "Efficiency",
-    "synthesis": "Synthesis Diagnosis",
+    "synthesis": "Training context",
     "ctl": "CTL",
     "hrv_norm": "HRV Norm",
     "freshness": "Freshness",
@@ -534,19 +534,19 @@
     "enduro": "Enduro Motorcycling"
   },
   "synth": {
-    "title": "Synthesis Diagnosis",
-    "body_prefix": "Autonomic status suggests",
-    "level_optimal": "Central sympathetic tone is attenuated and parasympathetic recovery is primed.",
-    "level_good": "Recovery reserves are adequate for moderate-to-hard work.",
-    "level_low": "Autonomic friction is elevated — prioritize rest and hydration.",
-    "level_unknown": "Not enough measured data for a diagnosis yet.",
-    "acwr_high": "Acute load is running above the chronic base — cap intensity.",
-    "acwr_low": "Detraining risk: chronic base is decaying — schedule stimulus.",
-    "acwr_ok": "Load sits inside the optimal 0.8–1.3 window.",
+    "title": "Training context",
+    "body_prefix": "Recorded observations suggest",
+    "level_optimal": "Current recorded signals are near their personal reference.",
+    "level_good": "Review current evidence alongside symptoms and the planned session.",
+    "level_low": "Review the current evidence and consider a conservative plan.",
+    "level_unknown": "Not enough recorded data for an interpretation yet.",
+    "acwr_high": "Recent recorded load is higher than its longer-window average.",
+    "acwr_low": "Recent recorded load is lower than its longer-window average.",
+    "acwr_ok": "Recent and longer-window load are broadly similar; no optimal band is established.",
     "no_load": "No measured load yet.",
-    "hrv_up": "Overnight HRV is above baseline — parasympathetic response is strong.",
-    "hrv_down": "Overnight HRV sits below baseline — monitor recovery.",
-    "load_ceiling": "Today's sensible load ceiling",
+    "hrv_up": "Overnight HRV is above baseline; consider the measurement context.",
+    "hrv_down": "Overnight HRV is below baseline; consider the measurement context.",
+    "load_ceiling": "Recorded load context",
     "badge": "DETERMINISTIC SYNTHESIS"
   },
   "weather": {
@@ -1007,7 +1007,10 @@
         "partial": "Partial",
         "not_measured": "Not measured",
         "pending_sync": "Pending sync",
-        "unknown": "Unknown"
+        "unknown": "Unknown",
+        "not_supported": "Not supported",
+        "not_exposed": "Not exposed by this adapter",
+        "permission_denied": "Permission required"
       },
       "retryStates": {
         "unknown": "Unknown",

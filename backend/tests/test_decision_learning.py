@@ -41,7 +41,7 @@ async def clean_learning_records(db_session):
     await db_session.commit()
 
 
-async def interpretation(monkeypatch, *, locale="en", missing=False, sleep=7.5, pain=False):
+async def interpretation(monkeypatch, db_session, *, locale="en", missing=False, sleep=7.5, pain=False):
     user = User(id=1, name="Athlete", timezone="UTC", locale=locale)
     values = {"hrv_overnight_rmssd": 60, "resting_hr": 52, "sleep_duration": sleep}
     async def coverage(*args, **kwargs):
@@ -58,11 +58,11 @@ async def interpretation(monkeypatch, *, locale="en", missing=False, sleep=7.5, 
     monkeypatch.setattr(decisions, "baseline", baseline)
     monkeypatch.setattr(decisions, "constraints", constraints)
     monkeypatch.setattr(decisions, "snapshot_revision", revision)
-    return await decisions.daily_decision(None, user, now=NOW)
+    return await decisions.daily_decision(db_session, user, now=NOW)
 
 
-async def test_interpretation_keeps_rules_and_source_comparison(monkeypatch):
-    result = await interpretation(monkeypatch)
+async def test_interpretation_keeps_rules_and_source_comparison(monkeypatch, db_session):
+    result = await interpretation(monkeypatch, db_session)
     assert result["action"] == "train_normally" and result["state"] == "stable"
     assert result["headline"] == "Keep your planned training"
     assert result["contributors"] == result["reasons"]
@@ -75,8 +75,8 @@ async def test_interpretation_keeps_rules_and_source_comparison(monkeypatch):
     assert result["evidence"][0]["origin"] == "garmin"
 
 
-async def test_stale_evidence_remains_insufficient_and_has_no_current_delta(monkeypatch):
-    result = await interpretation(monkeypatch, missing=True)
+async def test_stale_evidence_remains_insufficient_and_has_no_current_delta(monkeypatch, db_session):
+    result = await interpretation(monkeypatch, db_session, missing=True)
     assert result["state"] == "insufficient_data"
     assert result["action"] == "collect_more_data"
     assert result["confidence"] == "limited"
@@ -85,12 +85,12 @@ async def test_stale_evidence_remains_insufficient_and_has_no_current_delta(monk
     assert result["evidence"]  # The historical source evidence is still inspectable.
 
 
-async def test_italian_adjustment_and_symptom_override_are_deterministic(monkeypatch):
-    reduced = await interpretation(monkeypatch, locale="it", sleep=5)
+async def test_italian_adjustment_and_symptom_override_are_deterministic(monkeypatch, db_session):
+    reduced = await interpretation(monkeypatch, db_session, locale="it", sleep=5)
     assert reduced["headline"] == "Mantieni l’obiettivo, riduci il volume"
     assert reduced["recommended_action"]["duration_factor"] == 0.7
     assert reduced["contributors"][0].startswith("Il sonno registrato")
-    recovery = await interpretation(monkeypatch, locale="it", missing=True, pain=True)
+    recovery = await interpretation(monkeypatch, db_session, locale="it", missing=True, pain=True)
     assert recovery["state"] == "recovery_suggested"
     assert recovery["action"] == "recover"
     assert recovery["headline"] == "Dedica oggi al recupero"

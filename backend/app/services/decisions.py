@@ -56,6 +56,9 @@ def _interpretation(output, signals, locale):
 
 
 async def daily_decision(session, user, *, now=None, for_ai=False, persist=False):
+    # The evidence reads, revision and cached decision must share the erasure
+    # boundary. A revision sampled after mixed reads is not a valid snapshot.
+    await scope_lock(session, user.id, "changes")
     now = now or datetime.now(UTC)
     day = now.astimezone(ZoneInfo(user.timezone)).date()
     cover = await coverage(session, user, now=now, for_ai=for_ai)

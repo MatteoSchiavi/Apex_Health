@@ -42,9 +42,16 @@ class Score:
 
 def walk(obj):
     if isinstance(obj, dict):
+        if obj.get('kind') == 'user_assertion':
+            return
         yield obj
-        for value in obj.values():
-            yield from walk(value)
+        if isinstance(obj.get('id'), str) and re.fullmatch(r'observation:\d+:\d+', obj['id']):
+            return
+        if isinstance(obj.get('handle'), str) and re.fullmatch(r'analysis:\d+', obj['handle']):
+            return
+        for key, value in obj.items():
+            if key not in {'metadata', 'raw_json', 'source_metrics', 'payload', 'context_docs'}:
+                yield from walk(value)
     elif isinstance(obj, list):
         for value in obj:
             yield from walk(value)
@@ -59,7 +66,7 @@ def evidence_index(trace):
             if isinstance(obj.get("handle"), str) and obj["handle"].startswith("analysis:"):
                 indexed[obj["handle"]] = obj.get("data", {})
             refs = obj.get("evidence_refs", [])
-            if len(refs) == 1 and isinstance(refs[0], str) and refs[0].startswith("analysis:"):
+            if isinstance(refs, list) and len(refs) == 1 and isinstance(refs[0], str) and re.fullmatch(r'analysis:\d+', refs[0]):
                 indexed[refs[0]] = obj.get("data", {})
     return indexed
 
@@ -86,9 +93,14 @@ def measured_numbers(scenario, trace):
               if isinstance(c.get("value"), (int, float)) and not isinstance(c["value"], bool)}
     ungrounded = [n for n in NUMBER.findall(trace.result.reply) if float(n) not in values]
     mismatches = []
+    bindings = list(claims)
+    for claim in claims:
+        row = indexed.get(claim.get('evidence_id'), {})
+        if str(claim.get('evidence_id', '')).startswith('analysis:') and claim.get('metric') in {'median', 'mad', 'mean'}:
+            bindings.append({**claim, 'metric': row.get('metric')})
     for metric, pattern in METRIC_QUOTES.items():
         for number in re.findall(pattern, trace.result.reply, re.I):
-            if not any(c.get("metric") == metric and c.get("value") == float(number) for c in claims):
+            if not any(c.get("metric") == metric and c.get("value") == float(number) for c in bindings):
                 mismatches.append({"metric": metric, "number": number})
     expected = trace.result.grounding.get("status") == scenario.expected_grounding
     # Live trials measure actual model output rather than expecting the scripted

@@ -7,6 +7,7 @@ from math import isfinite
 from datetime import date, timedelta
 
 from app.metrics.registry import METRIC_REGISTRY
+from app.features.scores import usable_weight
 
 
 def baseline_snapshot(values: dict[date, float], day: date, value: float | None) -> dict:
@@ -27,13 +28,14 @@ def metric_snapshot(metric: str, value: float | None, inputs: dict, *,
     weights = weights or {}
     selected = weight_selection or {}
     active = {name: component for name, component in components.items()
-              if component is not None and name in weights}
+              if component is not None and usable_weight(weights.get(name))}
     weight_sum = sum(weights[name] for name in active)
     component_records = {
         name: {"value": component, "active": name in active,
-               "weight": weights.get(name),
+               "weight": weights[name] if name in weights and isfinite(weights[name]) else None,
                "missing_reason": "input_or_baseline_unavailable" if component is None
-                                 else "weight_unavailable" if name not in weights else None,
+                                 else "weight_unavailable" if name not in weights
+                                 else "weight_nonpositive_or_invalid" if not usable_weight(weights[name]) else None,
                "normalized_weight": weights[name] / weight_sum if name in active and weight_sum > 0 else None}
         for name, component in components.items()
     }
@@ -41,7 +43,7 @@ def metric_snapshot(metric: str, value: float | None, inputs: dict, *,
             "formula_version": definition.formula_version,
             "validation_level": definition.validation_level,
             "inputs": inputs, "components": component_records,
-            "weights": {name: {"value": weight, "id": selected.get(name, {}).get("id"),
+            "weights": {name: {"value": weight if isfinite(weight) else None, "id": selected.get(name, {}).get("id"),
                               "version": selected.get(name, {}).get("version"),
                               "effective_from": selected.get(name, {}).get("effective_from")}
                         for name, weight in weights.items()},

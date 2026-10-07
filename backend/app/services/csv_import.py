@@ -385,7 +385,8 @@ async def _import_daily(
                 select(HrvReading).where(
                     HrvReading.user_id == user_id,
                     HrvReading.timestamp == ts,
-                    HrvReading.reading_type == "overnight_avg",
+                    HrvReading.reading_type == "unspecified",
+                    HrvReading.origin == "csv_import",
                 )
             )
             if existing is None:
@@ -394,7 +395,9 @@ async def _import_daily(
                         user_id=user_id,
                         timestamp=ts,
                         hrv_ms=hrv,
-                        reading_type="overnight_avg",
+                        reading_type="unspecified",
+                        origin="csv_import",
+                        method=None,
                         rolling_baseline_ms=None,
                     )
                 )
@@ -411,6 +414,8 @@ async def import_csv(
     content: str | bytes,
     timezone_name: str = "Europe/Rome",
 ) -> ImportReport:
+    from app.services.evidence import scope_lock
+    await scope_lock(session, user_id, "changes")
     tz = ZoneInfo(timezone_name)
     if isinstance(content, bytes):
         content = content.decode("utf-8-sig", errors="replace")

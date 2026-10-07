@@ -28,6 +28,9 @@ _FEED_STATES = frozenset(
         "complete",
         "fetch_failed",
         "stale",
+        "not_supported",
+        "not_exposed",
+        "permission_denied",
     }
 )
 
@@ -51,7 +54,7 @@ def _state_from_feed(feed: FeedState, now: datetime) -> str:
     if (
         measured_at is not None
         and measured_at < now - _STALE_AFTER
-        and state not in {"fetch_failed", "unknown"}
+        and state in {"available", "partial", "complete", "stale"}
     ):
         return "stale"
     return state

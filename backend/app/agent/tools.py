@@ -308,7 +308,8 @@ async def _evidence(ctx, handle):
             raise evidence.EvidenceError(
                 "STALE_DATA", "Analysis inputs changed; run the recipe again"
             )
-        data = row.result
+        data = {"handle": handle, "recipe": row.recipe,
+                "formula_version": row.formula_version, "data": row.result}
     return envelope(
         data,
         user=user,

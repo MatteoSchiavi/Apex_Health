@@ -202,6 +202,71 @@ async def test_sleep_stages_overlap_wake_day_and_deletion_protects_other_provide
     assert await db_session.get(SleepSession, {"id": other.id, "start_time": other.start_time}) is other
 
 
+async def test_deleted_sleep_invalidates_scores_and_baseline_dependents(db_session, bridge):
+    from app.features.engine import compute_user_day
+    from app.models.features import DailyFeature
+    user, token, _ = bridge
+    sleep = sample(type='HKCategoryTypeIdentifierSleepAnalysis', value=4, unit=None,
+        start='2026-09-01T23:00:00Z', end='2026-09-02T07:00:00Z')
+    await ingest_healthkit(db_session, user, token, delta([sleep]))
+    await db_session.commit()
+    day = date(2026, 9, 2)
+    computed = await compute_user_day(db_session, user, day)
+    assert computed['daily']['sleep_architecture_score'] is not None
+    # Later snapshots can incorporate the deleted date in their baselines.
+    db_session.add_all([DailyFeature(user_id=user.id, date=day + timedelta(days=30), recovery_score=80),
+        DailyFeature(user_id=user.id, date=day + timedelta(days=31), recovery_score=70)])
+    await db_session.commit()
+    await ingest_healthkit(db_session, user, token, delta(deletions=[sleep['uuid']], checkpoint=1))
+    await db_session.commit()
+    dates = (await db_session.scalars(select(DailyFeature.date).where(DailyFeature.user_id == user.id))).all()
+    assert dates == [day + timedelta(days=31)]
+
+
+async def test_erasing_garmin_preserves_explicit_other_provider_wellness(db_session, bridge):
+    from app.api.lab_assets import source_preview, erase_source
+    from app.schemas.changes import ApproveIn
+    user, token, _ = bridge
+    native_sleep = sample(type='HKCategoryTypeIdentifierSleepAnalysis', value=4, unit=None,
+        start='2026-09-01T23:00:00Z', end='2026-09-02T07:00:00Z')
+    await ingest_healthkit(db_session, user, token, delta([
+        sample(kind='RestingHeartRate', value=55, unit='count/min'), sample(), native_sleep]))
+    mixed = DailyBiometric(user_id=user.id, date=date(2026, 9, 3))
+    set_biometric(mixed, 'weight_kg', 72, 'whoop')
+    set_biometric(mixed, 'steps', 500, 'garmin')
+    legacy = DailyBiometric(user_id=user.id, date=date(2026, 9, 4), resting_hr=52)
+    hrv = HrvReading(user_id=user.id, timestamp=datetime(2026, 9, 1, 7, tzinfo=UTC),
+        hrv_ms=50, reading_type='overnight_avg', origin='oura', method='RMSSD')
+    sleep = SleepSession(user_id=user.id, origin='garmin', local_date=date(2026, 9, 5),
+        start_time=datetime(2026, 9, 4, 23, tzinfo=UTC), end_time=datetime(2026, 9, 5, 7, tzinfo=UTC), total_sleep_s=28000)
+    db_session.add_all([mixed, legacy, hrv, sleep,
+        FeedState(user_id=user.id, provider='oura', feed='sleep', availability='permission_denied')])
+    await db_session.commit()
+    preview = await source_preview(db_session, user.id, 'garmin')
+    mixed.steps = 501  # Same counts, no observation revision: approval must expire.
+    await db_session.commit()
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as stale:
+        await erase_source('garmin', ApproveIn(payload_hash=preview['payload_hash']), session=db_session, user=user)
+    assert stale.value.status_code == 409
+    await db_session.rollback()
+    await db_session.refresh(user)
+    preview = await source_preview(db_session, user.id, 'garmin')
+    await erase_source('garmin', ApproveIn(payload_hash=preview['payload_hash']), session=db_session, user=user)
+    owner_id = user.id
+    db_session.expire_all()
+    native = await db_session.get(DailyBiometric, {'user_id': owner_id, 'date': date(2026, 9, 1)})
+    assert native.resting_hr == 55 and native.steps == 1000
+    preserved = await db_session.get(DailyBiometric, {'user_id': owner_id, 'date': date(2026, 9, 3)})
+    assert float(preserved.weight_kg) == 72 and preserved.steps is None
+    assert await db_session.scalar(select(SleepSession.id).where(SleepSession.user_id == owner_id, SleepSession.origin == SOURCE)) is not None
+    assert await db_session.scalar(select(SleepSession.id).where(SleepSession.user_id == owner_id, SleepSession.origin == 'garmin')) is None
+    assert await db_session.scalar(select(HrvReading.id).where(HrvReading.user_id == owner_id, HrvReading.origin == 'oura')) is not None
+    assert await db_session.scalar(select(FeedState.availability).where(FeedState.user_id == owner_id, FeedState.provider == 'oura')) == 'permission_denied'
+    assert await db_session.scalar(select(FeedState.id).where(FeedState.user_id == owner_id, FeedState.provider == SOURCE)) is not None
+    assert await db_session.get(DailyBiometric, {'user_id': owner_id, 'date': date(2026, 9, 4)}) is None
+
+
 async def test_workout_reconciliation_and_safe_multi_source_deletion(db_session, bridge):
     user, token, _ = bridge
     running = await db_session.scalar(select(Discipline.id).where(Discipline.name == "running"))
@@ -226,6 +291,28 @@ async def test_workout_reconciliation_and_safe_multi_source_deletion(db_session,
     await ingest_healthkit(db_session, user, token, delta([solo], checkpoint=2))
     await ingest_healthkit(db_session, user, token, delta(deletions=[solo["uuid"]], checkpoint=3))
     assert len((await db_session.scalars(select(Activity).where(Activity.user_id == user.id))).all()) == 1
+
+
+@pytest.mark.parametrize('native_sport,existing_sport', [(3000, 'running'), (37, None)])
+async def test_unknown_workout_disciplines_never_merge_on_time_alone(db_session, bridge, native_sport, existing_sport):
+    user, token, _ = bridge
+    discipline = await db_session.scalar(select(Discipline.id).where(Discipline.name == existing_sport)) if existing_sport else None
+    start = datetime(2026, 9, 1, 9, tzinfo=UTC)
+    existing = Activity(user_id=user.id, discipline_id=discipline, start_time=start,
+        start_tz_offset_minutes=0, local_date=start.date(), duration_s=1800,
+        source_metrics={'garmin': {'sport': existing_sport}})
+    db_session.add(existing)
+    await db_session.flush()
+    db_session.add(ActivitySourceLink(user_id=user.id, activity_id=existing.id, source='garmin', external_id=str(uuid4())))
+    await db_session.flush()
+    workout = sample(type='HKWorkoutType', value=None, unit=None, workout_activity_type=native_sport,
+        start='2026-09-01T09:00:00Z', end='2026-09-01T09:30:00Z')
+    await ingest_healthkit(db_session, user, token, delta([workout]))
+    assert len((await db_session.scalars(select(Activity).where(Activity.user_id == user.id))).all()) == 2
+    native_link = await db_session.scalar(select(ActivitySourceLink).where(ActivitySourceLink.user_id == user.id,
+        ActivitySourceLink.source == SOURCE))
+    assert native_link.activity_id != existing.id
+    assert SOURCE not in existing.source_metrics
 
 
 async def test_scoped_bearer_required_disabled_revoked_expired_denied(client, db_session, bridge):

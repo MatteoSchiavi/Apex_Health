@@ -10,6 +10,51 @@ from math import isfinite
 
 CLAIM_KINDS = frozenset({"MEASURED", "CALCULATED", "ASSOCIATION", "HYPOTHESIS", "UNKNOWN"})
 CLAIM_FIELDS = frozenset({"evidence_id", "metric", "value", "kind", "unit"})
+
+
+def inspect_metric_bindings(text: str, claims: list[dict]) -> list[str]:
+    """Reject explicit named measurements supported only by another metric.
+
+    This bounded English/Italian lexical check is not a semantic proof of
+    arbitrary prose. Numeric membership alone cannot verify these assertions.
+    """
+    patterns = {
+        "hrv_overnight_rmssd": r"(?:hrv|rmssd)",
+        "resting_hr": r"(?:resting (?:heart rate|hr)|rhr|frequenza cardiaca a riposo)",
+        "sleep_duration": r"(?:sleep(?: duration)?|durata del sonno)",
+        "provider_load": r"(?:provider load|carico del provider)",
+        "sleep_score": r"(?:sleep score|punteggio (?:del )?sonno)",
+        "whoop_sleep_performance": r"(?:whoop sleep performance|prestazione del sonno whoop)",
+        "respiration": r"(?:respiration|respiratory rate|frequenza respiratoria)",
+        "spo2": r"(?:spo2|oxygen saturation|saturazione (?:di )?ossigeno)",
+        "stress": r"(?:stress)",
+        "body_battery": r"(?:body battery)",
+        "training_readiness": r"(?:training readiness|prontezza all'allenamento)",
+        "recovery_time": r"(?:recovery time|tempo di recupero)",
+        "steps": r"(?:steps|passi)",
+        "weight": r"(?:weight|body mass|peso|massa corporea)",
+        "body_fat": r"(?:body fat|grasso corporeo)",
+        "vo2max": r"(?:vo2max|vo2 max)",
+        "hydration": r"(?:hydration|recorded fluid intake|idratazione)",
+        "temperature": r"(?:temperature|temperatura)",
+    }
+    invalid = []
+    units = {'hrv_overnight_rmssd': {'ms', 'milliseconds', 'millisecondi'},
+             'resting_hr': {'bpm'}, 'sleep_duration': {'h', 'hours', 'ore'},
+             'respiration': {'br/min', 'breaths/min'}, 'spo2': {'%'},
+             'weight': {'kg'}, 'body_fat': {'%'}, 'vo2max': {'ml/kg/min'},
+             'hydration': {'ml'}, 'temperature': {'°c', 'degc'},
+             'recovery_time': {'min', 'minutes', 'minuti'},
+             'steps': {'steps', 'passi'}, 'whoop_sleep_performance': {'%'}}
+    for metric, label in patterns.items():
+        pattern = rf"\b{label}\s*(?:(?:is|was|of|è|era|di)\s*|[:=]\s*)?([+-]?\d+(?:\.\d+)?)(?:\s*(ml/kg/min|breaths/min|br/min|milliseconds|millisecondi|minutes|minuti|steps|passi|hours|degc|bpm|kg|ml|ms|min|ore|h|°c|%)(?=\W|$))?"
+        for match in re.finditer(pattern, text, re.I):
+            if not any(c.get("metric") == metric and c.get("value") == float(match[1])
+                       and not isinstance(c.get("value"), bool) for c in claims):
+                invalid.append(metric)
+            elif match[2] and metric in units and match[2].lower() not in units[metric]:
+                invalid.append(metric + '_unit')
+    return invalid
 _CAUSAL = re.compile(
     r"\b(?:caused?|causes|guarantees?|will prevent|proves? that|will improve by|"
     r"ha causato|causa|garantisce|preverrà|dimostra che)\b", re.I)

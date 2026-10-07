@@ -38,7 +38,7 @@ final class BridgeModel: ObservableObject {
                 let server = try ServerConfiguration(serverAddress)
                 let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
                 let name = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !code.isEmpty, code.count <= 128, !name.isEmpty, name.count <= 100 else { throw BridgeError.invalidPayload }
+                guard code.count >= 32, code.count <= 128, !name.isEmpty, name.unicodeScalars.count <= 60 else { throw BridgeError.invalidPayload }
                 let response = try await BridgeAPI(configuration: server).exchange(code: code, name: name)
                 let device = PairedDevice(server: server, deviceID: response.deviceID,
                     token: response.token, localSessionID: UUID())

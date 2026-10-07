@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.healthkit import HealthKitBatch, HealthKitPairing, HealthKitSample
+from app.models.features import DailyFeature, DisciplineFeature
 from app.models.lab import FeedState, Observation
 from app.models.watch import DeviceToken
 from app.models.wellness import DailyBiometric, SleepSession
@@ -265,7 +266,7 @@ async def _add_workout(session, user, payload):
     decision = await resolve_activity_winner(session, user, start, duration, SOURCE)
     candidate = await session.get(Activity, decision.winner_activity_id) if decision.winner_activity_id else None
     discipline = await session.scalar(select(Discipline.id).where(Discipline.name == SPORTS.get(payload["workout_activity_type"], "")))
-    if candidate is not None and discipline is not None and candidate.discipline_id is not None and candidate.discipline_id != discipline:
+    if candidate is not None and (discipline is None or candidate.discipline_id != discipline):
         candidate = None
     if candidate is None and discipline is not None:
         from app.connectors.reconciliation import find_reconcilable_activity
@@ -403,7 +404,7 @@ async def ingest_healthkit(session: AsyncSession, user, token: DeviceToken, batc
     ids = [sample.uuid for sample in batch.additions] + batch.deletions
     known = {row.uuid: row for row in (await session.scalars(select(HealthKitSample).where(
         HealthKitSample.user_id == user.id, HealthKitSample.uuid.in_(ids)).with_for_update())).all()} if ids else {}
-    daily_days, sleep_days = set(), set()
+    daily_days, sleep_days, deleted_days = set(), set(), set()
     latest_new_measurement = None
 
     def affected(p):
@@ -436,6 +437,13 @@ async def ingest_healthkit(session: AsyncSession, user, token: DeviceToken, batc
             session.add(HealthKitSample(user_id=user.id, uuid=ident, payload=None, deleted=True, received_at=now))
         elif not previous.deleted:
             affected(previous.payload)
+            day_key = 'end_local_date' if previous.payload['type'] == SLEEP_TYPE else 'local_date'
+            deleted_day = date.fromisoformat(previous.payload[day_key])
+            if previous.payload['type'] == SLEEP_TYPE:
+                # Episode grouping can move a wake date across midnight.
+                deleted_days.update(deleted_day + timedelta(days=offset) for offset in range(-2, 3))
+            else:
+                deleted_days.add(deleted_day)
             if previous.payload["type"] == WORKOUT_TYPE:
                 await _delete_workout(session, user.id, str(ident))
             previous.deleted = True
@@ -444,6 +452,12 @@ async def ingest_healthkit(session: AsyncSession, user, token: DeviceToken, batc
     await session.flush()
     await _daily_projections(session, user, daily_days, now)
     await _sleep_projections(session, user, sleep_days, now)
+    if deleted_days:
+        # A deleted observation can contribute to its day's score, a later
+        # baseline, or prior-day strain. Never keep these cached derivatives.
+        affected_dates = {day + timedelta(days=offset) for day in deleted_days for offset in range(29)}
+        for model in (DailyFeature, DisciplineFeature):
+            await session.execute(delete(model).where(model.user_id == user.id, model.date.in_(affected_dates)))
     token.sync_checkpoint += 1
     token.last_used_at = now
     receipt = {"checkpoint": token.sync_checkpoint, "accepted": len(batch.additions), "deleted": len(batch.deletions)}

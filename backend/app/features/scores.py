@@ -16,6 +16,7 @@ Design laws:
 """
 
 from datetime import date, timedelta
+from math import isfinite
 
 from app.features.baselines import BASELINE_DAYS
 from app.features.load import STRAIN_CEILING_FLOOR
@@ -144,6 +145,10 @@ def load_spike_component(
 # --- blending --------------------------------------------------------------
 
 
+def usable_weight(weight) -> bool:
+    return isinstance(weight, (int, float)) and not isinstance(weight, bool) and isfinite(weight) and weight > 0
+
+
 def blend(
     components: dict[str, float | None], weights: dict[str, float]
 ) -> float | None:
@@ -154,7 +159,7 @@ def blend(
     active = [
         (weights[name], value)
         for name, value in components.items()
-        if value is not None and name in weights
+        if value is not None and usable_weight(weights.get(name))
     ]
     if not active:
         return None

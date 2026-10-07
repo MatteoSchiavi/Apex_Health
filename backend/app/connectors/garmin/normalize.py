@@ -157,6 +157,9 @@ async def normalize_raw_row(
 ) -> NormalizerStats:
     """Dispatch one raw_ingest row to its typed upsert. Raises on payloads that
     don't match their expected shape — caller decides how to bookkeep."""
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     stats = NormalizerStats()
     payload = raw.raw_json
     kind = _base_type(raw.payload_type)

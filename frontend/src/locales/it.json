@@ -84,7 +84,7 @@
     "light": "Leggero",
     "awake": "Veglia",
     "eff": "Efficienza",
-    "synthesis": "Diagnosi di sintesi",
+    "synthesis": "Contesto allenamento",
     "ctl": "CTL",
     "hrv_norm": "HRV norm.",
     "freshness": "Freschezza",
@@ -534,19 +534,19 @@
     "enduro": "Enduro motociclistico"
   },
   "synth": {
-    "title": "Diagnosi di Sintesi",
-    "body_prefix": "Lo stato autonomo suggerisce:",
-    "level_optimal": "il tono simpatico centrale è attenuato e il recupero parasimpatico è pronto.",
-    "level_good": "le riserve di recupero sono adeguate per lavoro da moderato a intenso.",
-    "level_low": "l'attrito autonomo è elevato — privilegia riposo e idratazione.",
-    "level_unknown": "servono più dati misurati per una diagnosi.",
-    "acwr_high": "Il carico acuto supera la base cronica — limita l'intensità.",
-    "acwr_low": "Rischio detraining: la base cronica scende — programma uno stimolo.",
-    "acwr_ok": "Il carico è dentro la finestra ottimale 0,8–1,3.",
+    "title": "Contesto allenamento",
+    "body_prefix": "Le osservazioni registrate suggeriscono",
+    "level_optimal": "I segnali registrati sono vicini al riferimento personale.",
+    "level_good": "Valuta le misurazioni attuali insieme ai sintomi e alla sessione pianificata.",
+    "level_low": "Valuta le misurazioni attuali e considera un piano prudente.",
+    "level_unknown": "Dati registrati insufficienti per un’interpretazione.",
+    "acwr_high": "Il carico recente registrato è superiore alla media di lungo periodo.",
+    "acwr_low": "Il carico recente registrato è inferiore alla media di lungo periodo.",
+    "acwr_ok": "Il carico recente e quello di lungo periodo sono simili; non è stabilita una fascia ottimale.",
     "no_load": "Nessun carico misurato.",
-    "hrv_up": "L'HRV notturna è sopra la baseline — risposta parasimpatica forte.",
-    "hrv_down": "L'HRV notturna è sotto la baseline — monitora il recupero.",
-    "load_ceiling": "Tetto di carico sensibile di oggi",
+    "hrv_up": "L’HRV notturna è sopra il riferimento; considera il contesto di misurazione.",
+    "hrv_down": "L’HRV notturna è sotto il riferimento; considera il contesto di misurazione.",
+    "load_ceiling": "Contesto del carico registrato",
     "badge": "SINTESI DETERMINISTICA"
   },
   "weather": {
@@ -1007,7 +1007,10 @@
         "partial": "Parziale",
         "not_measured": "Non misurato",
         "pending_sync": "Sincronizzazione in attesa",
-        "unknown": "Sconosciuto"
+        "unknown": "Sconosciuto",
+        "not_supported": "Non supportato",
+        "not_exposed": "Non esposto da questo adattatore",
+        "permission_denied": "Autorizzazione richiesta"
       },
       "retryStates": {
         "unknown": "Sconosciuto",

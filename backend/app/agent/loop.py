@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.core.llm import jsonable
 from app.models.ai import AgentToolCall
 from app.queries.usage import log_llm_usage, user_day_spend
-from app.services.evidence import EvidenceError, digest
+from app.services.evidence import EvidenceError, digest, scope_lock
 
 logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 8
@@ -163,6 +163,9 @@ async def _execute_tool_bounded(
     try:
         async with asyncio.timeout(timeout_s):
             async with sessionmaker() as session:
+                # Keep evidence retrieval and its persisted audit on the same
+                # side of source erasure; model calls happen outside this lock.
+                await scope_lock(session, user_id, "changes")
                 result, audit = await _execute_tool(
                     ToolContext(session, user_id, today, embedding_client),
                     session_id,
@@ -208,7 +211,7 @@ async def _execute_tool_bounded(
 
 def validate_answer(content, evidence_objects):
     """Validate explicit measured claims, never label prose as calibrated proof."""
-    from app.agent.claims import inspect_claim_safety, validate_claim_kind
+    from app.agent.claims import inspect_claim_safety, inspect_metric_bindings, validate_claim_kind
     try:
         answer = json.loads(content or "")
     except (ValueError, TypeError):
@@ -244,19 +247,26 @@ def validate_answer(content, evidence_objects):
 
     def walk(obj):
         if isinstance(obj, dict):
-            if isinstance(obj.get("id"), str) and obj["id"].startswith("observation:"):
+            if obj.get('kind') == 'user_assertion':
+                return
+            if isinstance(obj.get("id"), str) and re.fullmatch(r"observation:\d+:\d+", obj["id"]):
                 indexed[obj["id"]] = obj
-            if isinstance(obj.get("handle"), str) and obj["handle"].startswith(
-                "analysis:"
-            ):
+                return  # Observation metadata is untrusted data, never evidence.
+            if isinstance(obj.get("handle"), str) and re.fullmatch(r"analysis:\d+", obj["handle"]):
                 indexed[obj["handle"]] = obj.get("data", {})
                 analysis_metadata[obj["handle"]] = {"recipe": obj.get("recipe"), "formula_version": obj.get("formula_version")}
+                return  # Recipe operands/results cannot mint other handles.
             refs = obj.get("evidence_refs")
-            if isinstance(refs, list) and len(refs) == 1 and isinstance(refs[0], str) and refs[0].startswith("analysis:"):
+            if isinstance(refs, list) and len(refs) == 1 and isinstance(refs[0], str) and re.fullmatch(r"analysis:\d+", refs[0]):
                 indexed[obj["evidence_refs"][0]] = obj.get("data", {})
                 analysis_metadata[obj["evidence_refs"][0]] = {"recipe": obj.get("recipe"), "formula_version": obj.get("formula_version")}
-            for value in obj.values():
-                walk(value)
+                data = obj.get("data", {})
+                if isinstance(data, dict) and data.get("handle") == refs[0]:
+                    walk(data)
+                return
+            for key, value in obj.items():
+                if key not in {"metadata", "raw_json", "source_metrics", "payload", "context_docs"}:
+                    walk(value)
         elif isinstance(obj, list):
             for value in obj:
                 walk(value)
@@ -295,6 +305,13 @@ def validate_answer(content, evidence_objects):
                 and value == claim.get("value")
                 and not isinstance(value, (dict, list))
             )
+            if "unit" in claim:
+                # Only baseline statistics declare a common scalar unit.
+                # Counts and other heterogeneous recipe fields cannot borrow it.
+                matches = matches and (
+                    analysis_metadata.get(claim['evidence_id'], {}).get('recipe') == 'personal_baseline'
+                    and claim.get('metric') in {'median', 'mad', 'mean'}
+                    and row.get('unit') == claim['unit'])
         else:
             matches = (
                 row is not None
@@ -312,9 +329,15 @@ def validate_answer(content, evidence_objects):
         valid.append({**claim, "kind": kind})
     numbers = re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?", answer["answer"])
     claimed = {
-        float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float))
+        float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float)) and not isinstance(c["value"], bool)
     }
-    if any(float(n) not in claimed for n in numbers):
+    bindings = list(valid)
+    for claim in valid:
+        handle = claim.get('evidence_id')
+        if analysis_metadata.get(handle, {}).get('recipe') == 'personal_baseline' and claim.get('metric') in {'median', 'mad', 'mean'}:
+            source = indexed[handle]
+            bindings.append({**claim, 'metric': source.get('metric'), 'unit': source.get('unit')})
+    if any(float(n) not in claimed for n in numbers) or inspect_metric_bindings(answer["answer"], bindings):
         return (
             "I could not verify all numeric claims in this answer. Please request a fresh analysis.",
             {"status": "invalid", "verified_claims": []},

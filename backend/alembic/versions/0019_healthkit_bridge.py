@@ -40,6 +40,9 @@ def upgrade():
 
 
 def downgrade():
+    # Older watch authentication has no scope check. Do not turn a native
+    # ingest credential into a watch-read credential when removing the scope.
+    op.execute("UPDATE device_tokens SET revoked_at = COALESCE(revoked_at, now()) WHERE scope = 'healthkit_sync'")
     op.drop_table('healthkit_batches')
     op.drop_table('healthkit_samples')
     op.drop_table('healthkit_pairings')

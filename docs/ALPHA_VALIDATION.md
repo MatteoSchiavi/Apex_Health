@@ -31,3 +31,13 @@ Use a small consented cohort with a recorded starting period. For each participa
 Review aggregate usage and user reports separately: proportion of eligible decision views with voluntary feedback, distribution of influence/usefulness responses, proposal review/accept/reject behavior, and recurring missing-data or navigation problems. Denominators must name the eligible population and time window. A higher acceptance rate is not a health or performance claim. Evaluate usefulness through task completion and participant explanations before making any recommendation-quality claim.
 
 Record build and test results in the implementation ledger. Public release, wider recruitment, provider production approval and scientific outcome calibration remain separate decisions.
+
+## Independent review follow-up
+
+The implementation results above are historical. The independent review of
+`25e6342` found and repaired ownership, erasure, rollback, evidence-validation
+and calculation defects. See [ALPHA_INDEPENDENT_REVIEW.md](ALPHA_INDEPENDENT_REVIEW.md)
+for exact findings, new verification, unresolved native/release gates and the
+**NOT READY TO MERGE** recommendation. Current review checks: 832 backend tests,
+99 browser tests and 26 runtime replay scenarios pass; native Swift/Xcode and
+production-image verification of the review fixes remain unexecuted.

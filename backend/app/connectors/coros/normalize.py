@@ -47,6 +47,9 @@ async def normalize_activity(
     discipline_index: dict[str, int],
     stats: NormalizerStats,
 ) -> None:
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     external_id = payload.get("id") or payload.get("external_id")
     if external_id is None or not str(external_id).strip():
         raise NormalizationError("activity is missing id/external_id")

@@ -764,6 +764,8 @@ async def compute_user_day(
 ) -> dict | None:
     """Compute + upsert one local day. Returns the computed rows (or None if
     the day had no data and no row exists)."""
+    from app.services.evidence import scope_lock
+    await scope_lock(session, user.id, "changes")
     window = await _load_window(session, user, day)
     tz = window["tz"]
     cutoff = cutoff_for_local_day(day, tz)

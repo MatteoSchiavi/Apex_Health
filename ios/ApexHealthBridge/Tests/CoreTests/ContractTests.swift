@@ -53,4 +53,16 @@ final class ContractTests: XCTestCase {
             metadata: ["note": .string(String(repeating: "x", count: 9000))], workoutActivityType: nil)
         XCTAssertThrowsError(try s.validate())
     }
+
+    func testSourceIdentityMatchesServerBounds() throws {
+        let timestamp = Date()
+        func source(_ length: Int) -> HealthSample {
+            HealthSample(uuid: UUID(), type: "HKQuantityTypeIdentifierStepCount", startAt: timestamp, endAt: timestamp,
+                value: 100, unit: "count", sourceBundle: "com.apple.health",
+                sourceName: String(repeating: "x", count: length), device: nil, metadata: [:], workoutActivityType: nil)
+        }
+        XCTAssertNoThrow(try source(256).validate())
+        XCTAssertThrowsError(try source(257).validate())
+        XCTAssertThrowsError(try source(0).validate())
+    }
 }

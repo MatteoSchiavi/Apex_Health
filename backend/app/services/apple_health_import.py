@@ -219,6 +219,7 @@ async def import_apple_health(session: AsyncSession, user, filename: str, conten
         raise AppleHealthImportError("Archive must be between 1 byte and 100 MB")
     sha = hashlib.sha256(content).hexdigest()
     from app.services.evidence import scope_lock
+    await scope_lock(session, user.id, "changes")
     await scope_lock(session, user.id, "apple_health_import")
     prior = await session.scalar(select(LabDocument.id).where(
         LabDocument.user_id == user.id, LabDocument.content_hash == sha,

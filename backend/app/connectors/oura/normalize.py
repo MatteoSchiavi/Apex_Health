@@ -73,6 +73,9 @@ async def normalize_raw_row(
     tz: ZoneInfo,
     stats: NormalizerStats,
 ) -> None:
+    # Take the account lock before canonical rows, matching ingest/erase order.
+    from app.services.evidence import scope_lock
+    await scope_lock(session, raw.user_id, "changes")
     ptype = getattr(raw, "payload_type", "")
     if ptype == "daily_sleep":
         await _upsert_daily_sleep(session, raw, payload, tz, stats)

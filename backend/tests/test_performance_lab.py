@@ -535,7 +535,8 @@ def test_unclaimed_numeric_reply_and_wrong_analysis_field_are_suppressed():
         }
     )
     reply, grounding = validate_answer(
-        answer, [{"handle": "analysis:8", "data": {"median": 56}}]
+        answer, [{"handle": "analysis:8", "recipe": "personal_baseline",
+                  "data": {"metric": "hrv_overnight_rmssd", "unit": "ms", "median": 56}}]
     )
     assert grounding["status"] == "invalid"
     answer = json.dumps(
@@ -545,7 +546,8 @@ def test_unclaimed_numeric_reply_and_wrong_analysis_field_are_suppressed():
         }
     )
     assert (
-        validate_answer(answer, [{"handle": "analysis:8", "data": {"median": 56}}])[1][
+        validate_answer(answer, [{"handle": "analysis:8", "recipe": "personal_baseline",
+            "data": {"metric": "hrv_overnight_rmssd", "unit": "ms", "median": 56}}])[1][
             "status"
         ]
         == "structured"

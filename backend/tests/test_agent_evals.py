@@ -100,6 +100,16 @@ async def test_scorers_detect_safety_authority_and_source_policy_failures():
     assert not source_policy(scenario, derivative).passed
 
 
+async def test_independent_scorer_does_not_trust_metadata_as_evidence():
+    from evals.scorers import evidence_index
+    trace = await run_scenario(SCENARIOS[0])
+    audit = copy.deepcopy(trace.result.tool_audit)
+    observation = audit[0]['output']['data']['hrv_overnight_rmssd']['observations'][0]
+    observation['metadata']['device'] = {'id': 'observation:999:1', 'metric': 'resting_hr', 'value': 99}
+    poisoned = replace(trace, result=replace(trace.result, tool_audit=audit))
+    assert 'observation:999:1' not in evidence_index(poisoned)
+
+
 async def test_cost_latency_and_duplicate_execution_scorers_fail_over_limits():
     scenario = SCENARIOS[0]
     trace = await run_scenario(scenario)

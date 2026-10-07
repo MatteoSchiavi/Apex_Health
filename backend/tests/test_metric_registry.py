@@ -16,6 +16,43 @@ from app.models.wellness import DailyBiometric, HrvReading, SleepSession
 from app.models.activity import Activity, ActivityStream
 
 DAY = date(2026, 10, 5)
+
+
+def test_nonpositive_blend_weights_cannot_invert_scores_or_claim_coverage():
+    components = {'hrv_deviation': 1.0, 'sleep_quality': 0.0}
+    assert scores.blend(components, {'hrv_deviation': 2.0, 'sleep_quality': -1.0}) == 1.0
+    assert scores.blend(components, {'hrv_deviation': 0.0, 'sleep_quality': -1.0}) is None
+    record = metric_snapshot('recovery', 100, {}, components=components,
+        weights={'hrv_deviation': 2.0, 'sleep_quality': 0.0})
+    assert record['components']['sleep_quality']['active'] is False
+    assert record['components']['sleep_quality']['normalized_weight'] is None
+    assert record['coverage']['available_components'] == 1
+    assert record['coverage']['status'] == 'limited_coverage'
+
+
+@pytest.mark.parametrize('invalid_weight', [float('nan'), float('inf'), -float('inf')])
+def test_nonfinite_weights_are_excluded_and_provenance_is_valid_json(invalid_weight):
+    components = {'hrv_deviation': 0.6, 'sleep_quality': 1.0}
+    weights = {'hrv_deviation': 1.0, 'sleep_quality': invalid_weight}
+    assert scores.blend(components, weights) == pytest.approx(0.6)
+    record = metric_snapshot('recovery', 60, {}, components=components, weights=weights)
+    assert record['components']['sleep_quality']['active'] is False
+    assert record['components']['sleep_quality']['weight'] is None
+    assert record['weights']['sleep_quality']['value'] is None
+    assert record['coverage']['status'] == 'limited_coverage'
+    json.dumps(record, allow_nan=False)
+
+
+def test_scores_match_independent_hand_calculated_examples():
+    # 100*(.4*.5 + .3*.8 + .2*.8 + .1*.4) = 64.
+    assert scores.recovery_score({'hrv_deviation': .4, 'resting_hr_deviation': .3,
+        'sleep_quality': .2, 'prior_day_strain': .1}, 0, 2, 80, 60) == pytest.approx(64)
+    # ACWR 4 has a zero readiness component; .5*.64 + .3*.8 = .56.
+    assert scores.readiness_score({'recovery': .5, 'sleep_architecture': .3, 'acwr': .2},
+        64, 80, 4) == pytest.approx(56)
+    assert scores.strain_score(90, 500) == pytest.approx(18)
+    assert load.acwr_from(100, 400) == 1
+    assert load.acwr_from(0, 0) is None
 WEIGHTS = {
     "recovery_score": {"hrv_deviation": 0.4, "resting_hr_deviation": 0.3,
                        "sleep_quality": 0.2, "prior_day_strain": 0.1},

@@ -72,3 +72,13 @@ Runtime implementation commit: `37016b390f23b946adba185647e60f3c27969069`; subse
 Earlier integration failures were corrected and followed by the complete backend rerun: provider aggregation SQL binding, JSON-null outcomes, composite contributor import, HRV provider selection import, scoped watch management, obsolete score/night assertions and retention fixture isolation. Golden formula expectations were independently derived from raw fixture data (GOLDEN_FORMULA_CHANGES.md).
 
 Manual dependencies and post-validation decisions are recorded in [MANUAL_ALPHA_ACTIONS.md](MANUAL_ALPHA_ACTIONS.md). They do not substitute for implementable repository work.
+
+## Independent review follow-up
+
+The implementation results above are historical. The independent review of
+`25e6342` found and repaired ownership, erasure, rollback, evidence-validation
+and calculation defects. See [ALPHA_INDEPENDENT_REVIEW.md](ALPHA_INDEPENDENT_REVIEW.md)
+for exact findings, new verification, unresolved native/release gates and the
+**NOT READY TO MERGE** recommendation. Current review checks: 832 backend tests,
+99 browser tests and 26 runtime replay scenarios pass; native Swift/Xcode and
+production-image verification of the review fixes remain unexecuted.

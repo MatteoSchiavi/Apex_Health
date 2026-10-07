@@ -116,6 +116,7 @@ async def _resolve_session(session, user_id, now):
 
 
 async def _build_snapshot(session, user_id, now):
+    await scope_lock(session, user_id, "changes")
     user = await session.get(User, user_id)
     if user is None:
         raise ValueError("Account unavailable")
@@ -170,6 +171,8 @@ async def run_agent_turn(
 ):
     now = now or datetime.now(UTC)
     async with sessionmaker() as session:
+        # Global erasure lock precedes chat rows/locks, as it does for tools.
+        await scope_lock(session, user_id, "changes")
         if session_id is None:
             chat = await _resolve_session(session, user_id, now)
         else:

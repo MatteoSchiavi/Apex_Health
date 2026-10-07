@@ -420,13 +420,23 @@ SOURCES = {
 }
 
 
+async def _source_content_revision(session, params, queries):
+    root = hashlib.sha256()
+    for query in queries:
+        rows = await session.stream(text(query), params)
+        async for row in rows.mappings():
+            root.update(canonical(dict(row)).encode())
+            root.update(b"\n")
+    return root.hexdigest()
+
+
 async def source_preview(session, user_id, source):
     if source not in SOURCES:
         raise HTTPException(422, "Unknown source")
+    await scope_lock(session, user_id, "changes")
     if source == "apple_healthkit":
         # Native ingestion takes these in this order. The lock covers both
         # preview contents and the approved deletion, including absent rows.
-        await scope_lock(session, user_id, "changes")
         await scope_lock(session, user_id, "apple_health_import")
     counts = {}
     for table, column in (
@@ -442,7 +452,16 @@ async def source_preview(session, user_id, source):
         )
     revision = await snapshot_revision(session, user_id)
     content_revision = None
-    scope = "Source observations/raw records and canonical activities linked to this source, including merged rows. Legacy wellness has no reliable per-source lineage and is erased for wearable sources. Cached analyses, chats and reports are erased. Disconnect pauses new imports; reconnecting can restore upstream data."
+    scope = "Source observations/raw records and canonical activities linked to this source, including merged rows. Wearable erasure removes source-owned wellness and legacy wellness of unknown origin; explicitly attributed other-provider wellness and feed states are preserved. Cached analyses, chats and reports are erased. Disconnect pauses new imports; reconnecting can restore upstream data."
+    if source in {"garmin", "whoop", "oura", "coros", "csv_import"}:
+        # Observation revisions do not cover CSV/canonical-only wellness.
+        # Counts alone cannot detect changed values before irreversible erasure.
+        content_revision = await _source_content_revision(session, {'owner': user_id, 'source': source}, (
+            "SELECT to_jsonb(t) AS row FROM sleep_sessions t WHERE user_id=:owner AND (origin=:source OR origin IS NULL) ORDER BY id,start_time",
+            "SELECT to_jsonb(t) AS row FROM hrv_readings t WHERE user_id=:owner AND (origin=:source OR origin IS NULL) ORDER BY id,timestamp",
+            "SELECT to_jsonb(t) AS row FROM stress_readings t WHERE user_id=:owner ORDER BY id,timestamp",
+            "SELECT to_jsonb(t) AS row FROM daily_biometrics t WHERE user_id=:owner ORDER BY date",
+        ))
     if source == "apple_healthkit":
         for table, predicate in (
             ("healthkit_samples", "user_id=:owner"),
@@ -454,24 +473,13 @@ async def source_preview(session, user_id, source):
         counts["healthkit_active_samples"] = await session.scalar(text(
             "SELECT count(*) FROM healthkit_samples WHERE user_id=:owner AND NOT deleted"
         ), {"owner": user_id})
-        root = hashlib.sha256()
         # Stream the ledger instead of materializing a multi-year payload list.
-        stream = await session.stream(text(
-            "SELECT uuid,payload,deleted,received_at FROM healthkit_samples WHERE user_id=:owner ORDER BY uuid"
-        ), {"owner": user_id})
-        async for row in stream.mappings():
-            root.update(canonical(dict(row)).encode())
-            root.update(b"\n")
-        for query in (
+        content_revision = await _source_content_revision(session, {'owner': user_id}, (
+            "SELECT uuid,payload,deleted,received_at FROM healthkit_samples WHERE user_id=:owner ORDER BY uuid",
             "SELECT id,sync_checkpoint,revoked_at,absolute_expires_at FROM device_tokens WHERE user_id=:owner AND scope='healthkit_sync' ORDER BY id",
             "SELECT id,expires_at,consumed_at FROM healthkit_pairings WHERE user_id=:owner ORDER BY id",
             "SELECT device_id,batch_id,content_hash,checkpoint FROM healthkit_batches WHERE device_id IN (SELECT id FROM device_tokens WHERE user_id=:owner) ORDER BY device_id,batch_id",
-        ):
-            rows = await session.stream(text(query), {"owner": user_id})
-            async for row in rows.mappings():
-                root.update(canonical(dict(row)).encode())
-                root.update(b"\n")
-        content_revision = root.hexdigest()
+        ))
         scope = "Revoke all Apple Health native tokens and pending pairings; erase this account's HealthKit UUID ledger, tombstones, batches, source observations and source-owned projections. Preserve other-provider activity links, fields and legacy wellness of unknown origin. Cached analyses, chats and reports are erased. Re-pairing can restore upstream data."
     return {
         "source": source,
@@ -547,20 +555,31 @@ async def erase_source(
             {"owner": user.id, "ids": activity_ids},
         )
     if source in {"garmin", "whoop", "oura", "coros", "csv_import"}:
-        for table in (
-            "sleep_sessions",
-            "hrv_readings",
-            "stress_readings",
-            "daily_biometrics",
-        ):
+        from sqlalchemy import or_
+        from app.models.wellness import DailyBiometric, HrvReading, SleepSession
+        from app.services.biometric_provenance import FIELDS, biometric_origin, set_biometric
+        for model in (SleepSession, HrvReading):
             await session.execute(
-                text(f"DELETE FROM {table} WHERE user_id=:owner"), params
-            )
+                delete(model).where(model.user_id == user.id,
+                    or_(model.origin == source, model.origin.is_(None))))
+        # Stress readings have no origin column and remain explicitly covered
+        # by the legacy unknown-origin erasure scope.
+        await session.execute(text("DELETE FROM stress_readings WHERE user_id=:owner"), params)
+        for bio in (await session.scalars(select(DailyBiometric).where(DailyBiometric.user_id == user.id))).all():
+            for field in sorted(FIELDS):
+                if getattr(bio, field) is not None and biometric_origin(bio, field) in {source, None}:
+                    set_biometric(bio, field, None, source)
+            metrics = dict(bio.source_metrics or {})
+            metrics.pop(source, None)
+            bio.source_metrics = metrics or None
+            if not metrics and all(getattr(bio, field) is None for field in FIELDS):
+                await session.delete(bio)
     await session.execute(
         delete(Observation).where(
             Observation.user_id == user.id, Observation.origin == source
         )
     )
+    await session.execute(text("DELETE FROM lab_feed_states WHERE user_id=:owner AND provider=:source"), params)
     # Keep allowed alternate raw records, detach references to erased records.
     await session.execute(
         text(
@@ -585,7 +604,6 @@ async def erase_source(
         "weekly_rollups",
         "monthly_rollups",
         "decision_records",
-        "lab_feed_states",
         "lab_notifications",
     ):
         await session.execute(text(f"DELETE FROM {table} WHERE user_id=:owner"), params)
