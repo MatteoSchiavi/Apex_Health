@@ -49,6 +49,11 @@ Follow [INSTALL.md](INSTALL.md). Preserve existing `SESSION_SECRET`,
 encryption key does not migrate ciphertext. Record an encrypted backup and
 verify a restore before upgrading a database containing real data.
 
+For updater-managed installations, use [AUTO_UPDATES.md](AUTO_UPDATES.md)
+instead of the manual build command below. Retain the active image override
+when restarting services. Host updater changes require a deliberate reinstall;
+the image deployment does not update the host checkout or timer script.
+
 ```sh
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait
 docker compose --env-file .env -f infra/docker-compose.yml ps
@@ -132,3 +137,21 @@ UI redesign follows this acceptance boundary.
 ## Performance lab upgrade
 
 Migration `0010_performance_lab` adds the canonical evidence ledger, changes, decisions, notifications, documents, jobs and analysis results. Read [PERFORMANCE_LAB.md](PERFORMANCE_LAB.md) before enabling live credentials. Start with a scoped reindex of stored Garmin raw history; coverage remains honestly incomplete until actual observations are indexed. The new harness exposes proposal authority only; approval and execution belong to authenticated application endpoints.
+
+## October owner operations and audit update
+
+Migration `0015` adds disabled/last-login credential fields, feedback and the
+durable owner notification outbox. Migration `0016` adds derived load provenance.
+Remembered sessions now renew for 30 days of inactivity with a 90-day absolute
+cap. Owner APIs enforce the persisted role; feedback and outbound Telegram are
+documented in [OWNER_ADMIN.md](OWNER_ADMIN.md). DeepSeek defaults and tool-budget
+handling are described in [COACH_SETUP.md](COACH_SETUP.md).
+
+The October audit pass completed 562 backend tests, 67 browser tests, production
+image build and isolated API/worker checks. The updater subsequently completed
+27 recovery/diagnostic tests and actual GHCR download, encrypted backup,
+migration, restart, rollback/resume and repeat-update checks on disposable Compose
+services. These counts describe those dated checks, not a permanent current
+test count or live home-server certification. Consult
+[AUDIT_2026_10.md](AUDIT_2026_10.md) for all dispositions and bounded historical
+feature repair; migrations do not automatically rewrite all historical features.

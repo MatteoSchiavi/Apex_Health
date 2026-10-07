@@ -10,6 +10,9 @@ starts PostgreSQL/TimescaleDB, Redis, the API and the Celery worker.
 - 8 GB RAM and 15 GB free disk for a comfortable small installation
 - A modern browser
 
+Automatic updates additionally require Linux/systemd, Intel/AMD x86-64 and
+Python 3.10+; see [AUTO_UPDATES.md](AUTO_UPDATES.md).
+
 The default stack exposes the application only on `127.0.0.1:8000`. Put a TLS
 reverse proxy in front of it before making it reachable from your network or
 the internet.
@@ -27,14 +30,20 @@ Open `.env` and set these values before starting:
 | Setting | How to set it |
 | --- | --- |
 | `OWNER_EMAIL` | Your administrator login email |
-| `OWNER_PASSWORD` | A long, unique password |
-| `SESSION_SECRET` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
-| `ENCRYPTION_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `POSTGRES_PASSWORD` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `BACKUP_ENCRYPTION_KEY` | Generate a second Fernet key if you want encrypted backups |
+| `OWNER_PASSWORD` | A unique password, at least 12 characters and three of lowercase/uppercase/digit/symbol |
+| `SESSION_SECRET` | `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `ENCRYPTION_KEY` | `python3 -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"` |
+| `POSTGRES_PASSWORD` | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `BACKUP_ENCRYPTION_KEY` | A separate `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` value; required for automatic updates |
 
-Keep the three secrets when you upgrade. Changing either encryption key makes
-existing encrypted values or backups unreadable.
+Generate values locally and put them securely into `.env`; do not commit them
+or paste them into chat. Preserve existing session, database and encryption
+secrets during upgrades. Changing either encryption key makes existing
+encrypted values or backups unreadable. Changing `POSTGRES_PASSWORD` in `.env`
+alone does not change the password of an existing PostgreSQL volume.
+
+For this loopback HTTP first start, also set `COOKIE_SECURE=false` before
+starting. Keep it enabled when using HTTPS.
 
 Start the platform:
 
@@ -46,6 +55,9 @@ curl http://127.0.0.1:8000/health
 
 Open `http://127.0.0.1:8000` and sign in with the owner account. Migrations run
 before the API starts; do not run Alembic manually for a normal Compose start.
+Use `/admin` for owner administration and Settings to invite friends. Before
+sharing the instance, configure the operator's legal facts and review
+[LEGAL_DEPLOYMENT.md](LEGAL_DEPLOYMENT.md).
 
 ## Local HTTP and HTTPS
 
@@ -66,6 +78,11 @@ port 8000 bound to loopback.
 For automatic deployments of tested main commits, follow
 [AUTO_UPDATES.md](AUTO_UPDATES.md). Its image override replaces the manual
 rebuild commands below once enabled.
+Include your original override files and `.apex-updater/active.compose.yml`
+for manual restarts of an updater-managed stack. Pulling Git changes alone
+does not update its installed timer script; reinstall deliberately for updater
+fixes. `python3 infra/auto_update.py doctor` checks prerequisites without
+deploying; preserve custom project/files/context options.
 
 ```sh
 # Follow API or worker logs
@@ -73,7 +90,7 @@ docker compose --env-file .env -f infra/docker-compose.yml logs -f api
 docker compose --env-file .env -f infra/docker-compose.yml logs -f worker
 
 # Rebuild after pulling an update
-git pull
+git pull --ff-only origin main
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait
 
 # Stop the platform without deleting data
@@ -94,14 +111,26 @@ service.
 - **FIT files:** import original files from Data Health. Originals are stored
   encrypted and sample provenance is retained.
 - **AI coach:** configure an OpenAI-compatible provider using the LLM settings
-  in `.env`. The app remains usable when no key is configured.
+  in `.env`. `DEEPSEEK_API_KEY` selects DeepSeek when per-tier overrides are
+  empty; follow [COACH_SETUP.md](COACH_SETUP.md). The app remains usable when
+  no key is configured.
+- **Apple Health:** upload `export.zip` in Settings → Data Health; see
+  [APPLE_HEALTH.md](APPLE_HEALTH.md). This is a manual import, not automatic
+  iOS HealthKit synchronization.
+- **Food diary:** authorize the optional external Fitbit nutrition connector;
+  see [UI_DATA_CHANGES.md](UI_DATA_CHANGES.md). Provider registration and scope
+  access are required.
+- **Owner Telegram:** configure `OWNER_TELEGRAM_BOT_TOKEN` and
+  `OWNER_TELEGRAM_CHAT_ID`, then test outbound delivery in `/admin`; see
+  [OWNER_ADMIN.md](OWNER_ADMIN.md). This is independent of the old chat bot.
 - **Other device providers:** add the corresponding OAuth credentials only
   after registering an application with that provider.
 
 Provider access, model latency and device delivery are not proven by the local
 test suite. Validate them with your own account before relying on them.
 
-When upgrading from a version that ran the Telegram bot, delete the
+For a manually rebuilt installation upgrading from the former interactive
+Telegram bot, delete the
 `TELEGRAM_BOT_TOKEN` line from `.env` and recreate the stack. This clears the
 old credential from the application environment and removes the orphaned bot
 container:
@@ -126,7 +155,9 @@ Before any upgrade that contains real health data:
    docker compose --env-file .env -f infra/docker-compose.yml exec api python tools/restore_drill.py
    ```
 
-3. Pull the update and run the normal `up -d --build --wait` command.
+3. For manual deployments, pull the update and run `up -d --build --wait`.
+   For updater-managed deployments, follow [AUTO_UPDATES.md](AUTO_UPDATES.md)
+   to preserve the pinned tested image and deployment/recovery state.
 
 See [BACKEND_RELEASE.md](BACKEND_RELEASE.md) for the full release checklist.
 
@@ -146,9 +177,9 @@ database during the run. The CI workflow shows the complete isolated setup.
 
 ```sh
 cd backend
-uv sync
-APEX_TEST_DATABASE_RESET=1 DATABASE_URL=postgresql+asyncpg://... REDIS_URL=redis://... \\
-  uv run pytest -q
+uv sync --frozen
+APEX_TEST_DATABASE_RESET=1 DATABASE_URL=postgresql+asyncpg://... REDIS_URL=redis://... \
+  uv run --frozen python -m pytest -q
 ```
 
 For user-space development helpers, `scripts/rebuild_pg_redis.sh` installs a

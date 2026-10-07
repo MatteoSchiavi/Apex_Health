@@ -17,7 +17,7 @@
 | Frontend | React 18 + TypeScript + Vite 6 | react 18.3 | The official web UI |
 | Frontend styling | Tailwind CSS v4 | 4.x | Apex Precision tokens as CSS variables |
 | Charts | Apache ECharts 5 | 5.x | Telemetry streams, hypnogram, zones, load curves |
-| Map | SVG contour trace (mockup-faithful) | — | Activity GPS traces colored by elevation/pace; MapLibre GL basemap documented as optional upgrade |
+| Map | Leaflet + React Leaflet | 1.x / 4.x | Recorded GPS traces over OpenStreetMap tiles; missing traces remain explicit |
 | Router | React Router v7 (library mode) | 7.x | URL-per-page; deep-linkable metric pages |
 | Server state | TanStack Query v5 | 5.x | Cache, refetch, pagination |
 | Client state | zustand | 5.x | Theme, locale, session user |
@@ -30,10 +30,11 @@
 
 ### 2.1 React + Vite SPA instead of Next.js / Remix
 
-The UI is a **private, authenticated dashboard** behind session cookies. Server-side
-rendering buys nothing here: there is no SEO, no first-paint marketing page, no
-crawler. Next.js would add a Node server process (~150–300 MB RSS) to an 8 GB box
-that already runs Postgres/Timescale + Celery + API, plus a second build pipeline.
+The core UI is a **private, authenticated dashboard** behind session cookies.
+Public landing/legal pages share the same SPA; server-side rendering is not
+required for the current private-service scope. A separate web runtime would
+add another process and deployment pipeline to a small host already running
+Postgres/Timescale, Celery and the API.
 
 A Vite SPA compiles to **static files** that FastAPI can serve directly — no new
 container, no reverse-proxy changes, no Node runtime in production. Deployment
@@ -70,15 +71,13 @@ too low-level — every composite chart becomes hand-rolled code), D3 (same, mor
 so). Bundle uses tree-shaken ECharts (~300 KB gz with only the needed chart
 types).
 
-### 2.4 GPS trace: SVG contour canvas now, MapLibre as an optional upgrade
+### 2.4 GPS trace: Leaflet and OpenStreetMap
 
-The approved activity mockup renders the GPS trace on a **dark topo-contour
-canvas with an SVG polyline** — not a slippy tile map — and the implementation
-is faithful to that: the trace is drawn from the local `lat/lon/altitude`
-streams, colored by elevation, and never depends on internet tiles. This keeps
-production installs fully offline-clean. When a real basemap is wanted later,
-MapLibre GL (open-source, CARTO free tiles, canvas polyline fallback) slots in
-behind the same `/activities/{id}/streams` payload without touching the API.
+Activity detail uses Leaflet through React Leaflet, with a polyline drawn from
+recorded latitude/longitude streams and OpenStreetMap raster tiles. Invalid
+coordinates are excluded; fewer than two valid points produce a missing-map
+state. Tile requests are external browser requests and can reveal viewed tile
+locations to that service. This is not an entirely offline basemap.
 
 ### 2.5 Session-cookie auth reused — the SPA is a first-class client
 
@@ -109,19 +108,19 @@ are committed as variable woff2 files (~120 KB total) under
 `frontend/public/fonts`. The Material Symbols icon font of the mockups is
 replaced by **lucide-react** (tree-shaken SVG outline icons, visually equivalent
 hairline style) — a variable icon font would ship ~300 KB for the ~40 icons we
-use. A production install makes **zero third-party requests** (tiles are the one
-optional exception, see 2.4).
+use. Fonts and icons require no CDN requests. Map tiles and configured provider,
+AI, weather and owner notification services have their own external data flows.
 
 ### 2.8 AI stack: DeepSeek main model + optional MedGemma medical tier
 
-The LLM client is already an OpenAI-compatible abstraction (`app/core/llm.py`)
-where provider choice is an env-var change. v3 makes the base URL **per tier**:
-
-- `LLM_PROVIDER_CHEAP=deepseek-chat`, `LLM_API_BASE_CHEAP=https://api.deepseek.com/v1`
-  → **DeepSeek V4-class chat model is the main coach model** (user decision),
-  cheap enough for the default `cheap_only` friend tier, tool-calling capable.
-- `LLM_PROVIDER_POWERFUL` stays GLM-5.2 (or any OpenAI-compatible endpoint) for
-  strategy-grade answers.
+The LLM client is an OpenAI-compatible abstraction (`app/core/llm.py`) with
+per-tier model, endpoint and key resolution. With `DEEPSEEK_API_KEY` present
+and per-tier overrides empty, ordinary and strategic requests use
+`https://api.deepseek.com` with `deepseek-flash`. A costlier strategic model
+requires an explicit setting. Explicit GLM/custom overrides retain precedence;
+custom endpoints require their own model/key pair. The internal `cheap`/`free`
+labels are routing categories, not guarantees of zero cost or model identity.
+See [COACH_SETUP.md](COACH_SETUP.md) for current settings and verification.
 - **MedGemma** (Google's clinical Gemma) is wired as an optional `medical` tier:
   an OpenAI-compatible endpoint (Hugging Face router, Vertex GenAI-compatible
   gateway, or a self-hosted GGUF behind llama.cpp/OpenAI shim). It is **disabled
@@ -140,9 +139,11 @@ where provider choice is an env-var change. v3 makes the base URL **per tier**:
 | Garmin | `garminconnect` (unofficial) | credentials → token store | Full backfill + 6-hourly incremental; **FIT enrichment** unlocks what Connect's JSON API hides |
 | Whoop | v2 OAuth2 (`developer.whoop.com`) | OAuth2 + refresh | Owner registers the app (INSTALL §7b); annotation laws normalize units to Garmin-canonical |
 | Oura | API v2 OAuth2 (`cloud.ouraring.com`) | OAuth2 + refresh, **personal apps allowed** | Sleep stages/HRV/temp deviation/spo2; same normalization law |
-| COROS | Open API (`open.coros.com`) | OAuth2 | Doc-first shell implemented; owner must apply at COROS developer portal before live use (approval is manual) |
+| COROS | Optional Open API and read-only MCP adapter | Provider credentials / per-account MCP token | Official access requires approval; MCP needs a real configured server/tool, see COROS_MCP.md |
 | Strava | v3 OAuth2 | OAuth2 + refresh | Activities + streams; fills device gaps |
-| CSV | Apple Health / generic | file upload | Zero-config fallback for any device |
+| CSV / FIT | Generic recorded files | file upload | Supported manual fallback; source formats must match the parser |
+| Apple Health ZIP | XML records in export.zip | file upload | Manual bounded import, not automatic HealthKit sync |
+| Fitbit nutrition | Read-only external diary | OAuth2 | Requires provider registration and nutrition scope; no built-in food logger |
 
 **Device priority law (new)**: each user has a **main device** (chosen at
 onboarding or in Settings). The main device wins every metric where it has
@@ -155,17 +156,15 @@ forked dataset.
 
 ### 2.10 Encryption posture (owner-held key)
 
-- **Secrets** (device tokens, passwords via argon2, lab values) are already
-  Fernet-encrypted at the column level with `ENCRYPTION_KEY` — a key **only the
-  owner generates** and holds in `.env`.
-- **Bulk telemetry** (hypertables, streams) stays queryable plaintext *inside
-  the DB volume* by design: encrypting it row-wise would break Timescale
-  compression and 100× the query cost. The documented answer for at-rest
-  coverage of the volume is **LUKS/dm-crypt on the homeserver disk** (INSTALL
-  §11) — one key you hold, protecting every byte including the DB.
-- Net effect: the owner holds exactly **two keys** (`ENCRYPTION_KEY`, disk
-  key) and can hand both to a debugging session — matching "I want to have the
-  encryption key so I can fix bugs".
+- Device credentials, document originals/excerpts and lab notes use
+  application encryption under `ENCRYPTION_KEY`. Passwords are Argon2 hashes.
+- Queryable observations, telemetry, activities, journals and feedback are not
+  all encrypted columns. Host disk encryption is a separate operator decision;
+  it is not provisioned by Compose.
+- `BACKUP_ENCRYPTION_KEY` independently protects database backups;
+  `SESSION_SECRET` protects session/CSRF primitives. Preserve secrets securely
+  during upgrades and do not paste keys into debugging chats. See
+  [SECURITY.md](SECURITY.md) for boundaries and incident handling.
 
 ### 2.11 Serving topology (8 GB budget)
 
@@ -176,13 +175,14 @@ Cloudflare Tunnel (optional, free TLS)      Tailscale (alternative)
                    worker (celery+beat) — 1.5 GB
                    db (TSDB+pgvector)   — 2.5 GB
                    redis                — 256 MB
-                   bot (optional)       — 256 MB
                                             ─────────
-                                   total    ≤ 5.5 GB, headroom for OS
+                                   caps     5.25 GiB, plus OS and transient jobs
 ```
 
-No Node process, no nginx, no Grafana. The SPA adds **zero runtime memory**
-(files served by uvicorn's static mount).
+The supplied stack has no resident Node, nginx, Grafana or interactive bot
+service. FastAPI serves the built SPA files. Owner monitoring and outbound
+Telegram notifications use the existing API/worker; see [OWNER_ADMIN.md](OWNER_ADMIN.md).
+Tested main application images can be deployed with [AUTO_UPDATES.md](AUTO_UPDATES.md).
 
 ## 3. Directory map (this change)
 

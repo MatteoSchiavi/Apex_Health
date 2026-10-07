@@ -4,7 +4,7 @@ The overview starts with recorded HRV, resting heart rate, sleep duration, SpO�
 
 HRV/RMSSD, resting heart rate, SpO₂ and respiration use a personal empirical range from the same provider, device and measurement context: the preceding 28 calendar days, at least 14 recorded days, excluding the assessed reading. Device changes restart calibration. These are personal distribution bands, not diagnostic thresholds. A higher VO₂ max or recovery score gets a positive directional cue; higher training load has no automatic good/bad color. Count, volume and body measurements retain precise neutral values. Missing data is shown as missing.
 
-The collapsed sidebar retains the Apex mark. Sleep stage charts share muted, distinct stage colors. Hour-valued durations use `H:MMh`. Remember me keeps both session and CSRF cookies for a fixed 30 days, while ordinary login uses browser-session cookies and the existing 12-hour inactivity limit. Logout revokes the server session and clears both cookies.
+The collapsed sidebar retains the Apex mark. Sleep stage charts share muted, distinct stage colors. Hour-valued durations use `H:MMh`. Remember me renews session and CSRF cookies for 30 days of inactivity, at most once daily, with a 90-day absolute server-session cap; existing remembered rows retain their original cap. Ordinary login uses browser-session cookies and the existing 12-hour inactivity limit. Logout revokes the server session and clears both cookies.
 
 ## Sport details
 
@@ -18,4 +18,4 @@ Running uses pace; cycling uses speed and recorded cadence/power zones. Sailing 
 - [COROS MCP](COROS_MCP.md): configure the real server URL, read-only activity tool and arguments, then connect each account's token in Devices. No particular external MCP server has been verified.
 - [Apple Health](APPLE_HEALTH.md): manually upload Apple Health's `export.zip` through Settings → Data health. Automatic HealthKit synchronization needs a native iOS companion and is not part of this server implementation.
 
-Telegram's active connector, routes, tasks and Compose service were removed. Historical tables remain to preserve existing records. A disabled, network-free polling entrypoint supports older Compose snapshots during upgrades; the updater stops and removes only its own project's legacy bot container.
+The former interactive Telegram connector, routes, tasks and Compose service were removed. Historical tables remain to preserve existing records. A disabled, network-free polling entrypoint supports older Compose snapshots during upgrades; the updater stops and removes only its own project's legacy bot container. Optional outbound owner notifications now run through the API and Celery worker, using separate `OWNER_TELEGRAM_*` settings; see [OWNER_ADMIN.md](OWNER_ADMIN.md).

@@ -1,7 +1,8 @@
 # Apex Health
 
-A self-hosted health and performance platform for people who want one private,
-evidence-aware place for training, recovery, sleep, laboratory results, gear
+A private, invite-only, self-hosted health and performance platform for the owner
+and individually invited friends who want one evidence-aware place for
+training, recovery, sleep, laboratory results, gear
 and coaching decisions.
 
 The deployed application is a single stack:
@@ -11,14 +12,13 @@ The deployed application is a single stack:
 - **Redis + Celery** runs imports, analysis, scheduled work and backups.
 - **React + Vite** provides the responsive, bilingual web UI.
 
-There is no second web application or mock-data runtime in this repository.
-
 ![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 
 ## What it does
 
 - Imports Garmin data and original FIT files; supports source-aware manual,
-  CSV and laboratory observations.
+  CSV, Apple Health ZIP and laboratory observations. Optional device services
+  require their own credentials and provider access.
 - Shows activities, sleep, biometrics, training, gear and data coverage in a
   clean Swiss-modern interface.
 - Produces an evidence-backed daily decision and a Performance Lab for trends,
@@ -29,6 +29,18 @@ There is no second web application or mock-data runtime in this repository.
   exports, deletion previews and audit records.
 - Runs scheduled jobs and encrypted backups locally. AI providers are optional
   integrations.
+- Supports phone installation as a PWA, a monthly calendar, subtle metric
+  interpretation cues and selectable history windows. Offline navigation shows
+  a generic page; private health responses are not cached by the service worker.
+- Keeps notification preferences and Data Health in Settings, with a notification
+  popover in the top bar. Food reads an optional external Fitbit diary rather
+  than providing a separate food-logging application.
+- Provides an owner-only `/admin` dashboard for users, permissions, sessions,
+  invitations, feedback, measured server resources and filtered operational logs.
+- Collects feedback throughout the app and optionally sends owner Telegram
+  notifications with durable retries. This is an outbound notification bot.
+- Supports rolling 30-day Remember Me sessions, capped at 90 days; ordinary
+  logins use browser-session cookies.
 
 ## Run it locally
 
@@ -38,10 +50,14 @@ Docker is the supported way to run the whole platform.
 git clone https://github.com/MatteoSchiavi/Apex_Health.git
 cd Apex_Health
 cp .env.example .env
-# edit .env: set SESSION_SECRET, ENCRYPTION_KEY, OWNER_EMAIL and OWNER_PASSWORD
+# edit .env: set SESSION_SECRET, ENCRYPTION_KEY, OWNER_EMAIL,
+# OWNER_PASSWORD and POSTGRES_PASSWORD using docs/INSTALL.md
+# for this loopback HTTP trial, also set COOKIE_SECURE=false
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait
-open http://127.0.0.1:8000
 ```
+
+Open `http://127.0.0.1:8000` in your browser and sign in as the owner. Set
+`BACKUP_ENCRYPTION_KEY` to enable encrypted backups; automatic updates require it.
 
 Use HTTPS for any network-facing install. For a loopback-only HTTP trial, set
 `COOKIE_SECURE=false` in `.env`; browser sessions cannot work over plain HTTP
@@ -52,6 +68,40 @@ The full guide, including upgrades, backups and optional providers, is in
 
 For a home server, [automatic updates](docs/AUTO_UPDATES.md) can follow tested
 main commits using prebuilt images, encrypted backups and deployment checks.
+Install the updater once; pushing to GitHub alone does not install a server timer.
+Supported updater hosts are Linux/systemd on Intel/AMD x86-64, with Compose v2
+and Python 3.10+. Preserve your existing Compose files, project and Docker context.
+
+Once installed, the updater changes the running application image; the host Git
+checkout stays at its old revision. Infrastructure/updater changes need a deliberate
+pull and reinstall. Use `python3 infra/auto_update.py doctor` with your deployment
+options to check timer, health, backup-key presence, registry access and the actual
+running revision. Follow the guide for pauses and migration failures rather than
+blindly retrying. Include `.apex-updater/active.compose.yml` when manually restarting
+an updater-managed installation so the selected image is preserved.
+
+## Owner, AI and deployment configuration
+
+The owner account is created from `OWNER_EMAIL` and `OWNER_PASSWORD` at startup.
+Invite friends through Settings or `/admin`. Owners can revoke friend access and
+sessions; owner roles cannot be transferred or demoted through the dashboard.
+
+For DeepSeek, set `DEEPSEEK_API_KEY`. With per-tier overrides empty, the Coach
+uses `https://api.deepseek.com` and `deepseek-flash`; existing explicit GLM/custom
+settings retain precedence. See [Coach setup](docs/COACH_SETUP.md) for settings,
+model selection, tool budgets and restarting the correct image.
+
+Owner Telegram notifications use `OWNER_TELEGRAM_BOT_TOKEN` and
+`OWNER_TELEGRAM_CHAT_ID`; test delivery in `/admin` after configuring the server.
+The former interactive Telegram chat service remains removed. Feedback can be
+sent to the configured owner chat, so avoid submitting credentials or private
+medical records. See [owner operations](docs/OWNER_ADMIN.md) for monitoring scope,
+log limits, delivery retries and retained feedback.
+
+Keep `.env` and encryption keys private and preserve them during upgrades. Before
+inviting friends, configure the operator facts and review
+[legal deployment requirements](docs/LEGAL_DEPLOYMENT.md). Private hosting and
+legal notices alone do not establish legal compliance or medical-device status.
 
 ## Repository map
 
@@ -69,13 +119,19 @@ wiki/          user-facing operating notes
 
 - [Installation and local hosting](docs/INSTALL.md)
 - [Automatic home-server updates and recovery](docs/AUTO_UPDATES.md)
+- [Owner administration, feedback and Telegram](docs/OWNER_ADMIN.md)
+- [AI Coach and DeepSeek configuration](docs/COACH_SETUP.md)
 - [Architecture and technical choices](docs/STACK.md)
 - [Performance Lab and agent contract](docs/PERFORMANCE_LAB.md)
 - [UI system and screenshots](docs/UI_REDESIGN.md)
 - [UI refinements and sport-specific detail views](docs/UI_REFINEMENTS.md)
+- [UI/data changes and external food diary setup](docs/UI_DATA_CHANGES.md)
 - [WHOOP setup](docs/WHOOP_SETUP.md) · [COROS MCP](docs/COROS_MCP.md) · [Apple Health import](docs/APPLE_HEALTH.md)
 - [Release checklist](docs/BACKEND_RELEASE.md)
 - [Security and privacy posture](docs/SECURITY.md)
+- [Private deployment legal review](docs/LEGAL_DEPLOYMENT.md)
+- [October audit fixes, exceptions and historical repair](docs/AUDIT_2026_10.md)
+- [System 1 model research and benchmark criteria](docs/SYSTEM1_MODELS.md)
 
 ## Verification
 
@@ -104,3 +160,10 @@ The UI and local stack work without them, but live provider behaviour must be
 verified with the account owner’s credentials before relying on it. The
 [Performance Lab contract](docs/PERFORMANCE_LAB.md) records the remaining
 provider and calibration work explicitly.
+
+Corrected load calculations apply when days are recomputed. Existing historical
+features may need the bounded account/date-range repair described in the
+[audit register](docs/AUDIT_2026_10.md); upgrades do not rewrite all history.
+System 1 classifier research is documented, but no resident local model service
+has been added. A deployed home server, physical-phone installation and live
+provider delivery still require verification on the intended installation.
