@@ -1661,5 +1661,24 @@
     "revokeHelp": "La revoca impedisce immediatamente gli upload con questo token. I dati già sincronizzati rimangono in Apex.",
     "genericError": "La richiesta non è stata completata. Riprova.",
     "loadError": "Impossibile caricare i dispositivi abbinati. Riprova."
+  },
+  "completion": {
+    "activity_year": "Attività · ultime 52 settimane",
+    "weekly_streak": "Serie settimanale: {{count}}",
+    "week_complete": "Questa settimana: obiettivo raggiunto · almeno un’attività registrata. Si azzera lunedì.",
+    "week_pending": "Questa settimana: 0 / 1 attività · hai tempo fino a domenica. Si azzera lunedì.",
+    "sessions": "{{count}} attività",
+    "intensity_note": "Il colore indica la durata registrata rispetto al giorno più attivo della griglia. Le celle vuote indicano nessuna attività registrata.",
+    "sleep_timing_note": "Ogni barra sospesa mostra l’ora di coricamento e di risveglio nel fuso orario del tuo account. Confronta le estremità per valutare la regolarità; veglia e interruzioni possono rendere il sonno effettivo più breve della barra.",
+    "daily_scores": "Prontezza, recupero, sforzo e sonno giornalieri",
+    "recent_activities": "Attività · oggi e ultimi 7 giorni",
+    "health_metrics": "Metriche di salute",
+    "training_metrics": "Allenamento e recupero",
+    "fitness": "Forma fisica",
+    "favorites": "Preferiti",
+    "star": "Aggiungi {{metric}} ai preferiti",
+    "unstar": "Rimuovi {{metric}} dai preferiti",
+    "favorites_empty": "Aggiungi metriche dai gruppi Salute o Allenamento e recupero per creare la vista rapida.",
+    "load_missing": "Il carico richiede dati di carico registrati o sufficienti dati di frequenza cardiaca. Controlla Salute dei dati e completa il profilo se mancano informazioni."
   }
 }

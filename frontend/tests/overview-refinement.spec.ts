@@ -23,11 +23,10 @@ test("overview restores daily metrics and formats sleep as hours and minutes", a
   await page.goto("/app");
 
   await expect(page.getByText("8:30 h", { exact: true })).toBeVisible();
-  await expect(page.getByText("Body Fat", { exact: true })).toBeVisible();
-  await expect(page.locator('a[href="/app/biometrics/body_fat"]')).toContainText("15.2");
+  await expect(page.getByText("Body Fat", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();
   await expect(page.getByText("Floors", { exact: true })).toBeVisible();
-  await expect(page.getByText("Hydration", { exact: true })).toBeVisible();
-  await expect(page.locator('a[href="/app/biometrics/hydration"]')).toContainText("2,100");
+  await expect(page.locator('a[href="/app/biometrics/floors"]')).toContainText("6");
 });
 
 test("overview quick access links lead to the primary destinations", async ({

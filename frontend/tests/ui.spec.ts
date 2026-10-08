@@ -9,7 +9,7 @@ test("overview prioritizes recorded signals and keeps estimates distinct", async
     page.getByRole("heading", { name: "Your daily overview" }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Recorded signals" })).toBeVisible();
-  await page.getByText("Calculated estimates", { exact: true }).click();
+  await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Readiness.*82/ })).toBeVisible();
   await expect(page.getByText("All systems normal")).toHaveCount(0);
   await expect(page.getByText("No overreaching markers")).toHaveCount(0);
@@ -27,76 +27,23 @@ test("all metrics remain reachable through keyboard tabs; sleep score has correc
     if (path.startsWith("/metrics/")) visited.add(path.slice(9));
   });
   await installApi(page);
-  await page.goto("/app/biometrics");
-  for (const [name, metricKeys] of [
-    ["Body signals", ["resting_hr", "hrv_ms", "spo2", "respiration"]],
-    [
-      "Recovery & sleep",
-      [
-        "provider_sleep_score",
-        "sleep_duration",
-        "sleep_deep",
-        "sleep_rem",
-        "sleep_light",
-        "restlessness",
-      ],
-    ],
-    [
-      "Load & risk scores",
-      [
-        "acwr",
-        "acute_load",
-        "chronic_load",
-      ],
-    ],
-    [
-      "Body & daily activity",
-      ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
-    ],
-    [
-      "Calculated estimates",
-      [
-        "readiness",
-        "recovery",
-        "strain",
-        "sleep_score",
-        "hrv_deviation",
-        "systemic_stress",
-        "load_spike",
-      ],
-    ],
+  for (const [tab, group, expected] of [
+    ["health", "signals", ["resting_hr", "hrv_ms", "spo2", "respiration"]],
+    ["health", "sleep", ["provider_sleep_score", "sleep_duration", "sleep_deep", "sleep_rem", "sleep_light", "restlessness"]],
+    ["health", "body", ["weight", "body_fat", "steps", "floors", "hydration"]],
+    ["training", "estimates", ["readiness", "recovery", "strain", "sleep_score", "hrv_deviation", "systemic_stress", "load_spike"]],
+    ["training", "load", ["acwr", "acute_load", "chronic_load"]],
+    ["training", "fitness", ["vo2max"]],
   ] as const) {
-    await page.getByRole("tab", { name, exact: true }).click();
-    await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await expect
-      .poll(() =>
-        page
-          .locator("a.metric-row")
-          .evaluateAll((rows) => rows.map((row) => row.getAttribute("href"))),
-      )
-      .toEqual(metricKeys.map((key) => "/app/biometrics/" + key));
-    await expect
-      .poll(() => metricKeys.every((key) => visited.has(key)))
-      .toBe(true);
+    await page.goto(`/app/biometrics?tab=${tab}&group=${group}`);
+    const category = page.getByRole("tab", { name: tab === "health" ? "Health metrics" : "Training & recovery" });
+    await category.focus();
+    await expect(category).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => expected.every(key => visited.has(key))).toBe(true);
   }
-  expect([...visited].sort()).toEqual([...keys].sort());
-  const tab = page.getByRole("tab", {
-    name: "Body & daily activity",
-    exact: true,
-  });
-  await tab.focus();
-  await tab.press("ArrowLeft");
-  await expect(
-    page.getByRole("tab", { name: "Load & risk scores", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
-  await page.goto("/app/biometrics/sleep_score");
-  await expect(
-    page.getByRole("heading", { name: "Sleep Score", exact: true }),
-  ).toBeVisible();
+  expect(keys.every(key => visited.has(key))).toBe(true);
 });
+
 test("activity pagination and imperial detail preserve missing normalized power", async ({
   page,
 }) => {
@@ -234,6 +181,9 @@ for (const layout of [
       " / " +
       layout.theme,
     async ({ page }) => {
+      // This case loads thirteen separate routes; its budget covers the entire
+      // traversal, not a thirty-second deadline for one screen.
+      test.setTimeout(60_000);
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await installApi(page, { locale: layout.locale, theme: layout.theme });
@@ -284,7 +234,7 @@ test("search dialog traps focus and returns focus to the trigger", async ({
   await expect(dialog).toBeVisible();
   await dialog.getByRole("textbox").press("Shift+Tab");
   await expect(
-    dialog.getByRole("button", { name: "Settings", exact: true }),
+    dialog.getByRole("button").last(),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

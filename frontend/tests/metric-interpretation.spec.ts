@@ -52,13 +52,13 @@ async function mockMetric(page: Page, key: string, payload: MetricPayload) {
   );
 }
 
-test("biometrics opens on the body signals tab by default", async ({ page }) => {
+test("biometrics opens on favourites by default", async ({ page }) => {
   await installApi(page);
   await page.goto("/app/biometrics");
 
   await expect(page).toHaveURL(/\/app\/biometrics$/);
   await expect(
-    page.getByRole("tab", { name: "Body signals", exact: true }),
+    page.getByRole("tab", { name: "Favourites", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
 });
 

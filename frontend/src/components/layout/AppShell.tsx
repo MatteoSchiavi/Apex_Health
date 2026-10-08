@@ -14,8 +14,6 @@ import {
   CalendarDays,
   FlaskConical,
   Wrench,
-  PanelLeftClose,
-  PanelLeftOpen,
   ArrowUpRight,
   BarChart3,
   Bot,
@@ -37,6 +35,10 @@ import { useLab } from "../../features/lab/shared";
 import { ErrorNote, timeAgo } from "../kit";
 import { NotificationPopover, type NotificationsData } from "../../features/lab/NotificationsPage";
 import { FeedbackButton } from "../../features/feedback/FeedbackDialog";
+
+import { SEARCH_TABS, searchText } from "./search-index";
+import { METRIC_LABELS } from "../data";
+import { friendlyDiscipline } from "../kit";
 
 const NAV = [
   { to: "/app", icon: Activity, key: "nav.overview", end: true },
@@ -85,6 +87,17 @@ function SearchDialog({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const owner = useUi(s => s.me?.role === "owner");
+  const uid = useUi(s => s.me?.user_id);
+  const catalog = useQuery({ queryKey: ["metrics-catalog"], queryFn: () => api.get<Record<string, unknown>>("/metrics") });
+  const recent = useQuery({ queryKey: ["search-activities", uid], queryFn: () => api.get<{ items: { id: number; local_date: string; discipline: string | null }[] }>("/activities?limit=50"), enabled: q.trim().length >= 2 });
+  const destinations = [
+    ...NAV.map(n => ({ to: n.to, label: t(n.key), terms: n.key, icon: n.icon })),
+    ...(owner ? [{ to: "/admin", label: t("admin.title"), terms: "admin", icon: ShieldCheck }] : []),
+    ...SEARCH_TABS.map(n => ({ to: n.to, label: `${t(n.parent)} · ${t(n.key)}`, terms: n.to, icon: Search })),
+    ...Object.keys(catalog.data ?? {}).map(key => ({ to: `/app/biometrics/${key}`, label: METRIC_LABELS[key] ? t(METRIC_LABELS[key]) : key.replaceAll("_", " "), terms: key, icon: HeartPulse })),
+    ...(recent.data?.items ?? []).map(a => ({ to: `/app/activities/${a.id}`, label: `${friendlyDiscipline(a.discipline, t)} · ${a.local_date}`, terms: a.discipline ?? "", icon: Activity })),
+  ].filter(n => searchText(n.label + " " + n.terms).includes(searchText(q.trim())));
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = returnFocus;
@@ -142,9 +155,7 @@ function SearchDialog({
           </button>
         </div>
         <div className="max-h-[60vh] overflow-y-auto pt-3">
-          {NAV.filter((n) =>
-            t(n.key).toLowerCase().includes(q.toLowerCase()),
-          ).map((n) => (
+          {destinations.map((n) => (
             <button
               key={n.to}
               onClick={() => {
@@ -154,13 +165,11 @@ function SearchDialog({
               className="flex w-full items-center gap-3 px-2 py-3 text-left hover:bg-surface2"
             >
               <n.icon size={16} className="text-muted" />
-              {t(n.key)}
+              {n.label}
               <ArrowUpRight size={14} className="ml-auto text-muted" />
             </button>
           ))}
-          {!NAV.some((n) =>
-            t(n.key).toLowerCase().includes(q.toLowerCase()),
-          ) && <p className="py-6 text-muted">{t("search.no_results")}</p>}
+          {!destinations.length && <p className="py-6 text-muted">{t("search.no_results")}</p>}
         </div>
       </div>
     </div>
@@ -185,10 +194,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const notificationRoot = useRef<HTMLDivElement>(null);
   const notificationButton = useRef<HTMLButtonElement>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try { return localStorage.getItem("apex.sidebar.collapsed") === "true"; }
-    catch { return false; }
-  });
+  const [sidebarHover, setSidebarHover] = useState(false);
+  const [sidebarFocus, setSidebarFocus] = useState(false);
+  const sidebarCollapsed = !sidebarHover && !sidebarFocus;
   const notifications = useLab<NotificationsData>("/lab/notifications");
   const unread = notifications.data?.items.filter((n) => n.state === "created").length ?? 0;
   const devices = useQuery({
@@ -240,10 +248,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [notificationsOpen]);
   useEffect(() => {
-    try { localStorage.setItem("apex.sidebar.collapsed", String(sidebarCollapsed)); }
-    catch { /* unavailable */ }
-  }, [sidebarCollapsed]);
-  useEffect(() => {
     setNotificationsOpen(false);
     setMobileMoreOpen(false);
     window.scrollTo(0, 0);
@@ -284,17 +288,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           returnFocus={searchOpener.current}
         />
       )}
-      <aside className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex"}>
-        <div className="mb-8 flex shrink-0 items-center justify-between gap-2">
+      <aside onMouseEnter={() => setSidebarHover(true)} onMouseLeave={() => setSidebarHover(false)}
+        onFocus={e => setSidebarFocus((e.target as HTMLElement).matches(":focus-visible"))} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSidebarFocus(false); }}
+        className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex transition-[width,padding] duration-150 motion-reduce:transition-none"}>
+        <div className="mb-8 flex h-8 shrink-0 items-center justify-between gap-2">
           <NavLink to="/app" aria-label="Apex Health" className={sidebarCollapsed ? "mx-auto" : "min-w-0 overflow-hidden"}>
             {sidebarCollapsed ? <Mark /> : <Logo />}
           </NavLink>
-          {!sidebarCollapsed && <button type="button" aria-label={t("navigation.collapse_sidebar")} title={t("navigation.collapse_sidebar")}
-            onClick={() => setSidebarCollapsed(true)} className="shrink-0 p-1 text-muted hover:text-ink"><PanelLeftClose size={17} /></button>}
         </div>
-        {sidebarCollapsed && <button type="button" aria-label={t("navigation.expand_sidebar")} title={t("navigation.expand_sidebar")}
-          onClick={() => setSidebarCollapsed(false)} className="mb-5 self-center p-2 text-muted hover:text-ink"><PanelLeftOpen size={18} /></button>}
-        {!sidebarCollapsed && <div className="mb-4 text-[12px] text-muted">{t("design.workspace")}</div>}
+        <div aria-hidden={sidebarCollapsed} className="mb-4 h-[18px] text-[12px] text-muted" style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}>{t("design.workspace")}</div>
         <nav
           aria-label={t("design.navigation")}
           className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
@@ -307,21 +309,24 @@ export function AppShell({ children }: { children: ReactNode }) {
               title={sidebarCollapsed ? t(key) : undefined}
               aria-label={sidebarCollapsed ? t(key) : undefined}
               className={({ isActive }) =>
-                "flex items-center gap-3 py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") +
+                "flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") +
                 (isActive
                   ? "bg-ink font-medium text-canvas"
                   : "text-muted hover:bg-surface2 hover:text-ink")
               }
             >
               <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
-              <span className={sidebarCollapsed ? "sr-only" : undefined}>{t(key)}</span>
+              <span className={sidebarCollapsed ? "sr-only" : "truncate"}>{t(key)}</span>
             </NavLink>
           ))}
         </nav>
         <div className="shrink-0 pt-6">
           <NavLink
             to="/app/settings?tab=devices"
-            className={sidebarCollapsed ? "hidden" : "block border-b border-hairline pb-5"}
+            tabIndex={sidebarCollapsed ? -1 : undefined}
+            aria-hidden={sidebarCollapsed}
+            className="block h-[78px] border-b border-hairline pb-5 overflow-hidden"
+            style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}
           >
             <span className="status text-muted">
               {devices.isError
@@ -336,15 +341,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 : t("settings.never")}
             </div>
           </NavLink>
-          <div className={sidebarCollapsed ? "mt-5 flex justify-center" : "mt-5 flex items-center gap-3"}>
-            {!sidebarCollapsed && <span className="flex h-9 w-9 items-center justify-center bg-surface2 font-medium">
-              {me?.name.slice(0, 1).toUpperCase()}
-            </span>}
-            {!sidebarCollapsed && <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium">{me?.name}</p>
-              <button onClick={logout} className="text-[12px] text-muted hover:text-ink">{t("auth.logout")}</button>
-            </div>}
-            {sidebarCollapsed && <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="p-1 text-muted hover:text-ink"><LogOut size={16} /></button>}
+          <div className="mt-5 flex h-9 items-center gap-3">
+            <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="flex h-9 shrink-0 items-center justify-center px-3 text-muted hover:text-ink"><LogOut size={16} /></button>
+            <div className="min-w-0 overflow-hidden" style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}><p className="truncate text-[13px] font-medium">{me?.name}</p><span className="text-[12px] text-muted">{t("auth.logout")}</span></div>
           </div>
           {logoutError && <ErrorNote />}
         </div>

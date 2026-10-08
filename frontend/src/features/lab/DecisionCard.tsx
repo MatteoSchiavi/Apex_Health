@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Badge, Button, Card, CardHeader, ErrorNote, Loading, StatPod, fmtNum, fmtHours } from "../../components/kit";
+import { Badge, Button, Card, CardHeader, ErrorNote, Loading } from "../../components/kit";
 import type { Constraints, Decision, Draft } from "./types";
 import { useAction, useLab, useToday, Form, Field, inputClass, num, str } from "./shared";
 
@@ -88,6 +88,7 @@ export function DecisionCard({ date }: { date?: string } = {}) {
   const save = useAction();
   const today = useToday();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackDecision, setFeedbackDecision] = useState<number | null>(null);
   if (q.isLoading) return <Card><Loading /></Card>;
   if (q.isError || !q.data) return <Card><CardHeader title={t("lab.daily_decision")} />{q.isError ? <ErrorNote /> : <p className="text-[13px] text-muted">{t("lab.no_historical_decision", { date })}</p>}</Card>;
   const d = q.data;
@@ -104,25 +105,20 @@ export function DecisionCard({ date }: { date?: string } = {}) {
       <Link to="/app/coach" className="text-link">{t("decisionLearning.askApex")}</Link>
     </div>
     <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-      {["accepted", "modified", "rejected", "snoozed"].map((state) => <Button key={state} variant="ghost" disabled={save.isPending || d.outcome?.state === state} className="min-h-11 w-full sm:w-auto" onClick={() => save.mutate({ path: `/lab/decision/${d.id}/outcome`, body: { state } })}>{t("lab.outcome." + state)}</Button>)}
+      {["accepted", "modified", "rejected", "snoozed"].map((state) => <Button key={state} variant="ghost" disabled={save.isPending || d.outcome?.state === state} className="min-h-11 w-full sm:w-auto" onClick={() => { setFeedbackDecision(d.id); save.mutate({ path: `/lab/decision/${d.id}/outcome`, body: { state } }); }}>{t("lab.outcome." + state)}</Button>)}
     </div>
     {save.isError && <ErrorNote message={save.error.message} />}
-    <details className="mt-4 border-t border-hairline pt-4 text-[13px]" onToggle={(e) => setFeedbackOpen(e.currentTarget.open)}>
+    {(d.outcome || feedbackDecision === d.id) && <details className="mt-4 border-t border-hairline pt-4 text-[13px]" onToggle={(e) => setFeedbackOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer">{t("decisionLearning.feedback")}</summary>
       {feedbackOpen && <div className="mt-4"><DecisionFeedback key={d.id} decision={d} /></div>}
-    </details>
+    </details>}
     <details className="mt-4 border-t border-hairline pt-4 text-[13px]">
       <summary className="cursor-pointer">{t("decisionLearning.details")}</summary>
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
-        <div className="grid grid-cols-2 gap-4">
-          {d.evidence.map((e) => {
-            const change = d.key_changes?.find((c) => c.metric === e.metric);
-            return <StatPod key={e.id} label={t("lab.metrics." + e.metric, { defaultValue: e.metric.replaceAll("_", " ") })} value={e.unit === "h" ? fmtHours(e.value == null ? null : e.value * 3600) : fmtNum(e.value, 1)} unit={e.unit === "h" ? undefined : e.unit} sub={<>
-              <span className="block">{e.origin} · {t("lab.measured")} {e.local_date}</span>
-              {change && <span className="mt-1 block">{change.baseline == null ? t("decisionLearning.noBaseline") : `${t("decisionLearning.baseline")}: ${fmtNum(change.baseline, 1)} ${e.unit ?? ""} · ${t("decisionLearning.delta")}: ${change.delta == null ? "—" : `${change.delta > 0 ? "+" : ""}${fmtNum(change.delta, 1)}`}`}</span>}
-            </>} />;
-          })}
-        </div>
+        {d.key_changes?.some(change => change.baseline == null) && <p className="text-[12px] text-muted">{t("decisionLearning.noBaseline")}</p>}
+        <ul className="flex flex-col gap-3">
+          {d.evidence.map(e => <li key={e.id}><span className="block font-medium">{t("lab.metrics." + e.metric, { defaultValue: e.metric.replaceAll("_", " ") })}</span><span className="block text-muted">{e.origin} · {t("lab.measured")} {e.local_date}</span></li>)}
+        </ul>
         <div>
           <h3 className="mb-3 font-medium">{t("lab.alternatives")}</h3>
           {d.alternatives.map((a, i) => <p key={i} className="mb-3"><strong>{t("lab.actions." + a.action)}</strong> — {a.reason}</p>)}

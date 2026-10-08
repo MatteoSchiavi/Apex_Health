@@ -166,6 +166,7 @@ export interface Overview {
   acwr: number | null;
   training_load_7d: number | null;
   activities: ActivityCard[];
+  recent_activities?: (ActivityCard & { local_date: string })[];
   sleep: {
     start_time: string;
     end_time: string;
@@ -348,7 +349,7 @@ export interface ChatSessionDetail extends ChatSessionOut {
 }
 
 export interface DeviceOut {
-  support?: { status: string; live_tested: boolean; production_supported: boolean };
+  support?: { status: string; live_tested: boolean; production_supported: boolean; configured?: boolean };
   integration_id: number;
   provider: string;
   status: string;

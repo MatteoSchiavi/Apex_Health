@@ -71,12 +71,13 @@ function GpsTrace({ stream }: { stream: StreamOut }) {
         scrollWheelZoom={false}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          key={c.theme}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url={`https://{s}.basemaps.cartocdn.com/${c.theme === "dark" ? "dark_all" : "light_all"}/{z}/{x}/{y}.png`}
         />
         <Polyline
           positions={points}
-          pathOptions={{ color: c.ink, weight: 3 }}
+          pathOptions={{ color: c.theme === "dark" ? "#ffffff" : "#000000", weight: 4 }}
         />
         <CircleMarker
           center={points[0]}

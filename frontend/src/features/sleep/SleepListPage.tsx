@@ -16,7 +16,7 @@ import {
   fmtNum,
 } from "../../components/kit";
 import { assess } from "../../components/data";
-import { TrendChart } from "../../components/charts/TrendChart";
+import { SleepTimingChart } from "./SleepTimingChart";
 import { useUi } from "../../app/stores/ui";
 export default function SleepListPage() {
   const { t } = useTranslation();
@@ -73,23 +73,11 @@ export default function SleepListPage() {
           <Card>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="section-label">
-                {t("design.sleep_duration_trend")}
+                {t("sleep.bed_window")}
               </h2>
-              <span className="text-[12px] text-muted">h</span>
             </div>
-            <TrendChart
-              points={[...nights]
-                .reverse()
-                .map((n) => ({
-                  date: n.local_date,
-                  value:
-                    n.total_sleep_s == null ? null : n.total_sleep_s / 3600,
-                }))}
-              label={t("sleep.time_asleep")}
-              unit="h"
-              bar
-              height={180}
-            />
+            <SleepTimingChart nights={nights} />
+            <p className="mt-3 text-[12px] text-muted">{t("completion.sleep_timing_note")}</p>
           </Card>
           <Card className="!py-0">
             <div className="table-scroll">

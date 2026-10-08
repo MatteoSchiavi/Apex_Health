@@ -268,6 +268,7 @@ export async function installApi(
     limitations: ["Planning rules are not a diagnosis."],
     outcome: null as null | { state: string },
   };
+  let favoriteMetrics: string[] = [];
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   await page.route("**/*", async (route) => {
     const req = route.request(),
@@ -290,7 +291,9 @@ export async function installApi(
         ? (req.postDataJSON() ?? {})
         : {};
       writes.push({ path, body });
-      if (path.match(/^\/lab\/changes\/41\/(approve|undo|reject)$/)) {
+      if (path === "/lab/entries" && (body.entry as { kind?: string })?.kind === "metric_favorites") {
+        favoriteMetrics = (body.entry as { metrics: string[] }).metrics; data = { id: 1 };
+      } else if (path.match(/^\/lab\/changes\/41\/(approve|undo|reject)$/)) {
         const action = path.split("/").at(-1);
         labDrafts = labDrafts.map((d) => ({
           ...d,
@@ -435,6 +438,7 @@ export async function installApi(
           }));
     else if (path.startsWith("/lab/evidence/"))
       data = { ...labMetrics[0].latest, current: true, raw_ingest_id: 22 };
+    else if (path === "/lab/entries" && url.searchParams.get("kind") === "metric_favorites") data = [{ payload: { metrics: favoriteMetrics } }];
     else if (
       [
         "/lab/entries",
@@ -462,6 +466,12 @@ export async function installApi(
               connected_at: today + "T00:00:00Z",
             },
           ];
+    else if (path === "/dashboard/activity-calendar") {
+      const anchor = new Date(today + "T12:00:00Z");
+      const weekday = (anchor.getUTCDay() + 6) % 7;
+      const first = new Date(anchor.getTime() - (357 + weekday) * 86400000);
+      data = { weekly_streak: 3, week_active_days: 1, days: Array.from({ length: 364 }, (_, i) => ({ date: new Date(first.getTime() + i * 86400000).toISOString().slice(0, 10), count: i === 357 + weekday ? 1 : 0, duration_s: i === 357 + weekday ? 3600 : 0, intensity: i === 357 + weekday ? 1 : 0, future: i > 357 + weekday })) };
+    }
     else if (path === "/dashboard/overview")
       data = options.empty
         ? {
