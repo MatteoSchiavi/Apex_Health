@@ -342,7 +342,103 @@ async def test_incremental_sync_fetches_minimally_and_populates_new_day(db_sessi
     assert bio10.vo2max is None  # no activity that day -> no new estimate
 
 
+async def test_checkpoint_sync_applies_edited_summary_without_duplicate_activity(db_session):
+    user, integration = await make_garmin_user(db_session)
+    await run_user_sync_with_escalation(
+        db_session, user, integration, FixtureGarminClient(), now=SYNC_NOW,
+        checkpoint=True, **sync_kwargs(),
+    )
+    link = await db_session.scalar(select(ActivitySourceLink).where(
+        ActivitySourceLink.user_id == user.id, ActivitySourceLink.external_id == '7103',
+    ))
+    activity_id, original_raw_id = link.activity_id, link.raw_ingest_id
+    from app.models.features import DailyFeature, DisciplineFeature
+    activity = await db_session.get(Activity, activity_id)
+    day, discipline_id = activity.local_date, activity.discipline_id
+    foreign = User(name='separate-summary-owner', timezone='Europe/Rome')
+    db_session.add(foreign)
+    await db_session.flush()
+    for owner, offset in [(user.id, 0), (user.id, 28), (user.id, 29), (foreign.id, 0)]:
+        date = day + timedelta(days=offset)
+        db_session.add(DailyFeature(user_id=owner, date=date, strain_score=50))
+        db_session.add(DisciplineFeature(user_id=owner, discipline_id=discipline_id, date=date))
+    await db_session.commit()
+    client = FixtureGarminClient()
+    summary = next(item for item in client._activities if str(item['activityId']) == '7103')
+    summary['activityName'] = 'Corrected gym session'
+    summary['duration'] = 2400.0
+    await run_user_sync_with_escalation(
+        db_session, user, integration, client, now=SYNC_NOW + timedelta(hours=6),
+        checkpoint=True, **sync_kwargs(),
+    )
+    await db_session.refresh(link)
+    activity = await db_session.get(Activity, activity_id, populate_existing=True)
+    assert float(activity.duration_s) == 2400.0
+    assert link.raw_ingest_id != original_raw_id
+    assert (await db_session.get(RawIngest, link.raw_ingest_id)).raw_json['activityName'] == 'Corrected gym session'
+    assert (await db_session.get(RawIngest, original_raw_id)).processed
+    assert await count(db_session, Activity) == 4
+    summary_count = await db_session.scalar(select(func.count()).select_from(RawIngest).where(
+        RawIngest.payload_type == 'activity_summary', RawIngest.user_id == user.id,
+    ))
+    assert summary_count == 5  # Only the changed provider summary is a new revision.
+    for offset in (0, 28):
+        assert await db_session.get(DailyFeature, (user.id, day + timedelta(days=offset))) is None
+        assert await db_session.get(DisciplineFeature, (user.id, discipline_id, day + timedelta(days=offset))) is None
+    assert await db_session.get(DailyFeature, (user.id, day + timedelta(days=29))) is not None
+    assert await db_session.get(DailyFeature, (foreign.id, day)) is not None
+    assert await db_session.get(DisciplineFeature, (foreign.id, discipline_id, day)) is not None
+    db_session.add(DailyFeature(user_id=user.id, date=day, strain_score=40))
+    await db_session.commit()
+    await run_user_sync_with_escalation(
+        db_session, user, integration, client, now=SYNC_NOW + timedelta(hours=12),
+        checkpoint=True, **sync_kwargs(),
+    )
+    assert await db_session.scalar(select(func.count()).select_from(RawIngest).where(
+        RawIngest.payload_type == 'activity_summary', RawIngest.user_id == user.id,
+    )) == summary_count
+    assert await db_session.get(DailyFeature, (user.id, day)) is not None
+
+
 # ------------------------------------------------- parser isolates history (§3)
+
+
+async def test_checkpoint_incremental_refreshes_today_even_when_a_row_exists(db_session):
+    user, integration = await make_garmin_user(db_session)
+    await run_user_sync_with_escalation(
+        db_session, user, integration, FixtureGarminClient(), now=SYNC_NOW,
+        checkpoint=True, **sync_kwargs(),
+    )
+    class UpdatedStats(FixtureGarminClient):
+        async def get_stats(self, local_date):
+            payload = await super().get_stats(local_date)
+            if local_date == '2025-03-10':
+                payload = {**payload, 'restingHeartRate': 55, 'totalSteps': 22222}
+            return payload
+    report = await run_user_sync_with_escalation(
+        db_session, user, integration, UpdatedStats(), now=SYNC_NOW + timedelta(hours=6),
+        checkpoint=True, **sync_kwargs(),
+    )
+    assert report is not None and report.mode == 'incremental'
+    today = await db_session.get(DailyBiometric, (user.id, SYNC_NOW.date()), populate_existing=True)
+    assert today.resting_hr == 55 and today.steps == 22222
+
+
+@pytest.mark.parametrize('origin', [None, 'whoop'])
+async def test_backward_resume_does_not_treat_foreign_or_unknown_wellness_as_garmin(db_session, origin):
+    user, integration = await make_garmin_user(db_session)
+    day = (SYNC_NOW - timedelta(days=1)).date()
+    db_session.add(DailyBiometric(user_id=user.id, date=day, resting_hr=37,
+        source_metrics={'_canonical_sources': {'resting_hr': origin}} if origin else None))
+    await db_session.commit()
+    client = FixtureGarminClient()
+    report = await run_user_sync_with_escalation(
+        db_session, user, integration, client, now=SYNC_NOW, checkpoint=True, **sync_kwargs(),
+    )
+    assert report is not None
+    assert 'stats:2025-03-09' in client.wellness_calls
+    row = await db_session.get(DailyBiometric, (user.id, day), populate_existing=True)
+    assert row.resting_hr == 49  # The selected Garmin provider was actually fetched.
 
 
 def test_type_key_resolution_maps_common_sports_and_leaves_unknown_null():

@@ -14,6 +14,10 @@ OPERATIONAL_ERROR_CODES = frozenset({
     'GarminConnectTooManyRequestsError', 'HTTPError', 'HTTPStatusError',
     'SoftTimeLimitExceeded', 'unknown',
 })
+OPERATIONAL_FETCH_OPERATIONS = frozenset({
+    'activity_summaries', 'activity_streams', 'exercise_sets', 'sleep',
+    'hrv', 'stress', 'stats', 'body_composition',
+})
 
 _LOGFIELD_WHITELIST = [
     "levelname",
@@ -76,6 +80,9 @@ class OperationalBufferHandler(logging.Handler):
             code = getattr(record, 'error_code', None)
             if isinstance(code, str) and code in OPERATIONAL_ERROR_CODES:
                 row['error_code'] = code
+            operation = getattr(record, 'fetch_operation', None)
+            if isinstance(operation, str) and operation in OPERATIONAL_FETCH_OPERATIONS:
+                row['fetch_operation'] = operation
             pipe=self.redis.pipeline(transaction=True)
             pipe.lpush('apex:operational:logs',json.dumps(row))
             pipe.ltrim('apex:operational:logs',0,999)

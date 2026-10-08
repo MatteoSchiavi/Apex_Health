@@ -1,5 +1,15 @@
-"""Account-owned calculation and explanation invalidation after data deletion."""
-from sqlalchemy import text
+"""Account-owned calculation and explanation invalidation after data changes."""
+from datetime import timedelta
+from sqlalchemy import delete, text
+
+
+async def invalidate_calculation_dates(session, user_id, changed_days):
+    """Caller holds changes; scores can use inputs from the prior 28 days."""
+    from app.models.features import DailyFeature, DisciplineFeature
+    dates = {day + timedelta(days=offset) for day in changed_days for offset in range(29)}
+    if dates:
+        for model in (DailyFeature, DisciplineFeature):
+            await session.execute(delete(model).where(model.user_id == user_id, model.date.in_(dates)))
 
 
 async def clear_derived_health_data(session, user_id):

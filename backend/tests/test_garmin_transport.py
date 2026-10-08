@@ -134,3 +134,16 @@ def test_official_placeholder_fails_without_fabricating_provider_data():
                 await operation
 
     asyncio.run(run())
+
+
+def test_fetch_failure_logs_only_fixed_operation_and_exception_class(caplog):
+    class BrokenGarmin(FakeGarminConnect):
+        def get_sleep_data(self, day):
+            raise ConnectionError('password=private-token health-date=' + day)
+    async def run():
+        with pytest.raises(ConnectionError):
+            await GarminConnectTransport(BrokenGarmin()).get_sleep_data('2026-10-08')
+    asyncio.run(run())
+    record = next(record for record in caplog.records if record.name == 'connectors.garmin.client')
+    assert record.fetch_operation == 'sleep' and record.error_code == 'ConnectionError'
+    assert 'private-token' not in record.getMessage() and '2026-10-08' not in record.getMessage()

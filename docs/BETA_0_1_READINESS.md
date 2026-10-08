@@ -16,10 +16,12 @@ not certify health predictions, every wearable, or a signed native application.
 | HIGH | `backend/app/connectors/garmin/sync.py` | One failed optional stream fetch raised after wellness normalization, preventing a successful overall checkpoint and repeatedly restarting a backfill. Successfully empty stream responses were also retried indefinitely. This is a confirmed code defect; old redacted live logs cannot prove it explains every historical failure. | Keep wellness success separate from the visible `activity_streams` failure. Failed streams remain retry candidates; successful empty responses are remembered. Integration test starts with a failing stream and verifies fresh sleep, advancing sync time, partial status and the remaining retry candidate. |
 | HIGH | `backend/app/tasks/provider_sync.py` | The nightly run computes completed days, before most athletes wake up. Newly imported today's sleep/HRV/activity data did not trigger today's feature computation. | Refresh the preceding 28 days plus today after provider ingestion, using the account timezone and current profile. Do not display yesterday's score as today's. A timezone-boundary test verifies post-ingestion refresh follows successful persistence. |
 | HIGH | `backend/app/tasks/provider_sync.py`, `tasks/lab_tasks.py` | Disabling sign-in did not stop new background provider ingestion or queued maintenance. | Exclude disabled accounts from scheduled fan-out, recheck before opening a provider client, and cancel disabled-account maintenance before processing. Tests verify no provider client or health processing is invoked. Work already in flight can finish its current operation; disabling is not source erasure. |
+| HIGH | `backend/app/connectors/garmin/sync.py:fetch_wellness` | Live checkpoint mode skipped an incremental overlap day merely because it already had a wellness row. A fixture changed today’s resting HR from 47 to 55 and steps to 22,222; the old code retained 47. Another provider’s rows could also be mistaken for Garmin resume markers. | Always refresh incremental overlap days. Restrict backward resume markers to Garmin-attributed sleep or steps/resting HR. The new checkpoint-mode regression caught what older default-mode fixtures missed. |
+| MEDIUM | `backend/app/connectors/garmin/sync.py:fetch_activities`, `normalize.py:_upsert_activity`, `services/derived_data.py:invalidate_calculation_dates` | An existing source link caused provider-edited summaries to be discarded. Historical corrected inputs also left dependent daily/discipline scores beyond the nightly window stale. | Compare the exact owned linked raw summary; retain corrections without a duplicate activity. Invalidate old/new dates and the subsequent 28 days through the shared deletion/correction helper. Regression changes recorded duration, verifies raw revisions and idempotency, removes dependent scores, and preserves another account and the day beyond the dependency window. |
 | MEDIUM | `frontend/src/features/sleep/SleepTimingChart.tsx` | Bedtime appeared below wake time; simply reversing the axis would collapse bars with the old height calculation. | Reverse the time axis and use positive coordinate-independent bar heights. Chromium verifies bedtime is above waking and a visible bar remains; Rome DST cases also pass. |
 | MEDIUM | `frontend/src/features/overview/OverviewPage.tsx` | Recorded signals appeared below other sections. | Put them immediately after the Today/APEX decision card. Browser verifies the actual order. |
 | MEDIUM | `backend/tests/test_lab_api.py` | The named credential-ownership test created no foreign credentials and depended on the owner not having an integration left by another test. | Establish an explicit foreign configured account and absent owner integration. The regression now works independently of test order. |
-| LOW | `backend/app/core/logging.py`, `connectors/escalation.py` | Operational logs removed even safe error categories, preventing useful remote diagnosis. | Permit a fixed exception-code vocabulary only. Never persist arbitrary exception text, SQL, tokens, request arguments or health values in this buffer. Privacy test rejects arbitrary error-code text. |
+| LOW | `backend/app/core/logging.py`, `connectors/escalation.py` | Operational logs removed even safe error categories, preventing useful remote diagnosis. | Permit fixed exception-code and fetch-operation vocabularies only. The transport preserves errors without logging their messages, arguments or measurement dates. Never persist arbitrary exception text, SQL, tokens, request arguments or health values in this buffer. Privacy test rejects arbitrary error-code text. |
 | LOW | `backend/app/api/health.py`, `backend/Dockerfile` | The public site could not identify its installed commit. | Add an uncached public release identity containing version/stage/validated commit only. The authentication matrix explicitly permits this public endpoint and still probes protected routes. |
 
 No new migration is required for these fixes. The current branch already
@@ -42,16 +44,23 @@ the tested contracts, not proof of an unobserved production operation.
 - The four-week account-owned repair completed all 28 requested days. The live
   overview now contains today’s Recovery, Readiness and Strain. Each chart has
   27 available days in the window; a day lacking inputs remains unavailable.
-- A separate retained-history reindex was requested for 7 October 2025 through
-  7 October 2026. This reuses owned current raw records, without a new year-long
-  provider fetch. Its completion is checked independently of the four-week repair.
-- The first installed fix answers within its budget but the live answer still
-  failed claim validation. The follow-up format fix must pass a fresh live
-  recovery question; passing fixture tests is not a substitute.
+- The retained-history reindex for 7 October 2025 through 7 October 2026
+  completed, processing 22,729 raw records without a new year-long provider
+  fetch. The 366-day charts now contain 363 available dates per score, from
+  8 October 2025 through today. Three dates remain unavailable; no fabricated
+  readings or fallback scores were inserted.
+- The first installed fix completes within its budget but the live answer
+  failed claim validation. Follow-up commit `57dfbc831c4414e5a778695459c3d84d86c75ca5`
+  passed all five CI jobs and was confirmed installed. A fresh live question
+  remains pending explicit permission to send its health evidence to DeepSeek:
+  automatic approval review rejected that transmission. Fixture tests do not
+  prove the remote model will return a valid answer.
 - Fresh individual Garmin feeds coexist with an unsuccessful overall sync
   checkpoint. Do not reset the counter manually or claim successful backfill
-  from fresh sleep alone. Confirm the first successful/partial run and inspect
-  remaining feed failures after deployment.
+  from fresh sleep alone. A normal owned sync was started, but safe diagnostics show actual
+  `GarminConnectConnectionError` failures during the full walk. This remains an
+  upstream/host investigation until a successful checkpoint is observed; fresh
+  individual feeds and completed maintenance do not prove full sync success.
 
 No supplied password, session cookie, real health payload, private screenshot
 or provider token belongs in this repository or its release artifacts.
@@ -73,13 +82,35 @@ or provider token belongs in this repository or its release artifacts.
   agent evaluations, updater and production image/backup restore checks. The
   live `/version` endpoint confirmed that exact commit after automatic deployment.
 - Follow-up coach formatting/validation integration: 124 passed; new bilingual
-  evidence browser cases: two passed. Full CI and installed acceptance must also
-  pass on the final release commit.
+  evidence browser cases: two passed. Its complete CI passed: 894 backend tests (one private-file skip),
+  124 browser tests (one separately verified private-file skip), and the
+  production image/worker/queue/real encrypted restore checks.
+- Final Garmin correction/refresh, transport-privacy, HealthKit deletion,
+  provider-ownership and real PostgreSQL concurrency run: 87 passed. Complete
+  CI and installed identity must pass again on the final release commit.
 
 Production acceptance remains separate: verify `/version`, the live recovery
 answer, maintenance completion, current calculation rows and both new UI
 placements on the installed image. Do not call an old deployment beta-ready
 merely because a newer GitHub commit passed tests.
+
+## NO ISSUE within the checked contracts, and unverified claims
+
+The release suites exercised populated migration rollback/re-upgrade, embedding
+ownership, HealthKit scope/replay/UUID deletion, cross-provider field ownership,
+RMSSD/SDNN exclusion, comparable-source ACWR, formula snapshots, nested-handle
+forgery, typed proposal approval, erasure races, retention and telemetry privacy.
+No new defect was reproduced in those contracts in this final pass. The earlier
+findings and their fixes remain in [ALPHA_INDEPENDENT_REVIEW.md](ALPHA_INDEPENDENT_REVIEW.md).
+This is not a claim that every untested interleaving or real device is safe.
+
+Completion claims that cannot be verified from this work: a signed native build
+or physical HealthKit delivery; official Garmin approval/watch writes; actual
+OAuth/partner delivery for every optional provider; the next local overnight
+run; successful completion of the currently failing full Garmin sync; actual
+home-server/offsite backup recovery; clinical validity or calibrated muscle
+activation; complete account-rights handling; a valid remote coach answer after
+the final format fix without permission for its live transmission.
 
 ## What only the owner can finish
 
@@ -106,9 +137,16 @@ original Compose files and `.apex-updater/active.compose.yml`. Do not replace
 the pinned image with a local build. A generic `docker compose up --build`
 is not appropriate for a managed pinned deployment.
 
-### 2. Verify the real worker and overnight run
+### 2. Provider connection and next overnight run
 
-The requested four-week repair has completed. In **Settings → Data Health**,
+The requested four-week repair and year-history reindex have completed.
+Garmin’s full sync still reports a real connection error. If it remains after
+retries, inspect the safe fetch-operation/class in owner diagnostics and the
+worker logs on the host; check the provider’s availability/network access.
+Reconnect only if the error actually requests authentication, and complete
+MFA yourself. Do not erase stored data or reset failure counters to hide it.
+
+In **Settings → Data Health**,
 check the next overnight run and any later jobs. If a future job stays queued
 despite an online worker, inspect the host's **worker** logs and image:
 
@@ -152,7 +190,14 @@ Use [BACKEND_RELEASE.md](BACKEND_RELEASE.md) and the supplied restore drill.
 Choose/configure Backblaze `B2_*` only if you want that offsite destination;
 offsite upload is optional and is skipped when unconfigured.
 
-### 5. Invite named testers and perform physical acceptance
+### 5. Live coach acceptance and individual testers
+
+The final live recovery question is pending approval to send its required
+health evidence to the configured DeepSeek endpoint. Approve that test in
+chat, or submit the question yourself in Coach and confirm a grounded answer
+with checked evidence, rather than “Analysis incomplete” or an invalid-claim
+message. Code and fixture checks have passed; this live acceptance is not yet
+claimed.
 
 After the checks above, create individual invite links in the owner Admin UI;
 each tester connects their own provider account and selects their own profile.

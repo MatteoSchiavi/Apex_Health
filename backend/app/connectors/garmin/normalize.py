@@ -268,10 +268,23 @@ async def _upsert_activity(
         # §17 upsert law: this source's own row updates in place; a populated
         # field is never degraded to NULL (§12 floor rule, applied to re-syncs).
         preserve_main = await activity_has_other_selected_main(session, activity, fetch.SOURCE)
+        old_day = activity.local_date
+        numeric_fields = {"distance_m", "elevation_gain_m", "avg_power", "np_power", "training_load"}
+        previous_inputs = {key: _num(getattr(activity, key)) if key in numeric_fields
+                           else getattr(activity, key) for key in values}
+        previous_load = ((activity.source_metrics or {}).get("garmin") or {}).get("training_load")
         for key, val in values.items():
             if val is not None and (not preserve_main or getattr(activity, key) is None):
                 setattr(activity, key, val)
         link.raw_ingest_id = raw.id
+        changed_inputs = any(previous_inputs[key] != (_num(getattr(activity, key)) if key in numeric_fields
+                            else getattr(activity, key)) for key in values)
+        recorded_load = _num(payload.get("activityTrainingLoad"))
+        if changed_inputs or (recorded_load is not None and _num(previous_load) != recorded_load):
+            # A provider correction can predate the nightly refresh window.
+            # Remove its dependent scores instead of serving old constituents.
+            from app.services.derived_data import invalidate_calculation_dates
+            await invalidate_calculation_dates(session, raw.user_id, {old_day, local_date})
     else:
         # §12: reconcile against a same-window session from ANOTHER source
         # (±10 min, same discipline) — merge into it instead of duplicating.

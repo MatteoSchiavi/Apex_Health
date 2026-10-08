@@ -35,17 +35,27 @@ class GarminConnectTransport:
     def __init__(self, gc_client: Any) -> None:
         self._gc = gc_client
 
+    async def _call(self, operation, method, *args):
+        try:
+            return await asyncio.to_thread(method, *args)
+        except Exception as exc:
+            # Fixed operation and exception class only, never request arguments,
+            # provider response text, URLs, credentials or measurement dates.
+            logger.error("Garmin fetch failed (%s, %s)", operation, type(exc).__name__,
+                         extra={"error_code": type(exc).__name__, "fetch_operation": operation})
+            raise
+
     async def get_activities(self, start: int, limit: int) -> list[dict[str, Any]]:
-        return await asyncio.to_thread(self._gc.get_activities, start, limit)
+        return await self._call("activity_summaries", self._gc.get_activities, start, limit)
 
     async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_activity_exercise_sets, activity_id)
+        return await self._call("exercise_sets", self._gc.get_activity_exercise_sets, activity_id)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
         # garminconnect 0.3.x returns activityDetailMetrics aligned with
         # metricDescriptors. Keep converting at this provider boundary so the
         # sync pipeline and fixture clients retain their established shape.
-        payload = await asyncio.to_thread(self._gc.get_activity_details, str(activity_id))
+        payload = await self._call("activity_streams", self._gc.get_activity_details, str(activity_id))
         if not isinstance(payload, dict):
             return []
         samples = payload.get("samples")
@@ -81,19 +91,19 @@ class GarminConnectTransport:
         return samples if isinstance(samples, list) else []
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_sleep_data, local_date)
+        return await self._call("sleep", self._gc.get_sleep_data, local_date)
 
     async def get_hrv_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_hrv_data, local_date)
+        return await self._call("hrv", self._gc.get_hrv_data, local_date)
 
     async def get_stress_data(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_stress_data, local_date)
+        return await self._call("stress", self._gc.get_stress_data, local_date)
 
     async def get_stats(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_stats_and_body, local_date)
+        return await self._call("stats", self._gc.get_stats_and_body, local_date)
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._gc.get_body_composition, local_date)
+        return await self._call("body_composition", self._gc.get_body_composition, local_date)
 
 
 class LiveGarminClient:

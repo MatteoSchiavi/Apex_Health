@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.healthkit import HealthKitBatch, HealthKitPairing, HealthKitSample
-from app.models.features import DailyFeature, DisciplineFeature
 from app.models.lab import FeedState, Observation
 from app.models.watch import DeviceToken
 from app.models.wellness import DailyBiometric, SleepSession
@@ -455,9 +454,8 @@ async def ingest_healthkit(session: AsyncSession, user, token: DeviceToken, batc
     if deleted_days:
         # A deleted observation can contribute to its day's score, a later
         # baseline, or prior-day strain. Never keep these cached derivatives.
-        affected_dates = {day + timedelta(days=offset) for day in deleted_days for offset in range(29)}
-        for model in (DailyFeature, DisciplineFeature):
-            await session.execute(delete(model).where(model.user_id == user.id, model.date.in_(affected_dates)))
+        from app.services.derived_data import invalidate_calculation_dates
+        await invalidate_calculation_dates(session, user.id, deleted_days)
     token.sync_checkpoint += 1
     token.last_used_at = now
     receipt = {"checkpoint": token.sync_checkpoint, "accepted": len(batch.additions), "deleted": len(batch.deletions)}

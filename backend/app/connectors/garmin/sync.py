@@ -101,8 +101,7 @@ async def fetch_activities(
 
     checkpoint=True (live backfills): after every page, normalize what is
     pending and COMMIT — a killed multi-hour walk then resumes without
-    duplicating work, because already-normalized activities carry source
-    links and are skipped on the re-walk.
+    duplicating unchanged records; corrected linked summaries are retained.
     """
     new_ids: list[int] = []
     start = 0
@@ -124,15 +123,21 @@ async def fetch_activities(
             )
             if link is not None:
                 if checkpoint:
-                    # Checkpoint resume: this activity is already normalized —
-                    # re-storing its raw row would only duplicate work.
-                    try:
-                        oldest_start = _parse_gmt_datetime(
-                            summary.get("startTimeGMT"), "startTimeGMT"
-                        )
-                    except Exception:  # parse problems are the normalizer's to report
-                        oldest_start = None
-                    continue
+                    # Resume unchanged records without duplicating raw rows,
+                    # but do not discard corrections returned by the provider.
+                    previous = await session.scalar(select(RawIngest.raw_json).where(
+                        RawIngest.id == link.raw_ingest_id,
+                        RawIngest.user_id == user_id, RawIngest.source == SOURCE,
+                        RawIngest.payload_type == fetch.PAYLOAD_ACTIVITY_SUMMARY,
+                    ))
+                    if previous == summary:
+                        try:
+                            oldest_start = _parse_gmt_datetime(
+                                summary.get("startTimeGMT"), "startTimeGMT"
+                            )
+                        except Exception:  # parser reports malformed summaries
+                            oldest_start = None
+                        continue
                 # Incremental default (raw-first audit): the overlap window is
                 # re-recorded in raw_ingest; upserts dedupe the normalized
                 # tables and the activity is NOT treated as new.
@@ -362,9 +367,9 @@ async def fetch_wellness(
     `empty_gap_days` consecutive days with no data at all — that gap is the
     source's history boundary, not a missed fetch.
 
-    checkpoint=True (live backfills): days that already carry a sleep_session
-    are skipped outright (no API calls — the resume walk is fast), and every
-    landed day is normalized + committed as it goes.
+    checkpoint=True: historical Garmin days can resume a backward walk;
+    incremental overlap days are always refreshed. Every landed day is
+    normalized and committed as it goes.
     """
     backward = from_day > to_day
     step = -1 if backward else 1
@@ -372,11 +377,12 @@ async def fetch_wellness(
     skipped_days = 0
     day = from_day
     while True:
-        if checkpoint:
+        if checkpoint and backward:
             already = await session.scalar(
                 select(SleepSession.id).where(
                     SleepSession.user_id == user_id,
                     SleepSession.local_date == day,
+                    SleepSession.origin == SOURCE,
                 )
             )
             if already is None:
@@ -387,6 +393,8 @@ async def fetch_wellness(
                     select(DailyBiometric.user_id).where(
                         DailyBiometric.user_id == user_id,
                         DailyBiometric.date == day,
+                        or_(DailyBiometric.source_metrics["_canonical_sources"]["steps"].astext == SOURCE,
+                            DailyBiometric.source_metrics["_canonical_sources"]["resting_hr"].astext == SOURCE),
                     )
                 )
             if already is not None and day != from_day:
