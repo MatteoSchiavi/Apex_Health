@@ -111,7 +111,7 @@ server configuration is missing, not that your wearable has failed.
 | --- | --- |
 | Garmin Connect | Connect your own account in Devices, complete MFA, verify actual backfill, sleep, HRV, strength sets and session expiry/reconnect. Adapter is unofficial. Do not use owner-global credentials for other users. |
 | Official Garmin Health/Training | Obtain actual program access, authorized contracts and permitted terms. Official transport is a raising placeholder; official ingestion/webhooks/workout delivery still require implementation. Optional future work. |
-| Oura | Set `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, `OURA_REDIRECT_URI=https://YOUR-HOST/integrations/oura/callback`; verify app scopes and authorize a real ring. Compare actual periods, score, HRV, corrections and provider changes. Continuous HR and undated profile weight remain raw-only; readiness/SpO2/temperature/stress are not fetched. |
+| Oura | Set `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, `OURA_REDIRECT_URI=https://YOUR-HOST/integrations/oura/callback`, `OURA_SCOPE=daily heartrate personal`; authorize a real ring. Remove any previous explicit `sleep`/`temperature` scopes: these are absent from the public OAuth contract. Compare actual periods, score, HRV, corrections and provider changes. Continuous HR and undated profile weight remain raw-only; readiness/SpO2/temperature/stress are not fetched. |
 | WHOOP | Set `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_REDIRECT_URI`; consent to the configured read/offline scopes. Validate paging, refresh, pending scores, revocation and Garmin coexistence. Proprietary WHOOP metrics are not interchangeable Apex/Garmin scores. |
 | Strava | Register permitted app/athlete access; set `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI`. Verify paging, duplicates, refresh and deauthorization. Summary activities only; no streams. Strava evidence and restricted merged derivatives remain excluded from AI. |
 | COROS via MCP | Supply an actual compatible account-scoped MCP server, `COROS_MCP_URL`, `COROS_MCP_ACTIVITY_TOOL`, `COROS_MCP_ACTIVITY_ARGS` and the user's bearer token. Verify schema, paging/history completeness and account isolation. This is not direct COROS OAuth. |
@@ -151,7 +151,8 @@ Local verification:
 
 - Full backend suite: **853 passed**. Subsequent final integration run:
   **94 passed**, including the additional Oura/Garmin awake-source boundary
-  and malformed raw-timestamp regression. The new total collected by CI is 854.
+  and malformed raw-timestamp regression. An additional OAuth-scope contract
+  regression brings the final suite to 855.
 - Full clean Chromium suite: **107 passed**, including both GPS themes,
   floating sleep-window calculations, chart resizing, metric stars, sidebar,
   feedback, keyboard navigation and accessibility checks. Final sidebar
@@ -169,3 +170,6 @@ newly changed code. The initial failed runs uncovered the unlabelled sleep
 fixture, baseline warning regression and English-locale fixture dependency;
 these were fixed and rerun. An overlapping browser output-directory failure
 was corrected with isolated artifacts; it is not application verification.
+The first GitHub Chromium run also exposed a pointer-already-inside-sidebar
+hover case; pointer movement now activates expansion without needing a fresh
+enter event.

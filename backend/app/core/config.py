@@ -107,7 +107,9 @@ class Settings(BaseSettings):
     oura_oauth_authorize_url: str = "https://cloud.ouraring.com/oauth/authorize"
     oura_oauth_token_url: str = "https://api.ouraring.com/oauth/token"
     oura_api_base: str = "https://api.ouraring.com/v2/usercollection"
-    oura_scope: str = "daily sleep heartrate personal spo2 temperature"
+    # Public OpenAPI 1.41 lists no `sleep` or `temperature` OAuth scope.
+    # `daily` authorizes sleep collections; request only feeds this driver uses.
+    oura_scope: str = "daily heartrate personal"
     oura_page_size: int = 25
     oura_page_delay_seconds: float = 0.5
 

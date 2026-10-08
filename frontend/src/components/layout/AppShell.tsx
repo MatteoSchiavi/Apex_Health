@@ -288,7 +288,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           returnFocus={searchOpener.current}
         />
       )}
-      <aside onMouseEnter={() => setSidebarHover(true)} onMouseLeave={() => setSidebarHover(false)}
+      <aside onMouseEnter={() => setSidebarHover(true)} onMouseMove={() => setSidebarHover(true)} onMouseLeave={() => setSidebarHover(false)}
         onFocus={e => setSidebarFocus((e.target as HTMLElement).matches(":focus-visible"))} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSidebarFocus(false); }}
         className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex transition-[width,padding] duration-150 motion-reduce:transition-none"}>
         <div className="mb-8 flex h-8 shrink-0 items-center justify-between gap-2">

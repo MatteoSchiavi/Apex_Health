@@ -29,6 +29,15 @@ SLEEP = {"id": "period-1", "day": "2026-10-01", "type": "long_sleep", "bedtime_s
          "average_breath": 14, "ring_id": "ring-1", "sleep_phase_5_min": "441223"}
 
 
+def test_default_oauth_scopes_match_official_schema_and_implemented_feeds():
+    from app.core.config import Settings
+    # Official OpenAPI 1.41 components.securitySchemes.OAuth2 authorizationCode.
+    allowed = {"email", "personal", "daily", "heartrate", "workout", "tag", "session", "spo2", "heart_health"}
+    requested = set(Settings(_env_file=None).oura_scope.split())
+    assert requested <= allowed
+    assert requested == {"daily", "heartrate", "personal"}
+
+
 async def owner(db_session):
     user = User(name=str(uuid4()), timezone="Europe/Rome")
     db_session.add(user)
