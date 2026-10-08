@@ -59,7 +59,7 @@ async def build_period_data_pack(
     from app.services.evidence import query_observations, observation_dict
     from app.services.analytics import multisport_load
 
-    user = await session.get(User, user_id)
+    user = await session.get(User, user_id, populate_existing=True)
     if user is None:
         raise ValueError("Account unavailable")
     metrics, source_ids = {}, ["policy:ai_eligible_v1"]

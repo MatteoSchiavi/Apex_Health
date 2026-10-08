@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from app.models.lab import DecisionRecord
+from app.models.user import User
 from app.services.analytics import baseline, constraints
 from app.services.evidence import EvidenceError, coverage, scope_lock, snapshot_revision
 
@@ -59,6 +60,11 @@ async def daily_decision(session, user, *, now=None, for_ai=False, persist=False
     # The evidence reads, revision and cached decision must share the erasure
     # boundary. A revision sampled after mixed reads is not a valid snapshot.
     await scope_lock(session, user.id, "changes")
+    # Authentication may have loaded this profile before a concurrent edit
+    # committed while we waited for the account lock.
+    user = await session.get(User, user.id, populate_existing=True)
+    if user is None:
+        raise EvidenceError("NOT_FOUND", "Account unavailable")
     now = now or datetime.now(UTC)
     day = now.astimezone(ZoneInfo(user.timezone)).date()
     cover = await coverage(session, user, now=now, for_ai=for_ai)

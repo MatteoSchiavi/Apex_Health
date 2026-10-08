@@ -152,6 +152,26 @@ not weakened. Migration upgrade and downgrade/refusal were exercised against
 PostgreSQL. These checks verify implementation behavior, not physiological
 validation of the product's heuristic scores.
 
+Final pre-push review also found a stale-profile race: authentication could
+load a profile before an edit committed, and a decision could then combine
+old physiological context with a new revision. Decision and coach readers
+now reload the profile inside the account lock; report data packs also
+refresh their session's profile. Three regression cases use a separate
+database session to change sex and timezone after the reader loaded its
+profile. The decision localization fixture now persists its requested
+locale instead of trying to override the authenticated account with a
+detached object. Migration-refusal verification checks that the installed
+revision stays unchanged, rather than hardcoding the previous head.
+
+The final local checks cover all 883 backend cases across the full suite
+and affected follow-up runs, including opt-in import verification of all
+three original Garmin FIT files. All cases passed in their final runs.
+Browser verification passed all 121 standard checks and the opt-in test
+of those original database presentations (122 total). Production build,
+1463-key English/Italian parity, five PWA checks, 26 deterministic runtime
+replays, 27 updater checks and generated systemd-unit validation also pass.
+Private FIT files and their derived verification data remain outside Git.
+
 For deployment, apply migration `0023` with `uv run --frozen alembic upgrade head`
 from the backend directory, deploy the rebuilt frontend and restart API/workers.
 This review only exercises a disposable test database; it does not migrate

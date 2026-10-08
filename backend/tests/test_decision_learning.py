@@ -42,7 +42,11 @@ async def clean_learning_records(db_session):
 
 
 async def interpretation(monkeypatch, db_session, *, locale="en", missing=False, sleep=7.5, pain=False):
-    user = User(id=1, name="Athlete", timezone="UTC", locale=locale)
+    # Decisions read the authenticated profile from the database inside the
+    # account lock; a detached object must not override persisted preferences.
+    user = await db_session.get(User, 1)
+    user.timezone, user.locale = "UTC", locale
+    await db_session.flush()
     values = {"hrv_overnight_rmssd": 60, "resting_hr": 52, "sleep_duration": sleep}
     async def coverage(*args, **kwargs):
         return {"metrics": [{"metric": metric, "availability": "stale" if missing else "available", "sample_days_7d": 0 if missing else 7,

@@ -118,7 +118,7 @@ async def _resolve_session(session, user_id, now):
 
 async def _build_snapshot(session, user_id, now):
     await scope_lock(session, user_id, "changes")
-    user = await session.get(User, user_id)
+    user = await session.get(User, user_id, populate_existing=True)
     if user is None:
         raise ValueError("Account unavailable")
     tz = ZoneInfo(user.timezone)

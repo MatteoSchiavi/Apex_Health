@@ -117,6 +117,38 @@ async def test_worker_refreshes_detached_profile_before_computing(db_session):
     assert result["daily"]["calculation_provenance"]["physiological_context"]["sex"] == "female"
 
 
+@pytest.mark.parametrize("reader", ["decision", "coach", "report"])
+async def test_profile_readers_refresh_identity_map_after_concurrent_edit(db_session, reader):
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.services.decisions import daily_decision
+
+    user, _ = await make_garmin_user(db_session)
+    user.sex, user.timezone = "male", "UTC"
+    await db_session.commit()
+    # Simulate authentication loading the profile before a settings request
+    # commits in a separate session. The reader still holds the old instance.
+    async with AsyncSession(db_session.bind) as editor:
+        await editor.execute(update(User).where(User.id == user.id).values(
+            sex="female", timezone="Europe/Rome"))
+        await editor.commit()
+    assert user.sex == "male" and user.timezone == "UTC"
+    now = datetime(2026, 10, 5, 23, tzinfo=UTC)
+    if reader == "decision":
+        result = await daily_decision(db_session, user, now=now, persist=True)
+        assert result["date"] == "2026-10-06"
+        assert result["constraints"]["timezone"] == "Europe/Rome"
+        assert result["constraints"]["physiological_context"]["sex"] == "female"
+        assert result["snapshot_revision"] == await snapshot_revision(db_session, user.id)
+    elif reader == "coach":
+        result = await _build_snapshot(db_session, user.id, now)
+        assert result["profile"]["local_today"] == "2026-10-06"
+        assert result["profile"]["timezone"] == "Europe/Rome"
+        assert result["profile"]["sex"] == "female"
+    else:
+        pack = await build_period_data_pack(db_session, user.id, DAY - timedelta(days=6), DAY)
+        assert pack.payload["profile"]["sex"] == "female"
+
+
 async def test_lab_intervals_preserve_female_report_and_missing_measurement(db_session):
     user, _ = await make_garmin_user(db_session)
     user.sex = "female"

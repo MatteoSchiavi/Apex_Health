@@ -98,12 +98,15 @@ async def test_native_tokens_remain_revoked_after_scope_downgrade_and_reupgrade(
         async with engine.begin() as connection:
             await connection.execute(text("""INSERT INTO hrv_readings(user_id,timestamp,hrv_ms,reading_type,origin)
                 VALUES (:owner,now(),50,'unspecified','csv_import')"""), {'owner': user})
+            current_revision = await connection.scalar(text('SELECT version_num FROM alembic_version'))
         rejected = subprocess.run(['uv', 'run', 'alembic', 'downgrade', '0021'], env=env, capture_output=True)
         assert rejected.returncode != 0
         assert b'Cannot downgrade' in rejected.stderr
         async with engine.connect() as connection:
             assert await connection.scalar(text("SELECT count(*) FROM hrv_readings WHERE reading_type='unspecified'")) == 1
-            assert await connection.scalar(text('SELECT version_num FROM alembic_version')) == '0022'
+            # A refusal rolls back the entire downgrade, including migrations
+            # newer than 0022. The installed revision must remain unchanged.
+            assert await connection.scalar(text('SELECT version_num FROM alembic_version')) == current_revision
     finally:
         await engine.dispose()
         async with admin.connect() as connection:
