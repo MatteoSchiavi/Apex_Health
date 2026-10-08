@@ -147,14 +147,15 @@ async def _sync_account(provider: str, user_id: int) -> dict:
                 close = getattr(client, "aclose", None)
                 if close is not None:
                     await close()
-        if report is None:
-            raise SyncTaskError("Provider sync failed; retrying may recover it", error_class="transport")
         # Nightly calculations run before most athletes wake up. Refresh
         # today's row after ingestion as well, so newly fetched sleep/HRV and
         # activities are reflected without borrowing yesterday's scores.
+        # A later backfill failure must not hide already committed checkpoints.
         from app.features.engine import compute_user_range
         today = datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
         await compute_user_range(session, user, today - timedelta(days=28), today)
+        if report is None:
+            raise SyncTaskError("Provider sync failed; retrying may recover it", error_class="transport")
         return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) or getattr(report, "streams_failed", 0) else "ok",
                 "mode": report.mode, "raw_stored": report.raw_rows_stored,
                 "streams_failed": getattr(report, "streams_failed", 0),

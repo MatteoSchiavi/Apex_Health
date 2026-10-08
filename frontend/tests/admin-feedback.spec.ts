@@ -3,9 +3,11 @@ import { installApi } from "./fixtures";
 
 test("owner gets admin tools while a friend is redirected away", async ({ page }) => {
   await installApi(page);
+  await page.route("**/api/admin/logs?**", (route) => route.fulfill({ json: { items: [{ timestamp: "2026-10-08T00:00:00Z", level: "WARNING", source: "connectors.garmin.client", event: "provider_request_failed", fetch_operation: "sleep", error_code: "GarminConnectConnectionError" }] } }));
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Owner administration" })).toBeVisible();
   await expect(page.getByText("13.4%")).toBeVisible();
+  await expect(page.getByText("sleep · GarminConnectConnectionError", { exact: true })).toBeVisible();
   await expect(page.getByText("Delivered").first()).toBeVisible();
 
   await installApi(page, { role: "friend" });

@@ -123,3 +123,34 @@ async def test_oura_driver_uses_stored_credentials_and_real_sync(db_session, mon
     await db_session.refresh(integration)
     assert integration.last_synced_at is not None
     assert refreshes == [(user.id,date(2026,9,11),date(2026,10,9))]
+
+
+async def test_failed_backfill_refreshes_committed_today_data_without_claiming_sync_success(db_session, monkeypatch):
+    from datetime import timedelta
+    from app.models.features import DailyFeature
+    from app.models.wellness import SleepSession
+    user = User(name='Checkpointed wellness', timezone='Europe/Rome')
+    db_session.add(user); await db_session.flush()
+    integration = Integration(user_id=user.id, provider='garmin', status='active',
+                              credentials_encrypted=encrypt_json({'fixture':'owned'}))
+    db_session.add(integration); await db_session.commit()
+    now = datetime(2026,10,8,8,tzinfo=UTC)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None): return now
+    monkeypatch.setattr('app.tasks.provider_sync.datetime', Clock)
+    monkeypatch.setattr('app.connectors.garmin.client.build_live_client', lambda _: SimpleNamespace())
+    async def partial_checkpoint(session, athlete, connection, client, **kwargs):
+        session.add(SleepSession(user_id=athlete.id, origin='garmin', local_date=now.date(),
+            start_time=now-timedelta(hours=8),end_time=now,total_sleep_s=8*3600))
+        connection.consecutive_failures = 1
+        await session.commit()  # A later upstream call fails after this durable checkpoint.
+        return None
+    monkeypatch.setattr('app.connectors.garmin.sync.run_user_sync_with_escalation', partial_checkpoint)
+    with pytest.raises(SyncTaskError, match='Provider sync failed'):
+        await _sync_account('garmin', user.id)
+    feature = await db_session.get(DailyFeature, (user.id, now.date()), populate_existing=True)
+    assert feature is not None and feature.data_completeness == 'partial'
+    assert feature.calculation_provenance['as_of'] == '2026-10-08'
+    await db_session.refresh(integration)
+    assert integration.last_synced_at is None and integration.consecutive_failures == 1
