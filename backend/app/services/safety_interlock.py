@@ -182,10 +182,10 @@ def safety_block(feature: Any | None) -> dict:
     """Build the machine-readable safety-interlock block injected into the
     agent's system context and the watch payload (W-02 contract).
 
-    ``feature`` is the latest ``DailyFeature`` row (or None when no scored
-    day exists). The block carries:
+    ``feature`` is the requested day's ``DailyFeature`` row (or None when no
+    current scored day exists). The block carries:
 
-    - ``verdict``: ``"go"`` | ``"modify"`` | ``"rest"`` — the machine-readable
+    - ``verdict``: ``"go"`` | ``"modify"`` | ``"rest"`` | ``"unknown"`` — the machine-readable
       contract the watch/agent consumes.
     - ``intensity_ceiling``: None | "rest" | "low" | "moderate".
     - ``reasons``: list of human-readable strings (may be empty).
@@ -193,11 +193,11 @@ def safety_block(feature: Any | None) -> dict:
     """
     if feature is None:
         return {
-            "verdict": "go",
+            "verdict": "unknown",
             "intensity_ceiling": None,
             "reasons": [],
             "risk_scores": {},
-            "note": "no scored day available — safety interlock not engaged",
+            "note": "No current scored day is available; no training clearance was assessed.",
         }
     decision = exertion_veto(
         systemic_stress=getattr(feature, "systemic_stress_signal", None),

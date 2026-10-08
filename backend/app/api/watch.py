@@ -296,7 +296,7 @@ async def watch_day(
     # so the watch can render a modify/rest banner BEFORE the workout starts.
     latest_feature = await session.scalar(
         select(DailyFeature)
-        .where(DailyFeature.user_id == user.id)
+        .where(DailyFeature.user_id == user.id, DailyFeature.date == local_today)
         .order_by(DailyFeature.date.desc())
         .limit(1)
     )

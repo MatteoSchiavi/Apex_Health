@@ -213,6 +213,14 @@ async def import_original(session, user, filename, content, parsed):
                 )
             )
         ids.append(activity.id)
+        if SPORTS.get(sport, sport) == "strength":
+            from app.services.exercise_catalog import fit_exercises
+
+            exercises = fit_exercises(content, start, summary.get("timestamp") or start + timedelta(seconds=duration))
+            activity.source_metrics = {
+                **(activity.source_metrics or {}),
+                "fit": {**(activity.source_metrics or {}).get("fit", {}), "exercises": exercises},
+            }
         samples = {}
         end = summary.get("timestamp")
         for record in records:

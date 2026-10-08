@@ -38,7 +38,7 @@ PHYSIO_BODY_FAT_PCT_RANGE: tuple[float, float] = (3.0, 65.0)
 
 def _to_float(value: object) -> float | None:
     """Coerce Decimal/int/float to float; None stays None. Non-numeric → None."""
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     if isinstance(value, Decimal):
         return float(value)

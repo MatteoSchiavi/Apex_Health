@@ -102,6 +102,11 @@ class MetricSettings(EntryBase):
     sport: str = Field(default="road_cycling", min_length=1, max_length=80)
 
 
+class MetricFavorites(EntryBase):
+    kind: Literal["metric_favorites"]
+    metrics: list[str] = Field(default_factory=list, max_length=100)
+
+
 class ObservationAnnotation(EntryBase):
     kind: Literal["observation_annotation"]
     observation_id: int = Field(gt=0)
@@ -119,6 +124,7 @@ Entry = Annotated[
     | NotificationPreferences
     | PrivacyPreferences
     | MetricSettings
+    | MetricFavorites
     | ObservationAnnotation,
     Field(discriminator="kind"),
 ]

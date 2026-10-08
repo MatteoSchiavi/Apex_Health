@@ -1,276 +1,193 @@
-"""Oura normalizer: typed, idempotent upserts from raw API payloads.
+"""Oura v2 mappings verified against public OpenAPI 1.41.
 
-Canonical mapping (annotation law — Garmin-compatible units only):
-- daily_sleep: contributors.deep_sleep_seconds → deep_s, rem → rem_s,
-  light → light_s, awake → awake_s; total_sleep_duration → total_sleep_s;
-  score → sleep_score; average_breath → respiration_avg; average_hrv →
-  the overnight HRV reading; spo2_percentage.average → spo2_avg.
-- Oura-only values (temperature_delta, efficiency, readiness score,
-  latency, restlessness in ring terms) stay in source_metrics.oura —
-  restlessness semantics differ from Garmin's and MUST NOT overwrite.
-- sleep periods (30s-class staging) land in the same SleepSession stages
-  when daily_sleep is absent (older windows).
+`daily_sleep` provides a DAILY PROVIDER SCORE; `/sleep` provides actual period
+windows, stage durations and average overnight HRV. Contributor scores are
+never durations. Sleep mean/minimum HR is not a resting-HR measurement.
+Undated personal_info weight remains a profile snapshot in raw ingestion.
+Source: https://cloud.ouraring.com/v2/static/json/openapi-1.41.json
 """
-
-import logging
-from datetime import date, datetime, timedelta, timezone
+import math
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.garmin.normalize import NormalizerStats
-from app.connectors.oura.fetch import SOURCE, store_raw
-from app.connectors.validation import (
-    valid_hrv_ms,
-    valid_respiration_bpm,
-    valid_sleep_score,
-    valid_spo2_pct,
-    valid_weight_kg,
-)
+from app.connectors.semantics import provider_semantics
+from app.connectors.validation import valid_hrv_ms, valid_respiration_bpm, valid_sleep_score
 from app.models.integration import RawIngest
-from app.models.user import User
-from app.models.wellness import DailyBiometric, HrvReading, SleepSession
-from app.services.biometric_provenance import set_biometric
-
-logger = logging.getLogger("connectors.oura.normalize")
-
-_KNOWN_TYPES = ("daily_sleep", "sleep", "heartrate", "personal_info")
+from app.models.lab import FeedState, Observation
+from app.models.wellness import HrvReading, SleepSession
+from app.services.evidence import METRICS, record_observation, scope_lock, update_feed
 
 
 class NormalizationError(Exception):
-    """One payload is malformed; it rolls back alone and stays unprocessed."""
+    """Malformed payloads stay unprocessed and replayable."""
 
 
-def _int(value) -> int | None:
+def _int(value):
+    if isinstance(value, bool):
+        return None
     try:
-        return int(value) if value is not None else None
-    except (TypeError, ValueError):
+        number = float(value)
+        return int(number) if math.isfinite(number) and number.is_integer() and number >= 0 else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
-def _float(value) -> float | None:
+def _parse_ts(value):
+    if not isinstance(value, str):
+        raise NormalizationError("A timestamp is required")
     try:
-        return float(value) if value is not None else None
-    except (TypeError, ValueError):
-        return None
+        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise NormalizationError("Invalid timestamp") from None
+    if result.tzinfo is None:
+        raise NormalizationError("Timestamp has no timezone")
+    return result
 
 
-def _parse_ts(value: str | None) -> datetime | None:
-    if not value:
-        return None
+def _day_from(value):
     try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return dt if dt.tzinfo else dt.replace(tzinfo=ZoneInfo("UTC"))
-    except ValueError as exc:
-        raise NormalizationError(f"unparsable timestamp {value!r}") from exc
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        raise NormalizationError("Invalid provider day") from None
 
 
-async def normalize_raw_row(
-    session: AsyncSession,
-    raw: RawIngest,
-    payload: dict,
-    tz: ZoneInfo,
-    stats: NormalizerStats,
-) -> None:
-    # Take the account lock before canonical rows, matching ingest/erase order.
-    from app.services.evidence import scope_lock
+def _id(payload):
+    ident = payload.get("id")
+    if not isinstance(ident, str) or not ident or len(ident) > 200:
+        raise NormalizationError("Missing provider record ID")
+    return ident
+
+
+async def normalize_raw_row(session: AsyncSession, raw: RawIngest, payload: dict, tz: ZoneInfo, stats: NormalizerStats):
     await scope_lock(session, raw.user_id, "changes")
-    ptype = getattr(raw, "payload_type", "")
-    if ptype == "daily_sleep":
+    if not isinstance(payload, dict):
+        raise NormalizationError("Expected an object")
+    if raw.payload_type == "daily_sleep":
         await _upsert_daily_sleep(session, raw, payload, tz, stats)
-    elif ptype == "sleep":
+    elif raw.payload_type == "sleep":
         await _upsert_sleep_period(session, raw, payload, tz, stats)
-    elif ptype == "heartrate":
+    elif raw.payload_type == "heartrate":
         await _upsert_heartrate(session, raw, payload, stats)
-    elif ptype == "personal_info":
+    elif raw.payload_type == "personal_info":
         await _upsert_personal(session, raw, payload, stats)
     else:
-        logger.debug("oura normalizer: skipping type %s", ptype)
+        raise NormalizationError("Unsupported Oura collection")
 
 
-async def _upsert_daily_sleep(session, raw, payload, tz: ZoneInfo, stats) -> None:
-    user_id = getattr(raw, "user_id")
-    day = _day_from(payload.get("day"))
-    contributors = payload.get("contributors") or {}
-    start = _parse_ts(payload.get("bedtime_start"))
-    end = _parse_ts(payload.get("bedtime_end"))
-    if start is None or end is None:
-        raise NormalizationError(f"daily_sleep {payload.get('id')}: missing bedtime window")
+async def _observation(session, raw, tz, metric, value, measured, source_id, context):
+    await update_feed(session, raw.user_id, "oura", metric, "available" if value is not None else "not_measured", raw.fetched_at, measured)
+    return await record_observation(session, user_id=raw.user_id, metric=metric, value=value,
+        unit=METRICS[metric], origin="oura", source_record_id=source_id, measured_at=measured,
+        timezone=tz.key, fetched_at=raw.fetched_at, acquisition="official_api",
+        raw_ingest_id=raw.id, metadata=context)
 
+
+async def _upsert_daily_sleep(session, raw, payload, tz, stats):
+    ident, provider_day = _id(payload), _day_from(payload.get("day"))
+    measured = _parse_ts(payload.get("timestamp"))
+    score = valid_sleep_score(payload.get("score"))
+    await _observation(session, raw, tz, "sleep_score", score, measured, "daily_sleep:" + ident,
+        {"provider": "oura", "api_version": "v2", "feed": "daily_sleep", "provider_day": str(provider_day), "kind": "provider_estimate"})
+    # A daily score applies to its provider day, not to a nap or an arbitrary
+    # same-time Garmin session. Oura's scoring day and our wake-day remain distinct.
+    rows = (await session.scalars(select(SleepSession).where(
+        SleepSession.user_id == raw.user_id, SleepSession.origin == "oura",
+        SleepSession.source_metrics["oura"]["provider_day"].astext == str(provider_day),
+        SleepSession.source_metrics["oura"]["type"].astext == "long_sleep"))).all()
+    for row in rows:
+        row.sleep_score = score
+
+
+async def _upsert_sleep_period(session, raw, payload, tz, stats):
+    ident = _id(payload)
+    start, end = _parse_ts(payload.get("bedtime_start")), _parse_ts(payload.get("bedtime_end"))
+    if end <= start or end - start > timedelta(days=2):
+        raise NormalizationError("Invalid sleep window")
+    provider_day = _day_from(payload.get("day"))
+    period_type = payload.get("type")
+    previous = (await session.scalars(select(SleepSession).where(
+        SleepSession.user_id == raw.user_id, SleepSession.origin == "oura",
+        (SleepSession.source_metrics["oura"]["id"].astext == ident) | (SleepSession.start_time == start)))).all()
+    if period_type in ("deleted", "rest"):
+        for row in previous:
+            await session.execute(delete(HrvReading).where(HrvReading.user_id == raw.user_id, HrvReading.origin == "oura", HrvReading.timestamp == row.end_time))
+            await session.delete(row)
+        retired = await session.execute(delete(Observation).where(Observation.user_id == raw.user_id, Observation.origin == "oura", Observation.source_record_id == "sleep:" + ident))
+        if previous or retired.rowcount:
+            # These snapshots can retain a deleted measurement, including in an
+            # answer. Purge account-owned derivatives rather than reuse stale facts.
+            from app.services.derived_data import clear_derived_health_data
+
+            await clear_derived_health_data(session, raw.user_id)
+        return
     total = _int(payload.get("total_sleep_duration"))
-    deep = _int(contributors.get("deep_sleep_seconds"))
-    rem = _int(contributors.get("rem_sleep_seconds"))
-    light = _int(contributors.get("light_sleep_seconds"))
-    if total is not None and deep is not None and rem is not None and light is None:
-        light = max(total - (deep or 0) - (rem or 0), 0)
-
-    # Oura's local_date convention == Garmin's wake-date rule (§17): the
-    # night is attributed to the WAKE morning, which is `day` in Oura v2.
-    sm = {
-        "oura": {
-            "efficiency": _float(payload.get("efficiency")),
-            "latency_s": _int(payload.get("latency")),
-            "temperature_delta_c": _float(payload.get("temperature_delta")),
-            "readiness_score": None,  # readiness is a separate collection
-            "low_battery_alert": payload.get("low_battery_alert"),
-        }
-    }
-
-    existing = (
-        await session.scalars(
-            select(SleepSession).where(
-                SleepSession.user_id == user_id,
-                SleepSession.origin == "oura",
-                SleepSession.local_date == day,
-                SleepSession.start_time == start,
-            )
-        )
-    ).first()
+    if total is not None and total > (end - start).total_seconds():
+        raise NormalizationError("Sleep duration exceeds the recorded window")
+    stages = {dest: _int(payload.get(src)) for src, dest in (
+        ("deep_sleep_duration", "deep_s"), ("rem_sleep_duration", "rem_s"),
+        ("light_sleep_duration", "light_s"), ("awake_time", "awake_s"))}
+    if all(stages[k] is not None for k in ("deep_s", "rem_s", "light_s")) and total is not None and sum(stages[k] for k in ("deep_s", "rem_s", "light_s")) > total + 60:
+        raise NormalizationError("Sleep stages exceed the recorded total")
+    score_raw = await session.scalar(select(RawIngest).where(RawIngest.user_id == raw.user_id, RawIngest.source == "oura", RawIngest.payload_type == "daily_sleep", RawIngest.raw_json["day"].astext == str(provider_day)).order_by(RawIngest.fetched_at.desc(), RawIngest.id.desc()).limit(1))
+    score = valid_sleep_score(score_raw.raw_json.get("score")) if score_raw and period_type == "long_sleep" else None
+    # Retiming a provider period removes its old canonical aggregate, not any
+    # Garmin/WHOOP night with a similar window.
+    for row in previous:
+        if row.end_time != end or period_type != "long_sleep":
+            await session.execute(delete(HrvReading).where(HrvReading.user_id == raw.user_id, HrvReading.origin == "oura", HrvReading.timestamp == row.end_time))
+        if row.start_time != start:
+            await session.execute(delete(HrvReading).where(HrvReading.user_id == raw.user_id, HrvReading.origin == "oura", HrvReading.timestamp == row.end_time))
+            await session.delete(row)
+    existing = next((r for r in previous if r.start_time == start), None)
     if existing is None:
-        # Device priority: oura writes only when the slot is empty — a
-        # same-start Garmin row wins (main-device law, ingest gate).
-        clash = (
-            await session.scalars(
-                select(SleepSession).where(
-                    SleepSession.user_id == user_id,
-                SleepSession.origin == "oura",
-                    SleepSession.local_date == day,
-                    SleepSession.start_time >= start - timedelta(minutes=30),
-                    SleepSession.start_time <= start + timedelta(minutes=30),
-                )
-            )
-        ).first()
-        if clash is not None:
-            sm_whoop = clash.source_metrics or {}
-            block = sm_whoop.get("oura") or {}
-            sm_whoop["oura"] = {**block, **sm["oura"]}
-            clash.source_metrics = sm_whoop
-            stats.activities_merged += 0  # counts as a merge-free overlap
-            return
-        session.add(
-            SleepSession(
-                user_id=user_id,
-                origin="oura",
-                local_date=day,
-                start_time=start,
-                end_time=end,
-                total_sleep_s=total,
-                deep_s=deep,
-                light_s=light,
-                rem_s=rem,
-                awake_s=(
-                    _int(payload.get("awake_time"))
-                    or _int(contributors.get("awake_time"))
-                ),
-                sleep_score=valid_sleep_score(
-                    contributors.get("sleep_score") or payload.get("score")
-                ),
-                respiration_avg=valid_respiration_bpm(payload.get("average_breath")),
-                spo2_avg=valid_spo2_pct((payload.get("spo2_percentage") or {}).get("average")),
-                restlessness=None,  # ring restlessness ≠ Garmin restlessness
-                source_metrics=sm,
-            )
-        )
-        stats.sleep_upserted += 1
-    else:
-        # Upsert-in-place, never degrade a populated field to NULL.
-        if total is not None:
-            existing.total_sleep_s = total
-        if deep is not None:
-            existing.deep_s = deep
-        if rem is not None:
-            existing.rem_s = rem
-        if light is not None:
-            existing.light_s = light
-        if payload.get("average_breath") is not None:
-            existing.respiration_avg = valid_respiration_bpm(payload.get("average_breath"))
-        merged = dict(existing.source_metrics or {})
-        merged["oura"] = {**merged.get("oura", {}), **sm["oura"]}
-        existing.source_metrics = merged
-        stats.sleep_upserted += 1
-
-    # Overnight HRV: one canonical reading at sleep midpoint (rMSSD-class).
-    # P-02 audit: drop implausible values (firmware glitch, sensor fault).
-    # P-11 audit: midpoint anchor is documented; keep it (canonical choice).
-    avg_hrv = valid_hrv_ms(payload.get("average_hrv"))
-    if avg_hrv and start and end:
-        mid = start + (end - start) / 2
-        from sqlalchemy import and_
-
-        dupe = (
-            await session.scalars(
-                select(HrvReading).where(
-                    and_(
-                        HrvReading.user_id == user_id,
-                        HrvReading.timestamp == mid,
-                        HrvReading.origin == "oura",
-                    )
-                )
-            )
-        ).first()
-        if dupe is None:
-            session.add(
-                HrvReading(
-                    user_id=user_id,
-                    timestamp=mid,
-                    hrv_ms=avg_hrv,
-                    reading_type="overnight_avg",
-                    origin="oura", method="RMSSD",
-                )
-            )
-            stats.hrv_upserted += 1
-
-
-async def _upsert_sleep_period(session, raw, payload, tz, stats) -> None:
-    """Higher-resolution staging (sleep.periods). Kept in source_metrics for
-    the hypnogram when it carries stage samples our summary rows lack."""
-    # The v2 /sleep collection's stage array is redundant with daily_sleep's
-    # canonical split for now; raw-first law already keeps it in raw_ingest.
-    stats.biometrics_upserted += 0  # accounted at daily_sleep level
-
-
-async def _upsert_heartrate(session, raw, payload, stats) -> None:
-    """Continuous HR items ({"items": [...], "timestamp": ...}) — no canonical
-    table for daytime continuous HR yet; raw-first keeps them queryable."""
-    stats.biometrics_upserted += 0
-
-
-async def _upsert_personal(session, raw, payload, stats) -> None:
-    user_id = getattr(raw, "user_id")
-    height_m = _float(payload.get("height"))
-    weight_kg = valid_weight_kg(payload.get("weight"))
-    if not (height_m or weight_kg):
-        return
-    # P-12 audit: no datetime.now() — use the raw row's fetched_at (the
-    # trustworthy measurement timestamp). Drop when absent (backfill-safety).
-    fetched = getattr(raw, "fetched_at", None)
-    if fetched is None:
-        logger.warning(
-            "oura personal_info raw row %s: no fetched_at — dropping",
-            getattr(raw, "id", "?"),
-        )
-        return
-    day = fetched.astimezone(ZoneInfo("UTC")).date()
-    existing = (
-        await session.scalars(
-            select(DailyBiometric).where(
-                DailyBiometric.user_id == user_id, DailyBiometric.date == day
-            )
-        )
-    ).first()
-    if existing is None:
-        existing = DailyBiometric(user_id=user_id, date=day)
+        existing = SleepSession(user_id=raw.user_id, origin="oura", start_time=start)
         session.add(existing)
-    if weight_kg and existing.weight_kg is None:
-        set_biometric(existing, "weight_kg", weight_kg, "oura")
-    merged = dict(existing.source_metrics or {})
-    merged["oura"] = {**merged.get("oura", {}), "height_m": height_m}
-    existing.source_metrics = merged
-    stats.biometrics_upserted += 1
+    existing.local_date = end.astimezone(tz).date()
+    existing.end_time, existing.total_sleep_s = end, total
+    for key, value in stages.items():
+        setattr(existing, key, value)
+    existing.sleep_score = score
+    existing.respiration_avg = valid_respiration_bpm(payload.get("average_breath"))
+    existing.restlessness = None
+    existing.source_metrics = {"oura": {"id": ident, "provider_day": str(provider_day), "type": period_type,
+        "efficiency": payload.get("efficiency"), "latency_s": _int(payload.get("latency")),
+        "sleep_average_hr": payload.get("average_heart_rate"), "sleep_minimum_hr": payload.get("lowest_heart_rate"),
+        "ring_id": payload.get("ring_id")}}
+    stats.sleep_upserted += 1
+    context = {"provider": "oura", "api_version": "v2", "feed": "sleep", "provider_day": str(provider_day),
+               "reading_context": "overnight" if period_type == "long_sleep" else "sleep_period",
+               "aggregation_window": "provider_sleep_period", "device_id": payload.get("ring_id")}
+    await _observation(session, raw, tz, "sleep_duration", total / 3600 if total is not None else None, end, "sleep:" + ident, context)
+    await _observation(session, raw, tz, "respiration", float(existing.respiration_avg) if existing.respiration_avg is not None else None, end, "sleep:" + ident, context)
+    if period_type != "long_sleep":
+        await session.execute(delete(Observation).where(Observation.user_id == raw.user_id, Observation.origin == "oura", Observation.source_record_id == "sleep:" + ident, Observation.metric == "hrv_overnight_rmssd"))
+    if period_type == "long_sleep":
+        value = valid_hrv_ms(payload.get("average_hrv"))
+        await _observation(session, raw, tz, "hrv_overnight_rmssd", value, end, "sleep:" + ident, {**context, "hrv_method": provider_semantics("oura", "hrv").method})
+        reading = await session.scalar(select(HrvReading).where(HrvReading.user_id == raw.user_id, HrvReading.origin == "oura", HrvReading.timestamp == end))
+        if value is not None:
+            if reading is None:
+                session.add(HrvReading(user_id=raw.user_id, timestamp=end, origin="oura", method=provider_semantics("oura", "hrv").method, reading_type="overnight_avg", hrv_ms=value))
+            else:
+                reading.hrv_ms = value
+            stats.hrv_upserted += 1
+        elif reading is not None:
+            await session.delete(reading)
 
 
-def _day_from(value: str | None) -> date:
-    if not value:
-        raise NormalizationError("missing day field")
-    return date.fromisoformat(value[:10])
+async def _upsert_heartrate(session, raw, payload, stats):
+    await update_feed(session, raw.user_id, "oura", "continuous_hr", "not_supported", raw.fetched_at)
+    feed = await session.scalar(select(FeedState).where(FeedState.user_id == raw.user_id, FeedState.provider == "oura", FeedState.feed == "continuous_hr"))
+    feed.details = {"storage": "raw_only", "reason": "No continuous wellness HR display is implemented; sleep HR is not resting HR."}
+
+
+async def _upsert_personal(session, raw, payload, stats):
+    # The official schema has no weight measurement date. Retrieval time is
+    # not a measurement time, so preserve this undated profile only in raw.
+    await update_feed(session, raw.user_id, "oura", "personal_info", "available", raw.fetched_at)
+    feed = await session.scalar(select(FeedState).where(FeedState.user_id == raw.user_id, FeedState.provider == "oura", FeedState.feed == "personal_info"))
+    feed.details = {"storage": "raw_only", "measurement_context": "undated_profile"}

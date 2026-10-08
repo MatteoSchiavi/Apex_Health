@@ -543,6 +543,7 @@ async def test_sleep_stages_from_raw_payload(
     end = start + timedelta(hours=8)
     session_row = SleepSession(
         user_id=user.id,
+        origin="garmin",
         local_date=night_date,
         start_time=start,
         end_time=end,
@@ -555,10 +556,11 @@ async def test_sleep_stages_from_raw_payload(
     )
     db_session.add(session_row)
     levels = [
-        {"activityLevel": {"value": 1}, "startGMT": "2026-09-23T21:30:00.0", "endGMT": "2026-09-23T22:15:00.0"},
-        {"activityLevel": {"value": 2}, "startGMT": "2026-09-23T22:15:00.0", "endGMT": "2026-09-23T23:00:00.0"},
-        {"activityLevel": {"value": 3}, "startGMT": "2026-09-23T23:00:00.0", "endGMT": "2026-09-24T00:05:00.0"},
+        {"activityLevel": {"value": code}, "startGMT": (start + timedelta(minutes=45 * index)).replace(tzinfo=None).isoformat(), "endGMT": (start + timedelta(minutes=45 * (index + 1))).replace(tzinfo=None).isoformat()}
+        for index, code in enumerate((1, 2, 3))
     ]
+    db_session.add(RawIngest(user_id=user.id, source="garmin", payload_type="sleep",
+                            raw_json={"dailySleepDTO": {"sleepEndTimestampGMT": "malformed"}}))
     db_session.add(
         RawIngest(
             user_id=user.id,
@@ -583,6 +585,8 @@ async def test_sleep_stages_from_raw_payload(
     segs = body["segments"]
     assert segs is not None and len(segs) == 3
     assert [s["stage"] for s in segs] == ["deep", "light", "rem"]
+    assert datetime.fromisoformat(segs[0]["t_start"]) == start
+    assert segs[0]["t_start"].endswith("+00:00")
 
 
 async def test_sleep_stages_null_when_no_raw_timeline(

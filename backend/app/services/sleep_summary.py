@@ -35,7 +35,7 @@ def awake_seconds(payload, start, end):
 
 async def recorded_awake_totals(session, nights):
     """One bounded query for exact source starts; never borrow another night's data."""
-    starts = {str(round(n.start_time.timestamp() * 1000)): n for n in nights}
+    starts = {str(round(n.start_time.timestamp() * 1000)): n for n in nights if n.origin == "garmin"}
     if not starts:
         return {}
     rows = (await session.scalars(select(RawIngest).where(

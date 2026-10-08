@@ -361,6 +361,7 @@ async def entries(
         "privacy_preferences",
         "notification_preferences",
         "metric_settings",
+        "metric_favorites",
     }:
         query = query.where(AthleteEntry.date >= day - timedelta(days=days - 1))
     if kind:
@@ -379,6 +380,11 @@ async def create_entry(
 ):
     await evidence.scope_lock(session, user.id, "changes")
     item = payload.entry
+    if item.kind == "metric_favorites":
+        from app.metrics.registry import metric_catalog
+
+        if len(set(item.metrics)) != len(item.metrics) or not set(item.metrics) <= metric_catalog().keys():
+            raise HTTPException(422, "Choose distinct, recognized metrics")
     if item.kind == "observation_annotation" and not await session.scalar(
         select(Observation.id).where(
             Observation.user_id == user.id, Observation.id == item.observation_id

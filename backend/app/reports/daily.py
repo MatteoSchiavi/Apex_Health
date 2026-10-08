@@ -1,9 +1,8 @@
 """Templated daily summaries (MASTER_SPEC §9.2, §19).
 
 Daily summaries are TEMPLATED — no LLM call, $0.00 (§9.2 "daily summaries
-are templated (no LLM call)"). The same builder feeds both the scheduled
-ai_reports 'daily' row and any chat-side rendering, so the daily summary has
-exactly one implementation (§8.2). `model_used` stays NULL on templated rows
+are templated (no LLM call)"). This builder feeds the scheduled
+ai_reports 'daily' row. `model_used` stays NULL on templated rows
 (§6.4).
 
 Cadence: §19 does not schedule the daily summary explicitly (the table
@@ -69,24 +68,27 @@ async def build_daily_summary(session, user: User, day: date) -> DailySummary | 
     sleep = await sleep_on_local_date(session, user.id, day)
 
     tz = ZoneInfo(user.timezone)
-    lines = [f"# Daily report — {day} ({tz.key})", ""]
+    italian = user.locale == "it"
+    def text(en, it):
+        return it if italian else en
+    lines = [f"# {text('Daily report', 'Report giornaliero')} — {day} ({tz.key})", ""]
     lines.append(
-        f"- Readiness {_fmt(feature.readiness_score)} · "
-        f"Recovery {_fmt(feature.recovery_score)} · "
-        f"Strain {_fmt(feature.strain_score, 1)}"
+        f"- {text('Readiness', 'Prontezza')} {_fmt(feature.readiness_score)} · "
+        f"{text('Recovery', 'Recupero')} {_fmt(feature.recovery_score)} · "
+        f"{text('Strain', 'Sforzo')} {_fmt(feature.strain_score, 1)}"
     )
     lines.append(
         f"- ACWR {_fmt(feature.acwr, 2)} "
-        f"(acute {_fmt(feature.training_load_acute)} · "
-        f"chronic {_fmt(feature.training_load_chronic)})"
+        f"({text('acute', 'acuto')} {_fmt(feature.training_load_acute)} · "
+        f"{text('chronic', 'cronico')} {_fmt(feature.training_load_chronic)})"
     )
     if sleep:
-        sleep_line = f"- Sleep {_fmt_duration(sleep['total_sleep_s'])}"
+        sleep_line = f"- {text('Sleep', 'Sonno')} {_fmt_duration(sleep['total_sleep_s'])}"
         if sleep["sleep_score"] is not None:
-            sleep_line += f" · score {_fmt(sleep['sleep_score'])}"
+            sleep_line += f" · {text('score', 'punteggio')} {_fmt(sleep['sleep_score'])}"
         lines.append(sleep_line)
     if feature.hrv_deviation_from_baseline is not None:
-        lines.append(f"- HRV {_fmt(feature.hrv_deviation_from_baseline, 1)}% vs baseline")
+        lines.append(f"- HRV {_fmt(feature.hrv_deviation_from_baseline, 1)}% {text('vs baseline', 'rispetto alla baseline')}")
     if activities:
         parts = []
         for a in activities:
@@ -94,14 +96,14 @@ async def build_daily_summary(session, user: User, day: date) -> DailySummary | 
             if a["distance_m"]:
                 part += f" ({a['distance_m'] / 1000:.1f} km)"
             parts.append(part)
-        lines.append("- Training: " + " · ".join(parts))
+        lines.append(text("- Training: ", "- Allenamento: ") + " · ".join(parts))
     else:
-        lines.append("- Training: none on this day.")
+        lines.append(text("- Training: none on this day.", "- Allenamento: nessuno in questo giorno."))
 
     alerts = await open_alerts(session, user.id)
     if alerts:
         lines.append("")
-        lines.append("## Open alerts")
+        lines.append(text("## Open alerts", "## Avvisi aperti"))
         for a in alerts:
             lines.append(f"- [{a.type}] {a.message}")
 
@@ -109,7 +111,7 @@ async def build_daily_summary(session, user: User, day: date) -> DailySummary | 
     due = [g for g in gear if (g["usage_pct"] or 0) >= 100]
     if due:
         lines.append("")
-        lines.append("## Gear service due")
+        lines.append(text("## Gear service due", "## Manutenzione attrezzatura necessaria"))
         for g in due:
             lines.append(f"- {g['name']} ({g['gear_type']})")
 
@@ -141,6 +143,9 @@ async def upsert_daily_report(
     upsert on (user, report_type, period_start) — a re-run refreshes the
     row instead of duplicating it)."""
     async with sessionmaker() as session:
+        from app.services.evidence import scope_lock
+
+        await scope_lock(session, user.id, "changes")
         summary = await build_daily_summary(session, user, day)
         if summary is None:
             raise ValueError(f"no daily features for user {user.id} on {day}")

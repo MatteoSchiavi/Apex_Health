@@ -40,6 +40,9 @@ class FixtureAgentLLMClient:
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
+    async def aclose(self):
+        self.closed = True
+
     async def complete(
         self,
         messages: list[dict[str, Any]],

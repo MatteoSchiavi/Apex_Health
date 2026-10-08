@@ -102,10 +102,16 @@ def extract_sleep_stage_segments(payload: dict[str, Any]) -> list[dict] | None:
         if stage is None:
             continue
         try:
-            from datetime import datetime
+            from datetime import UTC, datetime
 
             t0 = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
             t1 = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+            # These are explicitly GMT fields. Garmin frequently omits the
+            # offset; a naive ISO string would otherwise use the browser zone.
+            if t0.tzinfo is None:
+                t0 = t0.replace(tzinfo=UTC)
+            if t1.tzinfo is None:
+                t1 = t1.replace(tzinfo=UTC)
         except ValueError:
             continue
         if t1 <= t0:

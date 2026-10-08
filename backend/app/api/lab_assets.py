@@ -590,38 +590,9 @@ async def erase_source(
     await session.execute(
         text("DELETE FROM raw_ingest WHERE user_id=:owner AND source=:source"), params
     )
-    await session.execute(
-        text(
-            "DELETE FROM embeddings WHERE source_table='ai_reports' AND source_id IN (SELECT id FROM ai_reports WHERE user_id=:owner)"
-        ),
-        params,
-    )
-    for table in (
-        "analysis_results",
-        "ai_reports",
-        "daily_features",
-        "discipline_features",
-        "weekly_rollups",
-        "monthly_rollups",
-        "decision_records",
-        "lab_notifications",
-    ):
-        await session.execute(text(f"DELETE FROM {table} WHERE user_id=:owner"), params)
-    await session.execute(
-        text(
-            "DELETE FROM agent_tool_calls WHERE user_id=:owner OR session_id IN (SELECT id FROM ai_chat_sessions WHERE user_id=:owner)"
-        ),
-        params,
-    )
-    await session.execute(
-        text(
-            "DELETE FROM ai_chat_messages WHERE session_id IN (SELECT id FROM ai_chat_sessions WHERE user_id=:owner)"
-        ),
-        params,
-    )
-    await session.execute(
-        text("DELETE FROM ai_chat_sessions WHERE user_id=:owner"), params
-    )
+    from app.services.derived_data import clear_derived_health_data
+
+    await clear_derived_health_data(session, user.id)
     await session.execute(
         text(
             "UPDATE change_drafts SET status='rejected' WHERE user_id=:owner AND status='draft'"

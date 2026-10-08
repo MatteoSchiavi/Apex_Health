@@ -70,6 +70,10 @@ def _error_class(
             return "fetch_failed"
         if feed.availability == "partial":
             return "normalization_pending"
+        # A provider-level failed attempt does not mean every independently
+        # fetched metric failed. The account summary carries that error.
+        if feed.availability in {"available", "complete", "not_measured"}:
+            return None
     if integration is not None:
         if integration.status == "revoked":
             return "credentials_revoked"

@@ -122,7 +122,9 @@ async def test_nightly_is_idempotent(db_session: AsyncSession):
     assert float(row_two.acwr) == float(acwr_before)
 
     count = len((await db_session.scalars(select(DailyFeature))).all())
-    assert count == 1
+    assert count == 28
+    assert await fetch_daily(db_session, user.id, date(2025, 3, 15)) is not None
+    assert await fetch_daily(db_session, user.id, date(2025, 3, 14)) is None
 
 
 async def test_recompute_range_restores_corrected_values(db_session: AsyncSession):

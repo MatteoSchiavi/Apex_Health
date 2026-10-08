@@ -219,11 +219,13 @@ async def dashboard_overview(
     )
 
     # --- today's activities (compact cards) ------------------------------------
+    activity_end = anchor if explicit_date else now.date()
+    activity_start = activity_end - timedelta(days=WINDOW_DAYS - 1)
     acts = (
         await session.execute(
             select(Activity, Discipline.name)
             .outerjoin(Discipline, Activity.discipline_id == Discipline.id)
-            .where(Activity.user_id == user.id, Activity.local_date == anchor)
+            .where(Activity.user_id == user.id, Activity.local_date.between(activity_start, activity_end))
             .order_by(Activity.start_time.desc())
         )
     ).all()
@@ -231,6 +233,7 @@ async def dashboard_overview(
         {
             "id": a.id,
             "start_time": a.start_time.isoformat(),
+            "local_date": a.local_date.isoformat(),
             "discipline": dname,
             "duration_s": a.duration_s,
             "distance_m": _fl(a.distance_m),
@@ -279,6 +282,10 @@ async def dashboard_overview(
 
     integration_status = await integrations_overview(session, user.id)
     alerts = await open_alerts(session, user.id)
+    # Operational alerts can outlive old releases that did not resolve them.
+    # Only show a sync alert while that provider still has a failing account.
+    recovered = [i["provider"].lower() for i in integration_status if i["status"] == "active" and i["consecutive_failures"] == 0 and i["last_synced_at"]]
+    alerts = [a for a in alerts if a.type != "sync_failure" or not any(a.message.lower().startswith(p + " sync failed") for p in recovered)]
 
     rhr = biometric.resting_hr if biometric else None
     spo2 = _fl(biometric.spo2_avg) if biometric else None
@@ -316,10 +323,63 @@ async def dashboard_overview(
         chronic_load=_fl(feature.training_load_chronic) if feature else None,
         acwr=_fl(feature.acwr) if feature else None,
         training_load_7d=_fl(feature.training_load_acute) if feature else None,
-        activities=activity_cards,
+        activities=[a for a in activity_cards if a["local_date"] == anchor.isoformat()],
+        recent_activities=activity_cards,
         sleep=sleep_block,
         integration_status=integration_status,
         alerts=[
             {"type": a.type, "severity": a.severity, "message": a.message} for a in alerts
         ],
     )
+
+
+def weekly_streak(days: set, anchor) -> tuple[int, int]:
+    """Monday-based weekly goal; an unfinished current week has until Sunday."""
+    monday = anchor - timedelta(days=anchor.weekday())
+    weeks = {day - timedelta(days=day.weekday()) for day in days if day <= anchor}
+    current_count = sum(monday <= day <= anchor for day in days)
+    cursor = monday if monday in weeks else monday - timedelta(days=7)
+    streak = 0
+    while cursor in weeks:
+        streak += 1
+        cursor -= timedelta(days=7)
+    return streak, current_count
+
+
+@router.get("/activity-calendar")
+async def activity_calendar(
+    end: str | None = None,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from datetime import date as local_date
+    from sqlalchemy import func
+
+    today = datetime.now(ZoneInfo(user.timezone)).date()
+    try:
+        anchor = min(local_date.fromisoformat(end), today) if end else today
+    except ValueError as exc:
+        raise HTTPException(422, "end must be YYYY-MM-DD") from exc
+    monday = anchor - timedelta(days=anchor.weekday())
+    start = monday - timedelta(weeks=51)
+    finish = monday + timedelta(days=6)
+    rows = (await session.execute(
+        select(Activity.local_date, func.count(), func.sum(Activity.duration_s))
+        .where(Activity.user_id == user.id, Activity.local_date <= anchor, Activity.duration_s > 0)
+        .group_by(Activity.local_date)
+    )).all()
+    recorded = {day: (count, seconds) for day, count, seconds in rows}
+    peak = max((seconds for day, _, seconds in rows if start <= day <= anchor), default=0)
+    streak, active_days = weekly_streak(set(recorded), anchor)
+    return {
+        "start": str(start), "end": str(finish), "as_of": str(anchor),
+        "weekly_streak": streak, "week_active_days": active_days,
+        "intensity_basis": "recorded_duration_relative_to_52_week_max",
+        "days": [
+            {"date": str(day), "count": recorded.get(day, (0, 0))[0],
+             "duration_s": recorded.get(day, (0, 0))[1],
+             "intensity": recorded.get(day, (0, 0))[1] / peak if peak else 0,
+             "future": day > anchor}
+            for day in (start + timedelta(days=i) for i in range(364))
+        ],
+    }
