@@ -4,6 +4,9 @@ Updated 8 October 2026. This supplements the dated alpha audit; it describes
 the `version-completion` changes and separates repository work from checks on
 the owner's actual installation. No production health account or server was
 accessed. Synthetic tests do not establish live-provider or device support.
+The three subsequently supplied original Garmin strength FIT recordings now
+have separate import and browser verification; see
+[GARMIN_FIT_VERIFICATION.md](GARMIN_FIT_VERIFICATION.md).
 
 ## Implemented in this change
 
@@ -122,7 +125,7 @@ server configuration is missing, not that your wearable has failed.
 | Apple export ZIP | Upload your actual iPhone export; test duplicate upload, timezone, overlaps and deletion. No vendor key. Manual snapshot; SDNN is not converted to overnight RMSSD. |
 | Native HealthKit | Mac/Xcode, Apple signing team, entitlements, HTTPS API, iPhone permissions and one-use pairing. Run Swift tests and physical-device initial/delta/delete/replay/revoke/background checks. No signed native build or real background delivery was tested here. |
 | Garmin watch | Build in Connect IQ and run on the actual watch. Read routes exist; `/watch/v3/day` and `/watch/events` write contracts remain absent. Set logs, feedback and other queued watch actions must be excluded from the release or separately implemented/tested. Read tokens must not gain write permission. |
-| Original FIT/CSV | Supply the two actual gym FIT recordings and other chosen export formats. Synthetic CRC-valid FIT verified ACTIVE sets, unit scaling and normalized presentation; it does not prove your files parse. Unknown exercise/weight labels require evidence-based aliases or an explicit unit contract. |
+| Original FIT/CSV | Three supplied original Garmin gym FIT recordings were verified through disposable-database import, activity API projections and Chromium body-map filtering. Deploy the parser fix, then re-upload these originals to repair old projections without duplicates. Unknown watch detections remain unspecified; four timed records without repetitions in the third file remain outside the rep-based gym view. Other export formats still require their own real-file checks. |
 | Chat / scheduled AI reports | Choose/configure DeepSeek, GLM or explicit supported tier endpoints; verify powerful-tier availability, access caps, grounded real answers, budgets and an actual scheduled report. Keys alone do not establish model output correctness. See [COACH_SETUP.md](COACH_SETUP.md). |
 | Notifications | Configure only desired owner email/Telegram delivery and test it yourself. Channel setup is separate from wearable sync. No outbound message was sent in this work. |
 | Weather | Verify selected location and external weather service availability if enabled. Historical/weather context availability is separate from recorded training evidence. |
@@ -149,8 +152,9 @@ server configuration is missing, not that your wearable has failed.
   lexical retrieval; legacy embeddings of unknown ownership stay quarantined.
 - No rewriting of proprietary scores as equivalent metrics. Apex estimates
   remain descriptive heuristics rather than validated clinical predictions.
-- No claim that the two user recordings, real model output, physical devices,
-  deployed 03:00 job or home-server backup operation were verified here.
+- The three user recordings now have local verification, documented separately.
+  No claim that real model output, physical devices, deployed 03:00 job or
+  home-server backup operation were verified here.
 
 ## Validation record
 
@@ -167,8 +171,9 @@ Local verification:
 - TypeScript/Vite build, **1,450 EN/IT keys** in parity and service-worker
   regression passed. Deterministic agent runtime replay: **26/26 passed**.
 - Backend tests used disposable PostgreSQL/Redis; provider requests were
-  mocked. FIT parsing used a real CRC-valid synthetic file, not the two
-  unavailable user recordings. Overview screenshots were visually inspected
+  mocked. This initial validation used a CRC-valid synthetic FIT file; the
+  three subsequently supplied originals have the separate verification below.
+  Overview screenshots were visually inspected
   at desktop and mobile widths. No live model/device/host proof is implied.
 
 See the change's pull request and CI for the exact committed revision and

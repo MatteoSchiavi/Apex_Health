@@ -122,7 +122,10 @@ def fit_exercises(content, start=None, end=None):
                 continue
             row = {f.name: f.value for f in frame.fields if f.value is not None}
             if frame.name == "exercise_title":
-                titles[row.get("message_index")] = row.get("wkt_step_name")
+                # Exercise-title indices are a catalogue, not workout-step
+                # indices. Garmin exports may order these independently.
+                title_category = row.get("exercise_category")
+                titles[(title_category, row.get("exercise_name"))] = row.get("wkt_step_name")
             else:
                 sets.append(row)
             if len(sets) > 10000 or len(titles) > 10000:
@@ -142,11 +145,18 @@ def fit_exercises(content, start=None, end=None):
         subtypes = row.get("category_subtype", ())
         subtypes = subtypes if isinstance(subtypes, (list, tuple)) else [subtypes]
         category = categories[0] if categories else None
+        # fitdecode decodes scalar enums, but leaves enum arrays numeric.
+        # The first entry is the watch's selected detection; alternatives
+        # must not replace an unknown selection or add extra exercises.
+        if isinstance(category, int):
+            category = profile.FIELD_TYPES["exercise_category"].enum.get(category)
         subtype = subtypes[0] if subtypes else None
         field = profile.FIELD_TYPES.get(str(category) + "_exercise_name")
         canonical = field.enum.get(subtype) if field and field.enum else None
         # Recorded category is stronger evidence than a custom workout note.
-        label = canonical or titles.get(row.get("wkt_step_index")) or str(category or "Unknown exercise")
+        label = canonical or titles.get((category, subtype))
+        if not label:
+            label = category.replace("_", " ").title() if category not in (None, "unknown") else "Unknown exercise"
         info = identify(label, CATEGORY_GROUPS.get(category))
         item = exercises.setdefault((info["name"], info["muscle_group"]), {**info, "recorded_sets": []})
         weight = row.get("weight")  # fitdecode has already applied the FIT kg scale.
