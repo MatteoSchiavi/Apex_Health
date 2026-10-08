@@ -130,6 +130,7 @@ function ProfileSection({ me }: { me: Me }) {
           placeholder="Europe/Rome"
           className="md:col-span-2"
         />
+        <p className="text-[12px] text-muted md:col-span-2">{t("physiology.profile_note")}</p>
         <div className="md:col-span-2">
           <Button type="submit" disabled={save.isPending}>
             {t("common.save")}

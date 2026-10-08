@@ -14,6 +14,7 @@ import {
 } from "../../components/kit";
 import { localDay } from "../../components/data";
 import { useUi } from "../../app/stores/ui";
+import { LabReferenceRanges, LabReferenceInterval, readLabReferenceRanges } from "../../components/LabReferenceRanges";
 interface Panel {
   id: number;
   panel_date: string;
@@ -28,14 +29,15 @@ interface Panel {
   next_eligible_date: string | null;
   source: string | null;
   notes: string | null;
+  markers?: { marker: string; value: number | null; unit: string | null; ref_low: number | null; ref_high: number | null }[];
 }
 const MARKERS = [
   { key: "hemoglobin", unit: "g/dL" },
   { key: "hematocrit", unit: "%" },
   { key: "ferritin", unit: "ng/mL" },
-  { key: "iron", unit: "" },
-  { key: "wbc", unit: "" },
-  { key: "plt", unit: "" },
+  { key: "iron", unit: "µg/dL" },
+  { key: "wbc", unit: "10³/µL" },
+  { key: "plt", unit: "10³/µL" },
 ] as const;
 
 interface LabFile {
@@ -141,11 +143,12 @@ export function LabsPanel() {
     queryFn: () => api.get<Panel[]>("/labs"),
   });
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (form: FormData) =>
       api.post("/labs", {
         panel_date: date,
         panel_type: type,
         notes: notes || null,
+        reference_ranges: readLabReferenceRanges(form),
         ...Object.fromEntries(
           MARKERS.map((m) => [
             m.key,
@@ -174,9 +177,9 @@ export function LabsPanel() {
       {adding && (
         <Card>
           <form
-            onSubmit={(e: FormEvent) => {
+            onSubmit={(e: FormEvent<HTMLFormElement>) => {
               e.preventDefault();
-              save.mutate();
+              save.mutate(new FormData(e.currentTarget));
             }}
             className="grid gap-4 md:grid-cols-2"
           >
@@ -214,6 +217,7 @@ export function LabsPanel() {
               onChange={setNotes}
               className="md:col-span-2"
             />
+            <LabReferenceRanges />
             <div className="md:col-span-2">
               <Button type="submit" disabled={save.isPending}>
                 {t("common.save")}
@@ -254,6 +258,8 @@ export function LabsPanel() {
                       {m.unit}
                     </span>
                   </p>
+                  {panel.markers?.filter(marker => marker.marker === m.key).map((marker, i) =>
+                    <LabReferenceInterval key={i} low={marker.ref_low} high={marker.ref_high} unit={marker.unit} />)}
                 </div>
               ))}
             </div>

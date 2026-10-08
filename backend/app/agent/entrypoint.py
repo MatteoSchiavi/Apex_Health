@@ -19,12 +19,13 @@ from app.models.chat import AiChatMessage, AiChatSession
 from app.models.user import AuthCredential, User
 from app.services.decisions import daily_decision
 from app.services.evidence import coverage, scope_lock, snapshot_revision
+from app.metrics.physiology import PHYSIOLOGY_GUIDANCE, physiological_context
 
 SESSION_IDLE_MINUTES = 30
 HISTORY_TURNS = 6
 HISTORY_CHAR_CAP = 800
 HARNESS_VERSION = "apex-harness-v4"
-SYSTEM_PROMPT = """You are Apex Health's grounded analyst and planning interface for one athlete.
+SYSTEM_PROMPT = PHYSIOLOGY_GUIDANCE + "\n" + """You are Apex Health's grounded analyst and planning interface for one athlete.
 Use only the authenticated server snapshot and typed tools as measured evidence.
 Imported scores are provider estimates. Registered analytics are descriptive calculations,
 not diagnoses or validated injury/performance predictions. ACWR is a load ratio, not a
@@ -131,6 +132,7 @@ async def _build_snapshot(session, user_id, now):
         "_local_today": now.astimezone(tz).date(),
         "_timezone": tz.key,
         "profile": {
+            **physiological_context(user, now.astimezone(tz).date()),
             "timezone": tz.key,
             "local_today": str(now.astimezone(tz).date()),
             "locale": user.locale,

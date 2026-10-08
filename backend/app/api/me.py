@@ -55,6 +55,9 @@ async def update_me(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MeOut:
+    from app.services.evidence import scope_lock
+    await scope_lock(session, user.id, "changes")
+    await session.refresh(user)
     cred = await session.get(AuthCredential, user.id)
     if cred is None:
         raise CREDENTIALS_EXCEPTION

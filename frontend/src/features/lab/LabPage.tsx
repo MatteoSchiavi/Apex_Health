@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { api } from "../../app/api";
+import { LabReferenceRanges, readLabReferenceRanges } from "../../components/LabReferenceRanges";
 import {
   Badge,
   Button,
@@ -605,7 +606,7 @@ function Labs() {
       notes: string | null;
       markers: {
         marker: string;
-        value: number;
+        value: number | null;
         unit: string | null;
         ref_low: number | null;
         ref_high: number | null;
@@ -628,6 +629,7 @@ function Labs() {
                 panel_type: str(f, "type"),
                 ferritin: num(f, "ferritin"),
                 hemoglobin: num(f, "hemoglobin"),
+                reference_ranges: readLabReferenceRanges(f),
                 notes: str(f, "notes"),
               },
             })
@@ -659,6 +661,7 @@ function Labs() {
             min={0}
           />
           <Field name="notes" type="textarea" label={t("lab.notes")} />
+          <LabReferenceRanges markers={["ferritin", "hemoglobin"]} />
         </Form>
       </Card>
       <Card>
@@ -700,8 +703,8 @@ function Labs() {
                     </dt>
                     <dd
                       className={
-                        (m.ref_low != null && m.value < m.ref_low) ||
-                        (m.ref_high != null && m.value > m.ref_high)
+                        m.value != null && ((m.ref_low != null && m.value < m.ref_low) ||
+                        (m.ref_high != null && m.value > m.ref_high))
                           ? "text-warning"
                           : ""
                       }

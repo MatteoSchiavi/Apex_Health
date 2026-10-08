@@ -1496,7 +1496,8 @@
       "hydration": "Idratazione",
       "measurement_context": "Orario della misurazione, vestibilità del dispositivo, tempo di utilizzo e trattamento specifico della fonte",
       "sleep_timing": "Orario del sonno e modalità con cui il dispositivo identifica la sessione",
-      "load_method": "Metodo di carico compatibile e registrazioni di attività disponibili"
+      "load_method": "Metodo di carico compatibile e registrazioni di attività disponibili",
+      "hormonal_context": "Il contesto ormonale, incluso il ciclo mestruale quando pertinente, può influenzare HRV e frequenza cardiaca a riposo. È una possibile influenza, non una causa dedotta."
     },
     "actions": {
       "resting_hr": "Regolarità del sonno, recupero adeguato dall’allenamento e idratazione regolare sono fattori su cui puoi agire. Questo valore da solo non identifica una causa e non giustifica tentativi di abbassare la frequenza cardiaca.",
@@ -1528,7 +1529,8 @@
       "acwr_not_target": "L’ACWR non è una soglia personale di sicurezza convalidata né una prescrizione. Il solo rapporto non può prevedere un infortunio o stabilire l’allenamento appropriato.",
       "composite_inputs_unavailable": "È una stima euristica, non una misura clinica. Gli input e i pesi effettivi per questa data non sono conservati, quindi questa spiegazione non può identificare cosa abbia determinato il punteggio.",
       "estimate_not_clinical": "Considerala una stima descrittiva, non una diagnosi medica o una probabilità calibrata di una condizione di salute.",
-      "measured_baseline_deviation": "Questo confronto derivato dipende dalle letture disponibili e dalla copertura della baseline. Non è una soglia clinica né una diagnosi."
+      "measured_baseline_deviation": "Questo confronto derivato dipende dalle letture disponibili e dalla copertura della baseline. Non è una soglia clinica né una diagnosi.",
+      "sex_calibration": "Questa euristica non ha una calibrazione validata specifica per sesso o gravidanza. Non stima la fase del ciclo né corregge un ciclo mestruale non registrato."
     },
     "calculation_date": "Calcolo del {{date}}",
     "registry": {
@@ -1685,5 +1687,13 @@
     "unstar": "Rimuovi {{metric}} dai preferiti",
     "favorites_empty": "Aggiungi metriche dai gruppi Salute o Allenamento e recupero per creare la vista rapida.",
     "load_missing": "Il carico richiede dati di carico registrati o sufficienti dati di frequenza cardiaca. Controlla Salute dei dati e completa il profilo se mancano informazioni."
+  },
+  "physiology": {
+    "lab_ranges": "Intervalli di riferimento del laboratorio (facoltativi)",
+    "lab_ranges_note": "Copia gli intervalli del tuo referto nelle stesse unità del risultato. Possono dipendere da sesso, età e gravidanza. Lasciarli vuoti non presume un intervallo normale maschile o femminile.",
+    "low": "Limite inferiore",
+    "high": "Limite superiore",
+    "recorded_range": "Intervallo riportato dal laboratorio",
+    "profile_note": "Usato per la sagoma del corpo e il contesto fisiologico. Il sesso da solo non determina fase mestruale, gravidanza o stato ormonale."
   }
 }

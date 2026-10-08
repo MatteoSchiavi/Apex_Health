@@ -289,6 +289,7 @@ export interface ScientificMetricDefinition {
   validation_level: string; formula_version: string | null; formula: string;
   minimum_data_requirements: string; missing_data_behavior: string;
   limitations: string[]; prohibited_claims: string[];
+  sex_handling?: string;
 }
 export interface CalculationProvenance {
   metric: string; value: number; as_of: string; formula_version: string;

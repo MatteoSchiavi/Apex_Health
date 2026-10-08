@@ -36,6 +36,7 @@ class MetricDefinition:
     direction: str = "band"
     display_type: str = "trend"
     catalog: bool = True
+    sex_handling: str = "Shared descriptive arithmetic; no sex-specific coefficient or population normal range."
 
     @property
     def semantic_type(self) -> str:
@@ -69,6 +70,8 @@ def _derived(key, name, column, unit, formula, inputs, *, kind="derived", catego
         limitations=tuple(limitations) + (_HEURISTIC_LIMITS if kind == "heuristic" else ("Derived arithmetic is descriptive; method compatibility, capture coverage and sensor quality limit interpretation.",)),
         allowed_claims=("Describes the persisted inputs under the stated formula and method",),
         prohibited_claims=_NO_CLINICAL, model=model, column=column, direction=direction, catalog=catalog,
+        sex_handling=("Shared heuristic using personal inputs; no validated male/female, cycle or pregnancy calibration."
+                      if kind == "heuristic" else "Shared descriptive arithmetic; no sex-specific coefficient or population normal range."),
     )
 
 
@@ -89,6 +92,8 @@ def _observed(key, name, model, column, unit, *, provider=False, scale=1., direc
         allowed_claims=("Reports an observed recorded value",), prohibited_claims=_NO_CLINICAL +
                       (("Equivalent to an Apex score", "Interchangeable across proprietary provider scales") if provider else ()),
         model=model, column=column, scale=scale, direction=direction, display_type=display_type, catalog=catalog,
+        sex_handling=("Retain vendor estimate; vendor use of sex is unknown to Apex. Do not recalculate or apply a sex multiplier."
+                      if provider else "Retain recorded measurement; personal history is not a sex-specific clinical normal range."),
     )
 
 

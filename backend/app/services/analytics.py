@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from statistics import median
 from zoneinfo import ZoneInfo
+from app.metrics.physiology import physiological_context
 from sqlalchemy import select
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream, Discipline
 from app.models.coach import UserEvent
@@ -150,6 +151,7 @@ async def constraints(session, user, day):
     return {
         "date": str(day),
         "timezone": user.timezone,
+        "physiological_context": physiological_context(user, day),
         "events": [
             {
                 "id": e.id,

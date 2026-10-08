@@ -1496,7 +1496,8 @@
       "hydration": "Hydration",
       "measurement_context": "Measurement timing, device fit, wear time and source-specific processing",
       "sleep_timing": "Sleep timing and how the device identifies the sleep session",
-      "load_method": "Which compatible activity-load method and records are available"
+      "load_method": "Which compatible activity-load method and records are available",
+      "hormonal_context": "Hormonal context, including a menstrual cycle where applicable, can influence HRV and resting heart rate. This is a possible influence, not an inferred cause."
     },
     "actions": {
       "resting_hr": "Sleep consistency, appropriate training recovery and regular hydration are factors you can influence. This value alone does not identify a cause or justify trying to lower your heart rate.",
@@ -1528,7 +1529,8 @@
       "acwr_not_target": "ACWR is not a validated personal safety threshold or a prescription. A ratio alone cannot predict injury or determine appropriate training.",
       "composite_inputs_unavailable": "This is a heuristic estimate, not a clinical measure. The actual inputs and weights for this date are not preserved, so this explanation cannot identify what drove the score.",
       "estimate_not_clinical": "Treat this as a descriptive estimate, not a medical diagnosis or a calibrated probability of a health condition.",
-      "measured_baseline_deviation": "This derived comparison depends on available readings and baseline coverage. It is not a clinical threshold or a diagnosis."
+      "measured_baseline_deviation": "This derived comparison depends on available readings and baseline coverage. It is not a clinical threshold or a diagnosis.",
+      "sex_calibration": "This heuristic has no validated sex-specific or pregnancy-specific calibration. It does not estimate cycle phase or correct for an unrecorded menstrual cycle."
     },
     "calculation_date": "Calculated for {{date}}",
     "registry": {
@@ -1685,5 +1687,13 @@
     "unstar": "Unstar {{metric}}",
     "favorites_empty": "Star metrics in Health or Training & recovery to build your quick view.",
     "load_missing": "Training load needs recorded load or sufficient heart-rate data. Check Data health and complete your profile if inputs are missing."
+  },
+  "physiology": {
+    "lab_ranges": "Laboratory reference intervals (optional)",
+    "lab_ranges_note": "Copy the intervals on your own laboratory report in the same units as the result. They may depend on sex, age and pregnancy. Leaving them blank does not assume a male or female normal range.",
+    "low": "Lower bound",
+    "high": "Upper bound",
+    "recorded_range": "Reported laboratory interval",
+    "profile_note": "Used for your body outline and physiological context. Sex alone does not establish menstrual phase, pregnancy or hormone status."
   }
 }

@@ -145,7 +145,9 @@ class MemorySession:
     async def __aexit__(self, *args):
         return False
 
-    async def get(self, model, ident):
+    async def get(self, model, ident, *, populate_existing=False):
+        # This adapter has no identity-map cache: every read already obtains
+        # the current stored row, including SQLAlchemy's explicit refresh form.
         return next((r for r in self.store.rows.get(model, []) if r.id == ident), None)
 
     def _select(self, statement):

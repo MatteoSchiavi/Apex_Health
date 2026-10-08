@@ -4,10 +4,11 @@ carry any subset; extra non-standard markers ride in `extra_markers`."""
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LabPanelIn(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     panel_date: date
     panel_type: str = Field(min_length=1)
     donation_type: str | None = None
@@ -23,6 +24,15 @@ class LabPanelIn(BaseModel):
     reference_ranges: dict[str, tuple[float | None, float | None]] = Field(
         default_factory=dict
     )
+
+    @model_validator(mode="after")
+    def ordered_reference_ranges(self):
+        for marker, (low, high) in self.reference_ranges.items():
+            if marker not in {"hemoglobin", "hematocrit", "ferritin", "iron", "wbc", "plt"}:
+                raise ValueError("Use extra_markers for non-standard markers and their intervals")
+            if low is not None and high is not None and low > high:
+                raise ValueError("Reference lower bound must not exceed upper bound")
+        return self
 
 
 class LabPanelOut(BaseModel):

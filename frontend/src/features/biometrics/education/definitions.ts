@@ -54,15 +54,15 @@ const definition = (
 export const metricEducationDefinitions: Record<string, MetricEducationDefinition> = {
   systemic_stress: definition("biometrics.systemic_stress", "apex_derived", "systemic_stress", {
     factors: ["sleep", "recent_training", "measurement_context"],
-    methods: [], limits: ["estimate_not_clinical"],
+    methods: [], limits: ["estimate_not_clinical", "sex_calibration"],
   }),
   load_spike: definition("biometrics.load_spike", "apex_derived", "load_spike", {
     factors: ["recent_training", "load_method"],
-    methods: [], limits: ["load_aggregate", "estimate_not_clinical"],
+    methods: [], limits: ["load_aggregate", "estimate_not_clinical", "sex_calibration"],
   }),
   resting_hr: definition("biometrics.resting_hr", "measured", "resting_hr", {
     whyItMatters: true,
-    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "measurement_context"],
+    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "hormonal_context", "measurement_context"],
     actions: ["resting_hr"],
     methods: ["observed_range"],
     limits: ["measured"],
@@ -70,7 +70,7 @@ export const metricEducationDefinitions: Record<string, MetricEducationDefinitio
   }),
   hrv_ms: definition("metricView.hrv_ms", "measured", "hrv_ms", {
     whyItMatters: true,
-    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "measurement_context"],
+    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "hormonal_context", "measurement_context"],
     actions: ["hrv_ms"],
     methods: ["observed_range"],
     limits: ["measured"],
@@ -170,25 +170,25 @@ export const metricEducationDefinitions: Record<string, MetricEducationDefinitio
   recovery: definition("biometrics.recovery_metric", "apex_derived", "recovery", {
     factors: ["sleep", "recent_training", "stress", "illness", "measurement_context"],
     methods: ["recovery_blend"],
-    limits: ["composite_inputs_unavailable", "estimate_not_clinical"],
+    limits: ["composite_inputs_unavailable", "estimate_not_clinical", "sex_calibration"],
   }),
   readiness: definition("biometrics.readiness_metric", "apex_derived", "readiness", {
     factors: ["sleep", "recent_training", "stress", "illness", "measurement_context"],
     methods: ["readiness_blend"],
-    limits: ["composite_inputs_unavailable", "estimate_not_clinical"],
+    limits: ["composite_inputs_unavailable", "estimate_not_clinical", "sex_calibration"],
   }),
   strain: definition("biometrics.strain_metric", "apex_derived", "strain", {
     factors: ["recent_training", "load_method"],
     methods: ["strain_peak"],
-    limits: ["load_aggregate", "estimate_not_clinical"],
+    limits: ["load_aggregate", "estimate_not_clinical", "sex_calibration"],
   }),
   sleep_score: definition("overview.sleep_score", "apex_derived", "sleep_score", {
     factors: ["sleep", "measurement_context"],
     methods: ["sleep_architecture"],
-    limits: ["composite_inputs_unavailable", "estimate_not_clinical"],
+    limits: ["composite_inputs_unavailable", "estimate_not_clinical", "sex_calibration"],
   }),
   hrv_deviation: definition("biometrics.hrv", "apex_derived", "hrv_deviation", {
-    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "measurement_context"],
+    factors: ["sleep", "recent_training", "stress", "illness", "temperature", "hydration", "hormonal_context", "measurement_context"],
     methods: ["hrv_deviation"],
     limits: ["measured_baseline_deviation", "estimate_not_clinical"],
   }),

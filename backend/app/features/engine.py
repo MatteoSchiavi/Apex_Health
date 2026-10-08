@@ -46,6 +46,7 @@ from app.features import baselines, discipline as discipline_metrics, load, scor
 from app.connectors.semantics import provider_semantics
 from app.features.weights import cutoff_for_local_day, load_weight_selection
 from app.metrics.provenance import baseline_snapshot, metric_snapshot
+from app.metrics.physiology import physiological_context
 from app.medical.labs import ferritin_reference_low
 from app.models.activity import Activity, ActivityStream, Discipline
 from app.models.features import DailyFeature, DisciplineFeature
@@ -384,6 +385,8 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     if load_metadata["method"] == "edwards_trimp":
         load_metadata["hr_max_bpm"] = hrm
         load_metadata["hr_max_method"] = "tanaka_age_estimate" if hrm is not None else "unavailable"
+        load_metadata["hr_max_reference"] = "https://pubmed.ncbi.nlm.nih.gov/11153730/"
+        load_metadata["hr_max_sex_handling"] = "Shared adult age regression studied in men and women; not a measured maximum."
         load_metadata["limitation"] += " HRmax is an age-based estimate, not an individually measured maximum."
     load_metadata["zero_day_assumption"] = "No recorded session is a descriptive zero only after selected-method session evidence; absent capture is not verified rest."
 
@@ -685,6 +688,7 @@ def _compute_day(user: User, day: date, window: dict) -> dict | None:
     )
     daily_row["calculation_provenance"] = {
         "schema_version": 1, "as_of": day.isoformat(), "timezone": str(tz),
+        "physiological_context": physiological_context(user, day),
         "metrics": provenance_metrics,
     }
 
@@ -766,6 +770,12 @@ async def compute_user_day(
     the day had no data and no row exists)."""
     from app.services.evidence import scope_lock
     await scope_lock(session, user.id, "changes")
+    # Workers may hold a detached profile loaded before a settings edit.
+    # Read it again inside the same boundary as the inputs and calculation.
+    current_user = await session.get(User, user.id, populate_existing=True)
+    if current_user is None:
+        return None
+    user = current_user
     window = await _load_window(session, user, day)
     tz = window["tz"]
     cutoff = cutoff_for_local_day(day, tz)

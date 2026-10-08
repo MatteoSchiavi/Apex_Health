@@ -440,11 +440,14 @@ async def snapshot_revision(session, user_id):
             {"owner": user_id},
         )
     )
-    profile = await session.get(User, user_id)
+    profile = await session.get(User, user_id, populate_existing=True)
     profile_revision = (
         [
             profile.timezone,
             profile.main_integration_id,
+            profile.sex,
+            str(profile.dob) if profile.dob else None,
+            str(profile.height_cm) if profile.height_cm is not None else None,
             str(datetime.now(ZoneInfo(profile.timezone)).date()),
         ]
         if profile

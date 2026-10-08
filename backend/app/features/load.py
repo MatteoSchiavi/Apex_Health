@@ -46,6 +46,11 @@ def hr_max_for(age_years: int | None) -> int | None:
     This is an age-based estimate, not an athlete's measured maximum; its
     individual error can materially affect zone-based load. Unknown age
     yields unavailable HRmax rather than an invented constant.
+
+    Tanaka et al. (2001), DOI 10.1016/S0735-1097(00)01054-8, found no
+    difference in the age regression between men and women. This is not
+    the male/female exponential Banister TRIMP model: Edwards uses zone
+    duration weights. Substituting Banister's sex constants here is invalid.
     """
     if age_years is None:
         return None

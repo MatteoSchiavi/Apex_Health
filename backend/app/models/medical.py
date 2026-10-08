@@ -46,7 +46,7 @@ class LabMetric(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     lab_panel_id: Mapped[int] = mapped_column(ForeignKey("lab_panels.id"), nullable=False)
     metric_name: Mapped[str] = mapped_column(Text, nullable=False)
-    value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    value: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     unit: Mapped[str | None] = mapped_column(Text, nullable=True)
     ref_low: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     ref_high: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)

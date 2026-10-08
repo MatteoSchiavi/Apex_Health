@@ -47,7 +47,7 @@ def _to_out(panel: LabPanel, markers=None) -> LabPanelOut:
         markers=[
             {
                 "marker": r.metric_name,
-                "value": float(r.value),
+                "value": float(r.value) if r.value is not None else None,
                 "unit": r.unit,
                 "ref_low": float(r.ref_low) if r.ref_low is not None else None,
                 "ref_high": float(r.ref_high) if r.ref_high is not None else None,

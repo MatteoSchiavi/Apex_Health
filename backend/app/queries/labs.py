@@ -39,7 +39,7 @@ async def get_lab_trend(
     return [
         {
             "date": r.date,
-            "value": float(r.value),
+            "value": float(r.value) if r.value is not None else None,
             "unit": r.unit,
             "ref_low": float(r.ref_low) if r.ref_low is not None else None,
             "ref_high": float(r.ref_high) if r.ref_high is not None else None,
@@ -62,6 +62,7 @@ async def get_donation_status(
             .where(
                 LabPanel.user_id == user_id,
                 LabPanel.donation_type.is_not(None),
+                LabPanel.date <= today,
             )
             .order_by(LabPanel.date.desc())
             .limit(1)
@@ -87,4 +88,5 @@ async def get_donation_status(
         "next_eligible_date": panel.next_eligible_date,
         "days_since": (today - panel.date).days,
         "iron_flag": iron_row.iron_status_flag if iron_row is not None else None,
+        "iron_flag_interpretation": "Recorded ferritin threshold comparison only; normal is not clinical normality or donation clearance. Eligibility is the recorded date, never inferred from sex.",
     }
