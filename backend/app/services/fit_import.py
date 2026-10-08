@@ -23,6 +23,25 @@ SPORTS = {
 }
 
 
+def session_end(summary):
+    """Recorded elapsed boundary, including pauses in exported activities.
+
+    Some Garmin exports repeat start_time in the summary timestamp. That
+    timestamp cannot be an end; elapsed time is the independent boundary.
+    """
+    start, end = summary["start_time"], summary.get("timestamp")
+    if isinstance(end, datetime) and end > start:
+        return end
+    elapsed = summary.get("total_elapsed_time", summary["total_timer_time"])
+    if (
+        isinstance(elapsed, (int, float))
+        and math.isfinite(elapsed)
+        and 0 < elapsed <= 86400
+    ):
+        return start + timedelta(seconds=elapsed)
+    raise EvidenceError("INVALID_ARGUMENTS", "FIT session requires a valid elapsed boundary")
+
+
 def parse_original(content):
     import fitdecode
 
@@ -68,6 +87,7 @@ def parse_original(content):
                 "INVALID_ARGUMENTS",
                 "FIT session requires a start and recorded duration of at most 24 hours",
             )
+        session_end(item)
     return sessions, records, parse_fit_laps(content)
 
 
@@ -87,6 +107,22 @@ async def import_original(session, user, filename, content, parsed):
         )
     ).all()
     if existing:
+        summaries, records, laps = parsed
+        by_external_id = {link.external_id: link for link in existing}
+        # Repeat uploads repair projections created by older parsers, without
+        # duplicating the encrypted original, activities or source links.
+        for number, summary in enumerate(summaries):
+            link = by_external_id.get(f"{sha}:{number}")
+            if link is None:
+                raise EvidenceError("INVALID_ARGUMENTS", "Incomplete existing FIT import")
+            activity = await session.scalar(
+                select(Activity).where(
+                    Activity.id == link.activity_id, Activity.user_id == user.id
+                ).with_for_update()
+            )
+            if activity is None:
+                raise EvidenceError("INVALID_ARGUMENTS", "Existing FIT activity is unavailable")
+            await project_original(session, activity, content, summary, records, laps, summaries, number)
         return {
             "activity_ids": [r.activity_id for r in existing],
             "already_imported": True,
@@ -213,76 +249,87 @@ async def import_original(session, user, filename, content, parsed):
                 )
             )
         ids.append(activity.id)
-        if SPORTS.get(sport, sport) == "strength":
-            from app.services.exercise_catalog import fit_exercises
-
-            exercises = fit_exercises(content, start, summary.get("timestamp") or start + timedelta(seconds=duration))
-            activity.source_metrics = {
-                **(activity.source_metrics or {}),
-                "fit": {**(activity.source_metrics or {}).get("fit", {}), "exercises": exercises},
-            }
-        samples = {}
-        end = summary.get("timestamp")
-        for record in records:
-            stamp = record.get("timestamp")
-            if not isinstance(stamp, datetime):
-                continue
-            stamp = stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
-            offset = round((stamp - start).total_seconds())
-            # Session elapsed time can include pauses; keep original offsets.
-            if offset < 0 or offset > 86400 or (end and stamp > end):
-                continue
-            if (
-                number + 1 < len(summaries)
-                and stamp >= summaries[number + 1]["start_time"]
-            ):
-                continue
-            row = {
-                "activity_id": activity.id,
-                "t_offset_s": offset,
-                **dict.fromkeys(
-                    ("hr", "power", "cadence", "speed", "altitude", "lat", "lon")
-                ),
-            }
-            for src, dest in (
-                ("heart_rate", "hr"),
-                ("power", "power"),
-                ("cadence", "cadence"),
-                ("enhanced_speed", "speed"),
-                ("enhanced_altitude", "altitude"),
-            ):
-                value = record.get(src, record.get(src.removeprefix("enhanced_")))
-                if (
-                    isinstance(value, (int, float))
-                    and math.isfinite(value)
-                    and (dest == "altitude" or value >= 0)
-                ):
-                    row[dest] = value
-            for src, dest in (("position_lat", "lat"), ("position_long", "lon")):
-                if isinstance(record.get(src), (int, float)):
-                    row[dest] = record[src] * 180 / (2**31)
-            samples[offset] = row
-        if samples:
-            activity.data_completeness = "full"
-        for offset in range(0, len(samples), 1000):
-            await session.execute(
-                insert(ActivityStream)
-                .values(list(samples.values())[offset : offset + 1000])
-                .on_conflict_do_nothing()
-            )
-        owned_laps = [
-            l
-            for l in laps
-            if l.get("start_time")
-            and l["start_time"] >= start
-            and (not end or l["start_time"] < end)
-        ]
-        for i, lap in enumerate(owned_laps):
-            lap["lap_index"] = i + 1
-        await upsert_laps(session, activity.id, owned_laps)
+        await project_original(session, activity, content, summary, records, laps, summaries, number)
     return {
         "activity_ids": ids,
         "already_imported": False,
         "file_hash": sha,
         "original_document_id": source.id,
     }
+
+
+async def project_original(
+    session, activity, content, summary, records, laps, summaries, number
+):
+    start = summary["start_time"]
+    start = start.replace(tzinfo=UTC) if start.tzinfo is None else start.astimezone(UTC)
+    end = session_end(summary)
+    sport = str(summary.get("sport", "unknown"))
+    if SPORTS.get(sport, sport) == "strength":
+        from app.services.exercise_catalog import fit_exercises
+
+        exercises = fit_exercises(content, start, end)
+        activity.source_metrics = {
+            **(activity.source_metrics or {}),
+            "fit": {**(activity.source_metrics or {}).get("fit", {}), "exercises": exercises},
+        }
+    samples = {}
+    for record in records:
+        stamp = record.get("timestamp")
+        if not isinstance(stamp, datetime):
+            continue
+        stamp = stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
+        offset = round((stamp - start).total_seconds())
+        # Session elapsed time can include pauses; keep original offsets.
+        # FIT timestamps have whole-second precision; an elapsed boundary
+        # encoded in milliseconds can round up by half a second.
+        if offset < 0 or offset > 86400 or stamp > end + timedelta(seconds=0.5):
+            continue
+        if (
+            number + 1 < len(summaries)
+            and stamp >= summaries[number + 1]["start_time"]
+        ):
+            continue
+        row = {
+            "activity_id": activity.id,
+            "t_offset_s": offset,
+            **dict.fromkeys(
+                ("hr", "power", "cadence", "speed", "altitude", "lat", "lon")
+            ),
+        }
+        for src, dest in (
+            ("heart_rate", "hr"),
+            ("power", "power"),
+            ("cadence", "cadence"),
+            ("enhanced_speed", "speed"),
+            ("enhanced_altitude", "altitude"),
+        ):
+            value = record.get(src, record.get(src.removeprefix("enhanced_")))
+            if (
+                isinstance(value, (int, float))
+                and math.isfinite(value)
+                and (dest == "altitude" or value >= 0)
+            ):
+                row[dest] = value
+        for src, dest in (("position_lat", "lat"), ("position_long", "lon")):
+            if isinstance(record.get(src), (int, float)):
+                row[dest] = record[src] * 180 / (2**31)
+        samples[offset] = row
+    if samples:
+        activity.data_completeness = "full"
+    for offset in range(0, len(samples), 1000):
+        await session.execute(
+            insert(ActivityStream)
+            .values(list(samples.values())[offset : offset + 1000])
+            .on_conflict_do_nothing()
+        )
+    owned_laps = [
+        l
+        for l in laps
+        if l.get("start_time")
+        and l["start_time"] >= start
+        and (not end or l["start_time"] < end)
+    ]
+    for i, lap in enumerate(owned_laps):
+        lap["lap_index"] = i + 1
+    await upsert_laps(session, activity.id, owned_laps)
