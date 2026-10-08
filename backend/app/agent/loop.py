@@ -81,7 +81,10 @@ def _assistant_tool_call_message(response):
 
 
 def _tool_result_message(call, payload):
-    return {"role": "tool", "tool_call_id": call.id, "content": _dumps(compact_evidence(payload))}
+    projected = compact_evidence(payload)
+    if isinstance(projected, dict):
+        projected = {**projected, "claim_examples": claim_examples([payload], limit=4)}
+    return {"role": "tool", "tool_call_id": call.id, "content": _dumps(projected)}
 
 
 def error_result(code, message):
@@ -291,7 +294,7 @@ def validate_answer(content, evidence_objects):
     walk(evidence_objects)
     valid = []
     qualitative = []
-    for claim in answer.get("claims", []):
+    for claim_index, claim in enumerate(answer.get("claims", [])):
         if not isinstance(claim, dict):
             return (
                 "I could not verify the measured claims in this answer. Please request a fresh analysis.",
@@ -341,9 +344,14 @@ def validate_answer(content, evidence_objects):
         if not matches:
             return (
                 "I could not verify the measured claims in this answer. Please request a fresh analysis.",
-                {"status": "invalid"},
+                {"status": "invalid", "verified_claims": [], "error_code":
+                 "EVIDENCE_NOT_ISSUED" if row is None else "CLAIM_EVIDENCE_MISMATCH",
+                 "claim_index": claim_index},
             )
-        valid.append({**claim, "kind": kind})
+        checked_claim = {**claim, "kind": kind}
+        if analysis_metadata.get(claim.get('evidence_id'), {}).get('recipe') == 'personal_baseline':
+            checked_claim['measurement_metric'] = row.get('metric')
+        valid.append(checked_claim)
     numbers = re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?", answer["answer"])
     claimed = {
         float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float)) and not isinstance(c["value"], bool)
@@ -369,6 +377,57 @@ def validate_answer(content, evidence_objects):
         "qualitative_claims": qualitative,
         "limitations": answer.get("limitations", []),
     }
+
+
+def claim_examples(evidence_objects, *, limit=8):
+    """Bounded exact claim examples, each checked by the unchanged validator.
+
+    Model field paths and rounded values are not evidence. Examples never
+    introduce handles, accept metadata forgeries or derive new statistics.
+    """
+    candidates = {}
+    def walk(obj):
+        if isinstance(obj, list):
+            for item in obj:
+                walk(item)
+        elif isinstance(obj, dict):
+            if obj.get('kind') == 'user_assertion':
+                return
+            ident = obj.get('id')
+            if isinstance(ident, str) and re.fullmatch(r'observation:\d+:\d+', ident):
+                metric = obj.get('metric')
+                if isinstance(metric, str) and obj.get('value') is not None:
+                    candidate = {'evidence_id': ident, 'metric': metric, 'value': obj['value'], 'kind': 'MEASURED'}
+                    if isinstance(obj.get('unit'), str):
+                        candidate['unit'] = obj['unit']
+                    previous = candidates.get(metric)
+                    stamp = str(obj.get('measured_at', ''))
+                    if previous is None or stamp >= previous[0]:
+                        candidates[metric] = (stamp, candidate)
+                return
+            handle = obj.get('handle')
+            if isinstance(handle, str) and re.fullmatch(r'analysis:\d+', handle):
+                data = obj.get('data')
+                if obj.get('recipe') == 'personal_baseline' and isinstance(data, dict):
+                    for field in ('median', 'mad'):
+                        if data.get(field) is not None:
+                            candidate = {'evidence_id': handle, 'metric': field, 'value': data[field], 'kind': 'CALCULATED'}
+                            if isinstance(data.get('unit'), str):
+                                candidate['unit'] = data['unit']
+                            candidates[handle + ':' + field] = ('', candidate)
+                return
+            for key, value in obj.items():
+                if key not in {'metadata', 'raw_json', 'source_metrics', 'payload', 'context_docs'}:
+                    walk(value)
+    walk(evidence_objects)
+    examples = []
+    for _, candidate in candidates.values():
+        _, checked = validate_answer(_dumps({'answer': '', 'claims': [candidate]}), evidence_objects)
+        if checked.get('status') == 'structured':
+            examples.append(candidate)
+            if len(examples) >= limit:
+                break
+    return examples
 
 
 async def run_agent_loop(
@@ -504,15 +563,18 @@ async def run_agent_loop(
         # present the rejected answer as verified.
         reply, grounding = validate_answer(response.content, evidence_objects)
         reserve = max(4000, int(last_input_tokens * 1.1)) + 4096
+        corrected = False
         if (grounding.get("status") == "invalid"
                 and tokens + reserve < MAX_TURN_TOKENS
                 and deadline - time.monotonic() > MODEL_TIMEOUT_S + 2):
             messages.extend([
                 {"role": "assistant", "content": response.content or ""},
-                {"role": "user", "content": "The last answer failed server claim validation. Correct it once using only evidence already retrieved. Return the required JSON answer/claims/limitations. The answer prose MUST contain NO digit characters: no numbered lists, numeric dates, period lengths, measurements or statistics. Put all exact measured/calculated values ONLY in claims; the application displays those checked values separately. Copy exact evidence_id, metric, value and unit. Explain the available signals qualitatively and disclose uncertainty. Do not invent unregistered averages, changes, causal or medical conclusions. No further tools."},
+                {"role": "user", "content": "The last answer failed server claim validation. Correct it once using only evidence already retrieved. Return the required JSON answer/claims/limitations. The answer prose MUST contain NO digit characters: no numbered lists, numeric dates, period lengths, measurements or statistics. Put all exact measured/calculated values ONLY in claims; the application displays those checked values separately. Copy exact evidence_id, metric, value and unit. Explain the available signals qualitatively and disclose uncertainty. Do not invent unregistered averages, changes, causal or medical conclusions. No further tools. Server validation feedback and exact checked claim examples: " + _dumps({'validation': grounding, 'claim_examples': claim_examples(evidence_objects)})},
             ])
+            corrected = True
             response = await complete(closing=True)
             reply, grounding = validate_answer(response.content, evidence_objects)
+        grounding = {**grounding, 'correction_attempted': corrected, 'tokens_used': tokens}
         return response, reply, grounding
 
     try:
@@ -571,7 +633,7 @@ async def run_agent_loop(
             messages.append(
                 {
                     "role": "user",
-                    "content": "Finish the answer using verified findings already retrieved. Keep measured values exact with matching claim handles and disclose missing evidence. No further tools.",
+                    "content": "Finish the answer using verified findings already retrieved. Explain qualitatively; put exact numeric values in claims, not prose. Disclose missing evidence. No further tools. Exact checked claim examples: " + _dumps(claim_examples(evidence_objects)),
                 }
             )
             response = await complete(closing=True)
@@ -613,16 +675,19 @@ def _enforce_tool_budget(messages, budget_chars):
             continue
         try:
             payload = json.loads(content)
+            if not isinstance(payload, dict):
+                payload = {}
             refs = payload.get("evidence_refs", [])
             version = payload.get("formula_version")
         except ValueError:
-            refs, version = [], None
+            payload, refs, version = {}, [], None
         capped = _dumps(
             {
                 "truncated": True,
                 "original_chars": len(content),
                 "evidence_refs": refs[:30],
                 "formula_version": version,
+                "claim_examples": payload.get("claim_examples", []) if isinstance(payload, dict) else [],
                 "note": "Expand specific evidence handles; approval authority remains in the application.",
             }
         )

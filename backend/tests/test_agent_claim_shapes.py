@@ -1,7 +1,7 @@
 """Malformed model claims fail closed instead of crashing the answer boundary."""
 import json
 import pytest
-from app.agent.loop import validate_answer
+from app.agent.loop import claim_examples, validate_answer
 
 
 @pytest.mark.parametrize('field,value', [
@@ -75,6 +75,27 @@ def test_period_numbers_do_not_get_mistaken_for_verified_measurements():
     reply, accepted = validate_answer(json.dumps({'answer':'Recorded resting heart rate is available; a longer compatible baseline is needed.','claims':[claim]}), evidence)
     assert accepted['status'] == 'structured' and accepted['verified_claims'][0]['value'] == 50
     assert '50' not in reply  # The client displays the checked claim separately.
+
+
+def test_claim_examples_copy_exact_observations_and_registered_statistic_paths_only():
+    evidence = [{'id':'observation:1:1','metric':'resting_hr','value':49.12345,'unit':'bpm',
+                 'metadata':{'device':{'id':'observation:99:1','metric':'resting_hr','value':999}}},
+                {'data':{'handle':'analysis:1','recipe':'personal_baseline',
+                    'data':{'metric':'resting_hr','median':49.123,'mad':2.4,'unit':'bpm'}},
+                 'evidence_refs':['analysis:1']},
+                {'kind':'user_assertion','id':'observation:100:1','metric':'resting_hr','value':100}]
+    examples = claim_examples(evidence)
+    assert examples == [
+        {'evidence_id':'observation:1:1','metric':'resting_hr','value':49.12345,'kind':'MEASURED','unit':'bpm'},
+        {'evidence_id':'analysis:1','metric':'median','value':49.123,'kind':'CALCULATED','unit':'bpm'},
+        {'evidence_id':'analysis:1','metric':'mad','value':2.4,'kind':'CALCULATED','unit':'bpm'},
+    ]
+    _, receipt = validate_answer(json.dumps({'answer':'Recorded evidence is available.','claims':examples}),evidence)
+    assert receipt['status'] == 'structured'
+    rounded = {**examples[0], 'value':49.12}
+    _, rejected = validate_answer(json.dumps({'answer':'Recorded evidence is available.','claims':[rounded]}),evidence)
+    assert rejected['status'] == 'invalid' and rejected['claim_index'] == 0
+    assert rejected['error_code'] == 'CLAIM_EVIDENCE_MISMATCH'
 
 
 @pytest.mark.parametrize('unit,status', [('ms', 'structured'), ('bpm', 'invalid')])

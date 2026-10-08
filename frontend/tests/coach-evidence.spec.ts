@@ -8,7 +8,7 @@ for (const locale of ['en','it'] as const) test(`coach displays checked values s
     id:5,title:'Recovery',started_at:'2026-10-08T10:00:00Z',last_activity_at:'2026-10-08T10:00:00Z',message_count:3,
     messages:[
       {id:1,role:'user',content:'How is my recovery trending?',referenced_data:null},
-      {id:2,role:'assistant',content:'Recorded resting heart rate is available; longer context is needed.',referenced_data:{grounding:{status:'structured',verified_claims:[{metric:'resting_hr',value:52,unit:'bpm'}]}}},
+      {id:2,role:'assistant',content:'Recorded resting heart rate is available; longer context is needed.',referenced_data:{grounding:{status:'structured',verified_claims:[{metric:'resting_hr',value:52,unit:'bpm'},{metric:'median',measurement_metric:'sleep_duration',value:7.25,unit:'h'}]}}},
       {id:3,role:'assistant',content:'Measured claims could not be verified.',referenced_data:{grounding:{status:'invalid',verified_claims:[{metric:'resting_hr',value:999,unit:'bpm'}]}}},
     ],
   } }));
@@ -17,6 +17,7 @@ for (const locale of ['en','it'] as const) test(`coach displays checked values s
   await expect(page.getByText(label, { exact:true })).toHaveCount(1);
   await page.getByText(label, { exact:true }).click();
   await expect(page.getByText('52 bpm', { exact:true })).toBeVisible();
+  await expect(page.getByText(locale === 'it' ? 'Sonno registrato · mediana' : 'Recorded sleep · median', { exact:true })).toBeVisible();
   await expect(page.getByText('999 bpm', { exact:true })).toHaveCount(0);
   await expect(page.getByText(locale === 'it' ? 'Frequenza cardiaca a riposo' : 'Resting heart rate', { exact:true })).toBeVisible();
 });

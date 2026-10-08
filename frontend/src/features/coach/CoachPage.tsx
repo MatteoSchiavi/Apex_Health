@@ -29,17 +29,21 @@ function stored(key: string) {
 
 function CheckedEvidence({ grounding }: { grounding: unknown }) {
   const { t } = useTranslation();
-  const receipt = grounding as { status?: string; verified_claims?: { metric: string; value: unknown; unit?: string }[] } | null;
+  const receipt = grounding as { status?: string; verified_claims?: { metric: string; measurement_metric?: string; value: unknown; unit?: string }[] } | null;
   const claims = receipt?.status === "structured" && Array.isArray(receipt.verified_claims)
     ? receipt.verified_claims.filter(c => typeof c?.metric === "string" &&
       (typeof c.value === "string" || typeof c.value === "boolean" || (typeof c.value === "number" && Number.isFinite(c.value)))) : [];
   if (!claims.length) return null;
   return <details className="mt-3 border-t border-hairline pt-3 text-[12px]">
     <summary className="cursor-pointer text-muted">{t("coach.checked_evidence")}</summary>
-    <dl className="mt-3 space-y-2">{claims.map((claim, index) => <div key={index} className="flex flex-wrap justify-between gap-x-4 gap-y-1">
-      <dt>{t("lab.metrics." + claim.metric, { defaultValue: claim.metric.replace(/[._]/g, " ") })}</dt>
+    <dl className="mt-3 space-y-2">{claims.map((claim, index) => {
+      const measurement = typeof claim.measurement_metric === "string" ? claim.measurement_metric : null;
+      const metric = measurement || claim.metric;
+      return <div key={index} className="flex flex-wrap justify-between gap-x-4 gap-y-1">
+      <dt>{t("lab.metrics." + metric, { defaultValue: metric.replace(/[._]/g, " ") })}
+        {measurement && <> · {t("coach.statistic." + claim.metric, { defaultValue: claim.metric })}</>}</dt>
       <dd className="tabular-nums">{String(claim.value)}{typeof claim.unit === "string" ? " " + claim.unit : ""}</dd>
-    </div>)}</dl>
+    </div>; })}</dl>
     <p className="mt-3 text-muted">{t("coach.checked_evidence_note")}</p>
   </details>;
 }

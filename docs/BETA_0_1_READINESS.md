@@ -11,7 +11,7 @@ not certify health predictions, every wearable, or a signed native application.
 | Severity | Location | Observed behavior / reasoning | Fix and test evidence |
 | --- | --- | --- | --- |
 | HIGH | `backend/app/agent/loop.py:run_agent_loop`, `entrypoint.py:_history_messages` | The live recovery question retrieved data but exhausted its aggregate context budget. The tool-message cap could replace a weekly summary with handles alone, encouraging repeated evidence expansion. Failed assistant replies were replayed in later history. | Compact only redundant observation lineage/policy fields in the model projection; retain exact values, units, origin, acquisition, timestamps, availability and method/device metadata. Normalize read-cache arguments and reserve a final completion. Exclude failed history. Permit one bounded correction of rejected claims, with unchanged validation. Regression verifies real observation payloads survive the cap and a token-heavy turn closes with an answer. Earlier fixture replies had zero token usage and missed this. |
-| HIGH | `backend/app/agent/loop.py:validate_answer`, `entrypoint.py:SYSTEM_PROMPT`, `frontend/src/features/coach/CoachPage.tsx` | After the budget repair, the live model completed but still failed numeric-claim validation. Numeric period/list text is subject to the same strict check as measurements; silently accepting it would weaken the evidence boundary. | Ask for qualitative prose and exact checked claims separately, including the bounded correction. Display only structured verified claims in the UI. Expose safe rejection categories/counts without rejected content. Tests retain incompatible-unit and uncited-number rejection and verify English/Italian checked evidence excludes invalid receipts. |
+| HIGH | `backend/app/agent/loop.py:validate_answer`, `entrypoint.py:SYSTEM_PROMPT`, `frontend/src/features/coach/CoachPage.tsx` | After the budget repair, the live model completed but still failed numeric-claim validation. Numeric period/list text is subject to the same strict check as measurements; silently accepting it would weaken the evidence boundary. | Ask for qualitative prose and exact checked claims separately, including the bounded correction. Provide bounded exact server-validated claim examples in tool projections and correction, including analysis field paths. Preserve examples through tool truncation, disclose the rejected claim index and correction attempt without rejected text. Display only structured verified claims in the UI, naming the underlying metric for baseline statistics. Expose safe rejection categories/counts without rejected content. Tests retain incompatible-unit and uncited-number rejection and verify English/Italian checked evidence excludes invalid receipts. |
 | HIGH | `backend/app/connectors/garmin/sync.py`, `tasks/lab_tasks.py`, `tasks/feature_engine.py` | Legacy gym rows had a strength discipline but no provider `type_key`/set metadata. Both repair selection and the fetch guard skipped them; manual repair did not request strength by default. | Recognize owned canonical strength disciplines as well as provider type keys; repair missing feeds by default. Reindex current linked raw summaries under the account lock and recompute calculations. Tests exclude foreign credentials, deleted sessions and obsolete raw revisions, and preserve recorded sets. |
 | HIGH | `backend/app/connectors/garmin/sync.py` | One failed optional stream fetch raised after wellness normalization, preventing a successful overall checkpoint and repeatedly restarting a backfill. Successfully empty stream responses were also retried indefinitely. This is a confirmed code defect; old redacted live logs cannot prove it explains every historical failure. | Keep wellness success separate from the visible `activity_streams` failure. Failed streams remain retry candidates; successful empty responses are remembered. Integration test starts with a failing stream and verifies fresh sleep, advancing sync time, partial status and the remaining retry candidate. |
 | HIGH | `backend/app/tasks/provider_sync.py` | The nightly run computes completed days, before most athletes wake up. Newly imported today's sleep/HRV/activity data did not trigger today's feature computation. | Refresh the preceding 28 days plus today after provider ingestion, using the account timezone and current profile. Do not display yesterday's score as today's. A timezone-boundary test verifies post-ingestion refresh follows successful persistence. |
@@ -51,10 +51,10 @@ the tested contracts, not proof of an unobserved production operation.
   readings or fallback scores were inserted.
 - The first installed fix completes within its budget but the live answer
   failed claim validation. Follow-up commit `57dfbc831c4414e5a778695459c3d84d86c75ca5`
-  passed all five CI jobs and was confirmed installed. A fresh live question
-  remains pending explicit permission to send its health evidence to DeepSeek:
-  automatic approval review rejected that transmission. Fixture tests do not
-  prove the remote model will return a valid answer.
+  passed all five CI jobs and was confirmed installed. After explicit approval for DeepSeek transmission, a fresh original question
+  completed in 9.5 seconds but still failed evidence matching. Exact checked
+  claim examples and indexed corrective feedback are the final follow-up;
+  their fresh installed-model acceptance must be verified independently.
 - Fresh individual Garmin feeds coexist with an unsuccessful overall sync
   checkpoint. Do not reset the counter manually or claim successful backfill
   from fresh sleep alone. A normal owned sync was started, but safe diagnostics show actual
@@ -67,7 +67,7 @@ or provider token belongs in this repository or its release artifacts.
 
 ## Release validation
 
-- Production frontend build; English/Italian parity (1,465 keys); PWA tests.
+- Production frontend build; English/Italian parity (1,467 keys); PWA tests.
 - Full Chromium suite: 122 passed; one private-file test is opt-in and separately
   verified with the supplied recordings.
 - Targeted final backend integration run: 79 passed, including auth matrix,
@@ -88,6 +88,10 @@ or provider token belongs in this repository or its release artifacts.
 - Final Garmin correction/refresh, transport-privacy, HealthKit deletion,
   provider-ownership and real PostgreSQL concurrency run: 87 passed. Complete
   CI and installed identity must pass again on the final release commit.
+- Exact-claim coach integration: 125 passed; bilingual evidence display: two
+  passed; production frontend build and locale parity passed. Every generated
+  example is checked by the original strict validator; forged metadata and
+  rounded measurement values remain rejected.
 
 Production acceptance remains separate: verify `/version`, the live recovery
 answer, maintenance completion, current calculation rows and both new UI
@@ -110,7 +114,7 @@ OAuth/partner delivery for every optional provider; the next local overnight
 run; successful completion of the currently failing full Garmin sync; actual
 home-server/offsite backup recovery; clinical validity or calibrated muscle
 activation; complete account-rights handling; a valid remote coach answer after
-the final format fix without permission for its live transmission.
+the final exact-claim guidance without a fresh installed-model retest.
 
 ## What only the owner can finish
 
@@ -192,12 +196,11 @@ offsite upload is optional and is skipped when unconfigured.
 
 ### 5. Live coach acceptance and individual testers
 
-The final live recovery question is pending approval to send its required
-health evidence to the configured DeepSeek endpoint. Approve that test in
-chat, or submit the question yourself in Coach and confirm a grounded answer
-with checked evidence, rather than “Analysis incomplete” or an invalid-claim
-message. Code and fixture checks have passed; this live acceptance is not yet
-claimed.
+Permission for the DeepSeek live test has been received. Final installed
+acceptance must confirm the original recovery question returns a grounded
+answer with checked evidence, rather than “Analysis incomplete” or an invalid
+claim message. This check is performed by the reviewer before publishing final
+acceptance; fixture tests alone are not a substitute.
 
 After the checks above, create individual invite links in the owner Admin UI;
 each tester connects their own provider account and selects their own profile.

@@ -386,7 +386,11 @@
     "saved_locally": "Conversations are saved to your account. Your draft stays in this browser.",
     "subtitle": "Conversations grounded in your recorded health and training data.",
     "conversation": "Conversation",
-    "incomplete_reply": "The analysis could not be completed. Try a more specific question."
+    "incomplete_reply": "The analysis could not be completed. Try a more specific question.",
+    "statistic": {
+      "median": "median",
+      "mad": "median absolute deviation"
+    }
   },
   "social": {
     "title": "Challenges & Rankings",

@@ -145,6 +145,9 @@ async def test_claim_correction_is_bounded_and_never_weakens_validation(db_sessi
     result = await run_agent_loop(sessionmaker,llm,user_id=1,session_id=chat.id,text='Resting HR?',system='Grounded',tier='cheap',today=date.today(),initial_evidence=[evidence])
     assert result.grounding['status'] == expected_status
     assert len(llm.calls) == 2 and llm.calls[-1]['tools'] is None
+    assert result.grounding['correction_attempted'] is True
+    assert 'CLAIM_EVIDENCE_MISMATCH' in llm.calls[-1]['messages'][-1]['content']
+    assert '"value": 52' in llm.calls[-1]['messages'][-1]['content']
     if expected_status == 'structured':
         assert result.reply == 'Resting HR is 52 bpm.'
         assert result.grounding['verified_claims'][0]['value'] == 52

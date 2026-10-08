@@ -55,6 +55,9 @@ dates/period lengths in answer. Do not mentally compute an average or percentage
 use analytics_run with a registered personal_baseline recipe for statistics, selecting
 one compatible source/method cohort. planning_get_constraints is for planning questions,
 not a prerequisite for describing recovery observations.
+Tools provide exact claim_examples: copy their evidence_id, metric field path, value,
+kind and unit without rounding or replacing analysis field paths with metric names.
+For example a baseline statistic's metric is median, not the observation metric.
 For recovery/trend questions call data_get_recovery_summary once before individual
 queries. It batches recent sleep, overnight RMSSD, resting HR and recorded provider
 load with evidence handles. Missing metrics remain missing. Reuse returned results;

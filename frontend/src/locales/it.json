@@ -386,7 +386,11 @@
     "saved_locally": "Le conversazioni sono salvate nel tuo account. La bozza resta in questo browser.",
     "subtitle": "Conversazioni basate sui tuoi dati di salute e allenamento registrati.",
     "conversation": "Conversazione",
-    "incomplete_reply": "Non è stato possibile completare l’analisi. Riprova con una domanda più specifica."
+    "incomplete_reply": "Non è stato possibile completare l’analisi. Riprova con una domanda più specifica.",
+    "statistic": {
+      "median": "mediana",
+      "mad": "deviazione assoluta mediana"
+    }
   },
   "social": {
     "title": "Sfide & Classifiche",
