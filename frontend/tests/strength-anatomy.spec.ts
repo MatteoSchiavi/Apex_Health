@@ -76,6 +76,8 @@ for (const variant of ["light", "dark", "mobile"] as const) {
     await expect(diagram).toBeVisible();
     await expect(diagram.getByText("Front", { exact: true })).toBeVisible();
     await expect(diagram.getByText("Back", { exact: true })).toBeVisible();
+    const captionSize = await diagram.getByText("Front", { exact: true }).evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    expect(captionSize).toBeGreaterThanOrEqual(11);
     const rest = await diagram.evaluate(element => getComputedStyle(element).getPropertyValue("--anatomy-rest").trim());
     expect(rest).toBe(variant === "dark" ? "#45493f" : "#dedbd3");
     const bounds = await diagram.boundingBox();

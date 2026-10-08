@@ -103,7 +103,8 @@ export function StrengthAnatomy({ sets, selected, onSelect }: {
       <h3 className="text-[15px] font-medium">{t("sportView.body_map")}</h3>
       <span className="text-[11px] text-muted">{t("sportView.recorded_sets")}</span>
     </div>
-    <svg viewBox="0 0 432 550" className="mx-auto mt-2 w-full max-w-[440px]" role="group"
+    <div className="mx-auto mt-2 w-full max-w-[440px]">
+    <svg viewBox="0 0 432 525" className="w-full" role="group"
       aria-label={t("sportView.body_map")} aria-describedby={id + "-description"}>
       <desc id={id + "-description"}>{t("sportView.body_map_note")}</desc>
       <defs>
@@ -157,9 +158,12 @@ export function StrengthAnatomy({ sets, selected, onSelect }: {
           </g>)}
         </g>;
       })}
-      <text x="117" y="541" textAnchor="middle" className="fill-muted text-[11px]">{t("sportView.body_front")}</text>
-      <text x="315" y="541" textAnchor="middle" className="fill-muted text-[11px]">{t("sportView.body_back")}</text>
     </svg>
+    <div className="grid grid-cols-2 text-center text-[11px] text-muted">
+      <span>{t("sportView.body_front")}</span>
+      <span>{t("sportView.body_back")}</span>
+    </div>
+    </div>
     <div className="mt-4 flex items-center justify-between gap-3 border-t border-hairline pt-4 text-[11px] text-muted">
       <span>{t("sportView.fewer_sets")}</span>
       <span className="flex items-center gap-1.5" aria-hidden="true">
