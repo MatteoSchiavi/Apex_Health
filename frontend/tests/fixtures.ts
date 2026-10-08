@@ -170,6 +170,7 @@ export async function installApi(
     locale?: "en" | "it";
     units?: "metric" | "imperial";
     role?: "owner" | "friend";
+    sex?: "male" | "female" | "other" | null;
   } = {},
 ) {
   let me = {
@@ -177,7 +178,7 @@ export async function installApi(
     ...(options.role ? { role: options.role } : {}),
     ...Object.fromEntries(
       Object.entries(options).filter(([k]) =>
-        ["theme", "locale", "units"].includes(k),
+        ["theme", "locale", "units", "sex"].includes(k),
       ),
     ),
   };

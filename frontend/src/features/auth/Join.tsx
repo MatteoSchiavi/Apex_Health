@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../../app/api";
 import { useUi, type Locale, type Theme } from "../../app/stores/ui";
-import { Button, ErrorNote, Input, Segmented } from "../../components/kit";
+import { Button, ErrorNote, Input, Segmented, Select } from "../../components/kit";
 import { AuthLayout } from "./AuthLayout";
 export default function Join() {
   const { t } = useTranslation();
@@ -14,6 +14,7 @@ export default function Join() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [sex, setSex] = useState("male");
   const [locale, setLocale] = useState<Locale>(useUi.getState().locale);
   const [theme, setTheme] = useState<Theme>(useUi.getState().theme);
   const [error, setError] = useState("");
@@ -28,6 +29,7 @@ export default function Join() {
         name,
         email,
         password,
+        sex: sex || null,
         locale,
         theme,
       });
@@ -84,6 +86,13 @@ export default function Join() {
           required
         />
         <p className="text-[12px] text-muted">{t("settings.new_password")}</p>
+        <Select label={t("settings.sex")} value={sex} onChange={setSex}
+          options={[
+            { value: "male", label: t("settings.male") },
+            { value: "female", label: t("settings.female") },
+            { value: "other", label: t("settings.other") },
+            { value: "", label: t("design.not_specified") },
+          ]} />
         <div className="flex flex-wrap items-center justify-between gap-4">
           <span className="text-[13px] text-muted">
             {t("auth.choose_language")}

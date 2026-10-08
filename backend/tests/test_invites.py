@@ -19,6 +19,30 @@ OWNER_EMAIL = os.environ["OWNER_EMAIL"]
 OWNER_PASSWORD = os.environ["OWNER_PASSWORD"]
 
 
+@pytest.mark.parametrize("choice, expected", [("omitted", "male"), ("female", "female"), ("male", "male"), (None, None)])
+async def test_signup_persists_sex_and_settings_can_change_it(client, db_session, choice, expected):
+    owner = await _owner_login(client, db_session)
+    code = (await _mint(client, owner)).json()["code"]
+    payload = {"code": code, "name": "Profile test", "email": f"sex-{choice}@friend.example",
+               "password": "a-strong-password-9"}
+    if choice != "omitted":
+        payload["sex"] = choice
+    response = await client.post("/auth/invite/redeem", json=payload, headers=csrf_headers(client))
+    assert response.status_code == 201
+    assert (await client.get("/me")).json()["sex"] == expected
+    response = await client.put("/me", json={"sex": "female"}, headers=csrf_headers(client))
+    assert response.status_code == 200
+    assert (await client.get("/me")).json()["sex"] == "female"
+
+
+async def test_signup_rejects_unrecognized_sex(client):
+    response = await client.post("/auth/invite/redeem", json={
+        "code": "a-long-unused-invite", "name": "Profile test", "email": "invalid-sex@friend.example",
+        "password": "a-strong-password-9", "sex": "invalid",
+    }, headers=csrf_headers(client))
+    assert response.status_code == 422
+
+
 async def _owner_login(client: AsyncClient, db_session: AsyncSession) -> dict:
     await reset_owner_auth_state(db_session)
     resp = await client.post(

@@ -74,6 +74,7 @@ async def redeem_invite(
     *,
     locale: str = "en",
     theme: str = "dark",
+    sex: str | None = "male",
 ) -> tuple[User, AuthCredential, Invite]:
     """Create the friend account for a valid invite and mark it used.
 
@@ -96,7 +97,7 @@ async def redeem_invite(
 
     invite = await claim_invite(session, code)
 
-    user = User(name=name.strip(), locale=locale, theme=theme)
+    user = User(name=name.strip(), locale=locale, theme=theme, sex=sex)
     session.add(user)
     await session.flush()  # assign user.id
 

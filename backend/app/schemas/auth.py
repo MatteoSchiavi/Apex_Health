@@ -37,6 +37,7 @@ class RedeemInviteRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     locale: Literal["en", "it"] = "en"
     theme: Literal["dark", "light"] = "dark"
+    sex: Literal["male", "female", "other"] | None = "male"
 
 
 class InviteCreateRequest(BaseModel):

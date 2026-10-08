@@ -11,8 +11,8 @@ const exercises = [
 ].map(exercise => ({ ...exercise, exercise_id: null, recorded_sets: [], previous: null,
   delta_sets: null, delta_reps: null, delta_volume_kg: null }));
 
-async function show(page: Page, options: { theme?: "light" | "dark"; unknownOnly?: boolean; fullBodyOnly?: boolean } = {}) {
-  await installApi(page, { theme: options.theme ?? "light" });
+async function show(page: Page, options: { theme?: "light" | "dark"; unknownOnly?: boolean; fullBodyOnly?: boolean; sex?: "male" | "female" | null } = {}) {
+  await installApi(page, { theme: options.theme ?? "light", sex: options.sex ?? null });
   await page.route(url => url.pathname === "/activities/1", route => route.fulfill({ json: {
     ...activity, discipline: "strength", has_streams: false,
     presentation: { kind: "strength", avg_speed_m_s: null, max_speed_m_s: null, avg_cadence: null,
@@ -20,6 +20,20 @@ async function show(page: Page, options: { theme?: "light" | "dark"; unknownOnly
         ? [{ ...exercises[0], name: "Burpee", muscle_group: "full_body" }] : exercises },
   } }));
   await page.goto("/app/activities/1");
+}
+
+for (const sex of ["male", "female", null] as const) {
+  test(`profile sex ${sex} selects the outline without diagram controls`, async ({ page }) => {
+    await show(page, { sex });
+    const diagram = page.locator(".strength-anatomy");
+    await expect(diagram).toHaveAttribute("data-body-variant", sex === "female" ? "female" : "male");
+    await expect(diagram.getByRole("button", { name: "Male", exact: true })).toHaveCount(0);
+    await expect(diagram.getByRole("button", { name: "Female", exact: true })).toHaveCount(0);
+    await expect(diagram.locator('path[data-muscle="quads"]')).toHaveCount(2);
+    await expect(diagram.locator('path[data-muscle="adductors"]')).toHaveCount(2);
+    await expect(diagram.locator('path[data-muscle="abductors"]')).toHaveCount(4);
+    await expect(diagram.locator("image,img")).toHaveCount(0);
+  });
 }
 
 test("front and back regions use relative recorded sets and filter the same exercises", async ({ page }) => {
