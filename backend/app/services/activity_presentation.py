@@ -95,6 +95,10 @@ def slope_count(metrics: dict | None, laps: list[ActivityLap]) -> int | None:
 
 
 def strength_summary(exercise_id, name: str, group: str | None, sets: list[dict], previous: dict | None = None) -> dict:
+    from app.services.exercise_catalog import identify
+
+    identified = identify(name, group)
+    name, group = identified["name"], identified["muscle_group"]
     known = [s for s in sets if s["weight_kg"] is not None]
     volume = sum(s["reps"] * s["weight_kg"] for s in known) if known else None
     result = {"exercise_id": exercise_id, "name": name, "muscle_group": group if isinstance(group, str) and group in GROUPS else None,

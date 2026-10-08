@@ -23,6 +23,7 @@ import { EChart, useChartTheme } from "../../components/charts/EChart";
 function StageTimeline({ stages }: { stages: SleepStages }) {
   const { t } = useTranslation();
   const c = useChartTheme();
+  const timezone = useUi(s => s.me?.timezone);
   const segments = (stages.segments ?? []).filter(
     (s) => new Date(s.t_end).getTime() > new Date(s.t_start).getTime(),
   );
@@ -55,9 +56,9 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
             return (
               t("stage." + (s.stage === "light" ? "core" : s.stage)) +
               "<br>" +
-              new Date(s.t_start).toLocaleString() +
+              new Date(s.t_start).toLocaleString(undefined, { timeZone: timezone }) +
               " – " +
-              new Date(s.t_end).toLocaleTimeString()
+              new Date(s.t_end).toLocaleTimeString(undefined, { timeZone: timezone })
             );
           },
         },
@@ -75,6 +76,7 @@ function StageTimeline({ stages }: { stages: SleepStages }) {
               new Date(v).toLocaleTimeString(undefined, {
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: timezone,
               }),
           },
           splitLine: { show: false },

@@ -88,8 +88,10 @@ test("empty current overview still explains incomplete evidence", async ({ page 
   await page.goto("/app");
   await expect(page.getByRole("heading", { name: "Add current evidence before adjusting training" })).toBeVisible();
   await expect(page.getByText("0% of required signals covered")).toBeVisible();
+  await expect(page.getByText("Did this help your plan?", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Decide later", exact: true }).click();
   await page.getByText("Did this help your plan?", { exact: true }).click();
-  await expect(page.getByRole("button", { name: "Save feedback" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save feedback" })).toBeEnabled();
 });
 
 test("Italian mobile decision feedback is localized and accessible", async ({ page }) => {
@@ -97,6 +99,7 @@ test("Italian mobile decision feedback is localized and accessible", async ({ pa
   await decisionApi(page, { locale: "it" });
   await page.goto("/app");
   await expect(page.getByRole("heading", { name: "Mantieni l’obiettivo, riduci il volume" })).toBeVisible();
+  await page.getByRole("button", { name: "Modificata", exact: true }).click();
   await page.getByText("Ti è stato utile per il piano?", { exact: true }).click();
   await expect(page.getByLabel("Ha influenzato il mio piano")).toBeVisible();
   await expect(page.getByRole("link", { name: "Chiedi ad Apex questa decisione" })).toBeVisible();

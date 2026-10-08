@@ -17,11 +17,11 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.core.config import get_settings
 from app.core.db import sessionmaker
-from app.models.user import User
+from app.models.user import User, AuthCredential
 from app.reports.daily import upsert_daily_report
 from app.reports.periodic import upsert_periodic_report
 from app.tasks.celery_app import celery_app
@@ -57,7 +57,8 @@ async def _users_at(
     """Users whose local wall clock currently matches the dispatch window,
     with their local `now` for downstream day math."""
     matches: list[tuple[User, datetime]] = []
-    users = (await session.scalars(select(User).order_by(User.id))).all()
+    users = (await session.scalars(select(User).outerjoin(AuthCredential, AuthCredential.user_id == User.id)
+        .where(or_(AuthCredential.user_id.is_(None), AuthCredential.disabled.is_(False))).order_by(User.id))).all()
     for user in users:
         tz = ZoneInfo(user.timezone)
         local_now = now.astimezone(tz)
@@ -114,54 +115,55 @@ def _period_for(report_type: str, local_now: datetime) -> tuple[date, date]:
 
 async def _dispatch_periodic(report_type: str, now_iso: str | None = None) -> dict:
     now = _now_of(now_iso)
-    settings = get_settings()
-    if not settings.glm_api_key:
-        logger.warning("%s report skipped: GLM_API_KEY not configured", report_type)
-        return {"status": "no-llm-key"}
+    from app.core.llm import build_llm_client, resolve_llm_endpoint
 
-    from app.core.llm import build_llm_client
+    if not resolve_llm_endpoint(get_settings(), "powerful")[1]:
+        return {"status": "no-llm-key"}
 
     llm = build_llm_client()
 
-    if report_type == "weekly":
-        weekday, day_of_month = 0, None  # Monday
-    else:
-        weekday, day_of_month = None, 1  # 1st of month
+    try:
+        if report_type == "weekly":
+            weekday, day_of_month = 0, None  # Monday
+        else:
+            weekday, day_of_month = None, 1  # 1st of month
 
-    async with sessionmaker() as session:
-        targets = await _users_at(
-            session,
-            now,
-            hour=REPORT_LOCAL_HOUR,
-            weekday=weekday,
-            day_of_month=day_of_month,
-        )
-
-    results: dict[str, str] = {}
-    embeddings_client = None
-
-    for user, local_now in targets:
-        if report_type == "quarterly" and local_now.month not in (1, 4, 7, 10):
-            continue
-        start, end = _period_for(report_type, local_now)
-        try:
-            row = await upsert_periodic_report(
-                sessionmaker,
-                llm,
-                user,
-                report_type,
-                start,
-                end,
-                embeddings_client=embeddings_client,
+        async with sessionmaker() as session:
+            targets = await _users_at(
+                session,
+                now,
+                hour=REPORT_LOCAL_HOUR,
+                weekday=weekday,
+                day_of_month=day_of_month,
             )
-            if row is None:
-                results[str(user.id)] = "no-data"
+
+        results: dict[str, str] = {}
+        embeddings_client = None
+
+        for user, local_now in targets:
+            if report_type == "quarterly" and local_now.month not in (1, 4, 7, 10):
                 continue
-            results[str(user.id)] = f"{report_type}:{row.period_start.isoformat()}"
-        except Exception:
-            logger.exception("%s report failed for user %s", report_type, user.id)
-            results[str(user.id)] = "failed"
-    return results
+            start, end = _period_for(report_type, local_now)
+            try:
+                row = await upsert_periodic_report(
+                    sessionmaker,
+                    llm,
+                    user,
+                    report_type,
+                    start,
+                    end,
+                    embeddings_client=embeddings_client,
+                )
+                if row is None:
+                    results[str(user.id)] = "no-data"
+                    continue
+                results[str(user.id)] = f"{report_type}:{row.period_start.isoformat()}"
+            except Exception:
+                logger.exception("%s report failed for user %s", report_type, user.id)
+                results[str(user.id)] = "failed"
+        return results
+    finally:
+        await llm.aclose()
 
 
 def _now_of(now_iso: str | None) -> datetime:

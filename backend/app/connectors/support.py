@@ -22,7 +22,7 @@ SUPPORT = {
     'apple_health': ProviderSupport('MANUAL_IMPORT', True, True, True, commercial_approval_required=False, manual_only=True, experimental=False),
     'apple_healthkit': ProviderSupport('DEVELOPMENT_ONLY', True, True, True, commercial_approval_required=False),
     'whoop': ProviderSupport('EXPERIMENTAL', True, True, True, commercial_approval_required=None, ai_evidence_eligible=True),
-    'oura': ProviderSupport('EXPERIMENTAL', True, True, False, commercial_approval_required=None, ai_evidence_eligible=True),
+    'oura': ProviderSupport('EXPERIMENTAL', True, True, True, commercial_approval_required=None, ai_evidence_eligible=True),
     'strava': ProviderSupport('EXPERIMENTAL', True, True, True, commercial_approval_required=True),
     'coros': ProviderSupport('PENDING_PROVIDER_APPROVAL', True, True, True, commercial_approval_required=True, ai_evidence_eligible=True),
     'technogym': ProviderSupport('EXPERIMENTAL', True, True, True, commercial_approval_required=True, write_back='experimental_access_dependent', ai_evidence_eligible=True),

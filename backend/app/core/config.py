@@ -97,19 +97,19 @@ class Settings(BaseSettings):
     strava_page_delay_seconds: float = 2.0
     strava_activity_page_size: int = 100
 
-    # --- Oura connector (official API v2 — personal apps ARE allowed, so the
-    # owner can register this one in minutes at cloud.ouraring.com) ---
-    # Sleep stages (the ring's core advantage: 30s-class hypnogram), HRV,
-    # temperature deviation, SpO2. Same normalization law: canonical columns
-    # only where unit+semantics match Garmin; ring-specific values stay in
-    # source_metrics.
+    # --- Oura official API v2: registered app and athlete consent required ---
+    # Implemented: actual sleep periods/stages, daily provider sleep score,
+    # overnight HRV and respiration. Continuous HR and undated profile weight
+    # remain raw-only. Dedicated readiness, SpO2 and temperature are not fetched.
     oura_client_id: str = ""
     oura_client_secret: str = ""
     oura_redirect_uri: str = "http://localhost:8000/integrations/oura/callback"
     oura_oauth_authorize_url: str = "https://cloud.ouraring.com/oauth/authorize"
     oura_oauth_token_url: str = "https://api.ouraring.com/oauth/token"
     oura_api_base: str = "https://api.ouraring.com/v2/usercollection"
-    oura_scope: str = "daily sleep heartrate personal spo2 temperature"
+    # Public OpenAPI 1.41 lists no `sleep` or `temperature` OAuth scope.
+    # `daily` authorizes sleep collections; request only feeds this driver uses.
+    oura_scope: str = "daily heartrate personal"
     oura_page_size: int = 25
     oura_page_delay_seconds: float = 0.5
 

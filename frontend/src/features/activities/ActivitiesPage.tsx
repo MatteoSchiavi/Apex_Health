@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { api, type ActivityListItem } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
@@ -27,10 +27,12 @@ export default function ActivitiesPage() {
   const { t } = useTranslation();
   const units = useUnits();
   const timezone = useUi((s) => s.me?.timezone);
+  const [params] = useSearchParams();
+  const pinned = /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date") : null;
   const [range, setRange] = useState("90");
   const [disc, setDisc] = useState("all");
-  const end = localDay(timezone),
-    start = shiftDay(end, -Number(range) + 1);
+  const end = pinned ?? localDay(timezone),
+    start = pinned ?? shiftDay(end, -Number(range) + 1);
   const query = useInfiniteQuery({
     queryKey: ["activities", range, start, end],
     initialPageParam: 0,

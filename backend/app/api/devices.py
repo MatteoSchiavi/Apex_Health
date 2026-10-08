@@ -62,7 +62,15 @@ async def list_devices(
 @router.get("/support")
 async def provider_support(user: User = Depends(get_current_user)):
     from app.connectors.support import SUPPORT, support_for
-    return {provider: support_for(provider) for provider in SUPPORT}
+    from app.connectors.oura.flow import flow_settings_ready as oura_ready
+    from app.connectors.whoop.flow import flow_settings_ready as whoop_ready
+    from app.connectors.strava.flow import flow_settings_ready as strava_ready
+    from app.connectors.technogym.flow import flow_settings_ready as technogym_ready
+    from app.core.config import get_settings
+    settings = get_settings()
+    configured = {"oura": oura_ready(), "whoop": whoop_ready(), "strava": strava_ready(),
+                  "technogym": technogym_ready(), "coros": bool(settings.coros_mcp_url and settings.coros_mcp_activity_tool)}
+    return {provider: {**support_for(provider), "configured": configured.get(provider, True)} for provider in SUPPORT}
 
 @router.put("/main", response_model=list[DeviceOut])
 async def set_main_device(

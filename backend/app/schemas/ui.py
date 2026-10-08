@@ -83,6 +83,7 @@ class OverviewOut(BaseModel):
     acwr: float | None
     training_load_7d: float | None
     activities: list[dict[str, Any]]
+    recent_activities: list[dict[str, Any]] = Field(default_factory=list)
     sleep: dict[str, Any] | None
     integration_status: list[dict[str, Any]]
     alerts: list[dict[str, Any]]

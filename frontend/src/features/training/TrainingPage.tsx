@@ -14,6 +14,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { api, type Overview } from "../../app/api";
 import {
   Badge,
@@ -644,7 +645,8 @@ function Feedback() {
 
 export default function TrainingPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState("plan");
+  const [params, setParams] = useSearchParams();
+  const tab = ["plan", "calendar", "load"].includes(params.get("tab") ?? "") ? params.get("tab")! : "plan";
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -653,7 +655,7 @@ export default function TrainingPage() {
       />
       <Tabs
         value={tab}
-        onChange={setTab}
+        onChange={tab => setParams({ tab })}
         label={t("training.title")}
         options={[
           { value: "plan", label: t("design.today_plan") },

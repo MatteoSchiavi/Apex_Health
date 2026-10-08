@@ -5,7 +5,8 @@ test("collapsed sidebar keeps the Apex mark as the brand", async ({ page }) => {
   await installApi(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app");
-  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.mouse.move(600, 400);
+  await expect(page.locator("aside")).toHaveCSS("width", "76px");
 
   const brand = page.locator("aside").getByRole("link", { name: "Apex Health" });
   await expect(brand).toBeVisible();

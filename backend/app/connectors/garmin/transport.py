@@ -24,6 +24,8 @@ class GarminTransport(Protocol):
         """Return activity sample rows in the connector's existing shape."""
         ...
 
+    async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]: ...
+
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]: ...
 
     async def get_hrv_data(self, local_date: str) -> dict[str, Any]: ...
@@ -52,6 +54,9 @@ class OfficialGarminTransport:
         raise NotImplementedError(self._MESSAGE)
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
+        raise NotImplementedError(self._MESSAGE)
+
+    async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]:
         raise NotImplementedError(self._MESSAGE)
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:

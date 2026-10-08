@@ -38,6 +38,9 @@ class GarminConnectTransport:
     async def get_activities(self, start: int, limit: int) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self._gc.get_activities, start, limit)
 
+    async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]:
+        return await asyncio.to_thread(self._gc.get_activity_exercise_sets, activity_id)
+
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
         # garminconnect 0.3.x returns activityDetailMetrics aligned with
         # metricDescriptors. Keep converting at this provider boundary so the
@@ -198,6 +201,9 @@ class LiveGarminClient:
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
         return await self._transport.get_activity_samples(activity_id)
+
+    async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]:
+        return await self._transport.get_activity_exercise_sets(activity_id)
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
         return await self._transport.get_sleep_data(local_date)

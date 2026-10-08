@@ -160,10 +160,10 @@ def test_impact_allowed_by_ceiling_matrix() -> None:
     assert impact_allowed_by_ceiling("low", "rest") is False
 
 
-def test_safety_block_with_no_feature_returns_go() -> None:
-    """P-04/W-02: no scored day → verdict='go' (interlock not engaged)."""
+def test_safety_block_with_no_feature_does_not_clear_training() -> None:
+    """Missing evidence is an unknown assessment, never a green clearance."""
     block = safety_block(None)
-    assert block["verdict"] == "go"
+    assert block["verdict"] == "unknown"
     assert block["intensity_ceiling"] is None
 
 

@@ -580,7 +580,7 @@ function DevicesSection() {
                     {key !== "garmin" && key !== "coros" && !connected && (
                       <Button
                         variant="ghost"
-                        disabled={connect.isPending}
+                        disabled={connect.isPending || maturity.isLoading || maturity.isError || maturity.data?.[key]?.configured === false}
                         onClick={() => connect.mutate(key)}
                         icon={<ExternalLink size={12} />}
                       >

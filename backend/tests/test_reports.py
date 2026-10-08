@@ -3,6 +3,7 @@ ai_reports with model_used=NULL (no LLM); weekly/monthly reports run the
 POWERFUL tier over a §8.2 data pack (query calls audited with session_id
 NULL), and are idempotent per period."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.core.db import sessionmaker as app_sessionmaker
 from app.core.llm import LLMResponse
+from app.core.config import get_settings
 from app.models.activity import Activity, Discipline
 from app.models.ai import AgentToolCall, AiReport, Embedding
 from app.models.features import DailyFeature
@@ -97,6 +99,10 @@ async def test_daily_summary_is_templated_and_persisted(db_session):
     owner = await _owner_id(db_session)
     await _seed_user_and_data(db_session, owner)
     user = await _user(db_session, owner)
+    # An earlier profile test can select Italian for this shared owner.
+    # This scenario explicitly verifies the English template.
+    user.locale = "en"
+    await db_session.commit()
     day = datetime(2025, 3, 9).date()
 
     summary = await build_daily_summary(db_session, user, day)
@@ -114,6 +120,18 @@ async def test_daily_summary_is_templated_and_persisted(db_session):
         select(func.count()).select_from(AiReport).where(AiReport.report_type == "daily")
     )
     assert count == 1
+
+
+async def test_italian_daily_summary_keeps_measurements_and_translates_template(db_session):
+    owner = await _owner_id(db_session)
+    await _seed_user_and_data(db_session, owner)
+    user = await _user(db_session, owner)
+    user.locale = "it"
+    summary = await build_daily_summary(db_session, user, datetime(2025, 3, 9).date())
+    assert "Report giornaliero" in summary.content_md
+    assert "Prontezza 71" in summary.content_md and "Recupero" in summary.content_md
+    assert "ACWR 1.21" in summary.content_md
+    assert "Training:" not in summary.content_md
 
 
 async def test_daily_summary_without_features_returns_none(db_session):
@@ -160,7 +178,7 @@ async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
         lambda: SimpleNamespace(glm_api_key="fixture", glm_api_base="http://x", llm_provider_cheap="c", llm_provider_powerful="p"),
     )
     llm = FixtureAgentLLMClient(
-        [LLMResponse(content="# Weekly report\nAll good.", model="glm-5.2", tokens_in=4000, tokens_out=900)]
+        [LLMResponse(content=json.dumps({"answer": "The recorded observations were reviewed.", "claims": [], "limitations": ["No causal assessment."]}), model="glm-5.2", tokens_in=4000, tokens_out=900)]
     )
 
     start = datetime(2025, 3, 3).date()
@@ -168,7 +186,8 @@ async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):
     row = await upsert_periodic_report(app_sessionmaker, llm, await _user(db_session, owner), "weekly", start, end)
 
     assert row is not None and row.model_used == "glm-5.2"
-    assert row.source_feature_ids  # metric/date audit ids recorded
+    assert row.content_md == "The recorded observations were reviewed."
+    assert row.source_feature_ids  # actual evidence and snapshot ids recorded
     assert llm.calls[0]["tier"] == "powerful"  # §9.2: hardcoded, never classified
 
     tool_calls = (await db_session.scalars(select(AgentToolCall))).all()
@@ -192,18 +211,17 @@ async def test_weekly_task_dispatch_persists_report(db_session, monkeypatch):
     await _seed_user_and_data(db_session, owner)
 
     embeddings = FixtureEmbeddingClient()
+    task_settings = get_settings().model_copy(update={"glm_api_key": "", "deepseek_api_key": "fixture", "llm_provider_powerful": "", "llm_api_base_powerful": "", "llm_api_key_powerful": ""})
     monkeypatch.setattr(
         "app.tasks.ai_reports.get_settings",
-        lambda: SimpleNamespace(
-            glm_api_key="fixture", openai_api_key="fixture"
-        ),
+        lambda: task_settings,
     )
     monkeypatch.setattr("app.core.embeddings.build_embedding_client", lambda: embeddings)
     await db_session.commit()
 
     # inject the fixture LLM as the production client for the task
     llm = FixtureAgentLLMClient(
-        [LLMResponse(content="Weekly: consistent block.", model="glm-5.2", tokens_in=3000, tokens_out=700)]
+        [LLMResponse(content=json.dumps({"answer": "The recorded observations were reviewed.", "claims": [], "limitations": []}), model="glm-5.2", tokens_in=3000, tokens_out=700)]
     )
     monkeypatch.setattr(
         "app.core.llm.build_llm_client", lambda: llm
@@ -212,6 +230,7 @@ async def test_weekly_task_dispatch_persists_report(db_session, monkeypatch):
     # Monday 2025-03-10 06:00 Rome = 05:00 UTC; period = Mon 03-03 .. Sun 03-09
     result = await _dispatch_periodic("weekly", now_iso="2025-03-10T05:00:00+00:00")
     assert result[str(owner)] == "weekly:2025-03-03"
+    assert llm.closed
 
     # the report content was embedded into the search corpus (§6.2/§8.3)
     report_rows = (await db_session.scalars(select(Embedding))).all()
@@ -219,7 +238,7 @@ async def test_weekly_task_dispatch_persists_report(db_session, monkeypatch):
 
     # monthly on the 1st: 2025-04-01 06:00 Rome = 04:00 UTC → March
     llm2 = FixtureAgentLLMClient(
-        [LLMResponse(content="Monthly rollup.", model="glm-5.2", tokens_in=6000, tokens_out=1200)]
+        [LLMResponse(content=json.dumps({"answer": "The recorded observations were reviewed.", "claims": [], "limitations": []}), model="glm-5.2", tokens_in=6000, tokens_out=1200)]
     )
     monkeypatch.setattr("app.core.llm.build_llm_client", lambda: llm2)
     result = await _dispatch_periodic("monthly", now_iso="2025-04-01T04:00:00+00:00")

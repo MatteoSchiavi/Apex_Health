@@ -20,7 +20,7 @@ continuously raises ban risk; pagination respects rate limits).
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -174,6 +174,28 @@ async def fetch_activities(
     return new_ids
 
 
+async def fetch_strength_sets(session, user_id, client, external_id, delay_s, report):
+    """Fetch the separate Garmin set feed for owned strength sessions only."""
+    if not callable(getattr(client, "get_activity_exercise_sets", None)):
+        return
+    activity = await session.scalar(select(Activity).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).where(
+        Activity.user_id == user_id, ActivitySourceLink.user_id == user_id,
+        ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id))
+    if activity is None or (activity.source_metrics or {}).get("garmin", {}).get("type_key") not in ("strength_training", "strength", "gym_general"):
+        return
+    try:
+        payload = await client.get_activity_exercise_sets(int(external_id))
+    except Exception as exc:
+        # An optional set feed failing cannot invalidate a completed daily sync.
+        logger.warning("Garmin exercise-set fetch failed (%s)", type(exc).__name__)
+        await _pace(delay_s)
+        return
+    if isinstance(payload, dict):
+        await fetch.store_raw(session, user_id, f"activity_exercise_sets:{external_id}", payload)
+        report.raw_rows_stored += 1
+    await _pace(delay_s)
+
+
 async def fetch_streams(
     session: AsyncSession,
     user_id: int,
@@ -189,6 +211,7 @@ async def fetch_streams(
     payload_type, raw bytes untouched). checkpoint=True normalizes + commits
     after each activity so a killed run never re-fetches streams."""
     for external_id in activity_ids:
+        await fetch_strength_sets(session, user_id, client, external_id, delay_s, report)
         try:
             samples = await client.get_activity_samples(int(external_id))
         except Exception as exc:
@@ -401,6 +424,7 @@ async def normalize_pending(
                 stats = await normalize_raw_row(session, row, tz, discipline_index)
                 report.normalized_raw_rows += 1
                 totals.activities_upserted += stats.activities_upserted
+                totals.activities_merged += stats.activities_merged
                 totals.activity_streams_upserted += stats.activity_streams_upserted
                 totals.sleep_upserted += stats.sleep_upserted
                 totals.hrv_upserted += stats.hrv_upserted
@@ -412,9 +436,15 @@ async def normalize_pending(
                 "garmin normalizer: raw row %s (%s) stays unprocessed: %s",
                 row.id,
                 row.payload_type,
-                exc,
+                type(exc).__name__,
             )
             totals.unprocessed.append(row.id)
+    if report.stats is not None:
+        for spec in fields(NormalizerStats):
+            value = getattr(totals, spec.name)
+            if isinstance(value, int):
+                setattr(totals, spec.name, value + getattr(report.stats, spec.name))
+        totals.discipline_fallbacks = list(dict.fromkeys(report.stats.discipline_fallbacks + totals.discipline_fallbacks))
     report.stats = totals
     report.raw_rows_unprocessed = len(totals.unprocessed)
     if totals.discipline_fallbacks:
@@ -495,6 +525,8 @@ async def sync_user_garmin(
                 "from an interrupted pass"
             )
             new_ids = list(dict.fromkeys(new_ids + recovered))
+    if not checkpoint:
+        await normalize_pending(session, user.id, tz, discipline_index, report)
     await fetch_streams(
         session, user.id, client, new_ids, page_delay_s, report,
         tz=tz, discipline_index=discipline_index, checkpoint=checkpoint,

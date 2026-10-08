@@ -12,7 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import BigInteger, func, select
+from sqlalchemy import BigInteger, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -173,11 +173,9 @@ async def sleep_stages(
 ) -> SleepStagesOut:
     """Epoch-level stage timeline (hypnogram) for one night.
 
-    Reads the STORED RAW Garmin payload — no remote call, no invention:
-    when the night has no stage timeline in raw_ingest (non-Garmin night,
-    legacy row) the response carries segments=None and the UI falls back to
-    the proportional stage bar. Anchored on the normalized session's end
-    time so the raw row match survives midnight/fetch-order jitter."""
+    Reads only stored raw payloads belonging to the selected session's source.
+    Missing timelines return None so the UI uses the proportional stage bar.
+    """
     tz = ZoneInfo(user.timezone or "Europe/Rome")
     night = (
         await session.scalars(
@@ -190,11 +188,24 @@ async def sleep_stages(
     if night is None:
         return SleepStagesOut(date=day.isoformat(), segments=None, source=None)
 
-    # Match raw rows by the DTO's sleep end epoch (ms) within ±6h of the
+    if night.origin == "oura":
+        ident = (night.source_metrics or {}).get("oura", {}).get("id")
+        row = await session.scalar(select(RawIngest).where(
+            RawIngest.user_id == user.id, RawIngest.source == "oura", RawIngest.payload_type == "sleep",
+            RawIngest.raw_json["id"].astext == ident,
+        ).order_by(RawIngest.fetched_at.desc(), RawIngest.id.desc()).limit(1)) if ident else None
+        from app.connectors.oura.stages import extract_sleep_stage_segments as oura_stages
+        segments = oura_stages(row.raw_json) if row else None
+        return SleepStagesOut(date=day.isoformat(), segments=segments, source="oura")
+    if night.origin != "garmin":
+        return SleepStagesOut(date=day.isoformat(), segments=None, source=night.origin)
+
+    # Match raw rows by the DTO's sleep end epoch (ms) within one second of the
     # normalized end_time — the same value the normalizer used, so a hit is
     # the exact night, not merely the same calendar day.
     end_ms = int(night.end_time.timestamp() * 1000)
     end_key = RawIngest.raw_json["dailySleepDTO", "sleepEndTimestampGMT"]
+    safe_end = case((end_key.astext.op("~")("^[0-9]{1,16}$"), end_key.astext), else_=None)
     row = (
         await session.scalars(
             select(RawIngest)
@@ -202,7 +213,7 @@ async def sleep_stages(
                 RawIngest.user_id == user.id,
                 RawIngest.source == "garmin",
                 RawIngest.payload_type == "sleep",
-                func.cast(end_key.astext, BigInteger).between(end_ms - 6 * 3600_000, end_ms + 6 * 3600_000),
+                func.cast(safe_end, BigInteger).between(end_ms - 1000, end_ms + 1000),
             )
             .order_by(RawIngest.fetched_at.desc())
             .limit(1)

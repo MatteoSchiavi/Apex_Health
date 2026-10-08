@@ -144,6 +144,20 @@ async def _run(ident):
                         ).all()
                     )
                 client = await asyncio.to_thread(build_live_client, credentials)
+                if params.get("repair_strength"):
+                    from app.models.activity import Activity, ActivitySourceLink
+                    from app.connectors.garmin.sync import fetch_strength_sets, normalize_pending
+
+                    async with sessionmaker() as session:
+                        ids = (await session.scalars(select(ActivitySourceLink.external_id).join(Activity, Activity.id == ActivitySourceLink.activity_id).where(
+                            Activity.user_id == user_id, ActivitySourceLink.user_id == user_id, ActivitySourceLink.source == "garmin",
+                            Activity.local_date.between(start, end), Activity.source_metrics["garmin"]["type_key"].astext == "strength_training",
+                            Activity.source_metrics["garmin"]["exercises"].is_(None)).limit(100))).all()
+                        report = SyncReport(user_id=user_id, mode="repair")
+                        for external_id in ids:
+                            await fetch_strength_sets(session, user_id, client, external_id, 1, report)
+                        await normalize_pending(session, user_id, tz, index, report)
+                        await session.commit()
                 for offset in range(cursor, (end - start).days + 1):
                     async with sessionmaker() as session:
                         job = await session.get(LabJob, ident)
@@ -152,6 +166,11 @@ async def _run(ident):
                             await session.commit()
                             return {"state": "cancelled"}
                         day = start + timedelta(days=offset)
+                        if params.get("days") is not None and str(day) not in params["days"]:
+                            job.progress = {**job.progress, "cursor": offset + 1}
+                            job.updated_at = datetime.now(UTC)
+                            await session.commit()
+                            continue
                         report = SyncReport(user_id=user_id, mode="repair")
                         await fetch_wellness(
                             session,
@@ -227,6 +246,13 @@ async def _run(ident):
                     "completed": job.progress.get("completed", 0) + len(rows),
                 }
                 await session.commit()
+    if kind == "repair":
+        from app.features.engine import compute_user_range
+
+        async with sessionmaker() as session:
+            user = await session.get(User, user_id)
+            if user is not None:
+                await compute_user_range(session, user, start, end)
     async with sessionmaker() as session:
         job = await session.get(LabJob, ident)
         job.state = "completed"

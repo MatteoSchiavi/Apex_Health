@@ -58,8 +58,8 @@ async def sync_user_oura(
         try:
             records = await coro
         except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
-            logger.warning("oura sync: %s pull failed: %s", payload_type, exc)
-            errors.append(f"{payload_type}: {exc}")
+            logger.warning("oura sync: %s pull failed (%s)", payload_type, type(exc).__name__)
+            errors.append(payload_type)
             continue
         for record in records:
             if not isinstance(record, dict) or not record:
@@ -75,7 +75,7 @@ async def sync_user_oura(
             await store_raw(session, user.id, "personal_info", personal, fetched_at=now)
             report.raw_rows_stored += 1
     except Exception as exc:  # noqa: BLE001
-        errors.append(f"personal_info: {exc}")
+        errors.append("personal_info")
 
     # -- normalize pending (per-row savepoints) -------------------------------
     rows = (
@@ -103,7 +103,7 @@ async def sync_user_oura(
         except NormalizationError as exc:
             logger.warning(
                 "oura normalizer: raw row %s (%s) stays unprocessed: %s",
-                row.id, row.payload_type, exc,
+                row.id, row.payload_type, type(exc).__name__,
             )
             report.raw_rows_unprocessed += 1
             totals.unprocessed.append(row.id)

@@ -167,6 +167,18 @@ async def normalize_raw_row(
         await _upsert_activity(session, raw, payload, tz, discipline_index, stats)
     elif kind == fetch.PAYLOAD_ACTIVITY_STREAMS:
         await _upsert_streams(session, raw, payload, stats)
+    elif kind == "activity_exercise_sets":
+        from app.services.exercise_catalog import garmin_exercises
+
+        external_id = raw.payload_type.split(":", 1)[1]
+        activity = await session.scalar(select(Activity).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).where(
+            Activity.user_id == raw.user_id, ActivitySourceLink.user_id == raw.user_id,
+            ActivitySourceLink.source == fetch.SOURCE, ActivitySourceLink.external_id == external_id))
+        if activity is None:
+            raise NormalizationError("Exercise sets have no owned activity")
+        metrics = dict(activity.source_metrics or {})
+        metrics["garmin"] = {**metrics.get("garmin", {}), "exercises": garmin_exercises(payload)}
+        activity.source_metrics = metrics
     elif kind == fetch.PAYLOAD_SLEEP:
         await _upsert_sleep(session, raw, payload, tz, stats)
     elif kind == fetch.PAYLOAD_HRV:

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowUpRight } from "lucide-react";
+import { Star } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
 import {
   Badge,
@@ -20,45 +20,10 @@ import { assess, METRIC_LABELS, useUnits } from "../../components/data";
 import { LabsPanel } from "./LabsPanel";
 import { MetricDirection, PersonalRange, RANGE_METRICS } from "../../components/MetricInterpretation";
 
-const GROUPS = [
-  {
-    value: "signals",
-    label: "design.body_signals",
-    keys: ["resting_hr", "hrv_ms", "spo2", "respiration"],
-  },
-  {
-    value: "recovery",
-    label: "design.recovery_sleep",
-    keys: [
-      "provider_sleep_score",
-      "sleep_duration",
-      "sleep_deep",
-      "sleep_rem",
-      "sleep_light",
-      "restlessness",
-    ],
-  },
-  {
-    value: "load",
-    label: "design.load_risk",
-    keys: [
-      "acwr",
-      "acute_load",
-      "chronic_load",
-    ],
-  },
-  {
-    value: "body",
-    label: "design.body_activity",
-    keys: ["weight", "body_fat", "vo2max", "steps", "floors", "hydration"],
-  },
-  {
-    value: "estimates",
-    label: "metricView.estimates",
-    keys: ["readiness", "recovery", "strain", "sleep_score", "hrv_deviation", "systemic_stress", "load_spike"],
-  },
-];
-function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string; range: string }) {
+import { METRIC_GROUPS, LEGACY_METRIC_TABS } from "./groups";
+import { useAction, useLab, useToday } from "../lab/shared";
+
+function MetricRow({ metricKey, unit, range, favorite, toggle, pending }: { metricKey: string; unit: string; range: string; favorite: boolean; toggle: () => void; pending: boolean }) {
   const { t } = useTranslation();
   const units = useUnits();
   const trend = useQuery({
@@ -72,7 +37,8 @@ function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string
     ? t(METRIC_LABELS[metricKey])
     : metricKey.replaceAll("_", " ");
   return (
-    <Link to={"/app/biometrics/" + metricKey} className="metric-row">
+    <div className="relative">
+    <Link to={"/app/biometrics/" + metricKey} className="metric-row pr-12">
       <div>
         <p className="text-[14px] font-medium">{label}</p>
         <p className="mt-1 text-[12px] text-muted">
@@ -107,8 +73,10 @@ function MetricRow({ metricKey, unit, range }: { metricKey: string; unit: string
         />
         <MetricDirection metric={metricKey} points={points} />
       </div>
-      <ArrowUpRight size={17} className="metric-arrow text-muted" />
+      <span />
     </Link>
+    <button type="button" aria-label={t(favorite ? "completion.unstar" : "completion.star", { metric: label })} aria-pressed={favorite} disabled={pending} onClick={toggle} className="absolute right-0 top-1/2 -translate-y-1/2 p-3 text-muted hover:text-ink"><Star size={18} fill={favorite ? "currentColor" : "none"} /></button>
+    </div>
   );
 }
 export default function BiometricsHubPage() {
@@ -121,30 +89,24 @@ export default function BiometricsHubPage() {
     queryFn: () =>
       api.get<Record<string, { unit: string; direction: string }>>("/metrics"),
   });
-  const extra = Object.keys(catalog.data ?? {}).filter(
-    (k) => !GROUPS.some((g) => g.keys.includes(k)),
-  );
-  const groups = extra.length
-    ? [
-        ...GROUPS,
-        { value: "other", label: "design.other_metrics", keys: extra },
-      ]
-    : GROUPS;
-  const tab = params.get("tab") ?? "signals";
-  const active = [...groups.map((g) => g.value), "labs"].includes(tab)
-    ? tab
-    : "signals";
-  const selected = groups.find((g) => g.value === active);
-  const keys = (
-    search ? Object.keys(catalog.data ?? {}) : (selected?.keys ?? [])
-  ).filter((key) => {
-    const label = METRIC_LABELS[key]
-      ? t(METRIC_LABELS[key])
-      : key.replaceAll("_", " ");
-    return (
-      catalog.data?.[key] && label.toLowerCase().includes(search.toLowerCase())
-    );
+  const favoritesQuery = useLab<{ payload: { metrics: string[] } }[]>("/lab/entries?kind=metric_favorites");
+  const save = useAction();
+  const today = useToday();
+  const favorites = favoritesQuery.data?.[0]?.payload.metrics ?? [];
+  const requested = params.get("tab") ?? "favorites";
+  const legacy = LEGACY_METRIC_TABS[requested];
+  const active = legacy?.tab ?? (["favorites", "health", "training", "labs"].includes(requested) ? requested : "favorites");
+  const category = METRIC_GROUPS.find(g => g.value === active);
+  const groupValue = params.get("group") ?? legacy?.group ?? category?.groups[0].value;
+  const subgroup = category?.groups.find(g => g.value === groupValue) ?? category?.groups[0];
+  const known = new Set(METRIC_GROUPS.flatMap(c => c.groups.flatMap(g => g.keys)));
+  const other = Object.keys(catalog.data ?? {}).filter(k => !known.has(k));
+  const selected = active === "favorites" ? favorites : [...(subgroup?.keys ?? []), ...(subgroup?.value === "signals" ? other : [])];
+  const keys = (search ? Object.keys(catalog.data ?? {}) : selected).filter(key => {
+    const label = METRIC_LABELS[key] ? t(METRIC_LABELS[key]) : key.replaceAll("_", " ");
+    return catalog.data?.[key] && (label + " " + key).toLowerCase().includes(search.toLowerCase());
   });
+  const toggle = (metric: string) => save.mutate({ path: "/lab/entries", body: { entry: { kind: "metric_favorites", date: today, metrics: favorites.includes(metric) ? favorites.filter(k => k !== metric) : [...favorites, metric] } } });
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -152,7 +114,7 @@ export default function BiometricsHubPage() {
         subtitle={t("design.metrics_sub")}
         actions={<Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} />}
       />
-      {active === "estimates" && <p className="text-[13px] text-muted">{t("metricView.estimates_note")}</p>}
+      {subgroup?.value === "estimates" && <p className="text-[13px] text-muted">{t("metricView.estimates_note")}</p>}
       <Tabs
         value={active}
         onChange={(v) => {
@@ -161,10 +123,13 @@ export default function BiometricsHubPage() {
         }}
         label={t("design.metric_groups")}
         options={[
-          ...groups.map((g) => ({ value: g.value, label: t(g.label) })),
+          { value: "favorites", label: t("completion.favorites") },
+          ...METRIC_GROUPS.map((g) => ({ value: g.value, label: t(g.label) })),
           { value: "labs", label: t("biometrics.labs") },
         ]}
       />
+      {category && <Segmented value={subgroup!.value} onChange={group => setParams({ tab: active, group })} options={category.groups.map(g => ({ value: g.value, label: t(g.label) }))} />}
+      {(save.isError || favoritesQuery.isError) && <ErrorNote />}
       {active === "labs" ? (
         <LabsPanel />
       ) : (
@@ -201,11 +166,14 @@ export default function BiometricsHubPage() {
                   metricKey={key}
                   unit={catalog.data![key].unit}
                   range={range}
+                  favorite={favorites.includes(key)}
+                  toggle={() => toggle(key)}
+                  pending={save.isPending || favoritesQuery.isLoading || favoritesQuery.isError}
                 />
               ))}
               {keys.length === 0 && (
                 <p className="py-12 text-center text-muted">
-                  {t("search.no_results")}
+                  {t(active === "favorites" && !search ? "completion.favorites_empty" : "search.no_results")}
                 </p>
               )}
             </Card>

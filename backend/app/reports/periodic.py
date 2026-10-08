@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.llm import LLMClient, jsonable
 from app.models.ai import AgentToolCall, AiReport
-from app.models.user import User
+from app.models.user import User, AuthCredential
 from app.queries import (
     get_journal_entries,
 )
@@ -105,14 +105,22 @@ async def upsert_periodic_report(
     end: date,
     embeddings_client=None,
 ) -> AiReport | None:
-    """Generate (or refresh) the weekly/monthly ai_reports row: data pack →
-    one powerful-tier completion → persist (+ embed the content for §8.3
-    search_context, best-effort) → push to linked chats. None when the
-    period has no data at all."""
+    """Generate a grounded weekly/monthly/quarterly report from eligible data.
+
+    Recheck the input revision before persistence. This path neither embeds
+    the report nor delivers it to chats. None when evidence is unavailable.
+    """
     if report_type not in ("weekly", "monthly", "quarterly"):
         raise ValueError(f"unsupported report_type {report_type!r}")
 
     async with sessionmaker() as session:
+        from app.services.evidence import scope_lock, snapshot_revision
+
+        await scope_lock(session, user.id, "changes")
+        credential = await session.get(AuthCredential, user.id)
+        if credential and credential.disabled:
+            return None
+        revision = await snapshot_revision(session, user.id)
         existing = (
             await session.scalars(
                 select(AiReport).where(
@@ -122,11 +130,12 @@ async def upsert_periodic_report(
                 )
             )
         ).first()
-        if existing is not None and "policy:ai_eligible_v1" in (
+        if existing is not None and f"snapshot:{revision}" in (
             existing.source_feature_ids or []
         ):
             return existing
         pack = await build_period_data_pack(session, user.id, start, end)
+        pack.source_feature_ids.append(f"snapshot:{revision}")
         await session.commit()
 
     if (
@@ -164,6 +173,20 @@ async def upsert_periodic_report(
     )
 
     async with sessionmaker() as session:
+        await scope_lock(session, user.id, "changes")
+        if await session.get(User, user.id) is None:
+            return None
+        await log_llm_usage(
+            session, user_id=user.id, call_type=f"{report_type}_report", tier="powerful",
+            model=response.model, tokens_in=response.tokens_in, tokens_out=response.tokens_out,
+            cached_tokens=response.cached_tokens,
+        )
+        credential = await session.get(AuthCredential, user.id)
+        if credential and credential.disabled or await snapshot_revision(session, user.id) != revision:
+            # Preserve accounting for an actual remote call, but discard stale
+            # health content after source erasure/correction or account disabling.
+            await session.commit()
+            return None
         row = (
             await session.scalars(
                 select(AiReport).where(
@@ -185,17 +208,7 @@ async def upsert_periodic_report(
 
         row.content_md, grounding = validate_answer(response.content, [pack.payload])
         row.model_used = response.model
-        row.source_feature_ids = pack.source_feature_ids
-        await log_llm_usage(
-            session,
-            user_id=user.id,
-            call_type=f"{report_type}_report",
-            tier="powerful",
-            model=response.model,
-            tokens_in=response.tokens_in,
-            tokens_out=response.tokens_out,
-            cached_tokens=response.cached_tokens,
-        )
+        row.source_feature_ids = pack.source_feature_ids if grounding["status"] == "structured" else []
         await session.flush()  # assign row.id before anything references it
 
         await session.commit()
