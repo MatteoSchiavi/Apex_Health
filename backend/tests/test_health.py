@@ -15,3 +15,12 @@ async def test_health_is_public_and_csrf_exempt(client: AsyncClient):
     but the explicit exemption guards against future method changes."""
     resp = await client.get("/health", headers={"X-Request-Source": "test"})
     assert resp.status_code == 200
+
+
+async def test_public_release_identity_is_uncached_and_exposes_only_a_commit(client, monkeypatch):
+    monkeypatch.setenv('APEX_COMMIT', 'a' * 40)
+    response = await client.get('/version')
+    assert response.json() == {'version':'0.1.0','stage':'beta','commit':'a'*40}
+    assert response.headers['cache-control'] == 'no-store'
+    monkeypatch.setenv('APEX_COMMIT', 'invalid-private-runtime-value')
+    assert (await client.get('/version')).json()['commit'] == 'development'

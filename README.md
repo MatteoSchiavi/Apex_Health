@@ -14,6 +14,10 @@ The deployed application is a single stack:
 
 ![CI](https://github.com/MatteoSchiavi/Apex_Health/actions/workflows/tests.yml/badge.svg)
 
+Web beta 0.1 release checks and the remaining owner actions are documented in
+[BETA_0_1_READINESS.md](docs/BETA_0_1_READINESS.md). `GET /version` identifies
+the installed release; passing repository tests does not update a home server.
+
 ## What it does
 
 - Imports Garmin data and original FIT files; supports source-aware manual,

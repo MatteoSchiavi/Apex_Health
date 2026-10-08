@@ -10,6 +10,26 @@ test("sleep windows align local bedtime across midnight and DST", () => {
   expect(sleepWindow("2026-03-28T22:30:00Z", "2026-03-29T06:00:00Z", "2026-03-29", "Europe/Rome")).toEqual([-0.5, 8]);
 });
 
+test("rendered sleep window places bedtime above waking and keeps a visible bar", async ({ page }) => {
+  await installApi(page);
+  await page.goto('/app/sleep');
+  const card = page.locator('.panel').filter({ has: page.getByRole('heading', { name: 'Bed window', exact: true }) });
+  await expect(card.locator('canvas')).toBeVisible();
+  const positions = await card.evaluate(async el => {
+    const modulePath = '/node_modules/.vite/deps/echarts_core.js';
+    const echarts = await import(modulePath);
+    const chart = echarts.getInstanceByDom(el.querySelector('[_echarts_instance_]'));
+    const [index, bed, wake] = chart.getOption().series[0].data[0];
+    const bedY = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [index, bed])[1];
+    const wakeY = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [index, wake])[1];
+    const bars = chart.getZr().storage.getDisplayList().filter((item: { type: string; shape?: { height?: number } }) => item.type === 'rect' && (item.shape?.height ?? 0) > 10);
+    return { bedY, wakeY, bars: bars.length };
+  });
+  expect(positions.bedY).toBeLessThan(positions.wakeY);
+  expect(positions.wakeY - positions.bedY).toBeGreaterThan(50);
+  expect(positions.bars).toBeGreaterThan(0);
+});
+
 test("favourites persist on the account and can be unstarred", async ({ page }) => {
   const { writes } = await installApi(page);
   await page.goto("/app/biometrics");

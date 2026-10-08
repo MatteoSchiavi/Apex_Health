@@ -19,7 +19,8 @@ ARG APEX_COMMIT=development
 LABEL org.opencontainers.image.revision=$APEX_COMMIT \
       org.opencontainers.image.source="https://github.com/MatteoSchiavi/Apex_Health"
 
-ENV UV_COMPILE_BYTECODE=1 \
+ENV APEX_COMMIT=$APEX_COMMIT \
+    UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
 # postgresql-client-16 (PGDG — bookworm ships only client 15, and pg_dump

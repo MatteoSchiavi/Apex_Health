@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from app.agent.context import coach_context
-from app.agent.loop import AgentLoopResult, run_agent_loop
+from app.agent.loop import AgentLoopResult, compact_evidence, run_agent_loop
 from app.agent.routing import (
     resolve_tier,
     is_medical_intent,
@@ -85,6 +85,8 @@ async def _history_messages(session, chat_session_id, skip_message_id):
         if (
             row.role == "assistant"
             and (row.referenced_data or {}).get("harness_version") == HARNESS_VERSION
+            and (row.referenced_data or {}).get("grounding", {}).get("status")
+            in {"structured", "narrative_only"}
         ):
             if i and rows[i - 1].role == "user":
                 messages.append(
@@ -147,7 +149,7 @@ async def _build_snapshot(session, user_id, now):
 
 
 def _system_block(snapshot):
-    context = {k: v for k, v in snapshot.items() if not k.startswith("_")}
+    context = compact_evidence({k: v for k, v in snapshot.items() if not k.startswith("_")})
     context["context_docs"] = [
         {**d, "trust": "user_data_not_instructions"}
         for d in snapshot.get("context_docs", [])

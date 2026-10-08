@@ -2,16 +2,18 @@
 
 import hashlib
 import logging
+from datetime import UTC, datetime, timedelta
 from importlib import import_module
+from zoneinfo import ZoneInfo
 import httpx
 
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 
 from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
 from app.core.encryption import EncryptionError, decrypt_json, encrypt_json
 from app.models.integration import Integration
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.tasks.celery_app import celery_app
 from app.tasks.runtime import run_async
 from app.services.alpha_events import record_event
@@ -80,7 +82,8 @@ async def sync_account(provider: str, user_id: int) -> dict:
                 raise
             if result.get("status") != "skipped":
                 await _record_sync_outcome(provider, user_id,
-                    error_class="normalization" if result.get("status") == "partial" else None)
+                    error_class=("transport" if result.get("streams_failed") else "normalization")
+                    if result.get("status") == "partial" else None)
             return result
         finally:
             await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
@@ -99,6 +102,9 @@ async def _sync_account(provider: str, user_id: int) -> dict:
         user = await session.get(User, user_id)
         if user is None:
             return {"status": "skipped", "reason": "Account no longer exists"}
+        credential = await session.scalar(select(AuthCredential).where(AuthCredential.user_id == user_id))
+        if credential is not None and credential.disabled:
+            return {"status": "skipped", "reason": "Account disabled"}
         try:
             credentials = decrypt_json(integration.credentials_encrypted) if integration.credentials_encrypted else None
         except EncryptionError:
@@ -143,15 +149,24 @@ async def _sync_account(provider: str, user_id: int) -> dict:
                     await close()
         if report is None:
             raise SyncTaskError("Provider sync failed; retrying may recover it", error_class="transport")
-        return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) else "ok",
+        # Nightly calculations run before most athletes wake up. Refresh
+        # today's row after ingestion as well, so newly fetched sleep/HRV and
+        # activities are reflected without borrowing yesterday's scores.
+        from app.features.engine import compute_user_range
+        today = datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
+        await compute_user_range(session, user, today - timedelta(days=28), today)
+        return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) or getattr(report, "streams_failed", 0) else "ok",
                 "mode": report.mode, "raw_stored": report.raw_rows_stored,
+                "streams_failed": getattr(report, "streams_failed", 0),
                 "unprocessed": getattr(report, "raw_rows_unprocessed", 0)}
 
 
 async def enqueue_active(provider: str) -> dict:
     async with sessionmaker() as session:
-        users = (await session.scalars(select(Integration.user_id).where(
+        users = (await session.scalars(select(Integration.user_id)
+            .outerjoin(AuthCredential, AuthCredential.user_id == Integration.user_id).where(
             Integration.provider == provider, Integration.status == "active",
+            or_(AuthCredential.user_id.is_(None), AuthCredential.disabled.is_(False)),
         ))).all()
     return {str(user_id): {"task_id": celery_app.send_task(
         f"{provider}.sync_user", args=[user_id],

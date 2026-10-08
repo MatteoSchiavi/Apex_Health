@@ -1,6 +1,8 @@
 """Health endpoint (MASTER_SPEC §18, §21): public, checks DB + Redis connectivity."""
 
 import asyncio
+import os
+import re
 
 from fastapi import APIRouter, Response, status
 from redis.asyncio import Redis
@@ -11,6 +13,15 @@ from app.core.redis import get_redis
 from app.schemas.health import HealthResponse
 
 router = APIRouter(tags=["health"])
+
+
+@router.get("/version")
+async def version(response: Response) -> dict[str, str]:
+    """Public release identity; contains no account or deployment secrets."""
+    response.headers["Cache-Control"] = "no-store"
+    commit = os.environ.get("APEX_COMMIT", "development")
+    return {"version": "0.1.0", "stage": "beta", "commit":
+            commit if re.fullmatch(r"[0-9a-f]{40}", commit) else "development"}
 
 
 @router.get("/health", response_model=HealthResponse)

@@ -205,6 +205,11 @@ export default function OverviewPage() {
       {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(e => <Card key={e.key}><Link to={`/app/biometrics/${e.key}`}><StatPod label={t(METRIC_LABELS[e.key])} value={fmtNum(e.score.value)} unit="/100" /><DeltaChip delta={e.score.delta_7d} compact /><p className="mt-2 text-[12px] text-muted">{t(e.key === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p></Link></Card>)}
     </section>}
     {date ? <DecisionCard date={date} /> : <DecisionCard />}
+    {hasData && <section aria-label={t("refinement.recorded_signals")}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
+        <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
+      </section>}
     {!hasData ? <><Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card></> : <>
       {!!o.alerts.length && <div className="flex flex-col gap-2" role="status">{[...o.alerts].sort((a, b) => (({ critical: 0, high: 1, error: 1, warning: 2, low: 3, info: 4 } as Record<string, number>)[a.severity] ?? 5) - (({ critical: 0, high: 1, error: 1, warning: 2, low: 3, info: 4 } as Record<string, number>)[b.severity] ?? 5)).slice(0, 1).map((a, i) => <div key={i} className="flex items-start gap-4 border-l-2 border-alert px-5 py-3 text-[13px]"><Badge tone={["critical", "high", "error"].includes(a.severity) ? "alert" : "warning"}>{a.severity}</Badge><span>{a.message}</span></div>)}</div>}
       <div className="grid gap-6 xl:grid-cols-2">
@@ -218,11 +223,7 @@ export default function OverviewPage() {
       </div>
       <Card className="!py-4"><div className="grid grid-cols-2 gap-4"><Link to="/app/biometrics/steps"><StatPod label={t(METRIC_LABELS.steps)} value={fmtNum(o.steps)} /></Link><Link to="/app/biometrics/floors"><StatPod label={t(METRIC_LABELS.floors)} value={fmtNum(o.floors)} /></Link></div></Card>
       <LoadPanel o={o} />
-      <section aria-label={t("refinement.recorded_signals")}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
-        <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
-      </section>
+
 
     </>}
     <ActivityCalendar date={date ?? today} />

@@ -5,6 +5,16 @@ import sys
 
 from pythonjsonlogger.json import JsonFormatter
 
+# Fixed exception vocabulary only; never exception text, arguments or SQL.
+OPERATIONAL_ERROR_CODES = frozenset({
+    'TimeoutError', 'ConnectionError', 'ValueError', 'TypeError', 'KeyError',
+    'IntegrityError', 'DataError', 'ProgrammingError', 'OperationalError',
+    'RuntimeError', 'NormalizationError', 'GarminAuthError',
+    'GarminConnectConnectionError', 'GarminConnectAuthenticationError',
+    'GarminConnectTooManyRequestsError', 'HTTPError', 'HTTPStatusError',
+    'SoftTimeLimitExceeded', 'unknown',
+})
+
 _LOGFIELD_WHITELIST = [
     "levelname",
     "name",
@@ -34,8 +44,8 @@ def configure_logging() -> None:
 class OperationalBufferHandler(logging.Handler):
     """Bounded shared API/worker buffer; arbitrary text and tracebacks excluded.
 
-    Event names are generated from severity. No record args, message, extras,
-    exceptions, URLs, user IDs, health payloads or request headers are copied.
+    Event names are generated from severity. Only whitelisted exception codes
+    supplement them; no exception text, arbitrary extras or payloads are copied.
     """
     def __init__(self):
         super().__init__(logging.INFO)
@@ -63,6 +73,9 @@ class OperationalBufferHandler(logging.Handler):
                 suffix='failed' if record.levelno>=logging.ERROR else 'warning' if record.levelno>=logging.WARNING else 'event'
                 event=f'{kind}_{suffix}'
             row={'id':uuid.uuid4().hex,'timestamp':datetime.now(UTC).isoformat(),'level':record.levelname,'source':source,'event':event}
+            code = getattr(record, 'error_code', None)
+            if isinstance(code, str) and code in OPERATIONAL_ERROR_CODES:
+                row['error_code'] = code
             pipe=self.redis.pipeline(transaction=True)
             pipe.lpush('apex:operational:logs',json.dumps(row))
             pipe.ltrim('apex:operational:logs',0,999)

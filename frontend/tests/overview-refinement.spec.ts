@@ -27,6 +27,14 @@ test("overview restores daily metrics and formats sleep as hours and minutes", a
   await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();
   await expect(page.getByText("Floors", { exact: true })).toBeVisible();
   await expect(page.locator('a[href="/app/biometrics/floors"]')).toContainText("6");
+  const signals = page.getByRole("region", { name: "Recorded signals" });
+  const decision = page.getByText("Today's training decision", { exact: true });
+  await expect(decision).toBeVisible();
+  await expect.poll(() => decision.evaluate(el => {
+    const card = el.closest('.panel');
+    return card?.nextElementSibling?.getAttribute('aria-label');
+  })).toBe("Recorded signals");
+  await expect(signals).toBeVisible();
 });
 
 test("overview quick access links lead to the primary destinations", async ({

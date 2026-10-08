@@ -25,7 +25,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.garmin import fetch
@@ -174,14 +174,59 @@ async def fetch_activities(
     return new_ids
 
 
+def strength_activity_condition():
+    # Older normalized activities have a discipline but no source_metrics.
+    return or_(Discipline.name.in_(("strength", "gym_general")),
+               Activity.source_metrics["garmin"]["type_key"].astext.in_(("strength_training", "strength", "gym_general")))
+
+
+def strength_links(user_id, start, end):
+    """Owned Garmin gym source links within the requested local dates."""
+    return (select(ActivitySourceLink.external_id)
+            .join(Activity, Activity.id == ActivitySourceLink.activity_id)
+            .outerjoin(Discipline, Discipline.id == Activity.discipline_id)
+            .where(Activity.user_id == user_id, ActivitySourceLink.user_id == user_id,
+                   ActivitySourceLink.source == SOURCE, Activity.local_date.between(start, end),
+                   strength_activity_condition()))
+
+
+def missing_strength_links(user_id, start, end):
+    """Owned Garmin gym sessions with no successful set-feed projection yet."""
+    return strength_links(user_id, start, end).where(Activity.source_metrics["garmin"]["exercises"].astext.is_(None))
+
+
+async def replay_activity_metadata(session, user_id, tz, discipline_index, start, end):
+    """Repair legacy projections from the current owned activity's raw link.
+
+    Replay only that exact linked summary: older raw revisions, deleted
+    sessions and other accounts cannot recreate or overwrite canonical rows.
+    """
+    from app.services.evidence import scope_lock
+    await scope_lock(session, user_id, "changes")
+    rows = (await session.scalars(select(RawIngest)
+        .join(ActivitySourceLink, ActivitySourceLink.raw_ingest_id == RawIngest.id)
+        .join(Activity, Activity.id == ActivitySourceLink.activity_id)
+        .where(RawIngest.user_id == user_id, RawIngest.source == SOURCE,
+               RawIngest.processed.is_(True), ActivitySourceLink.user_id == user_id,
+               ActivitySourceLink.source == SOURCE, Activity.user_id == user_id,
+               Activity.local_date.between(start, end)))).all()
+    replayed = 0
+    for raw in rows:
+        if raw.payload_type.partition(":")[0] == fetch.PAYLOAD_ACTIVITY_SUMMARY:
+            async with session.begin_nested():
+                await normalize_raw_row(session, raw, tz, discipline_index)
+            replayed += 1
+    return replayed
+
+
 async def fetch_strength_sets(session, user_id, client, external_id, delay_s, report):
     """Fetch the separate Garmin set feed for owned strength sessions only."""
     if not callable(getattr(client, "get_activity_exercise_sets", None)):
         return
-    activity = await session.scalar(select(Activity).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).where(
+    activity = await session.scalar(select(Activity).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).outerjoin(Discipline, Discipline.id == Activity.discipline_id).where(
         Activity.user_id == user_id, ActivitySourceLink.user_id == user_id,
-        ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id))
-    if activity is None or (activity.source_metrics or {}).get("garmin", {}).get("type_key") not in ("strength_training", "strength", "gym_general"):
+        ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id, strength_activity_condition()))
+    if activity is None:
         return
     try:
         payload = await client.get_activity_exercise_sets(int(external_id))
@@ -222,6 +267,21 @@ async def fetch_streams(
             await _pace(delay_s)
             continue
         if not samples:
+            # A successful empty response is different from an interrupted
+            # fetch. Remember it so a historical manual/gym session does not
+            # restart the entire stream backfill on every scheduled pass.
+            from app.services.evidence import scope_lock
+            await scope_lock(session, user_id, "changes")
+            activity = await session.scalar(select(Activity)
+                .join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id)
+                .where(Activity.user_id == user_id, ActivitySourceLink.user_id == user_id,
+                       ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id))
+            if activity is not None:
+                metrics = dict(activity.source_metrics or {})
+                metrics[SOURCE] = {**metrics.get(SOURCE, {}), "streams_state": "not_measured"}
+                activity.source_metrics = metrics
+            if checkpoint:
+                await session.commit()
             await _pace(delay_s)
             continue
         await fetch.store_raw(
@@ -456,7 +516,7 @@ async def normalize_pending(
 # ------------------------------------------------------------------ driver
 
 
-async def _external_ids_missing_streams(session: AsyncSession, user_id: int) -> list[str]:
+async def _external_ids_missing_streams(session: AsyncSession, user_id: int, now: datetime | None = None) -> list[str]:
     """Linked activities of this user that have NO stream rows — activities
     normalized by a checkpoint pass that was killed before its streams phase
     would have run. The resume re-fetches exactly these."""
@@ -465,7 +525,13 @@ async def _external_ids_missing_streams(session: AsyncSession, user_id: int) -> 
         .join(Activity, Activity.id == ActivitySourceLink.activity_id)
         .where(
             ActivitySourceLink.source == SOURCE,
+            ActivitySourceLink.user_id == user_id,
             Activity.user_id == user_id,
+            or_(Activity.source_metrics[SOURCE]["streams_state"].astext.is_distinct_from("not_measured"),
+                # Newly uploaded recordings may acquire streams later. Empty
+                # recent sensor sessions get a bounded eventual-data retry.
+                (Activity.start_time >= (now or datetime.now(UTC)) - timedelta(days=2))
+                & (Activity.data_completeness != "manual")),
             ~select(ActivityStream.activity_id)
             .where(ActivityStream.activity_id == Activity.id)
             .exists(),
@@ -518,7 +584,7 @@ async def sync_user_garmin(
         # Activities normalized by a killed earlier pass have links but no
         # streams — the resume must fetch streams for them too, not just for
         # the activities that are new in THIS pass.
-        recovered = await _external_ids_missing_streams(session, user.id)
+        recovered = await _external_ids_missing_streams(session, user.id, now)
         if recovered:
             report.notes.append(
                 f"resume: fetching streams for {len(recovered)} activities "
@@ -566,25 +632,26 @@ async def sync_user_garmin(
 
     await normalize_pending(session, user.id, tz, discipline_index, report)
 
-    if report.streams_failed:
-        # Keep successfully normalized data, but retry the account job rather
-        # than marking a partially fetched provider response as full success.
-        await session.commit()
-        raise RuntimeError("Some Garmin payloads could not be fetched or normalized")
+    # Optional per-activity streams must not prevent daily wellness from
+    # advancing its successful checkpoint. Failed streams remain candidates
+    # for the next pass and have their own visible feed status.
+    from app.services.evidence import update_feed
+    await update_feed(session, user.id, SOURCE, "activity_streams",
+                      "fetch_failed" if report.streams_failed else "available", now)
     # A malformed historical row does not invalidate successfully fetched
     # observations or provider authentication. Keep it pending and expose
     # partial normalization separately from the successful fetch timestamp.
-    report.state = "partial" if report.raw_rows_unprocessed else "complete"
-    from app.services.evidence import update_feed
+    report.state = "partial" if report.raw_rows_unprocessed or report.streams_failed else "complete"
     from app.models.lab import FeedState
-    await update_feed(session, user.id, SOURCE, "normalization", report.state, now)
+    normalization_state = "partial" if report.raw_rows_unprocessed else "complete"
+    await update_feed(session, user.id, SOURCE, "normalization", normalization_state, now)
     feed = await session.scalar(select(FeedState).where(
         FeedState.user_id == user.id, FeedState.provider == SOURCE, FeedState.feed == "normalization"
     ))
     feed.last_success_at = now
     feed.details = {"normalized_raw_rows": report.normalized_raw_rows,
                     "pending_error_count": report.raw_rows_unprocessed,
-                    "state": report.state, "retry": "Pending raw payloads are retried on the next sync."}
+                    "state": normalization_state, "retry": "Pending raw payloads are retried on the next sync."}
     integration.last_synced_at = now
     return report
 

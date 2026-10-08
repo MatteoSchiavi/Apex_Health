@@ -94,6 +94,12 @@ async def test_operational_log_allowlist_excludes_payloads(monkeypatch):
     row=json.loads(pipe.value)
     assert set(row)=={'id','timestamp','level','source','event'}
     assert 'secret' not in pipe.value and 'health' not in pipe.value
+    record.error_code = 'ValueError'
+    handler.emit(record)
+    assert json.loads(pipe.value)['error_code'] == 'ValueError'
+    record.error_code = 'private-token-and-health-payload'
+    handler.emit(record)
+    assert 'error_code' not in json.loads(pipe.value)
 
 async def test_critical_events_transfer_deduplicates_durable_outbox(db_session,monkeypatch):
     import json

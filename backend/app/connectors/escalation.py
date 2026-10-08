@@ -65,6 +65,7 @@ async def run_sync_with_escalation(
             user_id,
             failures,
             type(exc).__name__,
+            extra={"event_code": "connector_failed", "error_code": type(exc).__name__},
         )
         return None
     integration.consecutive_failures = 0

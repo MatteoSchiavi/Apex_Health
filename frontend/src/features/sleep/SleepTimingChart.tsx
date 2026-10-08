@@ -19,12 +19,12 @@ export function SleepTimingChart({ nights }: { nights: SleepList["items"] }) {
     tooltip: { trigger: "item", confine: true, backgroundColor: c.surface, borderColor: c.hairline, textStyle: { color: c.ink },
       formatter: (p: { dataIndex: number }) => { const n = ordered[p.dataIndex], w = windows[p.dataIndex]; return `${n.local_date}<br>${t("sleep.bed_window")}: ${clock(w[0])}–${clock(w[1])}<br>${t("sleep.time_asleep")}: ${fmtHours(n.total_sleep_s)}`; } },
     xAxis: { type: "category", data: ordered.map(n => n.local_date), axisLabel: { color: c.muted, formatter: (v: string) => v.slice(5) }, axisTick: { show: false }, axisLine: { lineStyle: { color: c.hairline } } },
-    yAxis: { type: "value", min: lower, max: upper, interval: 3, axisLabel: { color: c.muted, formatter: clock }, splitLine: { lineStyle: { color: c.hairline } } },
+    yAxis: { type: "value", inverse: true, min: lower, max: upper, interval: 3, axisLabel: { color: c.muted, formatter: clock }, splitLine: { lineStyle: { color: c.hairline } } },
     series: [{ type: "custom", clip: true, data: windows.map((w, i) => [i, w[0], w[1]]),
       renderItem: (_: unknown, api: { value: (i: number) => number; coord: (v: number[]) => number[]; size: (v: number[]) => number[] }) => {
-        const bottom = api.coord([api.value(0), api.value(1)]), top = api.coord([api.value(0), api.value(2)]);
+        const bed = api.coord([api.value(0), api.value(1)]), wake = api.coord([api.value(0), api.value(2)]);
         const width = Math.max(3, api.size([1, 0])[0] * 0.6);
-        return { type: "rect", shape: { x: top[0] - width / 2, y: top[1], width, height: Math.max(1, bottom[1] - top[1]) }, style: { fill: c.stage.core } };
+        return { type: "rect", shape: { x: bed[0] - width / 2, y: Math.min(bed[1], wake[1]), width, height: Math.max(1, Math.abs(wake[1] - bed[1])) }, style: { fill: c.stage.core } };
       } }],
   }} />;
 }

@@ -1,5 +1,8 @@
 # Version completion and deployment checklist
 
+Historical change record. The current release checks, real-account findings
+and owner actions are in [BETA_0_1_READINESS.md](BETA_0_1_READINESS.md).
+
 Updated 8 October 2026. This supplements the dated alpha audit; it describes
 the `version-completion` changes and separates repository work from checks on
 the owner's actual installation. No production health account or server was
@@ -42,7 +45,7 @@ explanations rather than retain deleted measurements.
    volumes, `SESSION_SECRET`, `ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`, Compose
    project/context and existing override files. Never replace existing keys
    with values generated from the template. This change adds no migration;
-   the existing chain remains at 0022.
+   the current branch's chain includes 0023 for reported lab intervals.
 2. For an updater-managed host, follow [AUTO_UPDATES.md](AUTO_UPDATES.md): run
    `python3 infra/auto_update.py status` and `doctor` with the original deployment
    options. Confirm the installed API and worker revisions match the intended
@@ -97,8 +100,8 @@ explanations rather than retain deleted measurements.
    missing support can still leave scores unavailable after a successful job.
 8. Verify the browser's displayed dates, an actual 00:02 sleep start, known
    sleep score, both GPS themes, starred metrics after reload, a known Monday
-   streak transition and your two original gym recordings. The recordings
-   were unavailable in this workspace; attach them for exact parser verification.
+   streak transition and the three supplied original gym recordings. Their
+   parser, browser and later live-account verification are documented separately.
 9. Confirm HTTPS login, CSRF-protected writes, account isolation and sign-out
    on the actual hostname. Run the encrypted backup/restore drill on a
    disposable target and verify offsite recovery and key retrieval. Follow

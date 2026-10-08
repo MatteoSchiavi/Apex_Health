@@ -90,7 +90,7 @@ def _exempt(route) -> bool:
     # Native pairing exchange authenticates the one-use code, not a session.
     # Its own security suite verifies missing, expired and consumed credentials.
     # Only deployment notice facts are public; no health/configuration secrets.
-    return path in {"/health", "/legal/config", "/healthkit/exchange"} or path.startswith("/auth") or "callback" in path
+    return path in {"/health", "/version", "/legal/config", "/healthkit/exchange"} or path.startswith("/auth") or "callback" in path
 
 
 async def test_every_route_denies_unauthenticated_access(client: AsyncClient):

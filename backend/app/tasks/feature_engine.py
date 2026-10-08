@@ -101,11 +101,8 @@ async def queue_history_repair(user, start, end):
                 checked.update(str(first + timedelta(days=i)) for i in range((last - first).days + 1))
         days = [str(day) for day in (start + timedelta(days=i) for i in range(28))
                 if len(present.get(day, set())) < 3 and str(day) not in checked]
-        from app.models.activity import Activity, ActivitySourceLink
-        gym_missing = await session.scalar(select(Activity.id).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).where(
-            Activity.user_id == user.id, ActivitySourceLink.user_id == user.id, ActivitySourceLink.source == "garmin",
-            Activity.local_date.between(start, end), Activity.source_metrics["garmin"]["type_key"].astext == "strength_training",
-            Activity.source_metrics["garmin"]["exercises"].is_(None)).limit(1))
+        from app.connectors.garmin.sync import missing_strength_links
+        gym_missing = await session.scalar(missing_strength_links(user.id, start, end).limit(1))
         if not days and not gym_missing:
             return
         try:

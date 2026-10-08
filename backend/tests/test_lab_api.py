@@ -4,8 +4,9 @@ import os
 import struct
 from datetime import UTC, datetime, timedelta
 import pytest
-from sqlalchemy import select, text
-from app.core.encryption import decrypt_bytes
+from sqlalchemy import delete, select, text
+from app.core.encryption import decrypt_bytes, encrypt_json
+from app.models.integration import Integration
 from app.models.lab import LabDocument, Observation, LabNotification
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.user import User
@@ -222,6 +223,14 @@ async def test_manual_measurement_bounds_and_timezone(client):
 
 
 async def test_repair_cannot_use_another_accounts_credentials(client, db_session):
+    # Establish the ownership case explicitly; another test may have connected
+    # the owner. The previous test depended on suite order and had no foreign
+    # credential at all despite its name.
+    await db_session.execute(delete(Integration).where(Integration.user_id == 1))
+    other = User(name='Foreign repair credentials')
+    db_session.add(other); await db_session.flush()
+    db_session.add(Integration(user_id=other.id,provider='garmin',status='active',credentials_encrypted=encrypt_json({'token':'foreign-fixture'})))
+    await db_session.commit()
     headers = await auth(client)
     r = await client.post(
         "/lab/jobs",

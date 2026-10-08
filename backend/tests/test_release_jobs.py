@@ -1,6 +1,7 @@
 """Queue contracts, account ownership and real Celery retry semantics."""
 
 import os
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -56,6 +57,23 @@ async def test_missing_credentials_never_use_global_owner_credentials(db_session
     assert calls == []
 
 
+async def test_disabled_account_does_not_fetch_or_enqueue_provider_data(db_session, monkeypatch):
+    from app.tasks.provider_sync import enqueue_active
+    user = User(name='Disabled provider account'); db_session.add(user); await db_session.flush()
+    db_session.add_all([
+        AuthCredential(user_id=user.id,email=f'disabled-{user.id}@example.com',password_hash='unused',role='friend',disabled=True),
+        Integration(user_id=user.id,provider='garmin',status='active',credentials_encrypted=encrypt_json({'unused':'fixture'})),
+    ])
+    await db_session.commit()
+    factory = lambda *_: pytest.fail('Disabled account must not open a provider client')
+    monkeypatch.setattr('app.connectors.garmin.client.build_live_client', factory)
+    assert (await _sync_account('garmin',user.id))['reason'] == 'Account disabled'
+    published = []
+    monkeypatch.setattr('app.tasks.provider_sync.celery_app.send_task',lambda name, args: published.append(args) or SimpleNamespace(id='fixture'))
+    await enqueue_active('garmin')
+    assert [user.id] not in published
+
+
 def test_celery_sync_retries_then_reports_failure(monkeypatch):
     from app.tasks.garmin_sync import sync_user_garmin
     attempts = []
@@ -71,7 +89,7 @@ def test_celery_sync_retries_then_reports_failure(monkeypatch):
 
 
 async def test_oura_driver_uses_stored_credentials_and_real_sync(db_session, monkeypatch):
-    user = User(name="oura-job")
+    user = User(name="oura-job", timezone="Pacific/Auckland")
     db_session.add(user)
     await db_session.flush()
     credentials = {"access_token": "fixture", "refresh_token": "fixture-refresh"}
@@ -90,8 +108,18 @@ async def test_oura_driver_uses_stored_credentials_and_real_sync(db_session, mon
         received.append(value)
         return EmptyOura()
     monkeypatch.setattr("app.connectors.oura.client.build_live_client", factory)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None): return datetime(2026,10,8,13,tzinfo=UTC)
+    monkeypatch.setattr('app.tasks.provider_sync.datetime', Clock)
+    refreshes = []
+    async def refresh(session, athlete, start, end):
+        assert (await session.get(Integration,integration.id)).last_synced_at is not None
+        refreshes.append((athlete.id,start,end))
+    monkeypatch.setattr('app.features.engine.compute_user_range', refresh)
     result = await _sync_account("oura", user.id)
     assert received == [credentials]
     assert result["status"] == "ok"
     await db_session.refresh(integration)
     assert integration.last_synced_at is not None
+    assert refreshes == [(user.id,date(2026,9,11),date(2026,10,9))]

@@ -64,6 +64,26 @@ async def make_garmin_user(session, tz: str = "Europe/Rome") -> tuple[User, Inte
     return user, integration
 
 
+async def test_optional_stream_outage_keeps_fresh_wellness_and_retries_only_missing_streams(db_session):
+    from app.connectors.garmin.sync import _external_ids_missing_streams
+    from app.models.lab import FeedState
+    class StreamOutage(FixtureGarminClient):
+        async def get_activity_samples(self, activity_id):
+            if str(activity_id) == '7101':
+                raise ConnectionError('Provider stream endpoint unavailable')
+            return await super().get_activity_samples(activity_id)
+    user, integration = await make_garmin_user(db_session)
+    integration.consecutive_failures = 29
+    await db_session.commit()
+    report = await run_user_sync_with_escalation(db_session,user,integration,StreamOutage(),now=SYNC_NOW,checkpoint=True,**sync_kwargs())
+    assert report is not None and report.streams_failed == 1 and report.state == 'partial'
+    assert integration.last_synced_at == SYNC_NOW and integration.consecutive_failures == 0
+    assert await count(db_session, SleepSession) > 0
+    state = await db_session.scalar(select(FeedState).where(FeedState.user_id == user.id,FeedState.feed == 'activity_streams'))
+    assert state.availability == 'fetch_failed'
+    assert await _external_ids_missing_streams(db_session,user.id) == ['7101']
+
+
 def sync_kwargs() -> dict:
     return dict(page_size=PAGE_SIZE, page_delay_s=0.0, empty_gap_days=10)
 

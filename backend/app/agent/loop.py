@@ -45,6 +45,23 @@ def _dumps(payload):
     return json.dumps(jsonable(payload), ensure_ascii=False, default=str)
 
 
+def compact_evidence(payload):
+    """Keep measurements and source semantics in the model's bounded view.
+
+    Raw lineage identifiers and duplicated revision/policy fields remain in
+    the full server evidence/audit. Removing them must never change values,
+    units, measurement/fetch times, availability or method/device metadata.
+    """
+    if isinstance(payload, list):
+        return [compact_evidence(value) for value in payload]
+    if not isinstance(payload, dict):
+        return payload
+    if isinstance(payload.get("id"), str) and re.fullmatch(r"observation:\d+:\d+", payload["id"]):
+        return {key: value for key, value in payload.items()
+                if key not in {"source_record_id", "revision", "usage_policy"}}
+    return {key: compact_evidence(value) for key, value in payload.items()}
+
+
 def _assistant_tool_call_message(response):
     message = {
         "role": "assistant",
@@ -64,7 +81,7 @@ def _assistant_tool_call_message(response):
 
 
 def _tool_result_message(call, payload):
-    return {"role": "tool", "tool_call_id": call.id, "content": _dumps(payload)}
+    return {"role": "tool", "tool_call_id": call.id, "content": _dumps(compact_evidence(payload))}
 
 
 def error_result(code, message):
@@ -370,20 +387,24 @@ async def run_agent_loop(
     messages = list(history or []) + [{"role": "user", "content": text}]
     audit, drafts, evidence_objects = [], [], list(initial_evidence or [])
     repeated, calls, tokens, last_model, iteration = {}, 0, 0, "unknown", 0
+    last_input_tokens = 0
+    budget_kind = None
     read_cache = {}
     pending_reads = {}
     semaphore = asyncio.Semaphore(4)
     deadline = time.monotonic() + TURN_TIMEOUT_S
 
     async def complete(*, closing=False):
-        nonlocal tokens, last_model
+        nonlocal tokens, last_model, last_input_tokens, budget_kind
         # Fetch budget and end the transaction BEFORE contacting the model.
         async with sessionmaker() as session:
             spent = await user_day_spend(session, user_id, datetime.now(UTC))
         budget = get_settings().daily_token_budget_usd
         if budget > 0 and spent >= Decimal(str(budget)):
+            budget_kind = "daily_cost"
             raise EvidenceError("BUDGET_EXCEEDED", "Daily AI budget reached")
         if tokens >= MAX_TURN_TOKENS:
+            budget_kind = "turn_tokens"
             raise EvidenceError("BUDGET_EXCEEDED", "Turn token budget reached")
         response = await asyncio.wait_for(
             llm.complete(
@@ -395,6 +416,7 @@ async def run_agent_loop(
             timeout=max(0.1, min(MODEL_TIMEOUT_S, deadline - time.monotonic() - 1)),
         )
         tokens += response.tokens_in + response.tokens_out
+        last_input_tokens = response.tokens_in
         last_model = response.model
         async with sessionmaker() as session:
             await log_llm_usage(
@@ -414,7 +436,11 @@ async def run_agent_loop(
         nonlocal calls
         calls += 1
         spec = TOOL_REGISTRY.get(call.name)
-        signature = digest([call.name, call.arguments])
+        try:
+            canonical_args = spec.argument_model.model_validate(call.arguments).model_dump(mode="json") if spec else call.arguments
+        except ValidationError:
+            canonical_args = call.arguments
+        signature = digest([call.name, canonical_args])
         if spec and spec.kind == "read" and signature in read_cache:
             result, entry = read_cache[signature]
             return result, {**entry, "cached": True, "latency_ms": 0}
@@ -468,17 +494,37 @@ async def run_agent_loop(
             )
         messages.append(_tool_result_message(call, result))
 
+    async def finalize(response):
+        # A schema/claim mistake is often repairable without retrieving more
+        # data. Permit one bounded correction, never bypass the validator or
+        # present the rejected answer as verified.
+        reply, grounding = validate_answer(response.content, evidence_objects)
+        reserve = max(4000, int(last_input_tokens * 1.1)) + 4096
+        if (grounding.get("status") == "invalid"
+                and tokens + reserve < MAX_TURN_TOKENS
+                and deadline - time.monotonic() > MODEL_TIMEOUT_S + 2):
+            messages.extend([
+                {"role": "assistant", "content": response.content or ""},
+                {"role": "user", "content": "The last answer failed server claim validation. Correct it once using only evidence already retrieved. Return the required JSON answer/claims/limitations. Copy exact evidence_id, metric, value and unit; quote no unclaimed numbers, dates, rounded values or unregistered derived statistics in the prose. Do not make causal or medical conclusions. Disclose unavailable evidence. No further tools."},
+            ])
+            response = await complete(closing=True)
+            reply, grounding = validate_answer(response.content, evidence_objects)
+        return response, reply, grounding
+
     try:
         async with asyncio.timeout(TURN_TIMEOUT_S):
             for iteration in range(1, min(max_iterations, MAX_ITERATIONS) + 1):
                 # Reserve time for the final evidence-backed answer.
                 if deadline - time.monotonic() <= MODEL_TIMEOUT_S + TOOL_TIMEOUT_S + 5:
                     break
+                # Input tokens are billed again on each continuation. Reserve
+                # one prompt plus output for the final answer, rather than
+                # consume the remaining allowance on another tool iteration.
+                if tokens and tokens + max(6000, int(last_input_tokens * 1.25)) + 4096 >= MAX_TURN_TOKENS:
+                    break
                 response = await complete()
                 if not response.wants_tools:
-                    reply, grounding = validate_answer(
-                        response.content, evidence_objects
-                    )
+                    response, reply, grounding = await finalize(response)
                     return AgentLoopResult(
                         reply,
                         tier,
@@ -521,19 +567,26 @@ async def run_agent_loop(
             messages.append(
                 {
                     "role": "user",
-                    "content": "Tool budget exhausted. Return a complete answer using verified findings so far; disclose missing evidence. No further tools.",
+                    "content": "Finish the answer using verified findings already retrieved. Keep measured values exact with matching claim handles and disclose missing evidence. No further tools.",
                 }
             )
             response = await complete(closing=True)
-            reply, grounding = validate_answer(response.content, evidence_objects)
+            response, reply, grounding = await finalize(response)
             return AgentLoopResult(
                 reply, tier, response.model, audit, drafts, iteration, False, grounding
             )
     except (TimeoutError, EvidenceError) as exc:
+        if budget_kind == "daily_cost":
+            reply = ("Il budget AI giornaliero è esaurito. Le tue misurazioni restano disponibili nelle pagine metriche; riprova dopo il rinnovo del budget."
+                     if locale == "it" else "The daily AI budget has been reached. Your recorded measurements remain available on the metrics pages; try again after the budget resets.")
+        elif budget_kind == "turn_tokens":
+            reply = ("L'analisi ha raggiunto il limite di contesto per questa richiesta. Riprova in una nuova conversazione con un periodo più breve."
+                     if locale == "it" else "This analysis reached the context limit for this request. Try a new conversation with a shorter period.")
+        else:
+            reply = ("L'analisi non è terminata entro il tempo disponibile. Riprova tra poco."
+                     if locale == "it" else "The analysis did not finish within the available time. Try again shortly.")
         return AgentLoopResult(
-            "Non è stato possibile completare l'analisi entro i limiti disponibili. Riprova con una domanda più specifica."
-            if locale == "it" else
-            "The analysis could not be completed within the available limits. Try a more specific question.",
+            reply,
             tier,
             last_model,
             audit,
@@ -541,7 +594,7 @@ async def run_agent_loop(
             iteration,
             False,
             {"status": "incomplete", "verified_claims": [], "error_code":
-             exc.code if isinstance(exc, EvidenceError) else "TIMEOUT"},
+             exc.code if isinstance(exc, EvidenceError) else "TIMEOUT", "limit": budget_kind},
         )
 
 

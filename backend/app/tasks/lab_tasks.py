@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 from app.core.db import engine, sessionmaker
 from app.models.integration import Integration, RawIngest
 from app.models.lab import LabJob
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.services.evidence import index_garmin_payload
 from app.tasks.celery_app import celery_app
 from app.tasks.runtime import run_async
@@ -58,6 +58,12 @@ async def _run(ident):
         user = await session.get(User, job.user_id)
         if user is None:
             return {"state": "not_pending"}
+        credential = await session.scalar(select(AuthCredential).where(AuthCredential.user_id == user.id))
+        if job.cancel_requested or (credential is not None and credential.disabled):
+            job.state = "cancelled"
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+            return {"state": "cancelled"}
         params, user_id, kind = job.parameters, user.id, job.kind
         tz = ZoneInfo(user.timezone)
         cursor = job.progress.get("cursor", 0)
@@ -95,6 +101,14 @@ async def _run(ident):
             await session.commit()
             return {"state": "completed", "handle": result["handle"]}
     start, end = date.fromisoformat(params["start"]), date.fromisoformat(params["end"])
+    # Legacy activity rows may lack method/type metadata even though their
+    # current raw summaries are retained. Repair without a provider fetch.
+    from app.models.activity import Discipline
+    from app.connectors.garmin.sync import replay_activity_metadata
+    async with sessionmaker() as session:
+        index = dict((await session.execute(select(Discipline.name, Discipline.id))).all())
+        await replay_activity_metadata(session, user_id, tz, index, start, end)
+        await session.commit()
     if kind == "repair":
         from app.core.encryption import decrypt_json
         from app.connectors.garmin.client import build_live_client
@@ -144,15 +158,14 @@ async def _run(ident):
                         ).all()
                     )
                 client = await asyncio.to_thread(build_live_client, credentials)
-                if params.get("repair_strength"):
-                    from app.models.activity import Activity, ActivitySourceLink
-                    from app.connectors.garmin.sync import fetch_strength_sets, normalize_pending
+                if params.get("repair_strength", True):
+                    from app.connectors.garmin.sync import fetch_strength_sets, strength_links, missing_strength_links, normalize_pending
 
                     async with sessionmaker() as session:
-                        ids = (await session.scalars(select(ActivitySourceLink.external_id).join(Activity, Activity.id == ActivitySourceLink.activity_id).where(
-                            Activity.user_id == user_id, ActivitySourceLink.user_id == user_id, ActivitySourceLink.source == "garmin",
-                            Activity.local_date.between(start, end), Activity.source_metrics["garmin"]["type_key"].astext == "strength_training",
-                            Activity.source_metrics["garmin"]["exercises"].is_(None)).limit(100))).all()
+                        # A user-requested full repair also refreshes previously
+                        # empty/edited feeds; nightly jobs retry only missing sets.
+                        candidates = missing_strength_links if params.get("days") is not None else strength_links
+                        ids = (await session.scalars(candidates(user_id, start, end).limit(100))).all()
                         report = SyncReport(user_id=user_id, mode="repair")
                         for external_id in ids:
                             await fetch_strength_sets(session, user_id, client, external_id, 1, report)
@@ -246,7 +259,7 @@ async def _run(ident):
                     "completed": job.progress.get("completed", 0) + len(rows),
                 }
                 await session.commit()
-    if kind == "repair":
+    if kind in ("repair", "reindex"):
         from app.features.engine import compute_user_range
 
         async with sessionmaker() as session:
