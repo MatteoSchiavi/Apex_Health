@@ -354,10 +354,14 @@ def validate_answer(content, evidence_objects):
         if analysis_metadata.get(handle, {}).get('recipe') == 'personal_baseline' and claim.get('metric') in {'median', 'mad', 'mean'}:
             source = indexed[handle]
             bindings.append({**claim, 'metric': source.get('metric'), 'unit': source.get('unit')})
-    if any(float(n) not in claimed for n in numbers) or inspect_metric_bindings(answer["answer"], bindings):
+    uncited = sum(float(n) not in claimed for n in numbers)
+    metric_errors = inspect_metric_bindings(answer["answer"], bindings)
+    if uncited or metric_errors:
         return (
             "I could not verify all numeric claims in this answer. Please request a fresh analysis.",
-            {"status": "invalid", "verified_claims": []},
+            {"status": "invalid", "verified_claims": [],
+             "error_code": "UNCITED_NUMERIC_TEXT" if uncited else "METRIC_BINDING_MISMATCH",
+             "uncited_number_count": uncited, "metric_binding_error_count": len(metric_errors)},
         )
     return answer["answer"], {
         "status": "structured",
@@ -505,7 +509,7 @@ async def run_agent_loop(
                 and deadline - time.monotonic() > MODEL_TIMEOUT_S + 2):
             messages.extend([
                 {"role": "assistant", "content": response.content or ""},
-                {"role": "user", "content": "The last answer failed server claim validation. Correct it once using only evidence already retrieved. Return the required JSON answer/claims/limitations. Copy exact evidence_id, metric, value and unit; quote no unclaimed numbers, dates, rounded values or unregistered derived statistics in the prose. Do not make causal or medical conclusions. Disclose unavailable evidence. No further tools."},
+                {"role": "user", "content": "The last answer failed server claim validation. Correct it once using only evidence already retrieved. Return the required JSON answer/claims/limitations. The answer prose MUST contain NO digit characters: no numbered lists, numeric dates, period lengths, measurements or statistics. Put all exact measured/calculated values ONLY in claims; the application displays those checked values separately. Copy exact evidence_id, metric, value and unit. Explain the available signals qualitatively and disclose uncertainty. Do not invent unregistered averages, changes, causal or medical conclusions. No further tools."},
             ])
             response = await complete(closing=True)
             reply, grounding = validate_answer(response.content, evidence_objects)

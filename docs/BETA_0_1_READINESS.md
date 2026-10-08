@@ -11,6 +11,7 @@ not certify health predictions, every wearable, or a signed native application.
 | Severity | Location | Observed behavior / reasoning | Fix and test evidence |
 | --- | --- | --- | --- |
 | HIGH | `backend/app/agent/loop.py:run_agent_loop`, `entrypoint.py:_history_messages` | The live recovery question retrieved data but exhausted its aggregate context budget. The tool-message cap could replace a weekly summary with handles alone, encouraging repeated evidence expansion. Failed assistant replies were replayed in later history. | Compact only redundant observation lineage/policy fields in the model projection; retain exact values, units, origin, acquisition, timestamps, availability and method/device metadata. Normalize read-cache arguments and reserve a final completion. Exclude failed history. Permit one bounded correction of rejected claims, with unchanged validation. Regression verifies real observation payloads survive the cap and a token-heavy turn closes with an answer. Earlier fixture replies had zero token usage and missed this. |
+| HIGH | `backend/app/agent/loop.py:validate_answer`, `entrypoint.py:SYSTEM_PROMPT`, `frontend/src/features/coach/CoachPage.tsx` | After the budget repair, the live model completed but still failed numeric-claim validation. Numeric period/list text is subject to the same strict check as measurements; silently accepting it would weaken the evidence boundary. | Ask for qualitative prose and exact checked claims separately, including the bounded correction. Display only structured verified claims in the UI. Expose safe rejection categories/counts without rejected content. Tests retain incompatible-unit and uncited-number rejection and verify English/Italian checked evidence excludes invalid receipts. |
 | HIGH | `backend/app/connectors/garmin/sync.py`, `tasks/lab_tasks.py`, `tasks/feature_engine.py` | Legacy gym rows had a strength discipline but no provider `type_key`/set metadata. Both repair selection and the fetch guard skipped them; manual repair did not request strength by default. | Recognize owned canonical strength disciplines as well as provider type keys; repair missing feeds by default. Reindex current linked raw summaries under the account lock and recompute calculations. Tests exclude foreign credentials, deleted sessions and obsolete raw revisions, and preserve recorded sets. |
 | HIGH | `backend/app/connectors/garmin/sync.py` | One failed optional stream fetch raised after wellness normalization, preventing a successful overall checkpoint and repeatedly restarting a backfill. Successfully empty stream responses were also retried indefinitely. This is a confirmed code defect; old redacted live logs cannot prove it explains every historical failure. | Keep wellness success separate from the visible `activity_streams` failure. Failed streams remain retry candidates; successful empty responses are remembered. Integration test starts with a failing stream and verifies fresh sleep, advancing sync time, partial status and the remaining retry candidate. |
 | HIGH | `backend/app/tasks/provider_sync.py` | The nightly run computes completed days, before most athletes wake up. Newly imported today's sleep/HRV/activity data did not trigger today's feature computation. | Refresh the preceding 28 days plus today after provider ingestion, using the account timezone and current profile. Do not display yesterday's score as today's. A timezone-boundary test verifies post-ingestion refresh follows successful persistence. |
@@ -38,9 +39,15 @@ the tested contracts, not proof of an unobserved production operation.
   Undetected exercises remain unknown; colour is not measured muscle activation.
 - The failing recovery question was reproduced against the actual model. It
   failed with `BUDGET_EXCEEDED`, not a missing provider key or a network timeout.
-- A four-week account-owned repair was requested through the durable outbox.
-  A queued job is **not** a completed repair. Its actual outcome must be checked
-  after installing the matching API and worker release.
+- The four-week account-owned repair completed all 28 requested days. The live
+  overview now contains today’s Recovery, Readiness and Strain. Each chart has
+  27 available days in the window; a day lacking inputs remains unavailable.
+- A separate retained-history reindex was requested for 7 October 2025 through
+  7 October 2026. This reuses owned current raw records, without a new year-long
+  provider fetch. Its completion is checked independently of the four-week repair.
+- The first installed fix answers within its budget but the live answer still
+  failed claim validation. The follow-up format fix must pass a fresh live
+  recovery question; passing fixture tests is not a substitute.
 - Fresh individual Garmin feeds coexist with an unsuccessful overall sync
   checkpoint. Do not reset the counter manually or claim successful backfill
   from fresh sleep alone. Confirm the first successful/partial run and inspect
@@ -51,7 +58,7 @@ or provider token belongs in this repository or its release artifacts.
 
 ## Release validation
 
-- Production frontend build; English/Italian parity (1,463 keys); PWA tests.
+- Production frontend build; English/Italian parity (1,465 keys); PWA tests.
 - Full Chromium suite: 122 passed; one private-file test is opt-in and separately
   verified with the supplied recordings.
 - Targeted final backend integration run: 79 passed, including auth matrix,
@@ -61,9 +68,13 @@ or provider token belongs in this repository or its release artifacts.
 - Deterministic agent runtime evaluation: 26/26 passed. These are synthetic
   security/runtime evaluations, not evidence of clinical usefulness or a live
   model's answer quality.
-- Full backend run before the final stream/disabled-account refinements:
-  887 passed, one opt-in private-file skip, one newly public version-route
-  expectation corrected. Final full-suite CI must pass on the release commit.
+- Published commit `9d0b0663c462c700466ddb61c0de8f00b645a813`: all five CI jobs
+  passed, including 893 backend tests (one private-file opt-in skip), frontend,
+  agent evaluations, updater and production image/backup restore checks. The
+  live `/version` endpoint confirmed that exact commit after automatic deployment.
+- Follow-up coach formatting/validation integration: 124 passed; new bilingual
+  evidence browser cases: two passed. Full CI and installed acceptance must also
+  pass on the final release commit.
 
 Production acceptance remains separate: verify `/version`, the live recovery
 answer, maintenance completion, current calculation rows and both new UI
@@ -72,9 +83,11 @@ merely because a newer GitHub commit passed tests.
 
 ## What only the owner can finish
 
-### 1. Install the matching image if automatic deployment has not done so
+### 1. Deployment contingency: host access only if the updater fails
 
-Open `https://apex-health.it/version`. It must return JSON with `version: 0.1.0`,
+Automatic deployment of the first fix was observed successfully. No manual
+installation was needed. For subsequent updates, open `https://apex-health.it/version`.
+It must return JSON with `version: 0.1.0`,
 `stage: beta` and the intended tested Git commit. HTML means an older deployment.
 Both **API and worker** must run the same image. The remote application provides
 no host shell or deployment control, so a stopped/misconfigured updater needs
@@ -95,9 +108,9 @@ is not appropriate for a managed pinned deployment.
 
 ### 2. Verify the real worker and overnight run
 
-In **Settings → Data Health**, the requested repair must advance from queued
-to running/completed, or display a specific recoverable state. If it stays
-queued despite an online worker, inspect the host's **worker** logs and image:
+The requested four-week repair has completed. In **Settings → Data Health**,
+check the next overnight run and any later jobs. If a future job stays queued
+despite an online worker, inspect the host's **worker** logs and image:
 
 ```sh
 docker compose --env-file .env -f infra/docker-compose.yml \

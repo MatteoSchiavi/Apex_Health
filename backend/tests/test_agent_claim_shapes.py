@@ -63,6 +63,18 @@ def test_named_measurement_cannot_quote_an_incompatible_unit():
     _, receipt = validate_answer(json.dumps({'answer': 'HRV is 50 bpm.', 'claims': [claim]}),
         [{'id': 'observation:1:1', 'metric': 'hrv_overnight_rmssd', 'value': 50, 'unit': 'ms'}])
     assert receipt['status'] == 'invalid'
+    assert receipt['error_code'] == 'METRIC_BINDING_MISMATCH'
+
+
+def test_period_numbers_do_not_get_mistaken_for_verified_measurements():
+    claim = {'evidence_id':'observation:1:1','metric':'resting_hr','value':50,'unit':'bpm'}
+    evidence = [{'id':'observation:1:1','metric':'resting_hr','value':50,'unit':'bpm'}]
+    _, rejected = validate_answer(json.dumps({'answer':'Over 7 days, resting HR is 50 bpm.','claims':[claim]}), evidence)
+    assert rejected['status'] == 'invalid' and rejected['error_code'] == 'UNCITED_NUMERIC_TEXT'
+    assert rejected['uncited_number_count'] == 1 and rejected['verified_claims'] == []
+    reply, accepted = validate_answer(json.dumps({'answer':'Recorded resting heart rate is available; a longer compatible baseline is needed.','claims':[claim]}), evidence)
+    assert accepted['status'] == 'structured' and accepted['verified_claims'][0]['value'] == 50
+    assert '50' not in reply  # The client displays the checked claim separately.
 
 
 @pytest.mark.parametrize('unit,status', [('ms', 'structured'), ('bpm', 'invalid')])

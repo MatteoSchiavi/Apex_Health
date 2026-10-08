@@ -26,6 +26,24 @@ function stored(key: string) {
     return "";
   }
 }
+
+function CheckedEvidence({ grounding }: { grounding: unknown }) {
+  const { t } = useTranslation();
+  const receipt = grounding as { status?: string; verified_claims?: { metric: string; value: unknown; unit?: string }[] } | null;
+  const claims = receipt?.status === "structured" && Array.isArray(receipt.verified_claims)
+    ? receipt.verified_claims.filter(c => typeof c?.metric === "string" &&
+      (typeof c.value === "string" || typeof c.value === "boolean" || (typeof c.value === "number" && Number.isFinite(c.value)))) : [];
+  if (!claims.length) return null;
+  return <details className="mt-3 border-t border-hairline pt-3 text-[12px]">
+    <summary className="cursor-pointer text-muted">{t("coach.checked_evidence")}</summary>
+    <dl className="mt-3 space-y-2">{claims.map((claim, index) => <div key={index} className="flex flex-wrap justify-between gap-x-4 gap-y-1">
+      <dt>{t("lab.metrics." + claim.metric, { defaultValue: claim.metric.replace(/[._]/g, " ") })}</dt>
+      <dd className="tabular-nums">{String(claim.value)}{typeof claim.unit === "string" ? " " + claim.unit : ""}</dd>
+    </div>)}</dl>
+    <p className="mt-3 text-muted">{t("coach.checked_evidence_note")}</p>
+  </details>;
+}
+
 export default function CoachPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
@@ -277,6 +295,7 @@ export default function CoachPage() {
                             )}
                           </p>
                         )}
+                      {m.role === "assistant" && <CheckedEvidence grounding={m.referenced_data?.grounding} />}
                       {m.model_tier === "medical" && m.role === "assistant" && (
                         <p className="mt-4 text-[12px] text-warningText">
                           {t("coach.medical_disclaimer")}

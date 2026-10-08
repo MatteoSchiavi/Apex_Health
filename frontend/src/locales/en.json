@@ -366,6 +366,8 @@
     "load_unit_garmin": "Garmin load"
   },
   "coach": {
+    "checked_evidence": "Checked evidence",
+    "checked_evidence_note": "These values match the recorded evidence. The explanation is descriptive, not a medical assessment.",
     "title": "Your coach",
     "new_chat": "New conversation",
     "past_chats": "Past conversations",

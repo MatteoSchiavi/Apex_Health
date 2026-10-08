@@ -366,6 +366,8 @@
     "load_unit_garmin": "carico Garmin"
   },
   "coach": {
+    "checked_evidence": "Evidenze verificate",
+    "checked_evidence_note": "Questi valori corrispondono alle evidenze registrate. La spiegazione è descrittiva, non una valutazione medica.",
     "title": "Il tuo coach",
     "new_chat": "Nuova conversazione",
     "past_chats": "Conversazioni passate",
