@@ -1201,7 +1201,7 @@
     "recorded_exercises": "Esercizi registrati",
     "no_exercises": "Nessuna serie completata è stata registrata per questa sessione.",
     "body_map": "Gruppi muscolari",
-    "body_map_note": "Le aree evidenziate riflettono gli esercizi registrati, non stime dalla frequenza cardiaca.",
+    "body_map_note": "Il colore confronta le serie registrate in questa attività. Le aree mostrano i gruppi di movimento, non l’attivazione muscolare misurata.",
     "all_groups": "Tutti i gruppi",
     "sets": "Serie",
     "reps": "Ripetizioni",
@@ -1220,7 +1220,12 @@
     "zone_metric_power": "Potenza",
     "set_details": "Dettagli serie",
     "weight": "Peso",
-    "total": "Totali della sessione"
+    "total": "Totali della sessione",
+    "body_front": "Anteriore",
+    "body_back": "Posteriore",
+    "recorded_sets": "Serie registrate",
+    "fewer_sets": "Meno serie",
+    "more_sets": "Più serie"
   },
   "refinement": {
     "previous_reading": "Variazione rispetto alla lettura precedente",

@@ -1201,7 +1201,7 @@
     "recorded_exercises": "Recorded exercises",
     "no_exercises": "No completed exercise sets were recorded for this session.",
     "body_map": "Muscle groups",
-    "body_map_note": "Highlights reflect recorded exercises, not heart-rate estimates.",
+    "body_map_note": "Colour compares recorded sets within this workout. Regions show movement groups, not measured muscle activation.",
     "all_groups": "All groups",
     "sets": "Sets",
     "reps": "Reps",
@@ -1220,7 +1220,12 @@
     "zone_metric_power": "Power",
     "set_details": "Set details",
     "weight": "Weight",
-    "total": "Session totals"
+    "total": "Session totals",
+    "body_front": "Front",
+    "body_back": "Back",
+    "recorded_sets": "Recorded sets",
+    "fewer_sets": "Fewer sets",
+    "more_sets": "More sets"
   },
   "refinement": {
     "previous_reading": "Change from the previous recorded reading",

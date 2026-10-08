@@ -131,7 +131,7 @@ test("imperial strength shows recorded set weights, session totals and comparabl
   await expect(rows.first().locator("td").nth(2)).toHaveText("44.1 lb");
   await expect(rows.nth(1).locator("td").nth(1)).toHaveText("8");
   await expect(rows.nth(1).locator("td").nth(2)).toHaveText("55.1 lb");
-  await page.locator('svg [role="button"][aria-label="Legs"]').click();
+  await page.locator('svg [role="button"][aria-label="Legs"] path[data-muscle="quads"]').first().click();
   await expect(page.getByRole("heading", { name: "Push up", exact: true })).toHaveCount(0);
   await expect(totals).toContainText("23");
   await page.getByRole("button", { name: "All groups", exact: true }).click();

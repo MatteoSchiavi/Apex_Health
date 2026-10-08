@@ -96,6 +96,28 @@ html.light {
   --radius-control: 0.125rem;
 }
 
+.strength-anatomy {
+  --anatomy-body: #292c28;
+  --anatomy-body-edge: #222520;
+  --anatomy-outline: #65695f;
+  --anatomy-rest: #45493f;
+  --anatomy-selected: #ffa475;
+}
+html.light .strength-anatomy {
+  --anatomy-body: #faf9f6;
+  --anatomy-body-edge: #f0eee8;
+  --anatomy-outline: #c3c0b7;
+  --anatomy-rest: #dedbd3;
+  --anatomy-selected: #ac431c;
+}
+.anatomy-group { outline: none; }
+.anatomy-group path { transition: opacity 150ms ease, stroke 150ms ease; }
+.anatomy-group:not([aria-disabled="true"]):hover path { stroke: var(--anatomy-selected); stroke-width: 1.4px; }
+.anatomy-group:focus-visible path { stroke: var(--c-text); stroke-width: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .anatomy-group path { transition: none; }
+}
+
 /* ------------------------------------------------ fonts (bundled, zero CDN) */
 
 @font-face {
