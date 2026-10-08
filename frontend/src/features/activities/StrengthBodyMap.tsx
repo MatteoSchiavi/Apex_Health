@@ -3,15 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { ActivityDetail } from "../../app/api";
 import { Card, CardHeader, Empty, StatPod, fmtNum } from "../../components/kit";
 import { useUnits } from "../../components/data";
-
-const GROUPS = ["legs", "push", "pull", "core", "full_body"];
-const PATHS: Record<string, string> = {
-  push: "M64 46 L82 42 L96 52 L114 42 L132 46 L136 66 L112 77 L84 77 L60 66 Z",
-  pull: "M63 80 L82 75 L98 83 L114 75 L133 80 L120 101 L76 101 Z",
-  core: "M77 103 L119 103 L115 129 L81 129 Z",
-  legs: "M79 133 L96 133 L94 195 L77 195 L72 163 Z M100 133 L117 133 L124 163 L119 195 L102 195 Z",
-  full_body: "M90 8 L106 8 L112 20 L106 33 L90 33 L84 20 Z M57 70 L70 75 L58 122 L44 117 Z M126 75 L139 70 L152 117 L138 122 Z",
-};
+import { StrengthAnatomy } from "./StrengthAnatomy";
 
 export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
   const { t } = useTranslation();
@@ -25,6 +17,11 @@ export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
   const knownVolumes = exercises.flatMap(exercise => exercise.volume_kg == null ? [] : [exercise.volume_kg]);
   const totalVolume = knownVolumes.length ? knownVolumes.reduce((total, volume) => total + volume, 0) : null;
   const groups = new Set(exercises.map(e => e.muscle_group));
+  const setsByGroup = exercises.reduce<Record<string, number>>((totals, exercise) => {
+    const group = exercise.muscle_group ?? "unknown";
+    totals[group] = (totals[group] ?? 0) + exercise.sets;
+    return totals;
+  }, {});
   const visible = selected == null ? exercises : exercises.filter(e => (e.muscle_group ?? "unknown") === selected);
   const label = (group: string | null) => t("sportView.group_" + (group ?? "unknown"));
   const choose = (group: string) => setSelected(selected === group ? null : group);
@@ -41,26 +38,16 @@ export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
         </div>
         {weightedSets < totalSets && <p className="mt-3 text-[12px] text-muted">{t("sportView.partial_volume", { known: weightedSets, total: totalSets })}</p>}
       </div>
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-      <div>
-        <svg viewBox="0 0 196 210" className="mx-auto h-64 w-full" role="group" aria-label={t("sportView.body_map")}>
-          <path d="M89 4 L107 4 L116 18 L110 37 L130 40 L144 68 L160 120 L141 130 L126 91 L124 130 L130 165 L123 204 L100 204 L98 160 L96 204 L73 204 L66 165 L72 130 L70 91 L55 130 L36 120 L52 68 L66 40 L86 37 L80 18 Z" className="fill-surface stroke-hairline" strokeWidth="2" pointerEvents="none" />
-          {GROUPS.map(group => <g key={group}
-            role="button" tabIndex={groups.has(group) ? 0 : -1} aria-label={label(group)}
-            aria-pressed={selected === group} aria-disabled={!groups.has(group)}
-            onClick={() => groups.has(group) && choose(group)}
-            onKeyDown={e => { if (groups.has(group) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); choose(group); } }}
-            className={groups.has(group) ? "group cursor-pointer focus:outline-none" : "group"}>
-            {group === "legs" && <rect x="72" y="133" width="52" height="62" fill="transparent" pointerEvents="all" />}
-            <path d={PATHS[group]}
-              className={groups.has(group) ? "fill-ink/30 stroke-ink group-focus:fill-ink/60" : "fill-hairline stroke-hairline"}
-              style={{ fillOpacity: selected === group ? 1 : 0.5 }} strokeWidth="1.2" />
-          </g>)}
-        </svg>
-        <p className="text-[12px] text-muted">{t("sportView.body_map_note")}</p>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
+      <div className="min-w-0">
+        <StrengthAnatomy sets={setsByGroup} selected={selected} onSelect={choose} />
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label={t("sportView.body_map")}>
-          <button className="text-link text-[12px]" aria-pressed={selected == null} onClick={() => setSelected(null)}>{t("sportView.all_groups")}</button>
-          {Array.from(groups).map(group => <button key={group ?? "unknown"} className="text-link text-[12px]" aria-pressed={selected === (group ?? "unknown")} onClick={() => choose(group ?? "unknown")}>{label(group)}</button>)}
+          <button className={`min-h-10 rounded-full border px-3 py-2 text-[12px] transition-colors ${selected === null ? "border-primary/40 bg-primarySoft text-primaryText" : "border-hairline text-muted hover:text-ink"}`} aria-pressed={selected == null} onClick={() => setSelected(null)}>{t("sportView.all_groups")}</button>
+          {Array.from(groups).map(group => <button key={group ?? "unknown"}
+            className={`min-h-10 rounded-full border px-3 py-2 text-[12px] transition-colors ${selected === (group ?? "unknown") ? "border-primary/40 bg-primarySoft text-primaryText" : "border-hairline text-muted hover:text-ink"}`}
+            aria-pressed={selected === (group ?? "unknown")} onClick={() => choose(group ?? "unknown")}>
+            {label(group)} <span className="num ml-1.5 opacity-70">{setsByGroup[group ?? "unknown"]}</span>
+          </button>)}
         </div>
       </div>
       <div className="min-w-0">
