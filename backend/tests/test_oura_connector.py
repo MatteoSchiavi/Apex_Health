@@ -187,3 +187,15 @@ async def test_oura_awake_totals_cannot_borrow_matching_garmin_epochs(db_session
                          "sleepLevels": [{"activityLevel": 0, "startGMT": night.start_time.isoformat(), "endGMT": night.end_time.isoformat()}]}}))
     await db_session.flush()
     assert await recorded_awake_totals(db_session, [night]) == {}
+
+
+async def test_replay_honors_latest_deletion_even_if_provider_day_changed(db_session):
+    from datetime import date
+    from tools.replay_oura import replay
+    user = await owner(db_session)
+    await normalize(db_session, user, "sleep", SLEEP)
+    await normalize(db_session, user, "sleep", {**SLEEP, "day": "2026-09-30", "type": "deleted"})
+    assert await db_session.scalar(select(SleepSession).where(SleepSession.user_id == user.id)) is None
+    await replay(db_session, user, date(2026, 10, 1), date(2026, 10, 1))
+    for model in (SleepSession, HrvReading, Observation):
+        assert await db_session.scalar(select(model).where(model.user_id == user.id)) is None

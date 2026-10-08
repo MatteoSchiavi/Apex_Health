@@ -10,7 +10,7 @@ import json
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 
 from app.connectors.garmin.normalize import NormalizerStats
 from app.connectors.oura.normalize import normalize_raw_row
@@ -28,15 +28,24 @@ async def replay(session, user, start, end):
     credential = await session.get(AuthCredential, user.id)
     if credential and credential.disabled:
         raise ValueError("The account is disabled")
-    rows = (await session.scalars(select(RawIngest).where(
+    record_id = RawIngest.raw_json["id"].astext
+    identities = select(RawIngest.payload_type, record_id).where(
         RawIngest.user_id == user.id, RawIngest.source == "oura",
         RawIngest.payload_type.in_(("daily_sleep", "sleep")),
         RawIngest.raw_json["day"].astext.between(str(start), str(end)),
-    ).order_by(RawIngest.fetched_at, RawIngest.id).limit(10001))).all()
+    )
+    # A later correction/deletion can move the provider day outside the
+    # requested range. Replaying an older version would resurrect stale data.
+    rows = (await session.scalars(select(RawIngest).where(
+        RawIngest.user_id == user.id, RawIngest.source == "oura",
+        tuple_(RawIngest.payload_type, record_id).in_(identities),
+    ).distinct(RawIngest.payload_type, record_id)
+      .order_by(RawIngest.payload_type, record_id, RawIngest.fetched_at.desc(), RawIngest.id.desc())
+      .limit(10001))).all()
     if len(rows) > 10000:
         raise ValueError("More than 10,000 raw records; choose a smaller range")
     stats = NormalizerStats()
-    for raw in rows:
+    for raw in sorted(rows, key=lambda row: (row.fetched_at, row.id)):
         await normalize_raw_row(session, raw, raw.raw_json, ZoneInfo(user.timezone), stats)
         raw.processed = True
     return {"replayed": len(rows), "sleep_upserted": stats.sleep_upserted, "hrv_upserted": stats.hrv_upserted}

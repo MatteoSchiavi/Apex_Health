@@ -71,8 +71,10 @@ explanations rather than retain deleted measurements.
    need provider replay: the old mapper consumed records without useful
    projections. Run the bounded operator replay below with your account ID
    and provider-day range. It preserves original raw records, replays only
-   owned Oura sleep/score records in chronological order and recomputes that
-   range. No upstream login or source erasure is necessary.
+   the latest versions of owned Oura sleep/score records in chronological
+   order and recomputes that range. Later corrections/deletions are respected
+   even when the provider day moved outside the chosen range. No upstream
+   login or source erasure is necessary.
 
    ```sh
    docker compose --env-file .env -f infra/docker-compose.yml exec api \
@@ -137,6 +139,11 @@ server configuration is missing, not that your wearable has failed.
   from an undated Oura profile and no guessed kg from an ambiguous number.
 - No implementation of every Oura collection, direct Google Fit, official
   Garmin delivery, watch writes or native signing without verified contracts.
+- Oura webhooks are not implemented. Incremental polling overlaps one day;
+  older upstream corrections/deletions require an upstream history fetch.
+  The replay tool respects the latest retained versions but cannot discover
+  a deletion that was never fetched. Verify this limit in the live-provider
+  pilot before claiming automatic upstream deletion propagation.
 - No voice-upload/STT, scanned-document OCR or new embedding search: the
   existing adapters do not constitute active product flows. Coach uses local
   lexical retrieval; legacy embeddings of unknown ownership stay quarantined.
@@ -152,7 +159,7 @@ Local verification:
 - Full backend suite: **853 passed**. Subsequent final integration run:
   **94 passed**, including the additional Oura/Garmin awake-source boundary
   and malformed raw-timestamp regression. An additional OAuth-scope contract
-  regression brings the final suite to 855.
+  and latest-deletion replay regression bring the final suite to 856.
 - Full clean Chromium suite: **107 passed**, including both GPS themes,
   floating sleep-window calculations, chart resizing, metric stars, sidebar,
   feedback, keyboard navigation and accessibility checks. Final sidebar
