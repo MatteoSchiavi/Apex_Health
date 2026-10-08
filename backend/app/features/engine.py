@@ -38,7 +38,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, delete
+from sqlalchemy import Date, and_, func, select, delete, union
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -826,6 +826,33 @@ async def compute_user_range(
         "days_computed": computed_days,
         "discipline_rows_written": discipline_rows_written,
     }
+
+
+async def compute_missing_recorded_days(session: AsyncSession, user: User, start: date, end: date) -> dict:
+    """Rebuild missing owned snapshots where retained canonical inputs exist.
+
+    Invalidation deletes snapshots, including dependencies outside the nightly
+    window. Derive work from durable records, so a worker restart cannot lose
+    it. Days without usable evidence still return no score; no zero-day rows
+    are invented. This shares the existing bounded historical engine.
+    """
+    if end < start or (end - start).days > 365:
+        raise ValueError("Recompute requires a closed range of at most 366 days")
+    hrv_day = func.timezone(user.timezone, HrvReading.timestamp).cast(Date)
+    recorded = union(
+        select(Activity.local_date.label("day")).where(Activity.user_id == user.id, Activity.local_date.between(start, end)),
+        select(SleepSession.local_date.label("day")).where(SleepSession.user_id == user.id, SleepSession.local_date.between(start, end)),
+        select(DailyBiometric.date.label("day")).where(DailyBiometric.user_id == user.id, DailyBiometric.date.between(start, end)),
+        select(hrv_day.label("day")).where(HrvReading.user_id == user.id, hrv_day.between(start, end)),
+    ).subquery()
+    days = (await session.scalars(select(recorded.c.day).outerjoin(DailyFeature, and_(
+        DailyFeature.user_id == user.id, DailyFeature.date == recorded.c.day,
+    )).where(DailyFeature.date.is_(None)).order_by(recorded.c.day))).all()
+    computed = 0
+    for day in days:
+        if await compute_user_day(session, user, day) is not None:
+            computed += 1
+    return {"days_considered": len(days), "days_computed": computed}
 
 
 def _num(value: float | None) -> Decimal | None:

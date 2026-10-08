@@ -113,6 +113,11 @@ async def _sync_account(provider: str, user_id: int) -> dict:
             # A friend's missing credential must never fall back to the
             # owner's global Garmin environment variables.
             raise SyncTaskError("No stored provider credentials; connect this account first", error_class="authentication")
+        from app.features.engine import compute_missing_recorded_days, compute_user_range
+        today = datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
+        # Resume durable historical invalidations before a potentially long
+        # upstream walk; never rely on an in-process list surviving a restart.
+        await compute_missing_recorded_days(session, user, today - timedelta(days=365), today)
         connector = import_module(f"app.connectors.{provider}.client")
         try:
             client = connector.build_live_client(credentials)
@@ -151,8 +156,8 @@ async def _sync_account(provider: str, user_id: int) -> dict:
         # today's row after ingestion as well, so newly fetched sleep/HRV and
         # activities are reflected without borrowing yesterday's scores.
         # A later backfill failure must not hide already committed checkpoints.
-        from app.features.engine import compute_user_range
         today = datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
+        await compute_missing_recorded_days(session, user, today - timedelta(days=365), today)
         await compute_user_range(session, user, today - timedelta(days=28), today)
         if report is None:
             raise SyncTaskError("Provider sync failed; retrying may recover it", error_class="transport")

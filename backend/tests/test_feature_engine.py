@@ -292,3 +292,38 @@ async def test_nightly_single_day_matches_range_recompute(db_session, golden_wor
             recomputed["daily"][field], abs=2e-6
         )
     assert stored.data_completeness == recomputed["daily"]["data_completeness"]
+
+
+async def test_missing_recorded_history_rebuilds_invalidations_without_foreign_or_empty_scores(db_session):
+    from app.features.engine import compute_missing_recorded_days, compute_user_day
+    from app.services.derived_data import invalidate_calculation_dates
+    from app.models.wellness import DailyBiometric, SleepSession
+    from app.models.user import User
+    from app.models.features import DailyFeature
+    from datetime import UTC, date, datetime, timedelta
+    today = date(2026, 10, 8)
+    old = today - timedelta(days=100)
+    empty = old + timedelta(days=1)
+    outside = today - timedelta(days=366)
+    owner, foreign = User(name='History rebuild', timezone='Europe/Rome'), User(name='Other history', timezone='Europe/Rome')
+    db_session.add_all([owner, foreign]); await db_session.flush()
+    def sleep(user_id, day):
+        end = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=7)
+        return SleepSession(user_id=user_id, origin='garmin', local_date=day,
+                            start_time=end-timedelta(hours=8), end_time=end, total_sleep_s=8*3600)
+    db_session.add_all([sleep(owner.id, old), sleep(owner.id, outside), sleep(foreign.id, old),
+        DailyBiometric(user_id=owner.id, date=empty, steps=1000),
+        DailyFeature(user_id=foreign.id, date=old, strain_score=91)])
+    await db_session.commit()
+    assert await compute_user_day(db_session, owner, old) is not None
+    await invalidate_calculation_dates(db_session, owner.id, {old})
+    await db_session.commit()
+    assert await db_session.get(DailyFeature, (owner.id, old)) is None
+    result = await compute_missing_recorded_days(db_session, owner, today-timedelta(days=365), today)
+    assert result == {'days_considered': 2, 'days_computed': 1}
+    rebuilt = await db_session.get(DailyFeature, (owner.id, old), populate_existing=True)
+    assert rebuilt.calculation_provenance['as_of'] == old.isoformat()
+    assert await db_session.get(DailyFeature, (owner.id, empty)) is None  # Steps alone cannot invent recovery.
+    assert await db_session.get(DailyFeature, (owner.id, outside)) is None
+    other = await db_session.get(DailyFeature, (foreign.id, old), populate_existing=True)
+    assert float(other.strain_score) == 91

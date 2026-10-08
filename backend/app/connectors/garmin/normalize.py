@@ -427,8 +427,11 @@ async def _upsert_streams(
     if rows:
         stmt = pg_insert(ActivityStream).values(rows)
         stmt = stmt.on_conflict_do_nothing(index_elements=["activity_id", "t_offset_s"])
-        await session.execute(stmt)
-        stats.activity_streams_upserted += len(rows)
+        inserted = (await session.scalars(stmt.returning(ActivityStream.t_offset_s))).all()
+        if inserted:
+            from app.services.derived_data import invalidate_calculation_dates
+            await invalidate_calculation_dates(session, raw.user_id, {activity.local_date})
+        stats.activity_streams_upserted += len(inserted)
 
 
 # ------------------------------------------------------------------- sleep

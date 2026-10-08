@@ -18,6 +18,8 @@ not certify health predictions, every wearable, or a signed native application.
 | HIGH | `backend/app/tasks/provider_sync.py`, `tasks/lab_tasks.py` | Disabling sign-in did not stop new background provider ingestion or queued maintenance. | Exclude disabled accounts from scheduled fan-out, recheck before opening a provider client, and cancel disabled-account maintenance before processing. Tests verify no provider client or health processing is invoked. Work already in flight can finish its current operation; disabling is not source erasure. |
 | HIGH | `backend/app/connectors/garmin/sync.py:fetch_wellness` | Live checkpoint mode skipped an incremental overlap day merely because it already had a wellness row. A fixture changed today’s resting HR from 47 to 55 and steps to 22,222; the old code retained 47. Another provider’s rows could also be mistaken for Garmin resume markers. | Always refresh incremental overlap days. Restrict backward resume markers to Garmin-attributed sleep or steps/resting HR. The new checkpoint-mode regression caught what older default-mode fixtures missed. |
 | MEDIUM | `backend/app/connectors/garmin/sync.py:fetch_activities`, `normalize.py:_upsert_activity`, `services/derived_data.py:invalidate_calculation_dates` | An existing source link caused provider-edited summaries to be discarded. Historical corrected inputs also left dependent daily/discipline scores beyond the nightly window stale. | Compare the exact owned linked raw summary; retain corrections without a duplicate activity. Invalidate old/new dates and the subsequent 28 days through the shared deletion/correction helper. Regression changes recorded duration, verifies raw revisions and idempotency, removes dependent scores, and preserves another account and the day beyond the dependency window. |
+| HIGH | `backend/app/tasks/provider_sync.py`, `features/engine.py:compute_missing_recorded_days` | A real Garmin backfill corrected older summaries, deleting dependent snapshots beyond the recent calculation window. The repaired year chart fell from 363 to 341 dates. Previous tests asserted invalidation but did not verify the provider driver rebuilt historical gaps. | Before and after a sync, rebuild missing owned snapshots from retained canonical input dates within the existing 366-day bound, including committed checkpoints before a later failure. Use the existing locked engine, not an in-process dirty list. Regression covers historical input persistence followed by failure, foreign ownership, the year boundary and steps-only days remaining unscored. The account’s affected October dates were rebuilt and coverage returned to 363 dates. Older history remains available through explicit bounded reindex/recompute. |
+| MEDIUM | `backend/app/connectors/garmin/normalize.py:_upsert_streams` | Late sensor samples could change historical load or discipline calculations while their old snapshots survived. Existing stream tests verified row insertion/deduplication but did not seed derived scores. | Invalidate owned dependent dates only when PostgreSQL actually inserts new samples. Replay does not delete fresh snapshots or overwrite existing source samples. A regression seeds owned and foreign scores, checks the dependency boundary, then replays identical samples and preserves the newly calculated row. |
 | MEDIUM | `frontend/src/features/sleep/SleepTimingChart.tsx` | Bedtime appeared below wake time; simply reversing the axis would collapse bars with the old height calculation. | Reverse the time axis and use positive coordinate-independent bar heights. Chromium verifies bedtime is above waking and a visible bar remains; Rome DST cases also pass. |
 | MEDIUM | `frontend/src/features/overview/OverviewPage.tsx` | Recorded signals appeared below other sections. | Put them immediately after the Today/APEX decision card. Browser verifies the actual order. |
 | MEDIUM | `backend/tests/test_lab_api.py` | The named credential-ownership test created no foreign credentials and depended on the owner not having an integration left by another test. | Establish an explicit foreign configured account and absent owner integration. The regression now works independently of test order. |
@@ -56,9 +58,15 @@ the tested contracts, not proof of an unobserved production operation.
   with **eight strictly verified claims**, two tools and no correction or limit
   failure. Chromium opened that actual answer and displayed all eight checked
   evidence values. No validator was weakened.
+- A subsequent backfill invalidated 22 older calculation dates. A narrow
+  retained-data rebuild completed and the year charts returned to 363 available
+  dates. Automatic reconstruction of missing recorded days is included in
+  the final follow-up, including recovery after worker interruption.
 - The final deployed Chromium check confirmed recorded signals immediately after
   Today/APEX, the sleep timing chart, and interactive muscle filters in all
   three supplied gym activities. It reported no JavaScript or HTTP errors.
+  An actual owned GPS activity selected dark tiles/white route and light
+  tiles/black route; external map requests were intercepted during that check.
 - Fresh individual Garmin feeds coexist with an unsuccessful overall sync
   checkpoint. Do not reset the counter manually or claim successful backfill
   from fresh sleep alone. A normal owned sync was started, but safe diagnostics show actual
@@ -103,6 +111,12 @@ or provider token belongs in this repository or its release artifacts.
   feature-engine and Garmin suites passed **27 tests**. Final owner diagnostics
   browser/build results and exact release identity are recorded in the GitHub
   prerelease; its immutable target is the final tested commit.
+- The partial-sync/diagnostics commit passed all five release jobs with **901
+  backend tests**, **124 browser tests**, a real restore matching **75 tables**,
+  and atomic interrupted/failed restores. Its exact installed identity was
+  verified before the additional historical-gap defect was discovered. The
+  historical-gap/late-stream follow-up requires its own full CI; its verified
+  result and installed revision are recorded in the prerelease.
 
 Production acceptance remains separate: verify `/version`, the live recovery
 answer, maintenance completion, current calculation rows and both new UI

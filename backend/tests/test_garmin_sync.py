@@ -563,3 +563,35 @@ def test_beat_schedule_runs_garmin_sync_every_6h():
     entry = celery_app.conf.beat_schedule["garmin-sync-every-6h"]
     assert entry["task"] == "garmin.sync_all"
     assert entry["schedule"] == crontab(minute=0, hour="*/6")
+
+
+async def test_new_historical_stream_samples_invalidate_owned_scores_but_replay_does_not(db_session):
+    from zoneinfo import ZoneInfo
+    from app.connectors.garmin.fetch import store_raw
+    from app.connectors.garmin.normalize import normalize_raw_row
+    from app.models.features import DailyFeature
+    user, integration = await make_garmin_user(db_session)
+    await run_user_sync_with_escalation(db_session, user, integration, FixtureGarminClient(), now=SYNC_NOW, **sync_kwargs())
+    link = await db_session.scalar(select(ActivitySourceLink).where(ActivitySourceLink.user_id == user.id, ActivitySourceLink.external_id == '7101'))
+    activity = await db_session.get(Activity, link.activity_id)
+    foreign = User(name='Separate stream owner', timezone='Europe/Rome')
+    db_session.add(foreign); await db_session.flush()
+    day = activity.local_date
+    for owner, offset in [(user.id, 0), (user.id, 28), (user.id, 29), (foreign.id, 0)]:
+        db_session.add(DailyFeature(user_id=owner, date=day+timedelta(days=offset), strain_score=51))
+    await db_session.commit()
+    raw = await store_raw(db_session, user.id, 'activity_streams:7101', [{
+        'timestamp': int((activity.start_time+timedelta(seconds=999)).timestamp()*1000), 'heartRate': 120,
+    }])
+    result = await normalize_raw_row(db_session, raw, ZoneInfo(user.timezone), {})
+    await db_session.commit()
+    assert result.activity_streams_upserted == 1
+    for offset in (0, 28):
+        assert await db_session.get(DailyFeature, (user.id, day+timedelta(days=offset))) is None
+    assert await db_session.get(DailyFeature, (user.id, day+timedelta(days=29))) is not None
+    assert await db_session.get(DailyFeature, (foreign.id, day)) is not None
+    db_session.add(DailyFeature(user_id=user.id, date=day, strain_score=40)); await db_session.commit()
+    result = await normalize_raw_row(db_session, raw, ZoneInfo(user.timezone), {})
+    await db_session.commit()
+    assert result.activity_streams_upserted == 0
+    assert float((await db_session.get(DailyFeature, (user.id, day))).strain_score) == 40

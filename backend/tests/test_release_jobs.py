@@ -143,6 +143,9 @@ async def test_failed_backfill_refreshes_committed_today_data_without_claiming_s
     async def partial_checkpoint(session, athlete, connection, client, **kwargs):
         session.add(SleepSession(user_id=athlete.id, origin='garmin', local_date=now.date(),
             start_time=now-timedelta(hours=8),end_time=now,total_sleep_s=8*3600))
+        historical_end = now - timedelta(days=100)
+        session.add(SleepSession(user_id=athlete.id, origin='garmin', local_date=historical_end.date(),
+            start_time=historical_end-timedelta(hours=8), end_time=historical_end, total_sleep_s=8*3600))
         connection.consecutive_failures = 1
         await session.commit()  # A later upstream call fails after this durable checkpoint.
         return None
@@ -152,5 +155,7 @@ async def test_failed_backfill_refreshes_committed_today_data_without_claiming_s
     feature = await db_session.get(DailyFeature, (user.id, now.date()), populate_existing=True)
     assert feature is not None and feature.data_completeness == 'partial'
     assert feature.calculation_provenance['as_of'] == '2026-10-08'
+    historic = await db_session.get(DailyFeature, (user.id, (now-timedelta(days=100)).date()), populate_existing=True)
+    assert historic is not None and historic.calculation_provenance['as_of'] == (now-timedelta(days=100)).date().isoformat()
     await db_session.refresh(integration)
     assert integration.last_synced_at is None and integration.consecutive_failures == 1
