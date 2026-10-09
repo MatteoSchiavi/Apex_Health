@@ -21,6 +21,7 @@ test("overview restores daily metrics and formats sleep as hours and minutes", a
     }),
   );
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
 
   await expect(page.getByText("8:30 h", { exact: true })).toBeVisible();
   await expect(page.getByText("Body Fat", { exact: true })).toHaveCount(0);
@@ -30,10 +31,8 @@ test("overview restores daily metrics and formats sleep as hours and minutes", a
   const signals = page.getByRole("region", { name: "Recorded signals" });
   const decision = page.getByText("Today's training decision", { exact: true });
   await expect(decision).toBeVisible();
-  await expect.poll(() => decision.evaluate(el => {
-    const card = el.closest('.panel');
-    return card?.nextElementSibling?.getAttribute('aria-label');
-  })).toBe("Recorded signals");
+  await expect(page.getByText("Your day", { exact: true })).toBeVisible();
+  await expect.poll(() => decision.evaluate(el => el.closest('details')?.open)).toBe(true);
   await expect(signals).toBeVisible();
 });
 
@@ -42,6 +41,7 @@ test("overview quick access links lead to the primary destinations", async ({
 }) => {
   await installApi(page);
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
 
   const quickAccess = page.getByRole("navigation", { name: "Quick access" });
   for (const destination of [
@@ -71,6 +71,7 @@ test("overview range selector refreshes signal requests and distinguishes ranges
     if (url.pathname.startsWith("/metrics/")) requests.push(url);
   });
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
 
   await expect
     .poll(() => requests.some((url) => url.searchParams.get("days") === "7"))

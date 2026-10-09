@@ -1,3 +1,6 @@
+import { localDay } from "../../components/data";
+import { YourDay } from "../athlete/YourDay";
+import { EnduranceMetrics } from "../athlete/EnduranceMetrics";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -360,6 +363,8 @@ export default function ActivityDetailPage() {
       />
       {tab === "session" && (
         <>
+          <YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} />
+          {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
           {kind === "strength" && <StrengthBodyMap activity={a} />}
           <div className={(!indoor || hasGps) ? "grid gap-6 xl:grid-cols-[1.6fr_1fr]" : "grid gap-6"}>
             {(!indoor || hasGps) && <Card>

@@ -60,6 +60,8 @@ function Privacy({ config }: { config?: LegalConfig }) {
         <p>{t("legal.recipients.body")}</p>
         <p>{t("legal.recipients.telegram")}</p>
         <p>{t("legal.recipients.ai")} <Value value={config?.ai_processor} /></p>
+        <p>{t("athlete.ai_disclosure")}</p><p>{t("athlete.ai_withdrawal_note")}</p>
+        <Link className="text-link" to="/app/settings?tab=profile">{t("athlete.ai_title")}</Link>
         <p>{t("legal.recipients.hosting")} <Value value={config?.hosting_region} /></p>
         <p>{t("legal.recipients.backup")} <Value value={config?.backup_location} /></p>
         <p>{t("legal.recipients.transfers")} <Value value={config?.transfer_details} /></p>

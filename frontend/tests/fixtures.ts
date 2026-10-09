@@ -72,7 +72,7 @@ export const account = {
   theme: "light",
   units: "metric",
   role: "owner",
-  ai_access_tier: "medical",
+  ai_access_tier: "full",
   main_integration_id: 1,
 };
 export const activity = {
@@ -164,6 +164,7 @@ export const overview = {
 export async function installApi(
   page: Page,
   options: {
+    aiConsent?: boolean;
     empty?: boolean;
     fail?: string;
     theme?: "light" | "dark";
@@ -182,6 +183,9 @@ export async function installApi(
       ),
     ),
   };
+  let athleteProfile = { training_focus: [] as string[], context: {} as Record<string, unknown>, revision: 0 };
+  let aiConsent = options.aiConsent ?? true;
+  const aiState = () => ({ effective_access: aiConsent ? "full" : "disabled", policy_version: "athlete-ai-consent-v1", provider_identity: "synthetic-browser-fixture", consent: { active: aiConsent, accepted_at: aiConsent ? today+"T00:00:00Z" : null, withdrawn_at: null }, budget: { used_tokens: 0, limit_tokens: 160000, exhausted: false, categories: { onboarding_extraction: { used_tokens: 0, limit_tokens: 40000 }, standard_chat: { used_tokens: 0, limit_tokens: 80000 }, strategic_coaching: { used_tokens: 0, limit_tokens: 100000 }, periodic_reports: { used_tokens: 0, limit_tokens: 80000 } } } });
   let syncPolls = 0;
   let labDrafts = options.empty
     ? []
@@ -276,7 +280,7 @@ export async function installApi(
       url = new URL(req.url()),
       path = url.pathname;
     if (
-      !/^\/(me|auth|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs|lab|gear|imports|api\/admin|api\/feedback)(\/|$)/.test(
+      !/^\/(me|auth|athlete|healthkit|schedule|legal\/config|dashboard|activities|sleep|metrics|gym|events|coach|settings|challenges|rankings|labs|lab|gear|imports|api\/admin|api\/feedback)(\/|$)/.test(
         path,
       )
     )
@@ -292,7 +296,10 @@ export async function installApi(
         ? (req.postDataJSON() ?? {})
         : {};
       writes.push({ path, body });
-      if (path === "/lab/entries" && (body.entry as { kind?: string })?.kind === "metric_favorites") {
+      if (path === "/athlete/profile") { athleteProfile = req.method()==="DELETE" ? { training_focus: [], context: {}, revision: athleteProfile.revision+1 } : { training_focus: body.training_focus as string[], context: body.context as Record<string, unknown>, revision: athleteProfile.revision+1 }; data = athleteProfile; }
+      else if (path === "/athlete/ai/consent") { aiConsent = Boolean(body.active); data = aiState(); }
+      else if (path.startsWith("/athlete/")) data = { ...body, id: 1, revision: 1 };
+      else if (path === "/lab/entries" && (body.entry as { kind?: string })?.kind === "metric_favorites") {
         favoriteMetrics = (body.entry as { metrics: string[] }).metrics; data = { id: 1 };
       } else if (path.match(/^\/lab\/changes\/41\/(approve|undo|reject)$/)) {
         const action = path.split("/").at(-1);
@@ -357,7 +364,16 @@ export async function installApi(
         data = { id: 91, created_at: today + "T12:00:00Z", notification_status: "pending" };
       }
       else data = { ok: true };
-    } else if (path === "/api/admin/users" || path === "/api/admin/sessions" || path === "/api/admin/invites" || path === "/api/admin/feedback") {
+    } else if (path === "/healthkit/devices") data = [];
+    else if (path === "/schedule/calendar") data = { sessions: [] };
+    else if (path === "/legal/config") data = {};
+    else if (path === "/athlete/profile") data = athleteProfile;
+    else if (path === "/athlete/ai") data = aiState();
+    else if (path === "/athlete/life-events" || path === "/lab/plan-drafts") data = [];
+    else if (path === "/athlete/disciplines") data = ["running", "road_cycling", "strength", "sailing", "skiing", "enduro", "hiit"].map(name => ({ name, category: "endurance" }));
+    else if (path === "/athlete/day") data = { date: url.searchParams.get("date") ?? today, timezone: "UTC", training_focus: athleteProfile.training_focus, sessions: [], legacy_gym_sessions: [], state: options.empty ? "no_plan" : "activity_recorded", activities: options.empty ? [] : [{ ...activity, planned_session_id: null, association: "independent", candidate_session_ids: [], checkin: null, comparison: null }], totals: {} };
+    else if (/^\/activities\/\d+\/endurance$/.test(path)) data = { sport: "cycling", metrics: [] };
+    else if (path === "/api/admin/users" || path === "/api/admin/sessions" || path === "/api/admin/invites" || path === "/api/admin/feedback") {
       const offset = Number(url.searchParams.get("offset") ?? 0), limit = Number(url.searchParams.get("limit") ?? 50);
       const total = 25;
       const allRows = path.endsWith("/users") ? Array.from({ length: total }, (_, i) => ({ id: i + 2, name: `Friend ${i + 1}`, email: `friend${i + 1}@example.com`, role: "friend", ai_access_tier: "full", share_segments: true, active_sessions: 2, disabled: false, last_login_at: today + "T08:00:00Z", created_at: today + "T00:00:00Z" }))

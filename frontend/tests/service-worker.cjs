@@ -117,6 +117,11 @@ test("API, auth, nutrition and write requests bypass the service worker", () => 
   const worker = makeWorker();
   for (const pathname of [
     "/lab/documents",
+    "/lab/plan-drafts",
+    "/athlete/profile",
+    "/athlete/day",
+    "/athlete/ai",
+    "/activities/1/endurance",
     "/auth/session",
     "/nutrition/entries",
     "/activities",

@@ -1,3 +1,4 @@
+import { AiConsentPanel, useAiState } from "../athlete/AiConsentPanel";
 import { useSearchParams } from "react-router-dom";
 import ChangesPanel from "../lab/ChangesPanel";
 import { Segmented } from "../../components/kit";
@@ -50,6 +51,8 @@ function CheckedEvidence({ grounding }: { grounding: unknown }) {
 
 export default function CoachPage() {
   const { t } = useTranslation();
+  const aiState = useAiState();
+  const aiAllowed = aiState.data?.effective_access !== "disabled" && !!aiState.data && !aiState.data.budget.exhausted;
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "analysis";
   const qc = useQueryClient();
@@ -124,11 +127,12 @@ export default function CoachPage() {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [active.data?.messages.length, send.isPending]);
   function submit() {
-    if (draft.trim() && !send.isPending && !active.isLoading)
+    if (aiAllowed && draft.trim() && !send.isPending && !active.isLoading)
       send.mutate({ text: draft.trim(), sessionId: activeId });
   }
   return (
     <div className="flex flex-col gap-6">
+      {!aiAllowed && <AiConsentPanel />}
       <PageHeader
         title={t("coach.title")}
         subtitle={t("coach.subtitle")}
@@ -357,7 +361,7 @@ export default function CoachPage() {
                 <Button
                   type="submit"
                   disabled={
-                    !draft.trim() ||
+                    !aiAllowed || !draft.trim() ||
                     send.isPending ||
                     active.isLoading ||
                     active.isError

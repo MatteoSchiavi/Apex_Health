@@ -33,6 +33,8 @@ export function useAction() {
       qc.invalidateQueries({ queryKey: ["lab"] });
       qc.invalidateQueries({ queryKey: ["overview"] });
       qc.invalidateQueries({ queryKey: ["context-docs"] });
+      qc.invalidateQueries({ queryKey: ["athlete-day"] });
+      qc.invalidateQueries({ queryKey: ["plan-drafts"] });
     },
   });
 }

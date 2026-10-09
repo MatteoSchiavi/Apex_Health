@@ -205,10 +205,7 @@ for (const layout of [
       ]) {
         await page.goto(path);
         await page.waitForLoadState("networkidle");
-        expect(
-          await page.evaluate(() => document.documentElement.scrollWidth),
-          path,
-        ).toBe(layout.width);
+        await expect(page.locator("html"), path).toHaveJSProperty("scrollWidth", layout.width);
         const tiny = await page.evaluate(() =>
           Array.from(document.querySelectorAll("main label,main button,main p"))
             .filter(

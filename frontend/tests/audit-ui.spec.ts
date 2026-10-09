@@ -31,6 +31,7 @@ test("historical overview requests a stored decision for its selected day", asyn
   });
   const day = "2026-09-29";
   await page.goto(`/app?date=${day}`);
+  await page.getByText("Recovery context and daily guidance",{exact:true}).click();
   await expect.poll(() => requested).toBe(day);
   await expect(page.getByText(`No stored decision is available for ${day}.`)).toBeVisible();
   await expect(page.getByRole("button", { name: "Followed", exact: true })).toHaveCount(0);

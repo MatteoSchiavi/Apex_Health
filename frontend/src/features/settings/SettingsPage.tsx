@@ -1,3 +1,4 @@
+import { AthleteProfilePanel } from "../athlete/AthleteProfilePanel";
 import HealthKitPanel from "./HealthKitPanel";
 /**
  * Settings — personalization + account management hub (owner spec: "a good
@@ -877,7 +878,7 @@ export default function SettingsPage() {
         label={t("settings.title")}
       />
       <div className="max-w-4xl">
-        {tab === "profile" && <ProfileSection me={me} />}
+        {tab === "profile" && <><AthleteProfilePanel /><ProfileSection me={me} /></>}
         {tab === "appearance" && <div className="flex flex-col gap-6"><AppearanceSection /><InstallApp /></div>}
         {tab === "devices" && <div className="flex flex-col gap-6"><DevicesSection /><HealthKitPanel /></div>}
         {tab === "notifications" && <NotificationPreferences />}

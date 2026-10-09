@@ -1,3 +1,4 @@
+import { PlanDocumentPanel } from "../athlete/PlanDocumentPanel";
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -571,6 +572,7 @@ function Documents() {
               SHA-256 · {d.content_hash}
             </p>
           </Form>
+          <PlanDocumentPanel document={d} />
           <div className="mt-5 flex flex-wrap gap-4">
             <a href={`/lab/documents/${d.id}/original`} className="text-link">
               {t("lab.original")} ↗

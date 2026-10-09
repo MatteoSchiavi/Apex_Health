@@ -56,6 +56,7 @@ export default function ChangesPanel() {
             }
           />
           <p className="mb-5 text-[14px]">{d.reason}</p>
+          {d.adaptation && <div className="mb-4 text-[13px] text-muted"><p>{t("athlete.objective_"+d.adaptation.objective_status)}</p><p className="mt-2">{d.adaptation.data_gaps.length ? t("athlete.adaptation_gaps") : t("athlete.adaptation_evidence")}</p><p>{d.adaptation.evidence_ids.join(" · ") || t("lab.no_evidence")}</p></div>}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="border border-hairline p-4 text-[13px]">
               <h3 className="eyebrow mb-3">{t("lab.before")}</h3>

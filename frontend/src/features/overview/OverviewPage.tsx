@@ -1,3 +1,4 @@
+import { YourDay } from "../athlete/YourDay";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -156,6 +157,7 @@ export default function OverviewPage() {
   if (overview.isError || !overview.data) return <ErrorNote />;
   const o = overview.data;
   const today = localDay(me?.timezone);
+  const requestedDay = date ?? today;
   const signals = [
     { metric: "hrv_ms", fallback: o.hrv_ms, unit: "ms" },
     { metric: "resting_hr", fallback: o.resting_hr, unit: "bpm" },
@@ -184,14 +186,15 @@ export default function OverviewPage() {
   ] : [];
   return <div className="flex flex-col gap-6">
     <PageHeader title={t("design.overview")} subtitle={t("design.overview_sub")} actions={<div className="flex items-center gap-3">
-      <button className="p-2 text-muted hover:text-ink" aria-label={t("common.prev_day")} onClick={() => setParams({ date: shiftDay(o.date, -1) })}><ChevronLeft size={18} /></button>
-      <span className="num text-[13px]">{new Date(o.date + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
-      <button disabled={o.date >= today} className="p-2 text-muted hover:text-ink disabled:opacity-30" aria-label={t("common.next_day")} onClick={() => setParams({ date: shiftDay(o.date, 1) })}><ChevronRight size={18} /></button>
+      <button className="p-2 text-muted hover:text-ink" aria-label={t("common.prev_day")} onClick={() => setParams({ date: shiftDay(requestedDay, -1) })}><ChevronLeft size={18} /></button>
+      <span className="num text-[13px]">{new Date(requestedDay + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+      <button disabled={requestedDay >= today} className="p-2 text-muted hover:text-ink disabled:opacity-30" aria-label={t("common.next_day")} onClick={() => setParams({ date: shiftDay(requestedDay, 1) })}><ChevronRight size={18} /></button>
       {date && <button onClick={() => setParams({})} className="text-link">{t("common.today")}</button>}
     </div>} />
     <nav aria-label={t("refinement.quick_access")} className="flex flex-wrap gap-x-6 gap-y-3 border-b border-hairline pb-4 text-[13px]">
       {[{ to: "/app/calendar", key: "lab.calendar" }, { to: "/app/training", key: "design.view_training" }, { to: "/app/biometrics?tab=labs", key: "biometrics.labs" }, { to: "/app/coach", key: "nav.coach" }, { to: "/app/settings?tab=devices", key: "settings.devices" }].map((link) => <More key={link.to} to={link.to}>{t(link.key)}</More>)}
     </nav>
+    <YourDay date={requestedDay} />
     {!o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
     {!setupHidden && !setupComplete.every(Boolean) && <Card className="!p-4 sm:!p-5">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow text-primaryText">{t("setup.eyebrow")}</p><h2 className="mt-1 text-[18px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[13px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
@@ -204,7 +207,7 @@ export default function OverviewPage() {
     {hasData && <section aria-label={t("completion.daily_scores")} className="grid grid-cols-2 gap-4 xl:grid-cols-4">
       {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(e => <Card key={e.key}><Link to={`/app/biometrics/${e.key}`}><StatPod label={t(METRIC_LABELS[e.key])} value={fmtNum(e.score.value)} unit="/100" /><DeltaChip delta={e.score.delta_7d} compact /><p className="mt-2 text-[12px] text-muted">{t(e.key === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p></Link></Card>)}
     </section>}
-    {date ? <DecisionCard date={date} /> : <DecisionCard />}
+    <details className="border-t border-hairline pt-4"><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.recovery_context")}</summary><div className="mt-4"><DecisionCard date={requestedDay} /></div></details>
     {hasData && <section aria-label={t("refinement.recorded_signals")}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>

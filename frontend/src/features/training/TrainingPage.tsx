@@ -11,6 +11,8 @@
  *  - POST /gym/feedback {date,activity_kind,rpe?,soreness?,injury_flag,notes?}
  */
 
+import { YourDay } from "../athlete/YourDay";
+import { LifeEvents } from "../athlete/LifeEvents";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -663,7 +665,7 @@ export default function TrainingPage() {
           { value: "load", label: t("design.training_load") },
         ]}
       />
-      {tab === "plan" && <GymPlan />}
+      {tab === "plan" && <><YourDay /><LifeEvents /><GymPlan /></>}
       {tab === "calendar" && <EventCalendar />}
       {tab === "load" && <LoadChart />}
     </div>

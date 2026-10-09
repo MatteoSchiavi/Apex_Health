@@ -6,6 +6,7 @@ test("today shows coverage and separates a decision from a score", async ({
 }) => {
   await installApi(page);
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   await expect(
     page.getByText("Today's training decision", { exact: true }),
   ).toBeVisible();

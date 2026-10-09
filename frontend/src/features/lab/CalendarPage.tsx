@@ -158,20 +158,16 @@ export default function CalendarPage() {
                     </Badge>
                   </div>
                   <p className="mt-2 text-[13px] text-muted">
-                    {new Date(e.starts_at).toLocaleString()} · {t("lab.taper")}{" "}
+                    {e.date_only ? new Date(e.starts_at).toLocaleDateString(undefined, { timeZone: timezone }) : new Date(e.starts_at).toLocaleString()} · {t("lab.taper")}{" "}
                     {e.taper_days} {t("lab.days")}
                   </p>
                   {e.notes && <p className="mt-3 text-[13px]">{e.notes}</p>}
                 </div>
-                <Button
+                {e.profile_focus ? <Link className="text-link text-[13px]" to="/app/settings?tab=profile">{t("athlete.edit_profile_target")}</Link> : <Button
                   variant="ghost"
                   disabled={save.isPending}
-                  onClick={() =>
-                    save.mutate({ path: `/events/${e.id}`, method: "delete" })
-                  }
-                >
-                  {t("training.delete")}
-                </Button>
+                  onClick={() => save.mutate({ path: `/events/${e.id}`, method: "delete" })}
+                >{t("training.delete")}</Button>}
               </div>
             ))}
           </Card>

@@ -78,13 +78,13 @@ export function useUnits() {
           : unit,
   };
 }
-export function localDay(timezone?: string): string {
+export function localDay(timezone?: string, instant: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(instant);
   return ["year", "month", "day"]
     .map((type) => parts.find((p) => p.type === type)?.value)
     .join("-");

@@ -42,6 +42,7 @@ async function decisionApi(page: Page, options: { empty?: boolean; locale?: "en"
 test("daily interpretation leads the overview and evidence stays progressive", async ({ page }) => {
   await decisionApi(page);
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   const daily = page.getByText("Today's training decision", { exact: true });
   const signals = page.getByRole("heading", { name: "Recorded signals", exact: true });
   await expect(daily).toBeVisible();
@@ -59,6 +60,7 @@ test("daily interpretation leads the overview and evidence stays progressive", a
 test("optional influence and session feedback reuse outcome without approving a proposal", async ({ page }) => {
   const { writes } = await decisionApi(page);
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   await page.getByRole("button", { name: "Modified", exact: true }).click();
   await expect(page.getByRole("button", { name: "Modified", exact: true })).toBeDisabled();
   await page.getByText("Did this help your plan?", { exact: true }).click();
@@ -86,6 +88,7 @@ test("optional influence and session feedback reuse outcome without approving a 
 test("empty current overview still explains incomplete evidence", async ({ page }) => {
   await decisionApi(page, { empty: true });
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   await expect(page.getByRole("heading", { name: "Add current evidence before adjusting training" })).toBeVisible();
   await expect(page.getByText("0% of required signals covered")).toBeVisible();
   await expect(page.getByText("Did this help your plan?", { exact: true })).toHaveCount(0);
@@ -98,6 +101,7 @@ test("Italian mobile decision feedback is localized and accessible", async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await decisionApi(page, { locale: "it" });
   await page.goto("/app");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   await expect(page.getByRole("heading", { name: "Mantieni l’obiettivo, riduci il volume" })).toBeVisible();
   await page.getByRole("button", { name: "Modificata", exact: true }).click();
   await page.getByText("Ti è stato utile per il piano?", { exact: true }).click();

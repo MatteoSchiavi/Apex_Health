@@ -53,6 +53,7 @@ export interface Decision {
   outcome: { state: string; notes?: string; influenced_plan?: "yes" | "partly" | "no"; useful?: boolean; completion?: "completed" | "partial" | "skipped"; rpe?: number; soreness?: number; pain?: boolean; felt_unwell?: boolean; activity_id?: number; draft_id?: number; planned_session_id?: number; recorded_at?: string } | null;
 }
 export interface Draft {
+  adaptation?: { objective_status: string; data_gaps: string[]; evidence_ids: string[] } | null;
   id: number;
   kind: string;
   status: string;
@@ -99,6 +100,7 @@ export interface Doc {
   excerpt: string | null;
 }
 export interface Event {
+  profile_focus?: string | null; date_only?: boolean;
   id: number;
   title: string;
   kind: string;
