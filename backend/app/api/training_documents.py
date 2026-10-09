@@ -115,6 +115,12 @@ async def confirm_plan(ident: int, payload: PlanConfirmationIn, user: User = Dep
     old_plans = (await session.scalars(select(TrainingPlan).where(TrainingPlan.user_id == user.id,
         TrainingPlan.source_document_id.is_not(None), TrainingPlan.status == "active"))).all()
     for old in old_plans:
+        protected_upcoming = await session.scalar(select(PlannedSession.id).where(
+            PlannedSession.training_plan_id == old.id, PlannedSession.date >= today,
+            (PlannedSession.protected.is_(True) if not old.protected else True)).limit(1))
+        if protected_upcoming:
+            raise HTTPException(409, "The active plan contains protected upcoming workouts; explicitly remove protection before replacing it")
+    for old in old_plans:
         old.status, old.superseded_on = "completed", today
     plan = TrainingPlan(user_id=user.id, created_by="manual", week_start=structure.starts_on,
         end_date=structure.ends_on, title=structure.title, status="active", protected=structure.protected,

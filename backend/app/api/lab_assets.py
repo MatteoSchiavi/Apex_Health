@@ -248,7 +248,7 @@ async def export_account(
         "activity_plan_links": "activity_id,planned_session_id,method,created_at",
         "athlete_profiles": "training_focus,context,revision,updated_at",
         "ai_consents": "active,policy_version,purpose,provider_identity,accepted_at,withdrawn_at",
-        "ai_budget_reservations": "day,category,reserved_usd,actual_usd,state",
+        "ai_budget_reservations": "day,category,reserved_usd,actual_usd,reserved_tokens,actual_tokens,state",
         "feedbacks": "id,category,message,page_url,created_at",
         "lab_observations": "id,metric,value,unit,origin,measured_at,local_date,timezone,fetched_at,revision,current,metadata_json",
         "athlete_entries": "id,kind,date,payload,revision",

@@ -255,3 +255,43 @@ async def test_ai_extraction_needs_consent_and_retains_unknowns(client, db_sessi
     assert result.json()['structure']['sessions'][0]['duration_min'] is None
     assert len(calls)==1 and "UNTRUSTED_DOCUMENT" in calls[0]['messages'][0]['content']
     assert not await db_session.scalar(select(TrainingPlan.id))
+
+
+async def test_superseded_baseline_keeps_completed_and_skipped_session_identity(db_session):
+    from app.models.athlete_training import ActivityPlanLink, SessionCheckin
+    day=datetime(2026,10,9).date();plan,items=await make_plan(db_session,day,("running","road_cycling"))
+    plan.status="completed";plan.superseded_on=day
+    a=Activity(user_id=1,discipline_id=items[0].discipline_id,start_time=datetime(2026,10,9,8,tzinfo=UTC),local_date=day,start_tz_offset_minutes=0,duration_s=1800)
+    db_session.add(a);await db_session.flush()
+    db_session.add(ActivityPlanLink(user_id=1,activity_id=a.id,planned_session_id=items[0].id,method="user_confirmed"))
+    db_session.add(SessionCheckin(user_id=1,planned_session_id=items[1].id,status="skipped",note=""))
+    await db_session.commit()
+    state=await your_day(db_session,await db_session.get(User,1),day)
+    assert {s['status'] for s in state['sessions']} == {'completed','skipped'}
+    assert state['activities'][0]['association']=='confirmed'
+    assert state['activities'][0]['comparison']['target_duration_min']==30
+
+
+async def test_protected_active_plan_cannot_be_superseded_implicitly(client,db_session):
+    await authenticate(client);doc=await reviewed_document(client)
+    day=datetime.now(ZoneInfo('Europe/Rome')).date()
+    plan,items=await make_plan(db_session,day,protected=True)
+    plan.source_document_id=doc['id'];plan.status='active';await db_session.commit()
+    draft=(await client.post(f"/lab/documents/{doc['id']}/plan-drafts",headers=csrf_headers(client),json={"expected_document_revision":doc['revision'],"structure":structure(day)})).json()
+    confirmation={"payload_hash":draft['payload_hash'],"ambiguities_reviewed":True}
+    assert (await client.post(f"/lab/plan-drafts/{draft['id']}/confirm",headers=csrf_headers(client),json=confirmation)).status_code==409
+    await db_session.refresh(plan);assert plan.status=='active'
+    assert (await client.put(f"/lab/plans/{plan.id}/protection",headers=csrf_headers(client),json={"protected":False,"expected_plan_revision":plan.revision})).status_code==200
+    assert (await client.post(f"/lab/plan-drafts/{draft['id']}/confirm",headers=csrf_headers(client),json=confirmation)).status_code==200
+
+
+async def test_declared_local_window_blocks_session_crossing_its_end(db_session):
+    from datetime import time
+    from app.services.replanning import enforce_session_constraints
+    day=datetime(2026,10,9).date();_,items=await make_plan(db_session,day)
+    items[0].start_time=time(18,45)
+    db_session.add(AthleteProfile(user_id=1,training_focus=['running'],context={'availability':[{'day':day.weekday(),'start':'18:00','end':'19:00'}]}))
+    await db_session.commit()
+    with pytest.raises(EvidenceError,match='availability windows'):
+        await enforce_session_constraints(db_session,1,{'date':str(day),'target_id':items[0].id,'target_duration_min':30,'session_type':'easy'})
+    await enforce_session_constraints(db_session,1,{'date':str(day),'target_id':items[0].id,'target_duration_min':15,'session_type':'easy'})

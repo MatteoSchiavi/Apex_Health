@@ -1,7 +1,7 @@
 """Account-local day composition. Suggestions never masquerade as completion."""
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
-from sqlalchemy import Integer, or_, select
+from sqlalchemy import and_, Integer, or_, select
 from app.models.activity import Activity, Discipline
 from app.models.athlete import AthleteProfile
 from app.models.athlete_training import ActivityPlanLink, SessionCheckin
@@ -31,9 +31,16 @@ async def your_day(session, user, day):
     tz = ZoneInfo(user.timezone)
     start = datetime.combine(day, time.min, tzinfo=tz)
     end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz)
-    rows = (await session.execute(select(PlannedSession, TrainingPlan, Discipline.name)
-        .join(TrainingPlan).outerjoin(Discipline, PlannedSession.discipline_id == Discipline.id)
-        .where(TrainingPlan.user_id == user.id, PlannedSession.date == day, *plan_conditions(day)))).all()
+    linked_history = select(ActivityPlanLink.planned_session_id).join(
+        Activity, Activity.id == ActivityPlanLink.activity_id).where(
+        ActivityPlanLink.user_id == user.id, Activity.start_time >= start, Activity.start_time < end)
+    reported_history = select(SessionCheckin.planned_session_id).where(
+        SessionCheckin.user_id == user.id, SessionCheckin.status.in_(("completed", "partial", "skipped")))
+    day_query = select(PlannedSession, TrainingPlan, Discipline.name).join(TrainingPlan).outerjoin(
+        Discipline, PlannedSession.discipline_id == Discipline.id).where(
+        TrainingPlan.user_id == user.id, PlannedSession.date == day,
+        or_(and_(*plan_conditions(day)), PlannedSession.id.in_(linked_history), PlannedSession.id.in_(reported_history)))
+    rows = (await session.execute(day_query)).all()
     activities = (await session.execute(select(Activity, Discipline.name).outerjoin(Discipline)
         .where(Activity.user_id == user.id, Activity.start_time >= start, Activity.start_time < end)
         .order_by(Activity.start_time, Activity.id))).all()

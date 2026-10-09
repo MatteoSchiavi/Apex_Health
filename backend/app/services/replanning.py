@@ -113,6 +113,16 @@ async def enforce_session_constraints(session, user_id, after, *, additional_wee
             SessionCheckin.status.in_(("completed", "skipped"))))
         if recorded or finished:
             raise EvidenceError("CONFLICT", "Completed or skipped sessions remain historical records; propose an upcoming session instead")
+    windows = context["availability_windows"]
+    if windows and duration and after.get("target_id"):
+        from app.models.training import PlannedSession
+        target = await session.get(PlannedSession, after["target_id"])
+        if target.start_time:
+            begins = target.start_time.hour*60 + target.start_time.minute
+            def minute(value):
+                return int(value[:2])*60 + int(value[3:5])
+            if not any(minute(w["start"]) <= begins and begins + duration <= minute(w["end"]) for w in windows):
+                raise EvidenceError("CONFLICT", "Session does not fit the declared local availability windows")
     other_minutes = await committed_minutes(session, user, day, day, after.get("target_id")) if duration is not None else 0
     cap = available.payload["minutes"] if available else None
     if context["profile_availability_min"] is not None:

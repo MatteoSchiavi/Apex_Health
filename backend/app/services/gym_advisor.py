@@ -149,8 +149,11 @@ def _italian_safety_reason(reason: str) -> str:
 async def upcoming_events(
     session: AsyncSession, user_id: int, today: date, horizon_days: int = 14
 ) -> list[UserEvent]:
+    from app.models.user import User
+    athlete = await session.get(User, user_id)
+    tz = ZoneInfo(athlete.timezone if athlete else "UTC")
     horizon_end = datetime.combine(
-        today + timedelta(days=horizon_days), datetime.min.time()
+        today + timedelta(days=horizon_days), datetime.min.time(), tzinfo=tz
     )
     return (
         (
@@ -158,7 +161,7 @@ async def upcoming_events(
                 select(UserEvent)
                 .where(
                     UserEvent.user_id == user_id,
-                    UserEvent.starts_at >= datetime.combine(today, datetime.min.time()),
+                    UserEvent.starts_at >= datetime.combine(today, datetime.min.time(), tzinfo=tz),
                     UserEvent.starts_at < horizon_end,
                 )
                 .order_by(UserEvent.starts_at)
