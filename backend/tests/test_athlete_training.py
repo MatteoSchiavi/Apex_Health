@@ -178,3 +178,80 @@ async def test_account_local_day_dst_and_historical_state(db_session, day, hours
     timeline = await your_day(db_session, user, local)
     assert len(timeline["activities"]) == 2 and timeline["date"] == day
     assert timeline["sessions"] == []
+
+
+async def test_recorded_time_replaces_linked_plan_and_unplanned_activity_consumes_budget(db_session):
+    from app.models.athlete_training import ActivityPlanLink
+    from app.services.training_time import committed_minutes
+    from app.services.replanning import enforce_session_constraints
+    day = datetime(2026,10,9).date()
+    _, items = await make_plan(db_session, day, ("running", "road_cycling"))
+    user = await db_session.get(User,1)
+    for duration, planned in [(2400,items[0]), (1200,None)]:
+        a = Activity(user_id=1, discipline_id=items[0].discipline_id, start_time=datetime(2026,10,9,8,tzinfo=UTC),
+            local_date=day, start_tz_offset_minutes=0, duration_s=duration)
+        db_session.add(a); await db_session.flush()
+        if planned:
+            db_session.add(ActivityPlanLink(user_id=1, activity_id=a.id, planned_session_id=planned.id, method="user_confirmed"))
+    db_session.add(AthleteProfile(user_id=1, training_focus=["running","cycling"], context={"weekly_time_budget_min":70}))
+    await db_session.commit()
+    assert await committed_minutes(db_session,user,day,day) == 90 # 40 actual + 20 unplanned + 30 future
+    with pytest.raises(EvidenceError,match="weekly time"):
+        await enforce_session_constraints(db_session,1,{"date":str(day),"target_id":items[1].id,"target_duration_min":20,"session_type":"easy"})
+    with pytest.raises(EvidenceError,match="historical"):
+        await enforce_session_constraints(db_session,1,{"date":str(day),"target_id":items[0].id,"target_duration_min":10,"session_type":"easy"})
+
+
+async def test_ownership_on_documents_associations_checkins_and_endurance(client, db_session):
+    await authenticate(client)
+    other = User(name="Other athlete",timezone="UTC"); db_session.add(other);await db_session.flush()
+    day=datetime(2026,10,9).date()
+    plan=TrainingPlan(user_id=other.id,week_start=day,status="confirmed",created_by="manual");db_session.add(plan);await db_session.flush()
+    sport=await db_session.scalar(select(Discipline.id).where(Discipline.name=="running"))
+    workout=PlannedSession(training_plan_id=plan.id,date=day,discipline_id=sport,session_type="easy");db_session.add(workout)
+    activity=Activity(user_id=other.id,discipline_id=sport,start_time=datetime(2026,10,9,8,tzinfo=UTC),local_date=day,start_tz_offset_minutes=0,duration_s=1200)
+    db_session.add(activity);await db_session.commit()
+    assert (await client.get(f"/activities/{activity.id}/endurance")).status_code==404
+    assert (await client.put(f"/athlete/activities/{activity.id}/association",headers=csrf_headers(client),json={"planned_session_id":None})).status_code==404
+    assert (await client.put("/athlete/checkins",headers=csrf_headers(client),json={"planned_session_id":workout.id,"status":"skipped"})).status_code==404
+    assert (await client.put(f"/lab/planned-sessions/{workout.id}/protection",headers=csrf_headers(client),json={"expected_plan_revision":1,"protected":True})).status_code==404
+    own_doc=await reviewed_document(client)
+    from app.models.lab import LabDocument
+    doc=await db_session.get(LabDocument,own_doc['id']);doc.user_id=other.id;await db_session.commit()
+    assert (await client.post(f"/lab/documents/{doc.id}/plan-drafts",headers=csrf_headers(client),json={"expected_document_revision":doc.revision,"structure":structure(day)})).status_code==404
+
+
+async def test_skipped_modified_and_unplanned_history_stays_explicit(client, db_session):
+    await authenticate(client)
+    day=datetime(2026,10,9).date();_,items=await make_plan(db_session,day,("running","road_cycling"))
+    spec=ProposeIn.model_validate({"change":{"kind":"session_patch","target_id":items[0].id,"target_duration_min":20},"reason":"Time constraint"})
+    draft=await propose(db_session,1,spec);await apply(db_session,1,draft['id'],draft['payload_hash']);await db_session.commit()
+    response=await client.put("/athlete/checkins",headers=csrf_headers(client),json={"planned_session_id":items[1].id,"status":"skipped"})
+    assert response.status_code==200,response.text
+    daystate=(await client.get(f"/athlete/day?date={day}")).json()
+    assert {s['status'] for s in daystate['sessions']}=={'modified','skipped'}
+    assert not (await client.get("/athlete/day?date=2026-10-08")).json()['sessions']
+
+
+async def test_ai_extraction_needs_consent_and_retains_unknowns(client, db_session, monkeypatch):
+    import json
+    from app.core.llm import LLMResponse
+    from tests.helpers.ai import authorize_ai
+    from app.models.athlete import AiConsent
+    await authenticate(client);doc=await reviewed_document(client)
+    await db_session.execute(text("DELETE FROM ai_consents WHERE user_id=1"));await db_session.commit()
+    calls=[]
+    class Provider:
+        async def complete(self,**kwargs):
+            calls.append(kwargs)
+            return LLMResponse(content=json.dumps({"title":"Unknown dates", "sessions":[{"discipline":"running"}],"ambiguities":["Dates absent"]}),model="fixture",tokens_in=10,tokens_out=10)
+    monkeypatch.setattr("app.api.training_documents.build_llm_client",lambda:Provider())
+    payload={"expected_document_revision":doc['revision'],"use_ai":True}
+    denied=await client.post(f"/lab/documents/{doc['id']}/plan-drafts",headers=csrf_headers(client),json=payload)
+    assert denied.status_code==403 and not calls
+    await authorize_ai(db_session)
+    result=await client.post(f"/lab/documents/{doc['id']}/plan-drafts",headers=csrf_headers(client),json=payload)
+    assert result.status_code==201,result.text
+    assert result.json()['structure']['sessions'][0]['duration_min'] is None
+    assert len(calls)==1 and "UNTRUSTED_DOCUMENT" in calls[0]['messages'][0]['content']
+    assert not await db_session.scalar(select(TrainingPlan.id))

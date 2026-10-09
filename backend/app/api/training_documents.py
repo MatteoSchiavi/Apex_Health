@@ -159,6 +159,8 @@ async def update_protection(session, user_id, ident, payload, workout=None):
         raise HTTPException(404, "Plan not found")
     if plan.revision != payload.expected_plan_revision:
         raise HTTPException(409, "Plan changed; reload its protection state")
+    if workout:
+        await session.refresh(workout)
     target = workout or plan
     target.protected = payload.protected
     plan.revision += 1

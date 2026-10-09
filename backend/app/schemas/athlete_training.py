@@ -14,6 +14,13 @@ class ReviewedWorkout(Strict):
     description: str = Field(default="", max_length=2000)
     intensity_targets: dict[Literal["hr_bpm", "power_w", "pace_s_km", "rpe"], str] = Field(default_factory=dict)
     protected: bool = False
+    @model_validator(mode="after")
+    def valid_targets(self):
+        if self.start_time and self.start_time.tzinfo:
+            raise ValueError("Workout start must be a local time")
+        if any(len(v) > 200 for v in self.intensity_targets.values()):
+            raise ValueError("Intensity targets must be at most 200 characters")
+        return self
 
 
 class ReviewedPlan(Strict):

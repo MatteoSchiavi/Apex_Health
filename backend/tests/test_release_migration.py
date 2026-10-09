@@ -112,3 +112,38 @@ async def test_native_tokens_remain_revoked_after_scope_downgrade_and_reupgrade(
         async with admin.connect() as connection:
             await connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
         await admin.dispose()
+
+
+async def test_athlete_upgrade_preserves_populated_legacy_plan_and_roundtrips_without_consent_backfill():
+    base = make_url(os.environ['DATABASE_URL'])
+    name = f'apex_athlete_migration_{uuid4().hex}'
+    admin = create_async_engine(base.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = base.set(database=name)
+    async with admin.connect() as connection:
+        await connection.execute(text(f'CREATE DATABASE "{name}"'))
+    engine = create_async_engine(target)
+    env = {**os.environ, 'DATABASE_URL': target.render_as_string(hide_password=False)}
+    def migrate(*args):
+        result = subprocess.run(['uv', 'run', 'alembic', *args], env=env, capture_output=True)
+        assert result.returncode == 0, result.stderr.decode()
+    try:
+        migrate('upgrade', '0023')
+        async with engine.begin() as connection:
+            user = await connection.scalar(text("INSERT INTO users(name) VALUES ('legacy athlete') RETURNING id"))
+            plan = await connection.scalar(text("INSERT INTO training_plans(user_id,week_start,status,created_by) VALUES (:u,current_date,'confirmed','manual') RETURNING id"), {'u':user})
+            workout = await connection.scalar(text("INSERT INTO planned_sessions(training_plan_id,date,session_type,target_duration_min) VALUES (:p,current_date,'easy',30) RETURNING id"), {'p':plan})
+        migrate('upgrade', 'head')
+        async with engine.connect() as connection:
+            assert (await connection.execute(text('SELECT id,training_plan_id,target_duration_min,protected FROM planned_sessions WHERE id=:w'), {'w':workout})).one() == (workout,plan,30,False)
+            assert await connection.scalar(text('SELECT count(*) FROM ai_consents')) == 0
+            assert await connection.scalar(text('SELECT count(*) FROM athlete_profiles')) == 0
+        migrate('downgrade', '0023')
+        migrate('upgrade', 'head')
+        async with engine.connect() as connection:
+            assert await connection.scalar(text('SELECT target_duration_min FROM planned_sessions WHERE id=:w'), {'w':workout}) == 30
+            assert await connection.scalar(text('SELECT count(*) FROM ai_consents')) == 0
+    finally:
+        await engine.dispose()
+        async with admin.connect() as connection:
+            await connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+        await admin.dispose()

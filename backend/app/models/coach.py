@@ -9,7 +9,7 @@ token cost bounded.
 
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Index, SmallInteger, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Index, SmallInteger, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,10 +20,13 @@ class UserEvent(Base):
     __tablename__ = "user_events"
     __table_args__ = (
         Index("ix_user_events_user_starts", "user_id", "starts_at"),
+        UniqueConstraint("user_id", "profile_focus", name="uq_user_events_profile_focus"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    profile_focus: Mapped[str | None] = mapped_column(Text)
+    date_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     title: Mapped[str] = mapped_column(Text, nullable=False)
     # race | run | ride | ski | enduro | sailing | competition | trip |
     # training_camp | gym | other

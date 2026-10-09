@@ -105,6 +105,12 @@ async def update_me(
     if payload.athlete_profile is not None:
         from app.api.athlete import update_profile
         await update_profile(payload.athlete_profile, user, session)
+    if payload.timezone is not None:
+        from app.models.athlete import AthleteProfile
+        from app.services.athlete_calendar import sync_profile_events
+        profile = await session.get(AthleteProfile, user.id)
+        if profile:
+            await sync_profile_events(session, user, profile.context)
     await session.commit()
     return await _me_out(user, cred, session)
 

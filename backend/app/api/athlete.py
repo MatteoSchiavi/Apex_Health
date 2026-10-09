@@ -2,6 +2,8 @@
 from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.activity import Discipline
 from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.athlete import AthleteProfile, AiConsent
@@ -40,6 +42,8 @@ async def update_profile(payload: AthleteUpdate, user: User = Depends(get_curren
     else:
         row.revision += 1
     row.training_focus, row.context, row.updated_at = payload.training_focus, context, datetime.now(UTC)
+    from app.services.athlete_calendar import sync_profile_events
+    await sync_profile_events(session, user, context)
     await session.commit()
     return await profile_out(session, user.id)
 
@@ -52,6 +56,8 @@ async def delete_profile(user: User = Depends(get_current_user), session: AsyncS
     if row:
         row.training_focus, row.context, row.revision = [], {}, row.revision + 1
         row.updated_at = datetime.now(UTC)
+    from app.services.athlete_calendar import sync_profile_events
+    await sync_profile_events(session, user, {})
     await session.commit()
 
 
@@ -89,3 +95,9 @@ async def consent_update(payload: ConsentUpdate, user: User = Depends(get_curren
         payload={"policy_version": row.policy_version, "purpose": row.purpose, "provider_identity": row.provider_identity, "timestamp": now.isoformat()}))
     await session.commit()
     return await ai_state(user, session)
+
+
+@router.get("/disciplines")
+async def disciplines(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    rows = (await session.scalars(select(Discipline).order_by(Discipline.name))).all()
+    return [{"name": r.name, "category": r.category} for r in rows]

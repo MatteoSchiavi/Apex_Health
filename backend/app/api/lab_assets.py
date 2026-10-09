@@ -253,7 +253,7 @@ async def export_account(
         "lab_observations": "id,metric,value,unit,origin,measured_at,local_date,timezone,fetched_at,revision,current,metadata_json",
         "athlete_entries": "id,kind,date,payload,revision",
         "user_context_docs": "doc_kind,content,updated_at",
-        "user_events": "id,title,kind,starts_at,ends_at,priority,taper_days,notes",
+        "user_events": "id,title,kind,starts_at,ends_at,priority,taper_days,notes,profile_focus,date_only",
         "decision_records": "id,date,output,outcome",
         "change_drafts": "id,kind,status,before,after,reason,receipt",
         "activities": "id,discipline_id,start_time,local_date,duration_s,distance_m,avg_hr,avg_power,source_metrics",
@@ -290,6 +290,9 @@ async def export_account(
             "created_at": user.created_at,
         },
     }
+    from app.models.training import PlannedSession, TrainingPlan
+    workouts = (await session.scalars(select(PlannedSession).join(TrainingPlan).where(TrainingPlan.user_id == user.id).limit(100000))).all()
+    result["planned_sessions"] = [{c.name: getattr(r, c.name) for c in PlannedSession.__table__.columns} for r in workouts]
     for table, columns in tables.items():
         result[table] = [
             dict(row)

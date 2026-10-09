@@ -67,6 +67,7 @@ async def your_day(session, user, day):
             "session_type": workout.session_type, "duration_min": workout.target_duration_min,
             "distance_m": float(workout.target_distance_m) if workout.target_distance_m is not None else None,
             "intensity_targets": workout.intensity_targets, "description": workout.description,
+            "plan_protected": plan.protected, "workout_protected": workout.protected,
             "protected": workout.protected or plan.protected, "status": status,
             "activity_id": linked.activity_id if linked else None, "checkin": checkin_out(check),
             "completion_source": "user_confirmed_activity" if linked else "self_reported" if check else None})

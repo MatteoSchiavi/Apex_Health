@@ -103,23 +103,17 @@ async def enforce_session_constraints(session, user_id, after, *, additional_wee
     context = await athlete_constraints(session, user, day)
     duration = after.get("target_duration_min")
     available = latest.get("availability")
-    other_minutes = 0
-    if (available or context["profile_availability_min"] is not None) and duration is not None:
-        from sqlalchemy import func
-        from app.models.training import PlannedSession, TrainingPlan
-
-        query = (
-            select(func.coalesce(func.sum(PlannedSession.target_duration_min), 0))
-            .join(TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id)
-            .where(
-                TrainingPlan.user_id == user_id,
-                *plan_conditions(PlannedSession.date),
-                PlannedSession.date == day,
-            )
-        )
-        if after.get("target_id"):
-            query = query.where(PlannedSession.id != after["target_id"])
-        other_minutes = await session.scalar(query)
+    from app.services.training_time import committed_minutes
+    from app.models.athlete_training import ActivityPlanLink, SessionCheckin
+    if after.get("target_id"):
+        recorded = await session.scalar(select(ActivityPlanLink.activity_id).where(
+            ActivityPlanLink.user_id == user_id, ActivityPlanLink.planned_session_id == after["target_id"]))
+        finished = await session.scalar(select(SessionCheckin.id).where(
+            SessionCheckin.user_id == user_id, SessionCheckin.planned_session_id == after["target_id"],
+            SessionCheckin.status.in_(("completed", "skipped"))))
+        if recorded or finished:
+            raise EvidenceError("CONFLICT", "Completed or skipped sessions remain historical records; propose an upcoming session instead")
+    other_minutes = await committed_minutes(session, user, day, day, after.get("target_id")) if duration is not None else 0
     cap = available.payload["minutes"] if available else None
     if context["profile_availability_min"] is not None:
         cap = min(cap, context["profile_availability_min"]) if cap is not None else context["profile_availability_min"]
@@ -130,15 +124,8 @@ async def enforce_session_constraints(session, user_id, after, *, additional_wee
         )
     weekly_budget = context["weekly_time_budget_min"]
     if weekly_budget is not None and duration is not None:
-        from sqlalchemy import func
-        from app.models.training import PlannedSession, TrainingPlan
         monday = day - timedelta(days=day.weekday())
-        query = select(func.coalesce(func.sum(PlannedSession.target_duration_min), 0)).join(TrainingPlan).where(
-            TrainingPlan.user_id == user_id, *plan_conditions(PlannedSession.date),
-            PlannedSession.date.between(monday, monday + timedelta(days=6)))
-        if after.get("target_id"):
-            query = query.where(PlannedSession.id != after["target_id"])
-        planned_minutes = await session.scalar(query)
+        planned_minutes = await committed_minutes(session, user, monday, monday + timedelta(days=6), after.get("target_id"))
         if planned_minutes + duration + additional_week_minutes > weekly_budget:
             raise EvidenceError("CONFLICT", "Session exceeds the declared weekly time budget; prioritize a goal and review alternatives")
     if context["subjective"] and (context["subjective"][-1]["pain"] or context["subjective"][-1]["felt_unwell"]) and after.get("session_type") != "rest":

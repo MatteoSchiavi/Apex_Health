@@ -162,6 +162,8 @@ async def update_event(
     event = await session.get(UserEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="event not found")
+    if event.profile_focus:
+        raise HTTPException(409, "Edit this target event in the athlete profile")
     for key, value in payload.model_dump().items():
         setattr(event, key, value)
     await session.commit()
@@ -180,12 +182,16 @@ async def delete_event(
     event = await session.get(UserEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="event not found")
+    if event.profile_focus:
+        raise HTTPException(409, "Remove this target event in the athlete profile")
     await session.delete(event)
     await session.commit()
 
 
 def _event_dict(event: UserEvent, bucket: str) -> dict:
     return {
+        "profile_focus": event.profile_focus,
+        "date_only": event.date_only,
         "id": event.id,
         "title": event.title,
         "kind": event.kind,
