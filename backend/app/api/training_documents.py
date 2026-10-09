@@ -61,7 +61,7 @@ async def extract_plan(ident: int, payload: PlanExtractionIn, user: User = Depen
             structure = ReviewedPlan.model_validate(extract_json_object(response.content))
         except EvidenceError as exc:
             raise HTTPException(429 if exc.code == "BUDGET_EXCEEDED" else 403, str(exc)) from None
-        except (LLMError, ValueError):
+        except (LLMError, ValueError, TimeoutError):
             raise HTTPException(422, "Extraction unavailable or incomplete; review the document and enter a structure") from None
         finally:
             if llm is not None and hasattr(llm, "aclose"):

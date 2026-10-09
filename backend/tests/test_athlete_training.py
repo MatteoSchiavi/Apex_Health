@@ -38,6 +38,36 @@ async def reviewed_document(client):
     return review.json()
 
 
+async def test_ai_extraction_timeout_allows_manual_retry(client, db_session, monkeypatch):
+    from types import SimpleNamespace
+    from app.api import training_documents
+
+    await authenticate(client)
+    doc = await reviewed_document(client)
+    closed = []
+
+    async def close():
+        closed.append(True)
+
+    async def timeout(*args, **kwargs):
+        raise TimeoutError
+
+    monkeypatch.setattr(training_documents, "build_llm_client", lambda: SimpleNamespace(aclose=close))
+    monkeypatch.setattr(training_documents, "guarded_complete", timeout)
+    path = f"/lab/documents/{doc['id']}/plan-drafts"
+    response = await client.post(path, headers=csrf_headers(client), json={
+        "expected_document_revision": doc["revision"], "use_ai": True})
+    assert response.status_code == 422
+    assert "enter a structure" in response.json()["detail"]
+    assert closed == [True]
+    assert not await db_session.scalar(select(PlanDocumentDraft.id))
+    retry = await client.post(path, headers=csrf_headers(client), json={
+        "expected_document_revision": doc["revision"],
+        "structure": {"sessions": [{"discipline": "running"}]}})
+    assert retry.status_code == 201
+    assert retry.json()["extraction_method"] == "user_reviewed"
+
+
 def structure(day, sports=("strength", "running"), protected=False, ambiguities=None):
     return {"title": "Mixed sport plan", "starts_on": str(day), "ends_on": str(day+timedelta(days=6)),
         "sessions": [{"date": str(day), "discipline": sport, "duration_min": 30,
