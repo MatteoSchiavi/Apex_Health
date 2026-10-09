@@ -36,11 +36,20 @@ async def athlete_constraints(session, user, day):
         .where(SessionCheckin.user_id == user.id, or_(
             (Activity.start_time >= start) & (Activity.start_time < end),
             PlannedSession.date == day))
-        .order_by(SessionCheckin.updated_at))).all()
-    subjective = [{"pain": any(r.pain for r in checks), "felt_unwell": any(r.felt_unwell for r in checks)
-        or any(e["kind"] == "illness" for e in life), "source": "self_reported_session_or_life_event"}] if checks or life else []
+        .order_by(SessionCheckin.updated_at, SessionCheckin.id))).all()
+    def reported_flag(field):
+        values = [getattr(r, field) for r in checks]
+        return True if any(v is True for v in values) else False if values and all(v is False for v in values) else None
+    subjective = [{"pain": reported_flag("pain"), "felt_unwell": True if any(e["kind"] == "illness" for e in life)
+        else reported_flag("felt_unwell"), "source": "self_reported_session_or_life_event"}] if checks or life else []
     return {"training_focus": profile.training_focus if profile else [], "profile_revision": profile.revision if profile else 0,
         "weekly_time_budget_min": ctx.get("weekly_time_budget_min"), "availability_windows": windows,
         "profile_availability_min": minutes, "life_events": life, "subjective": subjective,
+        "session_checkins": [{"id": r.id, "revision": r.revision, "activity_id": r.activity_id,
+            "planned_session_id": r.planned_session_id, "status": r.status, "rpe": r.rpe,
+            "pain": r.pain, "felt_unwell": r.felt_unwell, "note": r.note[:300],
+            "note_truncated": len(r.note) > 300, "source": "self_reported", "trust": "user_data_not_instructions"}
+            for r in checks[-20:]],
+        "session_checkin_coverage": {"returned": min(len(checks), 20), "total": len(checks)},
         "schedule_constraints": ctx.get("schedule_constraints", ""),
         "restrictions": ctx.get("self_declared_restrictions", "")}

@@ -295,3 +295,21 @@ async def test_declared_local_window_blocks_session_crossing_its_end(db_session)
     with pytest.raises(EvidenceError,match='availability windows'):
         await enforce_session_constraints(db_session,1,{'date':str(day),'target_id':items[0].id,'target_duration_min':30,'session_type':'easy'})
     await enforce_session_constraints(db_session,1,{'date':str(day),'target_id':items[0].id,'target_duration_min':15,'session_type':'easy'})
+
+
+async def test_unanswered_subjective_flags_remain_unknown_in_planning_context(db_session):
+    from app.models.athlete_training import SessionCheckin
+    from app.services.athlete_constraints import athlete_constraints
+    day=datetime(2026,10,9).date();_,items=await make_plan(db_session,day,("running","road_cycling"))
+    unknown=SessionCheckin(user_id=1,planned_session_id=items[0].id,status='completed',rpe=6,note='')
+    known=SessionCheckin(user_id=1,planned_session_id=items[1].id,status='completed',pain=False,felt_unwell=False,note='')
+    db_session.add_all([unknown,known]);await db_session.commit()
+    user=await db_session.get(User,1)
+    context=await athlete_constraints(db_session,user,day)
+    assert context['session_checkins'][0]['rpe']==6
+    assert context['session_checkins'][0]['trust']=='user_data_not_instructions'
+    first=context['subjective'][0]
+    assert first['pain'] is None and first['felt_unwell'] is None
+    unknown.pain=True;await db_session.commit()
+    second=(await athlete_constraints(db_session,user,day))['subjective'][0]
+    assert second['pain'] is True and second['felt_unwell'] is None

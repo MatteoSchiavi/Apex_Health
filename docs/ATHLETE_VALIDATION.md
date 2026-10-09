@@ -10,6 +10,7 @@ Implemented on branch `work` from `f9774bb`, preserving the initially clean repo
 | Final affected backend, agent, gym and migration regressions | **204 passed** |
 | Final AI access/budget/agent/report regressions after exhausted-state and incomplete-usage changes | **131 passed** |
 | Final running/cycling formula and provider-zone provenance regressions | **26 passed** |
+| Final unknown-feedback and bounded shared check-in context regressions, including actual agent evaluations | **87 passed** |
 | Final complete Chromium browser suite | **136 passed, 1 skipped** |
 | Production frontend build | Passed (`tsc -b` and Vite) |
 | EN/IT localization check | Passed: **1,777 keys in parity** |
@@ -41,6 +42,7 @@ CI=1 npx playwright test
 - Recorded time replacing linked planned time, unplanned time consuming budgets, weekly/rest/life-event/window constraints, reviewable exact adaptation and undo.
 - Consent absent/accepted/withdrawn/provider-mismatch/server-disabled, no unauthorized provider or embedding invocation, basic read-only authority, per-category pre-call exhaustion, atomic concurrent reservations, incomplete/failed-call accounting and effective disabled status on account exhaustion.
 - Running/cycling numerical formulas, zero/non-finite/missing inputs, pause/stream/split coverage, dated configured zones, provider-specific zone provenance, confirmed/stale/future FTP and separate load units.
+- Unanswered subjective flags remain null, while bounded self-reported notes and RPE reach the shared coaching context without re-entry.
 - Actual bounded agent runtime/evaluations, source eligibility, malicious document/tool authority cases and in-flight erasure protections.
 
 ## Product decisions and limits
@@ -67,7 +69,7 @@ Deployment, physical AI-processing location, remote retention and operator legal
 - `72769cc` — feat: add bilingual progressive athlete context and shared daily session flows
 - `8e3091e` — fix: identify the recorded provider partition in zone provenance
 
-Documentation and this validation report are committed as the final documentation change.
+Documentation and this validation report are committed separately. The final follow-up preserves unknown subjective flags and shares bounded check-in context; its 87-test regression run is recorded above.
 
 ## Modified files
 

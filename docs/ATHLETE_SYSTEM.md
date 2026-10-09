@@ -20,6 +20,8 @@ Daily totals include only known duration, distance, ascent, calories and volunta
 
 ## Planning and review
 
+Unanswered subjective flags remain unknown. Up to twenty owned daily check-ins, including explicitly reported RPE and bounded untrusted notes, are shared with coaching context with coverage/truncation metadata.
+
 The shared deterministic constraints include ordered priorities, declared weekly time, local availability windows, rest day, events, life-event limits and self-reported pain/unwell context. Recorded activity duration replaces linked planned duration; unplanned activity time also consumes the day/week budget. Skipped sessions do not consume planned time. Completed or skipped workouts remain historical records; adaptations target upcoming sessions.
 
 Protected workouts/plans reject mutation proposals. Activating another document baseline also rejects protected upcoming workouts until protection is explicitly removed. The day UI exposes that control. Protection changes advance the plan revision and audit the identity, without logging athlete text.
