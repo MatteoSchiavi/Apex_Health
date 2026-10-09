@@ -343,6 +343,8 @@ async def _upsert_activity(
     cadence = payload.get("averageBikingCadenceInRevPerMinute") if type_key in {"cycling", "mountain_biking", "indoor_cycling", "gravel_cycling"} else payload.get("averageRunCadence") if type_key in {"running", "trail_running", "treadmill_running"} else None
     if (value := _num(cadence)) is not None and value >= 0:
         garmin_metrics["avg_cadence"] = value
+    if (moving := _num(payload.get("movingDuration"))) is not None and 0 < moving <= duration_s:
+        garmin_metrics["moving_time_s"] = moving
     source_metrics["garmin"] = garmin_metrics
     activity.source_metrics = source_metrics
 

@@ -74,3 +74,23 @@ def test_no_hr_zones_without_explicit_zone_information_and_rpe_zero_honest():
     assert metrics(rows=stream())["hr_zone_time"]["value"] is None
     assert metrics(rpe=None)["session_rpe_load"]["value"] is None
     assert metrics(rpe=0)["session_rpe_load"]["value"] == 0
+
+
+def test_dated_explicit_zone_bounds_use_recorded_intervals_without_invented_thresholds():
+    from datetime import date
+    context = {"hr_zones": {"effective_from": "2026-10-01", "bands": [
+        {"name": "Low", "lower": 100, "upper": 130}, {"name": "High", "lower": 130, "upper": 160}]}}
+    result = metrics(rows=stream(), context=context, activity_day=date(2026,10,9), profile_revision=2)
+    zone = result["hr_zone_time"]
+    assert zone["kind"] == "calculated"
+    assert [z["duration_s"] for z in zone["value"]] == [1800, 1800]
+    assert "athlete_profile:2:hr_zones" in zone["source_dependencies"]
+    assert metrics(rows=stream(), context=context, activity_day=date(2026,9,30))["hr_zone_time"]["value"] is None
+    assert metrics(rows=stream(100), context=context, activity_day=date(2026,10,9))["hr_zone_time"]["value"] is None
+
+
+def test_cadence_stream_mean_requires_coverage_and_preserves_convention():
+    result = metrics(rows=stream(cadence=80))
+    assert result["cadence"]["value"] == 80 and result["cadence"]["kind"] == "calculated"
+    assert "cadence_convention_provider_specific" in result["cadence"]["limitations"]
+    assert metrics(rows=stream(100, cadence=80))["cadence"]["value"] is None

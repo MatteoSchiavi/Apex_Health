@@ -66,7 +66,7 @@ def confirmed_ftp(context, activity_day):
 
 def cycling_metrics(activity, streams, laps, *, context=None, activity_day=None, profile_revision=None, rpe=None, rpe_dependency=None):
     aid, stream_dep = f"activity:{activity.id}", f"streams:{activity.id}"
-    out = [m for m in running_metrics(activity, streams, laps, rpe=rpe, rpe_dependency=rpe_dependency)
+    out = [m for m in running_metrics(activity, streams, laps, rpe=rpe, rpe_dependency=rpe_dependency, context=context, activity_day=activity_day, profile_revision=profile_revision)
         if m["key"] in {"cadence", "vertical_speed", "hr_zone_time", "session_rpe_load"}]
     for row in out:
         row["formula_version"] = VERSION
@@ -124,7 +124,6 @@ def cycling_metrics(activity, streams, laps, *, context=None, activity_day=None,
     out.append(metric("power_hr_decoupling", decoupling, "%", "((mean_HR/mean_power)_second_moving_half / (mean_HR/mean_power)_first_moving_half − 1) × 100",
         [stream_dep+":power", stream_dep+":hr"], version=VERSION, reason="requires_30min_continuous_valid_power_hr",
         limitations=["terrain_temperature_and_intensity_confound", "descriptive_not_diagnosis"], prerequisites=["30min_continuous_moving_effort", "90_percent_power_hr_coverage"]))
-    zones = [z for z in recorded_zones(activity.source_metrics) if z["metric"] == "power"]
-    out.append(metric("power_zone_time", zones or None, "s", "recorded_provider_power_zone_durations", [aid+":source_metrics.power_zones"],
-        version=VERSION, recorded=True, reason="missing_recorded_or_configured_zones", limitations=["provider_zone_definitions_required"]))
+    from app.services.endurance_metrics import zone_metric
+    out.append(zone_metric(activity, streams, "power", context, activity_day, profile_revision, VERSION))
     return out

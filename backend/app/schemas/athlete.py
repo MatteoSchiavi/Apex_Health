@@ -54,6 +54,30 @@ class ConfirmedFTP(Strict):
     confirmed: Literal[True]
 
 
+class ZoneBand(Strict):
+    name: str = Field(min_length=1, max_length=40)
+    lower: float = Field(ge=0, le=5000)
+    upper: float = Field(gt=0, le=5000)
+    @model_validator(mode="after")
+    def increasing(self):
+        if self.lower >= self.upper:
+            raise ValueError("Zone upper bound must exceed lower bound")
+        return self
+
+
+class ConfiguredZones(Strict):
+    effective_from: CalendarDate
+    bands: list[ZoneBand] = Field(min_length=1, max_length=10)
+    @model_validator(mode="after")
+    def distinct(self):
+        if len({b.name for b in self.bands}) != len(self.bands):
+            raise ValueError("Zone names must be unique")
+        for a, b in zip(self.bands, self.bands[1:]):
+            if a.upper > b.lower:
+                raise ValueError("Zones must be ordered and non-overlapping")
+        return self
+
+
 class AthleteContext(Strict):
     focuses: dict[Focus, FocusContext] = Field(default_factory=dict)
     main_goal: str = Field(default="", max_length=1000)
@@ -74,6 +98,8 @@ class AthleteContext(Strict):
     devices: str = Field(default="", max_length=1000)
     coaching_style: str = Field(default="", max_length=1000)
     ftp: ConfirmedFTP | None = None
+    hr_zones: ConfiguredZones | None = None
+    power_zones: ConfiguredZones | None = None
     onboarding_step: int = Field(default=0, ge=0, le=5)
     @model_validator(mode="after")
     def no_overlap(self):

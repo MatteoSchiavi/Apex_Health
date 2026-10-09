@@ -33,7 +33,9 @@ async def endurance(ident: int, user: User = Depends(get_current_user), session:
         .where(ActivitySourceLink.user_id == user.id, ActivitySourceLink.activity_id == ident))).all()
     rpe = checkin.rpe if checkin and checkin.status != "skipped" else None
     dependency = f"checkin:{checkin.id}:{checkin.revision}" if checkin else None
-    metrics = running_metrics(activity, streams, laps, rpe=rpe, rpe_dependency=dependency) if kind == "running" else []
+    from zoneinfo import ZoneInfo
+    activity_day = activity.start_time.astimezone(ZoneInfo(user.timezone)).date()
+    metrics = running_metrics(activity, streams, laps, rpe=rpe, rpe_dependency=dependency, context=profile.context if profile else {}, activity_day=activity_day, profile_revision=profile.revision if profile else None) if kind == "running" else []
     if kind == "cycling":
         from zoneinfo import ZoneInfo
         metrics = cycling_metrics(activity, streams, laps, context=profile.context if profile else {},

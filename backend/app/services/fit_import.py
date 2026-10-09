@@ -186,7 +186,7 @@ async def import_original(session, user, filename, content, parsed):
             calories=summary.get("total_calories"),
             elevation_gain_m=summary.get("total_ascent"),
             data_completeness="partial",
-            source_metrics={"fit": {"sport": sport, "file_hash": sha}},
+            source_metrics={"fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"]}},
         )
         candidates = (
             (
@@ -233,7 +233,7 @@ async def import_original(session, user, filename, content, parsed):
             )
             candidate.source_metrics = {
                 **(candidate.source_metrics or {}),
-                "fit": {"sport": sport, "file_hash": sha},
+                "fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"]},
             }
             activity = candidate
         else:

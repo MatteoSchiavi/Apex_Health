@@ -77,7 +77,7 @@ def half_means(intervals):
     return [(row[1] / row[0], row[2] / row[0]) for row in accum] if all(row[0] for row in accum) else None
 
 
-def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None):
+def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None, context=None, activity_day=None, profile_revision=None):
     aid = f"activity:{activity.id}"
     stream_dep = f"streams:{activity.id}"
     duration, distance = positive(activity.duration_s), positive(activity.distance_m)
@@ -90,8 +90,10 @@ def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None):
         "s/km", "recorded_moving_seconds / distance_metres × 1000", [aid+":distance_m"] + ([moving_dep] if moving_dep else []),
         reason="missing_reliable_moving_time", limitations=["provider_moving_time_definition"]))
     cadence, cadence_dep = recorded_field(activity.source_metrics, ("avg_cadence", "average_cadence"))
-    out.append(metric("cadence", cadence, "cadence/min", "recorded_provider_cadence", [cadence_dep] if cadence_dep else [],
-        recorded=True, reason="missing_recorded_cadence", limitations=["cadence_convention_provider_specific"]))
+    if cadence is None:
+        cadence, cadence_dep = stream_average(activity, streams, "cadence")
+    out.append(metric("cadence", cadence, "cadence/min", "recorded_cadence_or_time_weighted_stream_mean", [cadence_dep] if cadence_dep else [],
+        recorded=not (cadence_dep or "").startswith("streams:"), reason="missing_recorded_cadence", limitations=["cadence_convention_provider_specific"]))
     elevation = positive(activity.elevation_gain_m, zero=True)
     out.append(metric("vertical_speed", elevation / duration * 3600 if elevation is not None and duration else None,
         "m/h", "recorded_ascent_metres / recorded_duration_seconds × 3600", [aid+":elevation_gain_m", aid+":duration_s"],
@@ -124,9 +126,7 @@ def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None):
         [stream_dep+":speed", stream_dep+":hr"], reason="requires_30min_continuous_valid_hr_speed",
         limitations=["descriptive_not_diagnosis", "terrain_temperature_and_intensity_confound"],
         prerequisites=["30min_continuous_moving_effort", "90_percent_valid_hr_speed_coverage", "pauses_excluded"]))
-    zones = [z for z in recorded_zones(activity.source_metrics) if z["metric"] == "hr"]
-    out.append(metric("hr_zone_time", zones or None, "s", "recorded_provider_HR_zone_durations", [aid+":source_metrics.hr_zones"],
-        recorded=True, reason="missing_recorded_or_configured_zones", limitations=["provider_zone_definitions_required"]))
+    out.append(zone_metric(activity, streams, "hr", context, activity_day, profile_revision))
     exertion = number(rpe)
     rpe_load = duration / 60 * exertion if duration and exertion is not None and 0 <= exertion <= 10 else None
     out.append(metric("session_rpe_load", rpe_load, "session-RPE min", "recorded_duration_minutes × voluntary_session_RPE",
@@ -140,3 +140,46 @@ def input_revision(activity, streams, laps, profile=None, checkin=None):
         "streams": [[getattr(r, k, None) for k in ("t_offset_s", "hr", "power", "speed", "cadence", "altitude")] for r in streams],
         "laps": [[getattr(r, k, None) for k in ("lap_index", "duration_s", "distance_m")] for r in laps],
         "profile_revision": profile.revision if profile else None, "checkin_revision": checkin.revision if checkin else None})
+
+
+def stream_average(activity, streams, field):
+    samples = []
+    for a, b in zip(streams, streams[1:]):
+        dt, value = b.t_offset_s - a.t_offset_s, positive(getattr(a, field, None), zero=True)
+        if 0 < dt <= MAX_SAMPLE_GAP_S and value is not None:
+            samples.append((dt, value))
+    seconds = sum(dt for dt, _ in samples)
+    reference = moving_time(activity)[0] or positive(activity.duration_s)
+    if not reference or not .9 <= seconds/reference <= 1.1:
+        return None, None
+    return sum(dt*value for dt, value in samples)/seconds, f"streams:{activity.id}:{field}"
+
+
+def zone_metric(activity, streams, field, context=None, activity_day=None, profile_revision=None, version=RUNNING_VERSION):
+    zones = [z for z in recorded_zones(activity.source_metrics) if z["metric"] == field]
+    if zones:
+        return metric(field+"_zone_time", zones, "s", "recorded_provider_zone_durations",
+            [f"activity:{activity.id}:source_metrics.{field}_zones"], recorded=True, version=version,
+            limitations=["provider_zone_definitions_required"])
+    config = (context or {}).get(field+"_zones")
+    value, dependencies = None, []
+    if config and activity_day and str(activity_day) >= config["effective_from"]:
+        bands = config["bands"]
+        durations = [0.0]*len(bands)
+        valid_seconds = 0
+        for a, b in zip(streams, streams[1:]):
+            dt, observed = b.t_offset_s-a.t_offset_s, positive(getattr(a, field, None), zero=field=="power")
+            if 0 < dt <= MAX_SAMPLE_GAP_S and observed is not None:
+                valid_seconds += dt
+                for i, band in enumerate(bands):
+                    if band["lower"] <= observed < band["upper"]:
+                        durations[i] += dt
+                        break
+        reference = positive(activity.duration_s)
+        if reference and .9 <= valid_seconds/reference <= 1.1:
+            value = [{"metric": field, "name": b["name"], "duration_s": durations[i],
+                "lower": b["lower"], "upper": b["upper"]} for i,b in enumerate(bands)]
+        dependencies = [f"streams:{activity.id}:{field}", f"athlete_profile:{profile_revision}:{field}_zones"]
+    return metric(field+"_zone_time", value, "s", "sum(recorded_sample_seconds where configured_lower ≤ value < configured_upper)",
+        dependencies, version=version, reason="missing_recorded_or_configured_zones", limitations=["explicit_zone_bounds_not_inferred", "uncovered_values_not_assigned"],
+        prerequisites=["90_percent_zone_stream_coverage", "sample_gaps_at_most_5s"])
