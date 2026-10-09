@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+from app.schemas.athlete import AthleteUpdate
 
 
 # --- /me -------------------------------------------------------------------
@@ -20,6 +21,7 @@ class ProfileUpdate(BaseModel):
     theme: Literal["dark", "light"] | None = None
     units: Literal["metric", "imperial"] | None = None
     main_integration_id: int | None = None
+    athlete_profile: AthleteUpdate | None = None
 
 
 class PasswordChange(BaseModel):
@@ -42,6 +44,10 @@ class MeOut(BaseModel):
     is_owner: bool
     ai_access_tier: str
     main_integration_id: int | None
+    training_focus: list[str] = Field(default_factory=list)
+    athlete_context: dict[str, Any] = Field(default_factory=dict)
+    athlete_revision: int = 0
+    effective_ai_access: str = "disabled"
 
 
 # --- /dashboard/overview ----------------------------------------------------

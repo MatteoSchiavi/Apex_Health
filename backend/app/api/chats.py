@@ -198,6 +198,12 @@ async def post_message(
         if chat is None or chat.user_id != user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "chat not found")
 
+    from app.services.ai_access import require_access
+    from app.services.evidence import EvidenceError
+    try:
+        await require_access(session, user.id)
+    except EvidenceError as exc:
+        raise HTTPException(403, str(exc)) from None
     settings = get_settings()
 
     # F-18 audit: pre-turn cost gate — hard-stop a user who has already
@@ -280,6 +286,8 @@ async def post_message(
                 502, "The AI provider could not finish this turn; try again shortly."
             ) from None
     except Exception as exc:
+        if isinstance(exc, EvidenceError):
+            raise HTTPException(429 if exc.code == "BUDGET_EXCEEDED" else 403, str(exc)) from None
         error_class = "timeout" if isinstance(exc, TimeoutError) or getattr(exc, "status_code", None) == 504 else "unknown"
         await _record_answer_outcome(user.id, "agent_answer_failed", chat.id if chat else None, error_class)
         if isinstance(exc, LLMUnavailableError):

@@ -1,5 +1,6 @@
 """ORM models."""
 
+from app.models.athlete import AthleteProfile, AiConsent, AiBudgetReservation
 from app.models.admin import Feedback, OwnerNotification
 from app.models.alpha import AlphaEvent
 from app.models.healthkit import HealthKitPairing, HealthKitSample, HealthKitBatch

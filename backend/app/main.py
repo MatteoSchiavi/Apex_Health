@@ -138,6 +138,8 @@ def create_app() -> FastAPI:
     app.include_router(watch.router)
     app.include_router(weather.router)
     # Web UI surface (migration 0007 / STACK.md §3)
+    from app.api import athlete
+    app.include_router(athlete.router)
     app.include_router(me.router)
     app.include_router(dashboard.router)
     app.include_router(activities.router)

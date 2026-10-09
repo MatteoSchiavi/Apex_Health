@@ -109,6 +109,8 @@ async def resolve_tier(
     are always routed to the medical tier (or its powerful-tier fallback) and
     pick up the disclaimer. False negatives from the classifier can no longer
     drop medical questions onto the cheap tier."""
+    from app.services.ai_access import require_access
+    await require_access(session, user_id)
     credential = await session.get(AuthCredential, user_id)
     cap = credential.ai_access_tier if credential is not None else "cheap_only"
     if cap not in ("cheap_only", "full"):
@@ -151,7 +153,10 @@ async def _classify(
 ) -> str:
     """Free-tier classification (§9.2 step 2). Any failure → 'lookup'."""
     try:
-        response = await asyncio.wait_for(llm.complete(
+        from app.services.ai_access import guarded_complete
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        response = await asyncio.wait_for(guarded_complete(
+            async_sessionmaker(session.bind, expire_on_commit=False), llm, user_id, "standard_chat",
             messages=[{"role": "user", "content": text}],
             system=CLASSIFY_SYSTEM_PROMPT,
             tier="free",

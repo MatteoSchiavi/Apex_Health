@@ -239,6 +239,9 @@ async def export_account(
     # Explicit column whitelist. Never export sessions, tokens, provider secrets or ciphertext.
     credential = await session.get(AuthCredential, user.id)
     tables = {
+        "athlete_profiles": "training_focus,context,revision,updated_at",
+        "ai_consents": "active,policy_version,purpose,provider_identity,accepted_at,withdrawn_at",
+        "ai_budget_reservations": "day,category,reserved_usd,actual_usd,state",
         "feedbacks": "id,category,message,page_url,created_at",
         "lab_observations": "id,metric,value,unit,origin,measured_at,local_date,timezone,fetched_at,revision,current,metadata_json",
         "athlete_entries": "id,kind,date,payload,revision",

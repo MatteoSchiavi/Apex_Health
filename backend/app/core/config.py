@@ -159,6 +159,8 @@ class Settings(BaseSettings):
     # --- Cost governance (§8.6): the daily budget task sums the day's
     # estimated token_usage cost per user; crossing this fires an
     # informational budget_warning alert (not a hard stop). <=0 disables.
+    ai_processing_enabled: bool = True
+    ai_daily_token_limit: int = 160000
     daily_token_budget_usd: float = 0.25
 
     # --- Weather connector (§5, §14, §23 Phase 7) ---

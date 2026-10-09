@@ -423,10 +423,11 @@ async def snapshot_revision(session, user_id):
         "lab_panels",
         "journal_entries",
         "gym_set_logs",
+        "athlete_profiles",
     ):
         fingerprint = await session.scalar(
             text(
-                f"SELECT md5(coalesce(string_agg(to_jsonb(t)::text, '' ORDER BY id), '')) "
+                f"SELECT md5(coalesce(string_agg(to_jsonb(t)::text, '' ORDER BY {'user_id' if table == 'athlete_profiles' else 'id'}), '')) "
                 f"FROM {table} t WHERE user_id = :owner"
             ),
             {"owner": user_id},

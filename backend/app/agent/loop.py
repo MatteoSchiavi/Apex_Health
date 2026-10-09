@@ -113,6 +113,11 @@ def audit_input(call):
 
 
 async def _execute_tool(ctx, session_id, call):
+    from app.services.ai_access import require_access
+    effective = await require_access(ctx.session, ctx.user_id)
+    spec_check = TOOL_REGISTRY.get(call.name)
+    if effective != "full" and spec_check and spec_check.kind != "read":
+        raise EvidenceError("POLICY_DENIED", "Basic AI access is read-only")
     started = time.monotonic()
     spec = TOOL_REGISTRY.get(call.name)
     if spec is None:
@@ -447,6 +452,9 @@ async def run_agent_loop(
     initial_evidence=None,
     locale="en",
 ):
+    from app.services.ai_access import guarded_complete, require_access
+    async with sessionmaker() as authorization_session:
+        effective = await require_access(authorization_session, user_id)
     messages = list(history or []) + [{"role": "user", "content": text}]
     audit, drafts, evidence_objects = [], [], list(initial_evidence or [])
     repeated, calls, tokens, last_model, iteration = {}, 0, 0, "unknown", 0
@@ -470,11 +478,12 @@ async def run_agent_loop(
             budget_kind = "turn_tokens"
             raise EvidenceError("BUDGET_EXCEEDED", "Turn token budget reached")
         response = await asyncio.wait_for(
-            llm.complete(
+            guarded_complete(
+                sessionmaker, llm, user_id, "strategic_coaching" if tier in {"powerful", "medical"} else "standard_chat",
                 messages=messages,
                 system=system,
                 tier=tier,
-                tools=None if closing else tool_schemas(),
+                tools=None if closing else tool_schemas(effective),
             ),
             timeout=max(0.1, min(MODEL_TIMEOUT_S, deadline - time.monotonic() - 1)),
         )

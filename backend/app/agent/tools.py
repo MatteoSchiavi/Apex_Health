@@ -624,7 +624,7 @@ TOOL_REGISTRY = {
 }
 
 
-def tool_schemas():
+def tool_schemas(effective="full"):
     return [
         {
             "type": "function",
@@ -635,6 +635,7 @@ def tool_schemas():
             },
         }
         for s in TOOL_REGISTRY.values()
+        if effective == "full" or s.kind == "read"
     ]
 
 

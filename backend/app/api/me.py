@@ -19,7 +19,10 @@ logger = logging.getLogger("app.api.me")
 router = APIRouter(prefix="/me", tags=["me"])
 
 
-def _me_out(user: User, cred: AuthCredential) -> MeOut:
+async def _me_out(user: User, cred: AuthCredential, session) -> MeOut:
+    from app.api.athlete import profile_out
+    from app.services.ai_access import effective_access
+    athlete = await profile_out(session, user.id)
     return MeOut(
         user_id=user.id,
         email=cred.email,
@@ -35,6 +38,8 @@ def _me_out(user: User, cred: AuthCredential) -> MeOut:
         is_owner=cred.role == "owner",
         ai_access_tier=cred.ai_access_tier,
         main_integration_id=user.main_integration_id,
+        training_focus=athlete["training_focus"], athlete_context=athlete["context"],
+        athlete_revision=athlete["revision"], effective_ai_access=await effective_access(session, user.id),
     )
 
 
@@ -46,7 +51,7 @@ async def get_me(
     cred = await session.get(AuthCredential, user.id)
     if cred is None:
         raise CREDENTIALS_EXCEPTION
-    return _me_out(user, cred)
+    return await _me_out(user, cred, session)
 
 
 @router.put("", response_model=MeOut)
@@ -97,8 +102,11 @@ async def update_me(
                     "integration does not belong to this account",
                 )
             user.main_integration_id = integration.id
+    if payload.athlete_profile is not None:
+        from app.api.athlete import update_profile
+        await update_profile(payload.athlete_profile, user, session)
     await session.commit()
-    return _me_out(user, cred)
+    return await _me_out(user, cred, session)
 
 
 @router.put("/password", status_code=status.HTTP_204_NO_CONTENT)

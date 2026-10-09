@@ -120,6 +120,9 @@ async def upsert_periodic_report(
 
         await scope_lock(session, user.id, "changes")
         credential = await session.get(AuthCredential, user.id)
+        from app.services.ai_access import effective_access
+        if await effective_access(session, user.id) != "full":
+            return None
         if credential and credential.disabled:
             return None
         revision = await snapshot_revision(session, user.id)
@@ -157,7 +160,8 @@ async def upsert_periodic_report(
     budget = get_settings().daily_token_budget_usd
     if budget > 0 and spent >= Decimal(str(budget)):
         return None
-    response = await llm.complete(
+    from app.services.ai_access import guarded_complete
+    response = await guarded_complete(sessionmaker, llm, user.id, "periodic_reports",
         messages=[
             {
                 "role": "user",
