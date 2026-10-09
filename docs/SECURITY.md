@@ -1,5 +1,7 @@
 # Security and encryption posture
 
+New external AI calls require separate voluntary, policy/provider-bound consent as well as server/account/source authorization and atomic pre-call budgets. Withdrawal blocks subsequent completions and embeddings. Encrypted reviewed plan drafts preserve document ownership and explicit activation. See [AI_CONSENT.md](AI_CONSENT.md) and [TRAINING_PLAN_DOCUMENTS.md](TRAINING_PLAN_DOCUMENTS.md).
+
 Apex is designed for a private, invite-only deployment. Authentication,
 ownership checks and encryption do not replace host security, provider review
 or the operator's legal responsibilities. See [LEGAL_DEPLOYMENT.md](LEGAL_DEPLOYMENT.md).

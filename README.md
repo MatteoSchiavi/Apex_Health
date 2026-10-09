@@ -18,6 +18,8 @@ Web beta 0.1 release checks and the remaining owner actions are documented in
 [BETA_0_1_READINESS.md](docs/BETA_0_1_READINESS.md). `GET /version` identifies
 the installed release; passing repository tests does not update a home server.
 
+See [ATHLETE_SYSTEM.md](docs/ATHLETE_SYSTEM.md) for the optional multi-priority athlete profile, shared daily sessions, reviewed plan baselines and voluntary AI authorization. Metric formulas and release validation are linked there.
+
 ## What it does
 
 - Imports Garmin data and original FIT files; supports source-aware manual,

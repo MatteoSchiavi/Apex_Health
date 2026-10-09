@@ -1,5 +1,7 @@
 # Data lifecycle and storage
 
+The selected account export now includes optional athlete context, voluntary AI consent, budget reservations, encrypted-plan drafts as reviewed plaintext, training plans and workouts, explicit activity associations and session check-ins. Profile deletion leaves an empty revision tombstone and removes its managed target events. Consent withdrawal stops new processing and preserves history under the documented account/operator retention rules; it is separate from source/account erasure. See [AI_CONSENT.md](AI_CONSENT.md).
+
 This note describes the current PostgreSQL/TimescaleDB schema and the cleanup
 performed by scheduled maintenance. It records the alpha implementation; it
 does not imply that cold storage or automated partition retention is deployed.

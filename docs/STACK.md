@@ -1,5 +1,7 @@
 # Apex Health — Architecture and Current Stack
 
+The athlete extension uses the existing account/calendar/training/document/change spine. Optional profiles, voluntary AI consent and budget ledgers, reviewed plan baselines and shared daily session identities are described in [ATHLETE_SYSTEM.md](ATHLETE_SYSTEM.md). Current-input running/cycling formulas are documented in [ENDURANCE_METRICS.md](ENDURANCE_METRICS.md).
+
 > Decision record, owner request: "Before everything define the full stack of the
 > project: define what tools you're going to use and why." This note records the
 > current repository architecture and its deployment assumptions: a modest

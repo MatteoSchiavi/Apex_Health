@@ -1,5 +1,7 @@
 # Performance lab and agent runtime
 
+The existing Documents review flow now supports encrypted, versioned training-plan drafts and explicitly confirmed active baselines. The deterministic day/session system and minimal adaptation review share those identities. See [TRAINING_PLAN_DOCUMENTS.md](TRAINING_PLAN_DOCUMENTS.md) and [ATHLETE_SYSTEM.md](ATHLETE_SYSTEM.md).
+
 The current implementation uses the authenticated FastAPI/PostgreSQL/Timescale/
 Celery platform and the bundled React/Vite UI. This inventory describes code
 and deterministic tests, not private-alpha acceptance or validation on a
