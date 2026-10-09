@@ -114,10 +114,6 @@ def audit_input(call):
 
 async def _execute_tool(ctx, session_id, call):
     from app.services.ai_access import require_access
-    effective = await require_access(ctx.session, ctx.user_id)
-    spec_check = TOOL_REGISTRY.get(call.name)
-    if effective != "full" and spec_check and spec_check.kind != "read":
-        raise EvidenceError("POLICY_DENIED", "Basic AI access is read-only")
     started = time.monotonic()
     spec = TOOL_REGISTRY.get(call.name)
     if spec is None:
@@ -127,6 +123,9 @@ async def _execute_tool(ctx, session_id, call):
         )
     else:
         try:
+            effective = await require_access(ctx.session, ctx.user_id)
+            if effective != "full" and spec.kind != "read":
+                raise EvidenceError("POLICY_DENIED", "Basic AI access is read-only")
             arguments = spec.argument_model.model_validate(call.arguments).model_dump(
                 mode="python"
             )

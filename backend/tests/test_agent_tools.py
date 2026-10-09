@@ -113,3 +113,28 @@ async def test_foreign_job_or_evidence_is_not_found(db_session):
     ]:
         with pytest.raises(EvidenceError, match="unavailable|found"):
             await TOOL_REGISTRY[name].handler(ctx, **args)
+
+
+@pytest.mark.parametrize("withdrawn", [False, True])
+async def test_tool_authorization_denial_is_audited_as_policy_denied(monkeypatch, withdrawn):
+    from types import SimpleNamespace
+    from app.agent.loop import _execute_tool
+    from app.core.llm import ToolCallRequest
+    from app.services import ai_access
+
+    async def access(*args, **kwargs):
+        if withdrawn:
+            raise EvidenceError("POLICY_DENIED", "Active AI consent is required")
+        return "basic"
+
+    monkeypatch.setattr(ai_access, "require_access", access)
+    records = []
+    ctx = ToolContext(SimpleNamespace(add=records.append), 1, date.today())
+    # Authorization takes precedence over argument validation and tool execution.
+    call = ToolCallRequest(id="denied", name="changes_propose", arguments={})
+    result, audit = await _execute_tool(ctx, 123, call)
+    assert result["error"]["code"] == "POLICY_DENIED"
+    assert audit["output"] == result
+    assert len(records) == 1
+    assert records[0].output_json is None
+    assert '"POLICY_DENIED"' in records[0].error
