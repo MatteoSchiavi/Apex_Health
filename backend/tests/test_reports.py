@@ -3,6 +3,8 @@ ai_reports with model_used=NULL (no LLM); weekly/monthly reports run the
 POWERFUL tier over a §8.2 data pack (query calls audited with session_id
 NULL), and are idempotent per period."""
 
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace

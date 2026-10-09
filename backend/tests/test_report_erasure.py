@@ -1,4 +1,6 @@
 """An in-flight report must not resurrect erased source evidence."""
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import asyncio
 import json
 from datetime import UTC, datetime
@@ -27,6 +29,8 @@ async def test_inflight_report_is_discarded_after_completed_source_erasure(db_se
         value=55, unit='bpm', origin='garmin', source_record_id='completion-probe',
         measured_at=now, fetched_at=now, timezone='UTC')
     await db_session.commit()
+    from tests.helpers.ai import authorize_ai
+    await authorize_ai(db_session, user.id)
     owner_id = user.id
     ready, release = asyncio.Event(), asyncio.Event()
     maker = async_sessionmaker(db_session.bind, expire_on_commit=False)

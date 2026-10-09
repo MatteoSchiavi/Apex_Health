@@ -91,3 +91,32 @@ class FixtureEmbeddingClient:
         return EmbeddingResult(
             vectors=vectors, model=EMBEDDING_MODEL, tokens_in=self._tokens * len(texts)
         )
+
+
+async def authorize_ai(session, user_id=1):
+    """Explicit consent fixture for tests that intentionally exercise a provider."""
+    from datetime import UTC, datetime
+    from app.models.athlete import AiConsent
+    from app.services.ai_access import POLICY_VERSION, PURPOSE, provider_identity
+    from app.models.user import AuthCredential
+    credential = await session.get(AuthCredential, user_id)
+    if credential is None:
+        session.add(AuthCredential(user_id=user_id, email=f"ai-fixture-{user_id}@example.test", password_hash="unused", ai_access_tier="full", disabled=False))
+    row = await session.get(AiConsent, user_id)
+    if row is None:
+        row = AiConsent(user_id=user_id)
+        session.add(row)
+    row.active, row.policy_version, row.purpose = True, POLICY_VERSION, PURPOSE
+    row.provider_identity, row.accepted_at, row.withdrawn_at = provider_identity(), datetime.now(UTC), None
+    await session.commit()
+
+
+import pytest_asyncio
+
+@pytest_asyncio.fixture(autouse=True)
+async def authorized_ai_account(db_session):
+    from sqlalchemy import text
+    await db_session.execute(text("TRUNCATE ai_consents, ai_budget_reservations, athlete_profiles RESTART IDENTITY CASCADE"))
+    await db_session.execute(text("UPDATE auth_credentials SET ai_access_tier='full', disabled=false WHERE user_id=1"))
+    await authorize_ai(db_session)
+    yield

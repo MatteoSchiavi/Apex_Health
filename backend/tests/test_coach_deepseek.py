@@ -1,4 +1,6 @@
 """Real client requests and bounded coach retrieval, without live provider calls."""
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import json
 from datetime import UTC, datetime, timedelta, date
 from decimal import Decimal

@@ -141,3 +141,80 @@ async def test_server_policy_unknown_tier_provider_change_fail_closed(db_session
     settings.ai_processing_enabled = True
     settings.llm_api_base_cheap, settings.llm_api_key_cheap, settings.llm_provider_cheap = "https://changed.invalid", "fixture", "fixture"
     assert await effective_access(db_session, 1) == "disabled"
+
+
+async def test_profile_target_event_is_single_calendar_record_and_deleted_with_context(client, db_session):
+    from app.models.coach import UserEvent
+    await authenticate(client)
+    payload = {"expected_revision": 0, "training_focus": ["running"], "context": {"focuses": {
+        "running": {"event": {"title": "Autumn run", "date": "2026-11-09", "priority": 1}}}}}
+    saved = await client.put("/athlete/profile", headers=csrf_headers(client), json=payload)
+    assert saved.status_code == 200, saved.text
+    events = (await client.get("/events?start=2026-11-01&end=2026-11-30")).json()
+    target = next(e for e in events if e.get("profile_focus") == "running")
+    assert target["title"] == "Autumn run" and target["date_only"]
+    assert (await client.delete(f"/events/{target['id']}", headers=csrf_headers(client))).status_code == 409
+    payload["expected_revision"] = saved.json()["revision"]
+    payload["context"]["focuses"]["running"]["event"]["title"] = "Updated target"
+    assert (await client.put("/athlete/profile", headers=csrf_headers(client), json=payload)).status_code == 200
+    assert len((await db_session.scalars(select(UserEvent).where(UserEvent.user_id==1, UserEvent.profile_focus=="running"))).all()) == 1
+    await client.delete("/athlete/profile", headers=csrf_headers(client))
+    assert not await db_session.scalar(select(UserEvent.id).where(UserEvent.user_id==1, UserEvent.profile_focus=="running"))
+
+
+@pytest.mark.parametrize("category", ["onboarding_extraction", "standard_chat", "strategic_coaching", "periodic_reports"])
+async def test_category_budget_blocks_invocation_independently(db_session, category):
+    from app.services.ai_access import CATEGORY_LIMITS
+    await accept(db_session)
+    db_session.add(AiBudgetReservation(user_id=1, day=datetime.now(UTC).date(), category=category,
+        reserved_tokens=CATEGORY_LIMITS[category], reserved_usd=Decimal('0'), state="uncertain"))
+    await db_session.commit()
+    provider = FixtureProvider()
+    with pytest.raises(EvidenceError, match="budget"):
+        await guarded_complete(async_sessionmaker(db_session.bind, expire_on_commit=False), provider, 1, category, messages=[])
+    assert provider.calls == 0
+
+
+async def test_withdrawal_between_calls_blocks_next_call_without_sending_notes(db_session):
+    await accept(db_session)
+    maker = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    provider = FixtureProvider()
+    await guarded_complete(maker, provider, 1, "standard_chat", messages=[])
+    consent = await db_session.get(AiConsent, 1, populate_existing=True)
+    consent.active, consent.withdrawn_at = False, datetime.now(UTC)
+    await db_session.commit()
+    with pytest.raises(EvidenceError):
+        await guarded_complete(maker, provider, 1, "standard_chat", messages=[{"role":"user", "content":"private notes"}])
+    assert provider.calls == 1
+
+
+async def test_unreported_usage_retains_reservation_instead_of_releasing_budget(db_session):
+    await accept(db_session)
+    class UnreportedProvider:
+        async def complete(self, **kwargs):
+            return LLMResponse(content='Unreported usage',model='fixture')
+    maker=async_sessionmaker(db_session.bind,expire_on_commit=False)
+    await guarded_complete(maker,UnreportedProvider(),1,'standard_chat',messages=[])
+    row=await db_session.scalar(select(AiBudgetReservation))
+    assert row.state=='uncertain' and row.reserved_tokens>0
+    from app.services.ai_access import budget_state
+    assert (await budget_state(db_session,1))['used_tokens']==row.reserved_tokens
+
+
+async def test_embedding_ownership_and_consent_checked_before_external_call(db_session):
+    from app.models.user import User
+    from app.models.journal import JournalEntry
+    from app.queries.search import embed_journal_entry
+    user=User(name='Foreign journal athlete');db_session.add(user);await db_session.flush()
+    entry=JournalEntry(user_id=user.id,date=datetime.now(UTC).date(),free_text_notes='Private');db_session.add(entry);await db_session.commit()
+    class Embeddings:
+        calls=0
+        async def embed(self,texts):
+            self.calls+=1
+            raise AssertionError('Unauthorized embedding invocation')
+    provider=Embeddings()
+    with pytest.raises(ValueError,match='owner'):
+        await embed_journal_entry(db_session,provider,1,entry.id,'Private')
+    with pytest.raises(EvidenceError):
+        await embed_journal_entry(db_session,provider,user.id,entry.id,'Private')
+    assert provider.calls==0

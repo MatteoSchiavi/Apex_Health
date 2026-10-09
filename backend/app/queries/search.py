@@ -141,7 +141,12 @@ async def embed_journal_entry(
     """Write-time embedding for one journal entry: store the vector and
     return the EmbeddingResult (the caller writes the token_usage row —
     §8.6 — so the model name rides along)."""
-    result = await embedding_client.embed([text])
+    owner = await session.scalar(select(JournalEntry.user_id).where(JournalEntry.id == entry_id))
+    if owner != user_id:
+        raise ValueError("Embedding owner does not match source owner")
+    from app.services.ai_access import guarded_embedding
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    result = await guarded_embedding(async_sessionmaker(session.bind, expire_on_commit=False), embedding_client, user_id, [text])
     await store_embedding(
         session,
         user_id=user_id,

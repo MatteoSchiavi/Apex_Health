@@ -37,6 +37,9 @@ def provider_identity():
             return "unconfigured"
         # Never include credentials, query parameters or tokens in this public identity.
         identities.append(f"{tier}:{parsed.scheme}://{parsed.hostname}:{parsed.port or (443 if parsed.scheme == 'https' else 80)}{parsed.path}")
+    if settings.openai_api_key:
+        parsed = urlsplit(settings.openai_api_base)
+        identities.append(f"embeddings:{parsed.scheme}://{parsed.hostname}:{parsed.port or 443}")
     return "|".join(identities)
 
 
@@ -124,6 +127,30 @@ async def guarded_complete(sessionmaker, llm, user_id, category, **kwargs):
         row.actual_tokens = response.tokens_in + response.tokens_out
         row.actual_usd = estimate_llm_cost_usd(tier, response.tokens_in, response.tokens_out,
             response.cached_tokens, model=response.model)
-        row.state = "reconciled"
+        row.state = "reconciled" if row.actual_tokens > 0 else "uncertain"
+        await session.commit()
+    return response
+
+
+async def guarded_embedding(sessionmaker, client, user_id, texts):
+    """The legacy optional embedding path has the same voluntary authorization."""
+    from app.queries.usage import estimate_embedding_cost_usd
+    async with sessionmaker() as session:
+        ident = await reserve(session, user_id, "standard_chat", "cheap", sum(len(t.encode()) for t in texts))
+        await session.commit()
+    try:
+        async with sessionmaker() as session:
+            await require_access(session, user_id)
+        response = await asyncio.wait_for(client.embed(texts), timeout=45)
+    except BaseException:
+        async with sessionmaker() as session:
+            row = await session.get(AiBudgetReservation, ident)
+            row.state = "uncertain"
+            await session.commit()
+        raise
+    async with sessionmaker() as session:
+        await scope_lock(session, user_id, "ai_access")
+        row = await session.get(AiBudgetReservation, ident)
+        row.actual_tokens, row.actual_usd, row.state = response.tokens_in, estimate_embedding_cost_usd(response.tokens_in), "reconciled" if response.tokens_in > 0 else "uncertain"
         await session.commit()
     return response

@@ -139,6 +139,7 @@ async def test_daily_decision_reads_after_the_erasure_boundary(db_session):
 
 
 async def test_tool_retrieval_and_audit_cannot_cross_source_erasure(db_session):
+    from tests.helpers.ai import authorize_ai
     from app.agent.loop import _execute_tool_bounded
     from app.core.llm import ToolCallRequest
     from app.services.evidence import record_observation
@@ -150,6 +151,7 @@ async def test_tool_retrieval_and_audit_cannot_cross_source_erasure(db_session):
         unit='bpm', origin='manual', source_record_id='review-tool-rhr', measured_at=now,
         timezone='UTC', fetched_at=now, acquisition='manual')
     await db_session.commit()
+    await authorize_ai(db_session, user.id)
     owner_id = user.id
     await scope_lock(db_session, owner_id, 'changes')
     maker = async_sessionmaker(db_session.bind, expire_on_commit=False)

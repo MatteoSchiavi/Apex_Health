@@ -27,7 +27,9 @@ from app.models.ai import AgentToolCall, TokenUsage
 from app.models.activity import Activity, ActivitySourceLink, Discipline
 from app.models.coach import UserContextDoc, UserEvent
 from app.models.lab import AthleteEntry, ChangeDraft, Observation
-from app.models.user import User
+from app.models.user import User, AuthCredential
+from app.models.athlete import AiConsent, AiBudgetReservation
+from app.services import ai_access
 from app.services import analytics, changes, evidence
 from evals.scenarios import NOW, Scenario
 
@@ -96,6 +98,8 @@ def _matches(expression, row, store):
 class MemoryStore:
     def __init__(self, scenario):
         self.rows = {User: [User(id=1, timezone="UTC", locale="en")]}
+        self.rows[AuthCredential] = [AuthCredential(user_id=1, ai_access_tier="full", disabled=False)]
+        self.rows[AiConsent] = [AiConsent(user_id=1, active=True, policy_version=ai_access.POLICY_VERSION, purpose=ai_access.PURPOSE, provider_identity="synthetic-fixture", accepted_at=NOW)]
         self.writes = []
         self.queries = []
         self.rows[Observation] = [Observation(
@@ -148,7 +152,8 @@ class MemorySession:
     async def get(self, model, ident, *, populate_existing=False):
         # This adapter has no identity-map cache: every read already obtains
         # the current stored row, including SQLAlchemy's explicit refresh form.
-        return next((r for r in self.store.rows.get(model, []) if r.id == ident), None)
+        primary = model.__mapper__.primary_key[0].name
+        return next((r for r in self.store.rows.get(model, []) if getattr(r, primary) == ident), None)
 
     def _select(self, statement):
         entity = statement.column_descriptions[0]["entity"]
@@ -181,12 +186,13 @@ class MemorySession:
             table = re.search(r" FROM (\w+)", str(statement)).group(1)
             rows = [r for model, items in self.store.rows.items() if model.__table__.name == table
                     for r in items if r.user_id == params["owner"]]
-            return evidence.digest([[r.id, getattr(r, "content_hash", None)] for r in rows])
+            return evidence.digest([[getattr(r, "id", getattr(r, "user_id", None)), getattr(r, "content_hash", None)] for r in rows])
         rows = (await self.scalars(statement)).all()
         return rows[0] if rows else None
 
     def add(self, row):
         self.store.writes.append(row)
+        self.store.rows.setdefault(type(row), []).append(row)
 
     async def flush(self):
         for row in self.store.writes:
@@ -265,6 +271,10 @@ async def run_scenario(scenario: Scenario, *, client=None) -> Trace:
             stack.enter_context(patch.object(module, "datetime", FixedDateTime))
         stack.enter_context(patch.object(loop, "get_settings", return_value=SimpleNamespace(daily_token_budget_usd=1)))
         stack.enter_context(patch.object(loop, "user_day_spend", daily_spend))
+        stack.enter_context(patch.object(ai_access, "user_day_spend", daily_spend))
+        stack.enter_context(patch.object(ai_access, "provider_identity", return_value="synthetic-fixture"))
+        stack.enter_context(patch.object(ai_access, "get_settings", return_value=SimpleNamespace(ai_processing_enabled=True, ai_daily_token_limit=160000, daily_token_budget_usd=1)))
+        stack.enter_context(patch.object(ai_access, "datetime", FixedDateTime))
         # Even optional live model trials operate only on synthetic memory data.
         # Maintenance queueing is the one tool boundary that can contact a broker.
         if client is not None:

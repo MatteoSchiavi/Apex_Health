@@ -4,6 +4,8 @@ These integration tests use the suite's disposable PostgreSQL/Redis services.
 They do not invoke a schema reset independently of the existing guarded suite.
 """
 
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal

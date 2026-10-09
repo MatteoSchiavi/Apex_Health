@@ -2,6 +2,8 @@
 
 from sqlalchemy import select
 from datetime import UTC, datetime
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 from app.agent.entrypoint import run_agent_turn
 from app.core.llm import LLMResponse, ToolCallRequest
 from app.models.lab import ChangeDraft

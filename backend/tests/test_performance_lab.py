@@ -1,5 +1,7 @@
 """Release invariants for evidence, source policy and independent execution."""
 
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta

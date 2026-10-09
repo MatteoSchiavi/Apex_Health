@@ -1,5 +1,7 @@
 """Provider errors stay explicit and draft transitions stay serialized."""
 
+from tests.helpers.ai import authorized_ai_account  # noqa: F401
+
 import os
 from datetime import date, timedelta
 
@@ -70,6 +72,8 @@ async def test_friend_cannot_override_ai_access_cap(client, db_session, monkeypa
     password = "Friend-password-42!"
     db_session.add(AuthCredential(user_id=user.id, email=email, password_hash=hash_password(password), ai_access_tier="cheap_only"))
     await db_session.commit()
+    from tests.helpers.ai import authorize_ai
+    await authorize_ai(db_session, user.id)
     assert (await client.post("/auth/login", json={"email": email, "password": password})).status_code == 200
     llm = FixtureAgentLLMClient([LLMResponse(content="Allowed reply", model="fixture")])
     monkeypatch.setattr("app.api.chats.build_llm_client", lambda: llm)
