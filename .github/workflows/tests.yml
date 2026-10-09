@@ -96,7 +96,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       redis:
-        image: redis:7-alpine
+        # Avoid Docker Hub's shared anonymous pull quota on hosted runners.
+        image: public.ecr.aws/docker/library/redis:7-alpine
         ports:
           - 6380:6379
         options: >-
