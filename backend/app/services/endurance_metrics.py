@@ -156,11 +156,12 @@ def stream_average(activity, streams, field):
 
 
 def zone_metric(activity, streams, field, context=None, activity_day=None, profile_revision=None, version=RUNNING_VERSION):
-    zones = [z for z in recorded_zones(activity.source_metrics) if z["metric"] == field]
-    if zones:
-        return metric(field+"_zone_time", zones, "s", "recorded_provider_zone_durations",
-            [f"activity:{activity.id}:source_metrics.{field}_zones"], recorded=True, version=version,
-            limitations=["provider_zone_definitions_required"])
+    for provider, block in (activity.source_metrics or {}).items():
+        zones = [z for z in recorded_zones({provider: block}) if z["metric"] == field]
+        if zones:
+            return metric(field+"_zone_time", zones, "s", "recorded_provider_zone_durations",
+                [f"activity:{activity.id}:source_metrics.{provider}.{field}_zones"], recorded=True, version=version,
+                limitations=["provider_zone_definitions_required"])
     config = (context or {}).get(field+"_zones")
     value, dependencies = None, []
     if config and activity_day and str(activity_day) >= config["effective_from"]:

@@ -94,3 +94,11 @@ def test_cadence_stream_mean_requires_coverage_and_preserves_convention():
     assert result["cadence"]["value"] == 80 and result["cadence"]["kind"] == "calculated"
     assert "cadence_convention_provider_specific" in result["cadence"]["limitations"]
     assert metrics(rows=stream(100, cadence=80))["cadence"]["value"] is None
+
+
+def test_zone_provenance_identifies_one_actual_provider_partition():
+    a=activity(source_metrics={"garmin":{"hr_zones":[{"name":"Garmin zone","duration_s":600}]},
+        "other":{"hr_zones":[{"name":"Different partition","duration_s":900}]}})
+    zone=metrics(a)['hr_zone_time']
+    assert len(zone['value'])==1 and zone['value'][0]['duration_s']==600
+    assert zone['source_dependencies']==['activity:1:source_metrics.garmin.hr_zones']
