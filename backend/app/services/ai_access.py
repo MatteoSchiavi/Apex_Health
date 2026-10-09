@@ -43,7 +43,7 @@ def provider_identity():
     return "|".join(identities)
 
 
-async def effective_access(session, user_id):
+async def effective_access(session, user_id, *, include_budget=True):
     credential = await session.get(AuthCredential, user_id, populate_existing=True)
     consent = await session.get(AiConsent, user_id, populate_existing=True)
     if (not get_settings().ai_processing_enabled or not credential or credential.disabled
@@ -52,11 +52,13 @@ async def effective_access(session, user_id):
         or consent.policy_version != POLICY_VERSION or consent.purpose != PURPOSE
         or consent.provider_identity != provider_identity() or provider_identity() == "unconfigured"):
         return "disabled"
+    if include_budget and (await budget_state(session, user_id))["exhausted"]:
+        return "disabled"
     return "full" if credential.ai_access_tier == "full" else "basic"
 
 
 async def require_access(session, user_id, category="standard_chat", tier="cheap"):
-    state = await effective_access(session, user_id)
+    state = await effective_access(session, user_id, include_budget=False)
     if state == "disabled" or (state != "full" and (
         category in {"strategic_coaching", "periodic_reports"} or tier in {"powerful", "medical"})):
         raise EvidenceError("POLICY_DENIED", "Active AI consent and account authorization are required")
@@ -127,7 +129,7 @@ async def guarded_complete(sessionmaker, llm, user_id, category, **kwargs):
         row.actual_tokens = response.tokens_in + response.tokens_out
         row.actual_usd = estimate_llm_cost_usd(tier, response.tokens_in, response.tokens_out,
             response.cached_tokens, model=response.model)
-        row.state = "reconciled" if row.actual_tokens > 0 else "uncertain"
+        row.state = "reconciled" if response.tokens_in > 0 and (response.tokens_out > 0 or not (response.content or response.tool_calls)) else "uncertain"
         await session.commit()
     return response
 

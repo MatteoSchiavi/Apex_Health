@@ -188,11 +188,12 @@ async def test_withdrawal_between_calls_blocks_next_call_without_sending_notes(d
     assert provider.calls == 1
 
 
-async def test_unreported_usage_retains_reservation_instead_of_releasing_budget(db_session):
+@pytest.mark.parametrize("reported_input", [0, 100])
+async def test_unreported_usage_retains_reservation_instead_of_releasing_budget(db_session, reported_input):
     await accept(db_session)
     class UnreportedProvider:
         async def complete(self, **kwargs):
-            return LLMResponse(content='Unreported usage',model='fixture')
+            return LLMResponse(content='Unreported usage',model='fixture',tokens_in=reported_input)
     maker=async_sessionmaker(db_session.bind,expire_on_commit=False)
     await guarded_complete(maker,UnreportedProvider(),1,'standard_chat',messages=[])
     row=await db_session.scalar(select(AiBudgetReservation))
@@ -218,3 +219,14 @@ async def test_embedding_ownership_and_consent_checked_before_external_call(db_s
     with pytest.raises(EvidenceError):
         await embed_journal_entry(db_session,provider,user.id,entry.id,'Private')
     assert provider.calls==0
+
+
+async def test_exhausted_account_budget_is_disabled_in_self_service_status(client,db_session):
+    await authenticate(client);await accept(db_session)
+    db_session.add(AiBudgetReservation(user_id=1,day=datetime.now(UTC).date(),category='strategic_coaching',
+        reserved_tokens=get_settings().ai_daily_token_limit,reserved_usd=Decimal('1'),state='uncertain'))
+    await db_session.commit()
+    state=(await client.get('/athlete/ai')).json()
+    assert state['effective_access']=='disabled' and state['budget']['exhausted']
+    assert state['consent']['active'] is True
+    assert (await client.get('/me')).json()['effective_ai_access']=='disabled'
