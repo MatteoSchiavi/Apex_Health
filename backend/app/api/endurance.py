@@ -10,6 +10,7 @@ from app.models.athlete_training import SessionCheckin
 from app.models.user import User
 from app.services.activity_presentation import sport_kind
 from app.services.endurance_metrics import running_metrics, input_revision
+from app.services.cycling_metrics import cycling_metrics
 from app.services.evidence import scope_lock
 
 router = APIRouter(prefix="/activities", tags=["endurance"])
@@ -33,6 +34,11 @@ async def endurance(ident: int, user: User = Depends(get_current_user), session:
     rpe = checkin.rpe if checkin and checkin.status != "skipped" else None
     dependency = f"checkin:{checkin.id}:{checkin.revision}" if checkin else None
     metrics = running_metrics(activity, streams, laps, rpe=rpe, rpe_dependency=dependency) if kind == "running" else []
+    if kind == "cycling":
+        from zoneinfo import ZoneInfo
+        metrics = cycling_metrics(activity, streams, laps, context=profile.context if profile else {},
+            activity_day=activity.start_time.astimezone(ZoneInfo(user.timezone)).date(),
+            profile_revision=profile.revision if profile else None, rpe=rpe, rpe_dependency=dependency)
     if len(streams) > 200000 or len(laps) > 2000:
         for result in metrics:
             if any(d.startswith(("streams:", "laps:")) for d in result["source_dependencies"]):
