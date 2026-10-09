@@ -33,11 +33,12 @@ async def calendar_sessions(
 ) -> dict:
     if start > end or (end - start).days > 365:
         raise HTTPException(422, "Choose a closed range of at most 366 days")
+    from app.services.athlete_day import plan_conditions
     rows = (await session.scalars(select(PlannedSession).join(
         TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id,
     ).where(
         TrainingPlan.user_id == user.id,
-        TrainingPlan.status.in_(["confirmed", "active", "completed"]),
+        *plan_conditions(PlannedSession.date),
         PlannedSession.date.between(start, end),
     ).order_by(PlannedSession.date, PlannedSession.id))).all()
     return {"sessions": [{"id": r.id, "date": r.date.isoformat(),

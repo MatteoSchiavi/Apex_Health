@@ -406,6 +406,7 @@ async def snapshot_revision(session, user_id):
                 PlannedSession.description,
                 PlannedSession.session_type,
                 PlannedSession.target_load,
+                PlannedSession.protected, PlannedSession.start_time, PlannedSession.target_distance_m, PlannedSession.intensity_targets,
                 TrainingPlan.status,
             )
             .join(TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id)
@@ -424,10 +425,13 @@ async def snapshot_revision(session, user_id):
         "journal_entries",
         "gym_set_logs",
         "athlete_profiles",
+        "athlete_session_checkins",
+        "activity_plan_links",
+        "training_plans",
     ):
         fingerprint = await session.scalar(
             text(
-                f"SELECT md5(coalesce(string_agg(to_jsonb(t)::text, '' ORDER BY {'user_id' if table == 'athlete_profiles' else 'id'}), '')) "
+                f"SELECT md5(coalesce(string_agg(to_jsonb(t)::text, '' ORDER BY {'user_id' if table == 'athlete_profiles' else 'activity_id' if table == 'activity_plan_links' else 'id'}), '')) "
                 f"FROM {table} t WHERE user_id = :owner"
             ),
             {"owner": user_id},

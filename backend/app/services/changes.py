@@ -19,6 +19,10 @@ from app.services.evidence import (
 
 def draft_dict(row):
     return {
+        "adaptation": {"original_session": row.before, "proposed_session": row.after,
+            "objective_status": "deferred" if row.after.get("session_type") == "rest" else "uncertain",
+            "data_gaps": ["No supporting observations attached"] if not row.evidence_ids else [],
+            "evidence_ids": row.evidence_ids} if row.kind == "session_patch" else None,
         "id": row.id,
         "kind": row.kind,
         "status": row.status,
@@ -82,6 +86,9 @@ async def _preview(session, user_id, change):
         )
         if row is None:
             raise EvidenceError("NOT_FOUND", "Session not found")
+        plan = await session.get(TrainingPlan, row.training_plan_id)
+        if row.protected or plan.protected:
+            raise EvidenceError("PROTECTED_SESSION", "Protected workout: discuss alternatives or explicitly remove protection before proposing edits")
         before = {
             "target_id": row.id,
             "date": str(row.date),
@@ -112,15 +119,19 @@ async def _preview(session, user_id, change):
     if change.kind == "plan_create":
         from app.services.replanning import enforce_session_constraints
 
-        totals = {}
+        totals, week_totals = {}, {}
         for item in change.sessions:
+            monday = item.date - timedelta(days=item.date.weekday())
+            week_totals[monday] = week_totals.get(monday, 0) + item.target_duration_min
             totals[item.date] = totals.get(item.date, 0) + item.target_duration_min
         for day, minutes in totals.items():
             day_session = next(
                 item for item in change.sessions if item.date == day
             ).model_dump(mode="json")
             day_session["target_duration_min"] = minutes
-            await enforce_session_constraints(session, user_id, day_session)
+            monday = day - timedelta(days=day.weekday())
+            await enforce_session_constraints(session, user_id, day_session,
+                additional_week_minutes=week_totals[monday] - minutes)
         for item in change.sessions:
             await enforce_session_constraints(
                 session, user_id, item.model_dump(mode="json")

@@ -174,6 +174,11 @@ async def delete_document(
         raise HTTPException(
             409, "Delete the FIT source to remove its derived activities too"
         )
+    plans = (await session.scalars(select(TrainingPlan).where(TrainingPlan.user_id == user.id, TrainingPlan.source_document_id == row.id))).all()
+    for plan in plans:
+        plan.status = "completed"
+        from zoneinfo import ZoneInfo
+        plan.superseded_on = datetime.now(UTC).astimezone(ZoneInfo(user.timezone)).date()
     await session.delete(row)
     await session.commit()
 
@@ -239,6 +244,8 @@ async def export_account(
     # Explicit column whitelist. Never export sessions, tokens, provider secrets or ciphertext.
     credential = await session.get(AuthCredential, user.id)
     tables = {
+        "athlete_session_checkins": "activity_id,planned_session_id,status,rpe,pain,felt_unwell,note,revision,updated_at",
+        "activity_plan_links": "activity_id,planned_session_id,method,created_at",
         "athlete_profiles": "training_focus,context,revision,updated_at",
         "ai_consents": "active,policy_version,purpose,provider_identity,accepted_at,withdrawn_at",
         "ai_budget_reservations": "day,category,reserved_usd,actual_usd,state",
@@ -257,10 +264,14 @@ async def export_account(
         "gym_day_plans": "*",
         "gym_set_logs": "*",
         "lab_documents": "id,filename,media_type,content_hash,status,revision",
-        "training_plans": "id,week_start,status,created_by",
+        "training_plans": "id,week_start,status,created_by,title,end_date,source_document_id,source_document_revision,extraction_id,protected,revision,activated_on,superseded_on",
         "raw_ingest": "id,source,payload_type,fetched_at,raw_json,processed",
     }
+    from app.models.athlete_training import PlanDocumentDraft
+    from app.api.training_documents import draft_out
+    plan_drafts = (await session.scalars(select(PlanDocumentDraft).where(PlanDocumentDraft.user_id == user.id))).all()
     result = {
+        "plan_document_drafts": [draft_out(row) for row in plan_drafts],
         "version": "apex-private-export-v1",
         "exported_at": datetime.now(UTC).isoformat(),
         "limits": {"rows_per_table": 100000},

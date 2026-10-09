@@ -18,6 +18,10 @@ async def minimal_replan(session, user, target_id=None):
     )
     if target is None:
         raise EvidenceError("NOT_FOUND", "Choose an owned upcoming planned session")
+    if target.get("protected"):
+        return {"state": "protected", "decision": decision, "target": target,
+            "reason": "Protected session retained; review conservative alternatives without editing it.",
+            "objective_status": "uncertain", "alternatives": decision["alternatives"]}
     action = decision["action"]
     old = target["duration_min"]
     if action in ("train_normally", "collect_more_data"):
@@ -74,10 +78,13 @@ async def minimal_replan(session, user, target_id=None):
     }
 
 
-async def enforce_session_constraints(session, user_id, after):
+async def enforce_session_constraints(session, user_id, after, *, additional_week_minutes=0):
     # Applies to both previews and execution. User approval cannot silently
     # substitute a model-written payload that violates declared availability.
-    from datetime import date
+    from datetime import date, timedelta
+    from app.models.user import User
+    from app.services.athlete_constraints import athlete_constraints
+    from app.services.athlete_day import plan_conditions
 
     day = date.fromisoformat(after["date"])
     rows = (
@@ -92,10 +99,12 @@ async def enforce_session_constraints(session, user_id, after):
         )
     ).all()
     latest = {r.kind: r for r in rows}
+    user = await session.get(User, user_id)
+    context = await athlete_constraints(session, user, day)
     duration = after.get("target_duration_min")
     available = latest.get("availability")
     other_minutes = 0
-    if available and duration is not None:
+    if (available or context["profile_availability_min"] is not None) and duration is not None:
         from sqlalchemy import func
         from app.models.training import PlannedSession, TrainingPlan
 
@@ -104,22 +113,36 @@ async def enforce_session_constraints(session, user_id, after):
             .join(TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id)
             .where(
                 TrainingPlan.user_id == user_id,
-                TrainingPlan.status.in_(("confirmed", "active")),
+                *plan_conditions(PlannedSession.date),
                 PlannedSession.date == day,
             )
         )
         if after.get("target_id"):
             query = query.where(PlannedSession.id != after["target_id"])
         other_minutes = await session.scalar(query)
-    if (
-        available
-        and duration is not None
-        and duration + other_minutes > available.payload["minutes"]
-    ):
+    cap = available.payload["minutes"] if available else None
+    if context["profile_availability_min"] is not None:
+        cap = min(cap, context["profile_availability_min"]) if cap is not None else context["profile_availability_min"]
+    if cap is not None and duration is not None and duration + other_minutes > cap:
         raise EvidenceError(
             "CONFLICT",
             "Session exceeds declared availability; update the availability or preview a smaller session",
         )
+    weekly_budget = context["weekly_time_budget_min"]
+    if weekly_budget is not None and duration is not None:
+        from sqlalchemy import func
+        from app.models.training import PlannedSession, TrainingPlan
+        monday = day - timedelta(days=day.weekday())
+        query = select(func.coalesce(func.sum(PlannedSession.target_duration_min), 0)).join(TrainingPlan).where(
+            TrainingPlan.user_id == user_id, *plan_conditions(PlannedSession.date),
+            PlannedSession.date.between(monday, monday + timedelta(days=6)))
+        if after.get("target_id"):
+            query = query.where(PlannedSession.id != after["target_id"])
+        planned_minutes = await session.scalar(query)
+        if planned_minutes + duration + additional_week_minutes > weekly_budget:
+            raise EvidenceError("CONFLICT", "Session exceeds the declared weekly time budget; prioritize a goal and review alternatives")
+    if context["subjective"] and (context["subjective"][-1]["pain"] or context["subjective"][-1]["felt_unwell"]) and after.get("session_type") != "rest":
+        raise EvidenceError("POLICY_DENIED", "Self-reported pain or feeling unwell requires a rest alternative or updated context")
     subjective = latest.get("daily_checkin")
     if (
         subjective

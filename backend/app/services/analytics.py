@@ -110,6 +110,9 @@ async def baseline(session, user, metric, start, end, *, origin=None, for_ai=Fal
 
 
 async def constraints(session, user, day):
+    from app.services.athlete_day import plan_conditions, focus_for
+    from app.services.athlete_constraints import athlete_constraints
+    athlete = await athlete_constraints(session, user, day)
     tz = ZoneInfo(user.timezone)
     start = datetime.combine(day, datetime.min.time(), tzinfo=tz)
     events = (
@@ -141,14 +144,23 @@ async def constraints(session, user, day):
             .join(TrainingPlan, PlannedSession.training_plan_id == TrainingPlan.id)
             .where(
                 TrainingPlan.user_id == user.id,
-                TrainingPlan.status.in_(("confirmed", "active")),
+                *plan_conditions(PlannedSession.date),
                 PlannedSession.date >= day,
                 PlannedSession.date <= day + timedelta(days=14),
             )
             .order_by(PlannedSession.date, PlannedSession.id)
         )
     ).all()
+    availability = [r.payload for r in entries if r.kind == "availability"]
+    profile_minutes = athlete["profile_availability_min"]
+    if profile_minutes is not None:
+        current = availability[-1]["minutes"] if availability else profile_minutes
+        availability.append({"minutes": min(current, profile_minutes), "source": "declared_athlete_context"})
+    disciplines = dict((await session.execute(select(Discipline.id, Discipline.name))).all())
+    plans.sort(key=lambda p: (p.date, athlete["training_focus"].index(focus_for(disciplines.get(p.discipline_id))) if focus_for(disciplines.get(p.discipline_id)) in athlete["training_focus"] else len(athlete["training_focus"]), p.start_time or datetime.max.time(), p.id))
+    plan_rows = {p.training_plan_id: await session.get(TrainingPlan, p.training_plan_id) for p in plans}
     return {
+        "athlete": athlete,
         "date": str(day),
         "timezone": user.timezone,
         "physiological_context": physiological_context(user, day),
@@ -164,11 +176,13 @@ async def constraints(session, user, day):
             }
             for e in events
         ],
-        "availability": [r.payload for r in entries if r.kind == "availability"],
-        "subjective": [r.payload for r in entries if r.kind == "daily_checkin"],
+        "availability": availability,
+        "subjective": [r.payload for r in entries if r.kind == "daily_checkin"] + athlete["subjective"],
         "sessions": [
             {
                 "id": p.id,
+                "protected": p.protected or plan_rows[p.training_plan_id].protected,
+                "plan_id": p.training_plan_id,
                 "date": str(p.date),
                 "duration_min": p.target_duration_min,
                 "session_type": p.session_type,
