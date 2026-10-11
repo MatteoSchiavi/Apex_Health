@@ -20,11 +20,44 @@ encrypted backup/restore and restore atomicity. Only a successful push to
 and `:sha-<full-commit>`. Pull requests and other branches cannot promote it.
 A superseded build is not promoted when main has already advanced.
 
-The server verifies the source/revision labels, pins the pulled image ID,
-checks the existing API/worker, stops application processes gracefully, creates
-and decrypts an encrypted database backup, runs migrations, then checks the
-new API and an actual Celery round trip. Download/authentication/preflight
-failures leave the app running. When updating an existing installation, the
+CI obtains `timescale/timescaledb-ha:pg16` through its public `mirror.gcr.io`
+cache to avoid Docker Hub anonymous pull quotas. The mirrored and official
+manifests were compared and matched exactly; this retains the TimescaleDB
+distribution containing pgvector. The release job retags that same image under
+the original Compose name; production database configuration is unchanged.
+The release also caches the identical `redis:7-alpine` image from the public
+ECR Docker library and uses Google-cached `node:22-slim` and
+`python:3.12-slim-bookworm` build bases. Official and mirror manifests matched
+for those images too; runtime versions and base distributions are unchanged.
+
+Before any service stop, backup creation or migration, the server checks:
+
+- A healthy API and worker running the same immutable image, plus current
+  database revisions and the backup encryption key.
+- Exact repository/full-commit labels and `org.apex.release-channel=main`.
+  Ordinary local and non-main CI builds default to `development`.
+- A trusted GHCR RepoDigest and an independent pull of `:sha-<full-commit>`
+  matching the moving tag's local image ID and registry digest. Deployment
+  subsequently uses only the immutable local image ID.
+- A bounded public GitHub comparison proving that the candidate commit equals
+  or descends from the running commit, and a completed successful main-push
+  run of `.github/workflows/tests.yml` for that exact candidate revision.
+  All jobs, including `backend-release`, must have succeeded. GitHub outages,
+  rate limits, pending publication and unverifiable metadata fail closed.
+- The candidate's complete Alembic graph, inspected using a disposable
+  read-only, network-disabled container with no production environment or
+  mounts. Every database revision must be present and lead forward to exactly
+  one candidate head. Missing, cyclic, disconnected or multi-head graphs fail.
+- At least 1 GiB free on the host checkout and updater-state filesystems,
+  checked before image download and again before downtime.
+
+Only after these checks does the updater stop application processes gracefully,
+create and decrypt an encrypted database backup, run migrations, and check the
+new API and an actual Celery round trip. A rejected candidate leaves running
+services untouched. After migration, the updater requires the actual database
+revision to equal the verified candidate head before starting the image.
+An unchanged selected image is a safe no-op and does not
+require new release labels or GitHub verification. When updating an existing installation, the
 updater stops and removes that installation's legacy bot container by its
 Compose project and service labels after the new API and worker are healthy.
 
@@ -180,11 +213,55 @@ never send `.env`.
 
 ## Status, pause and recovery
 
+The previously recovered deployment must remain paused until the installed
+updater, published main release, running application revision and database
+migration graph have been verified. Applying these source changes does not
+enable the timer or resume updates. Reinstall host tools deliberately after
+review; an application-image update does not replace the installed script.
+
+For the already paused/recovered installation, use this sequence instead of
+the ordinary installer, including the existing Compose/context options on
+every applicable command:
+
+```sh
+systemctl --user disable --now apex-health-update.timer
+bash infra/install-auto-update.sh --install-only
+python3 .apex-updater/auto_update.py status
+python3 .apex-updater/auto_update.py doctor
+python3 .apex-updater/auto_update.py verify
+```
+
+`--install-only` refreshes the installed script and units without running an
+update or enabling/starting the timer; it preserves paused/recovery state and
+uses the existing shared update lock. `verify` downloads candidate images and
+checks the complete release/database preflight, returning only image ID,
+revision, digests, migration head and whether deployment is required. It never
+changes updater state, stops services, creates a backup or runs migrations.
+A disabled timer remains an expected `doctor` error while deliberately paused.
+
+If `verify` fails, keep the recovered application running and investigate its
+concise reason. If it reports `deployment_required: true`, verification has
+not deployed that image: complete an owner-reviewed, encrypted-backup-backed
+manual deployment using the verified immutable ID and existing Compose options.
+Verify its migration head and API/worker health again. Only after explicit
+owner approval, and with the running image matching the verified selected
+release, run:
+
+```sh
+python3 .apex-updater/auto_update.py resume
+systemctl --user enable --now apex-health-update.timer
+```
+
+These commands are separate owner actions; source changes and verification
+never perform them automatically. The original Compose overrides, project
+name and Docker context must be retained throughout recovery.
+
 From the checkout (include your custom Compose options if any):
 
 ```sh
 python3 infra/auto_update.py status
 python3 infra/auto_update.py doctor
+python3 infra/auto_update.py verify
 python3 infra/auto_update.py pause
 python3 infra/auto_update.py update
 python3 infra/auto_update.py rollback
@@ -193,8 +270,11 @@ python3 infra/auto_update.py resume
 
 `pause` leaves the running app alone. `rollback` restores the previous app
 image only when its recorded database revision still matches; it leaves
-updates paused. `resume` requires a healthy running API/worker and adopts that
-deployment. Use `update --retry` only after diagnosing a failed image. A failed
+updates paused. `resume` requires healthy API/worker, backup readiness, disk
+reserve and the same release/digest/source/migration preflight as deployment.
+The running image must match the selected registry release; health alone never
+clears a pause or blocked candidate. Resume starts no services, performs no
+migration and creates no backup. Use `update --retry` only after diagnosing a failed image. A failed
 image is otherwise skipped until a new tested image arrives.
 
 If backup fails, or startup fails **without a database revision change**, the
@@ -211,6 +291,15 @@ using `backend/tools/restore_backup.py`, verify it, then deliberately switch to
 that restored database and its matching previous image. A backup restore loses
 changes after the backup; never blindly run it over the live database.
 `resume` does not perform a restore or restart stopped services for you.
+
+For an old-image/new-database rejection (for example, candidate migrations end
+at `0023` while the database is at `0026`), keep the healthy recovered image
+running and leave automation paused. Publish a verified main release containing
+the entire database migration ancestry; verify its GitHub workflow and exact
+GHCR revision identity before any authorized manual recovery. If the selected
+main tag differs from the recovered running image, `resume` refuses adoption.
+Complete a reviewed deployment of a compatible release first, then explicitly
+request resumption. Never edit the database revision marker to bypass this gate.
 
 The active image override is `.apex-updater/active.compose.yml`. Include it when
 manually inspecting/restarting the managed deployment, for example:
@@ -242,23 +331,30 @@ need their recovery points. Avoid blanket Docker pruning of rollback images.
 Health endpoints are checks, not an alerting service. Check the timer journal
 or connect it to your existing home-server monitoring.
 
+The 1 GiB preflight is a minimum known host reserve, not an estimate of database
+backup size or migration growth. It does not measure free space on a remote
+Docker daemon, Docker's image/volume filesystems, or a separately mounted backup
+destination. Operators must verify those capacities and allow additional space
+for retained images, encrypted backups, temporary dumps and migration growth.
+No automatic pruning or deletion is performed.
+
 The automated backup covers the database. Keep independent backups of `.env`,
 Compose overrides, reverse-proxy configuration and any external files you add
 to the deployment. A backup on the same disk does not protect against disk loss.
 
 ## Verification boundaries
 
-The updater's 27 offline failure/recovery/diagnostic tests pass. Installer dry-run output
-passes `systemd-analyze verify`; real Compose accepts the image overrides and
-an isolated Docker container verified the pinned-image startup flags. An
-isolated Compose deployment also exercised a real GHCR main-image download,
-encrypted backup, migration, API/worker restart and unchanged-image recheck.
-The corrected updater also completed application-only rollback, explicit resume
-and a second real update on that disposable deployment, preserving its database.
-Registry metadata was verified against successful GitHub CI and the actual
-published revision. These are cloud checks, not evidence that the timer is
-installed or healthy on the home server. The GitHub release job is the final
-production-image gate. Cloud Docker build verification may require
-allowing `www.postgresql.org` and `apt.postgresql.org` in the environment's
-network settings; a policy denial is not a passed production build. Installation
-and deployment on the actual home server require the one-time steps above.
+The preflight change has offline orchestration and public-GitHub-client tests;
+run `python -m unittest infra.tests.test_auto_update -v` to verify the rejection,
+backup, migration, rollback, explicit-resume, duplicate-invocation and failure
+boundaries. These tests use synthetic image/registry/workflow/migration data
+and perform no Docker deployment or database writes. They prove the reported
+`0026` database / `0023` image mismatch triggers no service stop, backup or
+migration. Existing healthy installations remain untouched by failed preflight.
+
+This change has not verified a live deployment, real published release labels,
+container graph inspection or home-server recovery. The completed GitHub release
+job remains the production-image gate; successful earlier test jobs alone do
+not establish release readiness. Full CI and a disposable release rehearsal
+are required before owner-authorized production use. Installer diagnostics do
+not authorize resuming the paused home-server timer.

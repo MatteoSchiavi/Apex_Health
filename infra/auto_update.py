@@ -12,15 +12,33 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+import urllib.error
+import urllib.parse
+import urllib.request
 
 DEFAULT_IMAGE = "ghcr.io/matteoschiavi/apex_health:main"
 SOURCE = "https://github.com/MatteoSchiavi/Apex_Health"
 IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 REVISION = re.compile(r"[0-9a-f]{40}\Z")
+REGISTRY_REPOSITORY = "ghcr.io/matteoschiavi/apex_health"
+RELEASE_CHANNEL = "org.apex.release-channel"
+MIN_FREE_BYTES = 1024 ** 3
+MIGRATION_REVISION = re.compile(r"[A-Za-z0-9_]{1,128}\Z")
+MIGRATION_GRAPH = """import json
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+script = ScriptDirectory.from_config(Config('/app/alembic.ini'))
+def ids(value):
+    return list(value) if isinstance(value, (tuple, list)) else [value] if value else []
+rows = list(script.walk_revisions())
+print(json.dumps({'heads': list(script.get_heads()), 'revisions': {
+    row.revision: ids(row.down_revision) + ids(row.dependencies) for row in rows}}))
+"""
 
 # These run inside the existing image without printing keys or health data.
 BACKUP_READY = "from app.core.config import get_settings; assert get_settings().backup_encryption_key, 'Set BACKUP_ENCRYPTION_KEY before enabling automatic updates'"
@@ -45,6 +63,109 @@ class UpdateError(RuntimeError):
     pass
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        raise UpdateError("Release verification refused an HTTP redirect")
+
+
+class GitHubReleaseVerifier:
+    """Bounded public GitHub checks; no credentials or response bodies logged."""
+    root = "https://api.github.com/repos/MatteoSchiavi/Apex_Health"
+    required_jobs = {"frontend", "pytest", "updater", "agent-evals", "backend-release"}
+
+    def __init__(self, opener=None):
+        self.opener = opener or urllib.request.build_opener(NoRedirect())
+
+    def get(self, path):
+        request = urllib.request.Request(self.root + path, headers={
+            "Accept": "application/vnd.github+json", "User-Agent": "apex-updater",
+            "X-GitHub-Api-Version": "2022-11-28"})
+        try:
+            with self.opener.open(request, timeout=10) as response:
+                raw = response.read(1024 * 1024 + 1)
+                if response.status != 200 or len(raw) > 1024 * 1024:
+                    raise UpdateError("Release verification response is unavailable or oversized")
+                value = json.loads(raw)
+                if not isinstance(value, dict):
+                    raise ValueError("Expected an object")
+                return value
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            raise UpdateError("Release verification request failed; retry when GitHub is available") from None
+
+    def verify(self, current_revision, candidate_revision):
+        try:
+            return self._verify(current_revision, candidate_revision)
+        except (AttributeError, KeyError, IndexError, TypeError):
+            raise UpdateError("Release verification returned malformed metadata") from None
+
+    def _verify(self, current_revision, candidate_revision):
+        if not all(isinstance(r, str) and REVISION.fullmatch(r) for r in (current_revision, candidate_revision)):
+            raise UpdateError("Cannot verify progression without full running and candidate revisions")
+        comparison = self.get(f"/compare/{current_revision}...{candidate_revision}?per_page=1")
+        if (comparison.get("status") not in ("ahead", "identical")
+                or comparison.get("base_commit", {}).get("sha") != current_revision
+                or comparison.get("merge_base_commit", {}).get("sha") != current_revision):
+            raise UpdateError("Candidate source revision is older, divergent or unverifiable")
+        query = urllib.parse.urlencode({"head_sha": candidate_revision, "branch": "main", "event": "push", "per_page": 20})
+        runs = self.get("/actions/workflows/tests.yml/runs?" + query).get("workflow_runs", [])
+        for run in runs[:20]:
+            if (run.get("head_sha") != candidate_revision or run.get("head_branch") != "main"
+                    or run.get("event") != "push" or run.get("status") != "completed"
+                    or run.get("conclusion") != "success" or run.get("path") != ".github/workflows/tests.yml"
+                    or not isinstance(run.get("id"), int) or isinstance(run.get("id"), bool)
+                    or run["id"] <= 0):
+                continue
+            jobs = []
+            for page in range(1, 6):
+                batch = self.get(f"/actions/runs/{run['id']}/jobs?filter=latest&per_page=100&page={page}").get("jobs", [])
+                jobs.extend(batch)
+                if len(batch) < 100:
+                    break
+            else:
+                raise UpdateError("Release job list exceeds verification limit")
+            if (self.required_jobs <= {job.get("name") for job in jobs}
+                    and all(job.get("status") == "completed" and job.get("conclusion") == "success" for job in jobs)):
+                return
+            raise UpdateError("Release workflow has missing, skipped or unsuccessful required jobs")
+        raise UpdateError("Exact candidate revision lacks a completed successful main push release workflow")
+
+
+def validate_migration_graph(graph, current):
+    """Every candidate revision must belong to one complete forward graph."""
+    if not isinstance(graph, dict):
+        raise UpdateError("Invalid candidate migration graph")
+    heads, revisions = graph.get("heads"), graph.get("revisions")
+    if not isinstance(heads, list) or len(heads) != 1 or not isinstance(revisions, dict) or not 0 < len(revisions) <= 10000:
+        raise UpdateError("Candidate must have exactly one complete migration head")
+    if not current or len(current) != len(set(current)):
+        raise UpdateError("Current database migration revisions are empty or invalid")
+    for revision, parents in revisions.items():
+        if (not isinstance(revision, str) or not MIGRATION_REVISION.fullmatch(revision)
+                or not isinstance(parents, list) or any(not isinstance(p, str) or p not in revisions for p in parents)
+                or len(parents) != len(set(parents))):
+            raise UpdateError("Candidate migration graph has invalid or missing revisions")
+    if not isinstance(heads[0], str) or heads[0] not in revisions:
+        raise UpdateError("Candidate migration head is missing")
+    # Iterative DFS avoids recursion limits for long valid migration chains.
+    visited, active, stack = set(), set(), [(heads[0], False)]
+    while stack:
+        node, leaving = stack.pop()
+        if leaving:
+            active.remove(node)
+            visited.add(node)
+        elif node in active:
+            raise UpdateError("Candidate migration graph contains a cycle")
+        elif node not in visited:
+            active.add(node)
+            stack.append((node, True))
+            stack.extend((parent, False) for parent in revisions[node])
+    if visited != set(revisions):
+        raise UpdateError("Candidate migration graph is disconnected or has undeclared heads")
+    if any(revision not in visited for revision in current):
+        raise UpdateError("Candidate lacks a forward migration path from the current database revisions")
+    return heads[0]
+
+
 class Docker:
     def __init__(self, context=None, timeout=1800):
         self.context = context
@@ -55,8 +176,9 @@ class Docker:
         result = subprocess.run([*prefix, *args], text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, timeout=self.timeout)
         if result.returncode:
-            # Docker errors can contain deployment details: keep the journal private.
-            raise UpdateError(f"docker {' '.join(args[:3])} failed: {result.stderr[-2000:].strip()}")
+            # Registry errors and container output can include tokens, raw
+            # network bodies or health data. Never copy them into the journal.
+            raise UpdateError(f"Docker {args[0]} failed (exit {result.returncode}); inspect Docker locally")
         return result.stdout.strip()
 
 
@@ -81,11 +203,14 @@ def write_json(path: Path, value: dict) -> None:
 
 class Updater:
     def __init__(self, repo: Path, state_dir: Path, *, image=DEFAULT_IMAGE,
-                 compose_files=(), project=None, docker=None):
+                 compose_files=(), project=None, docker=None, release_verifier=None,
+                 disk_usage=None):
         self.repo = repo.resolve()
         self.directory = state_dir.resolve()
         self.image = image
         self.docker = docker or Docker()
+        self.release_verifier = release_verifier or GitHubReleaseVerifier()
+        self.disk_usage = disk_usage or shutil.disk_usage
         self.project_name = project or os.environ.get("COMPOSE_PROJECT_NAME") or "apex-health"
         self.base = ["compose", "--env-file", str(self.repo / ".env")]
         if project:
@@ -112,8 +237,60 @@ class Updater:
         return path
 
     def image_info(self, reference):
-        info = json.loads(self.docker.run("image", "inspect", reference))[0]
+        info = self.image_metadata(reference)
         return info["Id"], (info.get("Config", {}).get("Labels") or {})
+
+    def image_metadata(self, reference):
+        try:
+            info = json.loads(self.docker.run("image", "inspect", reference))[0]
+            if not isinstance(info, dict) or not IMAGE_ID.fullmatch(info.get("Id", "")):
+                raise ValueError("Invalid image ID")
+            config = info.get("Config") or {}
+            if not isinstance(config, dict) or not isinstance(config.get("Labels") or {}, dict):
+                raise ValueError("Invalid image labels")
+            if not isinstance(info.get("RepoDigests", []), list):
+                raise ValueError("Invalid registry digests")
+            return info
+        except (ValueError, KeyError, IndexError, TypeError):
+            raise UpdateError("Cannot verify immutable local image metadata") from None
+
+    def disk_preflight(self):
+        try:
+            if any(self.disk_usage(path).free < MIN_FREE_BYTES for path in (self.directory, self.repo)):
+                raise UpdateError("Preflight requires at least 1 GiB free on checkout and updater-state filesystems")
+        except OSError:
+            raise UpdateError("Cannot verify available deployment disk reserve") from None
+
+    def candidate_preflight(self, candidate, labels, current):
+        revision = labels.get("org.opencontainers.image.revision", "")
+        if (not isinstance(revision, str) or not REVISION.fullmatch(revision)
+                or labels.get("org.opencontainers.image.source") != SOURCE
+                or labels.get(RELEASE_CHANNEL) != "main"):
+            raise UpdateError("Candidate lacks exact Apex source/revision and main release channel metadata")
+        exact_reference = REGISTRY_REPOSITORY + ":sha-" + revision
+        if self.image not in (DEFAULT_IMAGE, exact_reference):
+            raise UpdateError("Automatic updates require main or the exact candidate revision release tag")
+        trusted = re.compile(re.escape(REGISTRY_REPOSITORY) + r"@sha256:[0-9a-f]{64}\Z")
+        moving = self.image_metadata(candidate)
+        digests = {value for value in moving.get("RepoDigests", []) if isinstance(value, str) and trusted.fullmatch(value)}
+        if not digests:
+            raise UpdateError("Candidate lacks a trusted immutable registry digest")
+        # Pulling the exact release tag pins its registry content independently
+        # of a moving main tag, including manifest-index/platform resolution.
+        self.docker.run("pull", exact_reference)
+        exact = self.image_metadata(exact_reference)
+        if (exact["Id"] != candidate or not digests.intersection(exact.get("RepoDigests", []))):
+            raise UpdateError("Moving image differs from the immutable revision release")
+        self.release_verifier.verify(current.get("revision"), revision)
+        try:
+            raw = self.docker.run("run", "--rm", "--network", "none", "--read-only",
+                "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                "--entrypoint", "python", candidate, "-B", "-c", MIGRATION_GRAPH)
+            head = validate_migration_graph(json.loads(raw), current["schema"])
+        except (ValueError, KeyError, TypeError):
+            raise UpdateError("Candidate migration metadata could not be verified") from None
+        self.disk_preflight()
+        return {"image": candidate, "revision": revision, "digests": sorted(digests), "migration_head": head}
 
     def service_image(self, service, required=True):
         ids = self.compose("ps", "-q", service).splitlines()
@@ -181,12 +358,34 @@ class Updater:
         self.compose("stop", "-t", "60", "api")
 
     def resume(self):
-        # Also adopts a manually repaired, healthy deployment. This does not
-        # alter data or start services that were stopped after migration failure.
+        # Resuming is explicit authorization, but health alone cannot establish
+        # release/database compatibility after a manually recovered outage.
         current = self.running()
+        self.disk_preflight()
+        self.docker.run("pull", self.image)
+        candidate, labels = self.image_info(self.image)
+        if candidate != current["image"]:
+            raise UpdateError("Running image differs from the selected release; verify manual recovery before resuming")
+        verified = self.candidate_preflight(candidate, labels, current)
+        if current["schema"] != [verified["migration_head"]]:
+            raise UpdateError("Running deployment has not reached its verified migration head; recover manually before resuming")
+        self.compose("exec", "-T", "api", "python", "-c", BACKUP_READY)
+        current.update(digests=verified["digests"], migration_head=verified["migration_head"])
         self.state.update(current=current, paused=False, in_progress=None, failed_image=None)
         self.save()
         print("Healthy running deployment adopted; automatic updates resumed")
+
+    def verify(self):
+        """Download and inspect a candidate without state/application changes."""
+        current = self.running()
+        self.disk_preflight()
+        self.docker.run("pull", self.image)
+        candidate, labels = self.image_info(self.image)
+        verified = self.candidate_preflight(candidate, labels, current)
+        self.compose("exec", "-T", "api", "python", "-c", BACKUP_READY)
+        return {**verified, "current_schema": current["schema"],
+                "deployment_required": candidate != current["image"],
+                "manual_recovery_required": candidate == current["image"] and current["schema"] != [verified["migration_head"]]}
 
     def diagnose(self, host_run=subprocess.run):
         """Inspect prerequisites without pulling, deploying or modifying state.
@@ -279,29 +478,29 @@ class Updater:
     def update(self, retry=False):
         if self.state.get("paused") or self.state.get("in_progress"):
             raise UpdateError("Updates paused/interrupted. Run status and follow docs/AUTO_UPDATES.md")
+        self.disk_preflight()
         self.docker.run("pull", self.image)
         candidate, labels = self.image_info(self.image)
-        revision = labels.get("org.opencontainers.image.revision", "")
-        if not REVISION.fullmatch(revision) or labels.get("org.opencontainers.image.source", "").lower() != SOURCE.lower():
-            raise UpdateError("Image lacks the expected Apex repository and full Git commit labels")
         if candidate == self.state.get("failed_image") and not retry:
             print("Skipping the previously failed image; wait for a new tested commit or use --retry")
             return
         current = self.running()
         self.state["current"] = current
         self.save()
+        if current["image"] == candidate:
+            print("Already running the selected immutable image; no deployment attempted")
+            return
+        verified = self.candidate_preflight(candidate, labels, current)
+        revision = verified["revision"]
         # Check before downtime, including an already-current installation
         # during timer setup. No unencrypted health backups are ever created.
         self.compose("exec", "-T", "api", "python", "-c", BACKUP_READY)
-        if current["image"] == candidate:
-            print(f"Already running tested commit {revision[:12]}")
-            return
         self.docker.run("image", "tag", current["image"], "apex-health-rollback:" + current["image"].split(":")[1][:12])
         deployment = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + revision[:12]
         old = self.override("previous", current["image"])
         new = self.override("candidate", candidate)
         phase = "stopping"
-        self.state.update(in_progress=phase, candidate={"image": candidate, "revision": revision})
+        self.state.update(in_progress=phase, candidate=verified)
         self.save()
         try:
             self.stop()
@@ -319,12 +518,14 @@ class Updater:
             self.save()
             self.compose("run", "--rm", "--no-deps", "migrate", override=new)
             schema = self.schema()
+            if schema != [verified["migration_head"]]:
+                raise UpdateError("Migration did not reach the verified candidate head; manual recovery required")
             phase = "starting"
             self.state.update(in_progress=phase, candidate_schema=schema)
             self.save()
             self.start(candidate)
             self.state.update(previous=current,
-                              current={"image": candidate, "revision": revision, "schema": schema},
+                              current={**verified, "schema": schema},
                               updated_at=deployment, in_progress=None, failed_image=None)
             self.save()
             print(f"Deployed tested commit {revision[:12]}; encrypted backup: {backup['path']}")
@@ -359,7 +560,7 @@ class Updater:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["update", "status", "doctor", "pause", "resume", "rollback"], nargs="?", default="update")
+    parser.add_argument("action", choices=["update", "verify", "status", "doctor", "pause", "resume", "rollback"], nargs="?", default="update")
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--image", default=DEFAULT_IMAGE)
@@ -374,7 +575,7 @@ def main(argv=None):
     with (directory / "update.lock").open("a") as lock:
         # State is atomically replaced. Read-only diagnostics must remain
         # available while an update owns the deployment lock.
-        if args.action not in ("status", "doctor"):
+        if args.action not in ("status", "doctor", "verify"):
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -386,6 +587,8 @@ def main(argv=None):
                               docker=Docker(args.docker_context, timeout=60 if args.action == "doctor" else 1800))
             if args.action == "status":
                 print(json.dumps(updater.state, indent=2))
+            elif args.action == "verify":
+                print(json.dumps(updater.verify(), indent=2))
             elif args.action == "doctor":
                 report = updater.diagnose()
                 print(json.dumps(report, indent=2))

@@ -4,6 +4,7 @@ set -euo pipefail
 updater_repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 exec python3 - "$updater_repo" "$@" <<'PY'
 import argparse
+import fcntl
 import os
 from pathlib import Path
 import shlex
@@ -17,6 +18,7 @@ if sys.version_info < (3, 10):
 parser = argparse.ArgumentParser(description='Verify the first update, then install a five-minute systemd user timer')
 parser.add_argument('repo', type=Path)
 parser.add_argument('--dry-run', action='store_true', help='Print the units without deploying or writing files')
+parser.add_argument('--install-only', action='store_true', help='Refresh host script/units without deploying or enabling/starting the timer')
 parser.add_argument('--compose-file', action='append', type=Path)
 parser.add_argument('--project-name', default=os.environ.get('COMPOSE_PROJECT_NAME'))
 parser.add_argument('--docker-context', default=os.environ.get('DOCKER_CONTEXT'))
@@ -73,13 +75,14 @@ if args.dry_run:
     raise SystemExit(0)
 
 subprocess.run(['systemctl', '--user', 'show-environment'], stdout=subprocess.DEVNULL, check=True)
-docker = ['docker', '--context', args.docker_context]
-subprocess.run([*docker, 'compose', 'version'], check=True)
-subprocess.run([*docker, 'info'], stdout=subprocess.DEVNULL, check=True)
-# Verify registry access, the healthy existing stack, encryption and the first
-# deployment before installing a recurring job. Do not log .env or keys.
-first = [sys.executable, str(source), *command[2:]]
-subprocess.run(first, check=True)
+if not args.install_only:
+    docker = ['docker', '--context', args.docker_context]
+    subprocess.run([*docker, 'compose', 'version'], check=True)
+    subprocess.run([*docker, 'info'], stdout=subprocess.DEVNULL, check=True)
+    # Verify the first deployment before enabling a recurring job. Paused
+    # installations use --install-only to receive fixes without deployment.
+    first = [sys.executable, str(source), *command[2:]]
+    subprocess.run(first, check=True)
 
 def atomic_write(path, contents, mode=0o600):
     fd, temporary = tempfile.mkstemp(dir=path.parent)
@@ -95,11 +98,21 @@ def atomic_write(path, contents, mode=0o600):
             os.unlink(temporary)
 
 units = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'systemd/user'
+state.mkdir(mode=0o700, parents=True, exist_ok=True)
+os.chmod(state, 0o700)
+install_lock = (state / 'update.lock').open('a')
+try:
+    fcntl.flock(install_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    raise SystemExit('Another update is running; install host tools after it finishes')
 units.mkdir(parents=True, exist_ok=True)
 atomic_write(installed, source.read_text(), 0o700)
 atomic_write(units / 'apex-health-update.service', service)
 atomic_write(units / 'apex-health-update.timer', timer)
 subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+if args.install_only:
+    print('Installed host script/units only; deployment, pause state and timer enable/start state unchanged.')
+    raise SystemExit(0)
 subprocess.run(['systemctl', '--user', 'enable', '--now', 'apex-health-update.timer'], check=True)
 print('Installed: checks every five minutes. Logs: journalctl --user -u apex-health-update.service')
 print('For updates after logout/reboot, enable linger once: sudo loginctl enable-linger ' + shlex.quote(os.environ.get('USER', 'YOUR_USER')))

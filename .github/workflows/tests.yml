@@ -83,7 +83,9 @@ jobs:
 
     services:
       postgres:
-        image: timescale/timescaledb-ha:pg16
+        # Public cache of the identical Timescale+pgvector distribution;
+        # avoid Docker Hub anonymous pull quotas during service initialization.
+        image: mirror.gcr.io/timescale/timescaledb-ha:pg16
         env:
           POSTGRES_USER: hcc
           POSTGRES_PASSWORD: hcc
@@ -183,10 +185,19 @@ jobs:
           with os.fdopen(fd, "w") as env:
               env.write("".join(f"{key}={value}\n" for key, value in values.items()))
           PY
+      - name: Cache production service images from public mirrors
+        run: |
+          docker pull mirror.gcr.io/timescale/timescaledb-ha:pg16
+          docker tag mirror.gcr.io/timescale/timescaledb-ha:pg16 timescale/timescaledb-ha:pg16
+          docker pull public.ecr.aws/docker/library/redis:7-alpine
+          docker tag public.ecr.aws/docker/library/redis:7-alpine redis:7-alpine
       - name: Build and start the production stack
         env:
           APEX_COMMIT: ${{ github.sha }}
-        run: docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait --wait-timeout 180
+          APEX_RELEASE_CHANNEL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || 'development' }}
+        run: |
+          docker compose --env-file .env -f infra/docker-compose.yml build --build-arg "APEX_RELEASE_CHANNEL=$APEX_RELEASE_CHANNEL"
+          docker compose --env-file .env -f infra/docker-compose.yml up -d --no-build --wait --wait-timeout 180
       - name: Exercise deployed API contracts
         run: docker compose --env-file .env -f infra/docker-compose.yml exec -T api python tools/release_smoke.py --allow-test-writes
       - name: Exercise repeated worker jobs and loop cleanup
@@ -225,6 +236,13 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
           docker tag apex-health-backend:local "$registry_image:sha-$REVISION"
           docker push "$registry_image:sha-$REVISION"
+          {
+            echo "### Published release identity"
+            echo "Revision: $REVISION"
+            echo "Immutable reference: $registry_image:sha-$REVISION"
+            docker image inspect "$registry_image:sha-$REVISION" --format 'Registry digests: {{json .RepoDigests}}'
+            echo "Automatic deployment readiness requires this entire workflow, including release cleanup, to finish successfully."
+          } >> "$GITHUB_STEP_SUMMARY"
           # A newer push can arrive while this job finishes. Do not promote
           # a superseded build over the current main release.
           main_revision="$(git ls-remote origin refs/heads/main | cut -f1)"

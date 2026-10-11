@@ -3,7 +3,7 @@
 # The official UI is a static Vite bundle the API serves (docs/STACK.md §2.1):
 # building it INTO the image means `docker compose build` is the only step and
 # no Node runtime ever exists in production.
-FROM node:22-slim AS spa
+FROM mirror.gcr.io/library/node:22-slim AS spa
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=secret,id=proxy_ca,mode=0444 \
@@ -13,11 +13,13 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- Stage 2: the api/worker image ------------------------------------------
-FROM python:3.12-slim-bookworm
+FROM mirror.gcr.io/library/python:3.12-slim-bookworm
 
 ARG APEX_COMMIT=development
+ARG APEX_RELEASE_CHANNEL=development
 LABEL org.opencontainers.image.revision=$APEX_COMMIT \
-      org.opencontainers.image.source="https://github.com/MatteoSchiavi/Apex_Health"
+      org.opencontainers.image.source="https://github.com/MatteoSchiavi/Apex_Health" \
+      org.apex.release-channel=$APEX_RELEASE_CHANNEL
 
 ENV APEX_COMMIT=$APEX_COMMIT \
     UV_COMPILE_BYTECODE=1 \

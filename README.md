@@ -107,7 +107,12 @@ model selection, tool budgets and restarting the correct image.
 
 Owner Telegram notifications use `OWNER_TELEGRAM_BOT_TOKEN` and
 `OWNER_TELEGRAM_CHAT_ID`; test delivery in `/admin` after configuring the server.
-The former interactive Telegram chat service remains removed. Feedback can be
+Optional [Telegram remote controls](docs/TELEGRAM_CONTROL.md) run as an independent
+host service: `/update`, status/health, encrypted backups, provider sync, sanitized
+logs, confirmed application restarts and compatibility-checked rollback. Install
+with `bash infra/install-telegram-control.sh` using your existing deployment options;
+installation neither deploys the app nor resumes a paused updater. The former
+athlete-chat Telegram service remains removed. Feedback can be
 sent to the configured owner chat, so avoid submitting credentials or private
 medical records. See [owner operations](docs/OWNER_ADMIN.md) for monitoring scope,
 log limits, delivery retries and retained feedback.
