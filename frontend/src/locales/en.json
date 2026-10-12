@@ -693,7 +693,8 @@
     "page_unavailable": "This page could not be loaded. Retry to reload it.",
     "sync_already_running": "Another synchronization is already running. This request did not start another attempt.",
     "sync_partial_counts": "Sync finished with incomplete data: {{streams}} feeds failed and {{records}} records await processing. Imported data remains available.",
-    "sync_reconnect": "Synchronization needs authentication or provider permission. Reconnect your account or review provider access."
+    "sync_reconnect": "Synchronization needs authentication or provider permission. Reconnect your account or review provider access.",
+    "sync_time_missing": "Imported data · successful sync time unavailable"
   },
   "lab": {
     "title": "Title",

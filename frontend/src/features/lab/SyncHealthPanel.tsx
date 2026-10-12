@@ -32,7 +32,7 @@ export default function SyncHealthPanel() {
         <p className="text-[13px] text-muted">{t("lab.syncHealth.empty")}</p>
       )}
       {!!accounts.length && <div className="mb-6 grid gap-4">{accounts.map(account => {
-        const provider = t(`lab.providers.${account.provider}`, { defaultValue: human(account.provider) });
+        const provider = t(`lab.providers.${account.provider}`, { defaultValue: human(account.provider).replace(/^./,c=>c.toUpperCase()) });
         return <section key={account.provider} aria-label={t("lab.syncHealth.accountRegion", { provider })} className="border-t border-hairline pt-4">
           <div className="mb-3 flex flex-wrap items-center gap-3"><h3 className="text-[14px] font-medium">{provider}</h3><Badge tone={account.state === "successful" ? "positive" : account.state === "failed" || account.state === "auth_required" ? "alert" : account.state === "partial" || account.state === "delayed" ? "warning" : "neutral"}>{t("lab.syncHealth.accountStates." + account.state)}</Badge></div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[12px] sm:grid-cols-3">

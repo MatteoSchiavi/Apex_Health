@@ -17,10 +17,12 @@ This implementation extends the existing canonical athlete, activity and trainin
 
 Tests use a dedicated synthetic TimescaleDB/pgvector database and Redis on ports 55433/56380. Production and the pre-existing local services were not used for destructive fixtures.
 
+- Complete backend suite: **1,230 passed, 1 skipped**. AI budget fixtures are isolated, the exact schema inventory includes the five new tables, and the intentional public sharing route has an explicit missing-capability denial test.
 - Final integrated athlete/import/workout/focus/sharing/equipment/weather/sport backend run: **265 passed**.
 - Auth/Coach/sync/feature/registry regression run: **248 passed** (24 existing dependency deprecation warnings).
 - Additional sensor-unit, source-erasure, FIT/COROS, export and Lab checks: **59 passed**.
 - Integrated browser acceptance: **61 passed**, covering EN/IT profiles, mixed import, Today, journal, sharing, remember-me form, sync and sport views. Subsequent import/workout/sharing/sport checks: **31 passed**; final shared block editor/import verification: **21 passed**; equipment control browser journey: **1 passed**. Counts overlap and must not be summed.
+- Complete browser run: **179 passed, 1 skipped**; the remaining short-screen sidebar case passed after its positioned-label containment fix (**1 targeted pass**). Provider names, canonical settings navigation and the general-document upload selector were checked against the new flows.
 - Actual persistent Chromium with a synthetic HTTPS backend: Secure/HttpOnly remembered cookie survived close/reopen, authenticated `/me`, and disappeared on logout.
 - Offline updater/Telegram tests: **81 passed**. Deterministic Coach evaluation: **26/26 passed**. PWA tests: **5 passed**.
 - Frontend production build, EN/IT parity, Python compilation and diff whitespace checks passed. Updated source retains a single additive migration chain through **0029**.

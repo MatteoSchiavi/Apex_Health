@@ -79,7 +79,8 @@ test("lab document dropzone advertises and enforces the backend 5 MB file contra
     } else await route.fulfill({ json: [] });
   });
   await page.goto("/app/lab?tab=documents");
-  await expect(page.getByText("TXT · MD · PDF · maximum 5 MB")).toBeVisible();
+  await page.locator("summary").filter({hasText:"Advanced: general documents and earlier plan reviews"}).click();
+  await expect(page.locator("form").getByText("TXT · MD · PDF · maximum 5 MB")).toBeVisible();
   await page.getByLabel("Choose file").setInputFiles({ name: "results.txt", mimeType: "text/plain", buffer: Buffer.from("Ferritin: 42") });
   await page.getByRole("button", { name: "Upload", exact: true }).click();
   await expect.poll(() => contentType).toContain("multipart/form-data");

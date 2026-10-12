@@ -4,6 +4,7 @@
 from sqlalchemy import text
 
 EXPECTED_TABLES = {
+    "athlete_import_drafts", "weekly_training_templates", "structured_workout_versions", "structured_workout_drafts", "athlete_shares",
     "athlete_profiles", "ai_consents", "ai_budget_reservations", "plan_document_drafts", "activity_plan_links", "athlete_session_checkins",
     "alpha_events", "healthkit_pairings", "healthkit_samples", "healthkit_batches",
     "feedbacks", "owner_notifications",

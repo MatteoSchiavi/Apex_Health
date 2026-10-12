@@ -1,3 +1,4 @@
+import {useSyncHealth} from "../../features/lab/syncHealth";
 import {
   useCallback,
   useEffect,
@@ -202,6 +203,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebarCollapsed = !sidebarHover && !sidebarFocus;
   const notifications = useLab<NotificationsData>("/lab/notifications");
   const unread = notifications.data?.items.filter((n) => n.state === "created").length ?? 0;
+  const syncHealth = useSyncHealth();
   const devices = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.get<DeviceOut[]>("/settings/devices"),
@@ -209,8 +211,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
   const searchOpener = useRef<HTMLElement | null>(null);
   const mobileMoreButton = useRef<HTMLButtonElement>(null);
-  const latestSync = (devices.data ?? [])
-    .map((d) => d.last_synced_at)
+  const latestSync = [...(devices.data ?? []).map(d=>d.last_synced_at), ...(syncHealth.data?.accounts ?? []).map(a=>a.last_success_at), ...(syncHealth.data?.feeds ?? []).map(f=>f.last_success_at)]
     .filter((v): v is string => !!v)
     .sort()
     .at(-1);
@@ -293,7 +294,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
       <aside onMouseEnter={() => setSidebarHover(true)} onMouseMove={() => setSidebarHover(true)} onMouseLeave={() => setSidebarHover(false)}
         onFocus={e => setSidebarFocus((e.target as HTMLElement).matches(":focus-visible"))} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSidebarFocus(false); }}
-        className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-hairline py-8 lg:flex transition-[width,padding] duration-150 motion-reduce:transition-none"}>
+        className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh min-h-0 shrink-0 flex-col overflow-hidden border-r border-hairline py-8 lg:flex transition-[width,padding] duration-150 motion-reduce:transition-none"}>
         <div className="mb-8 flex h-8 shrink-0 items-center justify-between gap-2">
           <NavLink to="/app" aria-label="Apex Health" className={sidebarCollapsed ? "mx-auto" : "min-w-0 overflow-hidden"}>
             {sidebarCollapsed ? <Mark /> : <Logo />}
@@ -302,7 +303,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div aria-hidden={sidebarCollapsed} className="mb-4 h-[18px] text-[12px] text-muted" style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}>{t("design.workspace")}</div>
         <nav
           aria-label={t("design.navigation")}
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-y-auto"
         >
           {visibleNav.map(({ to, icon: Icon, key, end }) => (
             <NavLink
@@ -341,7 +342,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="mt-2 text-[12px] text-muted">
               {latestSync
                 ? t("design.last_sync", { time: timeAgo(latestSync) })
-                : t("settings.never")}
+                : (syncHealth.data?.accounts?.some(a=>a.has_successful_sync) || syncHealth.data?.feeds?.some(f=>f.has_checkpoint||f.last_success_at||f.latest_measurement_at)) ? t("design.sync_time_missing") : t("design.sync_unavailable")}
             </div>
           </NavLink>
           <div className="mt-5 flex h-9 items-center gap-3">

@@ -147,7 +147,7 @@ test("compact density persists and navigation fits short screens", async ({
   expect(
     await aside.evaluate((node) => node.scrollHeight <= node.clientHeight),
   ).toBe(true);
-  await page.goto("/app/data-health");
+  await page.goto("/app/settings?tab=data-health");
   await expect(page.locator("main .panel.p-6").first()).toHaveCSS(
     "padding-top",
     "16px",

@@ -130,7 +130,7 @@ for (const locale of ["en", "it"] as const) {
     await expect(message).toContainText(locale === "en" ? "1 feeds failed and 2 records await processing" : "1 flussi non riusciti e 2 record in attesa di elaborazione");
     await expect(page.getByText(locale === "en" ? "Sync complete." : "Sincronizzazione completata.", { exact: false })).toHaveCount(0);
     await expect.poll(() => healthRequests).toBeGreaterThan(1);
-    await page.getByRole("tab", { name: locale === "en" ? "Data health" : "Salute dati", exact: true }).click();
+    await page.getByRole("tab", { name: locale === "en" ? "Data health" : "Qualità dei dati", exact: true }).click();
     const account = page.getByRole("region", { name: locale === "en" ? "Garmin synchronization" : "Sincronizzazione Garmin", exact: true });
     await expect(account.getByText(locale === "en" ? "Partially synchronized" : "Sincronizzazione parziale", { exact: true })).toBeVisible();
     await expect(account.getByText(locale === "en" ? "Last successful attempt" : "Ultimo tentativo riuscito", { exact: true })).toBeVisible();
@@ -156,7 +156,7 @@ test("overlapping sync is informational, follows account completion and refreshe
   await page.goto("/app");
   await expect.poll(() => dayRequests).toBe(1);
   await page.locator('a[href="/app/settings"]').first().click();
-  await page.getByRole("tab", { name: "Devices & services", exact: true }).click();
+  await page.getByRole("tab", { name: "Devices & Services", exact: true }).click();
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Another synchronization is already running." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Syncing…", exact: true })).toBeDisabled();
@@ -239,7 +239,7 @@ test("profile can clear optional fields and preferences persist across navigatio
   await expect(page.locator("html")).toHaveClass("dark");
   await page
     .locator("aside nav")
-    .getByRole("link", { name: /Overview/ })
+    .getByRole("link", { name: "Overview", exact:true })
     .click();
   await expect(page.locator("html")).toHaveClass("dark");
 });

@@ -90,7 +90,7 @@ def _exempt(route) -> bool:
     # Native pairing exchange authenticates the one-use code, not a session.
     # Its own security suite verifies missing, expired and consumed credentials.
     # Only deployment notice facts are public; no health/configuration secrets.
-    return path in {"/health", "/version", "/legal/config", "/healthkit/exchange"} or path.startswith("/auth") or "callback" in path
+    return path in {"/health", "/version", "/legal/config", "/healthkit/exchange", "/sharing/view"} or path.startswith("/auth") or "callback" in path
 
 
 async def test_every_route_denies_unauthenticated_access(client: AsyncClient):
@@ -179,3 +179,12 @@ def test_alerts_and_logs_are_distinct_channels():
 
     alert_columns = {c.name for c in Alert.__table__.columns}
     assert {"type", "severity", "user_id"} <= alert_columns
+
+
+async def test_shared_view_requires_private_capability(client):
+    # This intentional public route authenticates a read-only capability,
+    # independently of account sessions. Missing/invalid secrets reveal nothing.
+    for headers in ({}, {"X-Apex-Share":"invalid"}):
+        response = await client.get("/sharing/view",headers=headers)
+        assert response.status_code == 404
+        assert response.json() == {"detail":"Shared view unavailable"}

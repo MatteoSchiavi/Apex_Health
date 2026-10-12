@@ -693,7 +693,8 @@
     "page_unavailable": "Impossibile caricare questa pagina. Riprova per ricaricarla.",
     "sync_already_running": "È già in corso un’altra sincronizzazione. Questa richiesta non ha avviato un nuovo tentativo.",
     "sync_partial_counts": "Sincronizzazione terminata con dati incompleti: {{streams}} flussi non riusciti e {{records}} record in attesa di elaborazione. I dati importati restano disponibili.",
-    "sync_reconnect": "La sincronizzazione richiede autenticazione o autorizzazione del fornitore. Ricollega l’account o verifica l’accesso."
+    "sync_reconnect": "La sincronizzazione richiede autenticazione o autorizzazione del fornitore. Ricollega l’account o verifica l’accesso.",
+    "sync_time_missing": "Dati importati · ora della sincronizzazione riuscita non disponibile"
   },
   "lab": {
     "title": "Titolo",
