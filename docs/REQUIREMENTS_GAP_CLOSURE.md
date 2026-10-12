@@ -30,6 +30,8 @@ The first complete backend run recorded **1,314 passed, 1 skipped and 1 failed**
 
 The first complete browser run recorded **187 passed, 1 skipped and 3 failures**. Traces showed cold development-module loading and a multi-screen navigation timeout. CI now tests the built production bundle, which the workflow builds first. Final complete browser and GitHub acceptance results are reported in the delivery message. TypeScript/production build, all **5 PWA tests**, **2,385-key EN/IT parity**, Python compilation and whitespace checks passed. Tests used dedicated synthetic database/Redis containers; real services were not reset.
 
+The complete production-bundle browser run then recorded **189 passed, 1 skipped and 1 failed**: a pre-existing visual check imported a development-only ECharts module. That test now inspects actual rendered canvas pixels to verify the asymmetric midnight-to-08:00 fixture appears in the correct vertical position with a visible bar. All **9 tests in its file passed** after this correction. Final publication waits for the checks on the corrected commit, including release-image validation.
+
 Production acceptance remains separate: remembered sessions behind the real reverse proxy, live Garmin, Telegram delivery and the host's actual updater/image/schema recovery require owner-side verification. Publishing source or an application image does not install the host controller. Follow `AUTO_UPDATES.md` and `TELEGRAM_CONTROL.md`; automation remains paused.
 
 Verified climb analysis still needs actual imported segment measurements. Grade-adjusted pace still needs a reliable model. Neither is replaced with invented values to claim full completion of the original specification.

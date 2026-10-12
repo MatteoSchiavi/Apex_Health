@@ -15,19 +15,27 @@ test("rendered sleep window places bedtime above waking and keeps a visible bar"
   await page.goto('/app/sleep');
   const card = page.locator('.panel').filter({ has: page.getByRole('heading', { name: 'Bed window', exact: true }) });
   await expect(card.locator('canvas')).toBeVisible();
-  const positions = await card.evaluate(async el => {
-    const modulePath = '/node_modules/.vite/deps/echarts_core.js';
-    const echarts = await import(modulePath);
-    const chart = echarts.getInstanceByDom(el.querySelector('[_echarts_instance_]'));
-    const [index, bed, wake] = chart.getOption().series[0].data[0];
-    const bedY = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [index, bed])[1];
-    const wakeY = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [index, wake])[1];
-    const bars = chart.getZr().storage.getDisplayList().filter((item: { type: string; shape?: { height?: number } }) => item.type === 'rect' && (item.shape?.height ?? 0) > 10);
-    return { bedY, wakeY, bars: bars.length };
+  // Check the rendered bar itself. The UTC fixture sleeps 00:00–08:00;
+  // reflecting the time axis moves this asymmetric window into the upper
+  // half. No development-only ECharts module or private instance is needed.
+  const positions = await card.locator('canvas').evaluate(canvas => {
+    const el = canvas as HTMLCanvasElement;
+    const pixels = el.getContext('2d')!.getImageData(0, 0, el.width, el.height).data;
+    const colors = [[78, 126, 133], [131, 174, 180]]; // core-sleep bar, light/dark
+    let top = el.height, bottom = -1;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] > 240 && colors.some(color => color.every((value, c) => Math.abs(value - pixels[i + c]) <= 3))) {
+        const y = Math.floor(i / 4 / el.width);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+    }
+    return { top: top / el.height, bottom: bottom / el.height, height: bottom - top };
   });
-  expect(positions.bedY).toBeLessThan(positions.wakeY);
-  expect(positions.wakeY - positions.bedY).toBeGreaterThan(50);
-  expect(positions.bars).toBeGreaterThan(0);
+  expect(positions.top).toBeGreaterThan(0.30);
+  expect(positions.top).toBeLessThan(0.40);
+  expect(positions.bottom).toBeGreaterThan(0.63);
+  expect(positions.bottom).toBeLessThan(0.75);
+  expect(positions.height).toBeGreaterThan(50);
 });
 
 test("favourites persist on the account and can be unstarred", async ({ page }) => {
