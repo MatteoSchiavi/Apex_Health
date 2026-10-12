@@ -23,7 +23,7 @@ export interface SyncAccount {
 export interface SyncHealth { feeds?: SyncFeed[]; accounts?: SyncAccount[] }
 
 export function invalidateSyncedData(qc: QueryClient) {
-  for (const key of ["sync-health", "lab", "devices", "overview", "sleep", "sleep-stages", "activities", "activity", "activity-calendar", "streams", "metric", "athlete-day", "endurance", "gym-plan", "setup-sleep-baseline"]) {
+  for (const key of ["sync-health", "lab", "devices", "overview", "sleep", "sleep-stages", "activities", "activity", "activity-calendar", "streams", "metric", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "endurance", "gym-plan", "setup-sleep-baseline"]) {
     void qc.invalidateQueries({ queryKey: [key] });
   }
 }

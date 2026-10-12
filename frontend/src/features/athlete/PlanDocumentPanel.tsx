@@ -38,7 +38,7 @@ export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
     expected_document_revision: doc.revision, use_ai: useAi, ...(useAi ? {} : { structure: editing }),
   }), onSuccess: next => { setShownDraft(next); setEditing(null); setAmbiguitiesReviewed(false); qc.invalidateQueries({ queryKey: ["plan-drafts"] }); qc.invalidateQueries({ queryKey: ["athlete-ai"] }); } });
   const confirm = useMutation({ mutationFn: () => api.post<{ draft: Draft }>(`/lab/plan-drafts/${latest!.id}/confirm`, { payload_hash: latest!.payload_hash, ambiguities_reviewed: ambiguitiesReviewed }), onSuccess: next => {
-    setShownDraft(next.draft); ["plan-drafts", "athlete-day", "lab", "athlete-profile", "athlete-templates", "me"].forEach(key => qc.invalidateQueries({ queryKey: [key] }));
+    setShownDraft(next.draft); ["plan-drafts", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "lab", "athlete-profile", "athlete-templates", "me"].forEach(key => qc.invalidateQueries({ queryKey: [key] }));
   } });
   function begin() { setEditing(latest?.structure ?? { ...emptyStructure(), title: doc.filename }); }
   function update<K extends keyof Structure>(key: K, value: Structure[K]) { setEditing(old => ({ ...old!, [key]: value })); }

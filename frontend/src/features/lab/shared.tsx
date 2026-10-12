@@ -34,6 +34,8 @@ export function useAction() {
       qc.invalidateQueries({ queryKey: ["overview"] });
       qc.invalidateQueries({ queryKey: ["context-docs"] });
       qc.invalidateQueries({ queryKey: ["athlete-day"] });
+      qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] });
+      qc.invalidateQueries({ queryKey: ["structured-workout"] });
       qc.invalidateQueries({ queryKey: ["plan-drafts"] });
     },
   });

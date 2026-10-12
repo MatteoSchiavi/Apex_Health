@@ -19,7 +19,7 @@ function RecordedActivity({ activity, day }: { activity: DayActivity; day: Athle
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [selected, setSelected] = useState("");
-  const association = useMutation({ mutationFn: (id: number | null) => api.put(`/athlete/activities/${activity.id}/association`, { planned_session_id: id }), onSuccess: () => qc.invalidateQueries({ queryKey: ["athlete-day"] }) });
+  const association = useMutation({ mutationFn: (id: number | null) => api.put(`/athlete/activities/${activity.id}/association`, { planned_session_id: id }), onSuccess: () => { ["athlete-day", "athlete-sport-overview", "structured-workout"].forEach(key => qc.invalidateQueries({queryKey:[key]})); } });
   return <li className="border-t border-hairline py-4">
     <div className="flex items-start gap-3"><SportIcon discipline={activity.discipline} size={22} /><div className="min-w-0 flex-1">
       <Link className="text-link font-medium" to={`/app/activities/${activity.id}`}>{friendlyDiscipline(activity.discipline, t)} ↗</Link>
@@ -41,7 +41,7 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
   const data = useAthleteDay(date);
   const qc = useQueryClient();
   const units = useUnits();
-  const protect = useMutation({ mutationFn: ({ id, revision, value, wholePlan }: { id: number; revision: number; value: boolean; wholePlan?: boolean }) => api.put(`/lab/${wholePlan ? "plans" : "planned-sessions"}/${id}/protection`, { protected: value, expected_plan_revision: revision }), onSuccess: () => qc.invalidateQueries({ queryKey: ["athlete-day"] }) });
+  const protect = useMutation({ mutationFn: ({ id, revision, value, wholePlan }: { id: number; revision: number; value: boolean; wholePlan?: boolean }) => api.put(`/lab/${wholePlan ? "plans" : "planned-sessions"}/${id}/protection`, { protected: value, expected_plan_revision: revision }), onSuccess: () => { ["athlete-day", "athlete-sport-overview", "structured-workout"].forEach(key => qc.invalidateQueries({queryKey:[key]})); } });
   if (data.isLoading) return <Loading />;
   if (!data.data || data.isError) return <ErrorNote />;
   const day = data.data;

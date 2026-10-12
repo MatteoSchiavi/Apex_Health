@@ -66,7 +66,7 @@ export function AthleteInformationImport() {
   const requiredWeeklyIssues = proposal?.issues.some(issue => issue.required && (issue.field === "weekly" || issue.field.startsWith("weekly.")));
   const requiredDatedIssues = proposal?.issues.some(issue => issue.required && (issue.field === "dated" || issue.field.startsWith("dated.")));
   async function invalidate() {
-    await Promise.all(["athlete-imports", "athlete-profile", "me", "athlete-day", "athlete-templates", "plan-drafts", "lab", "context-docs"].map(key => qc.invalidateQueries({ queryKey: [key] })));
+    await Promise.all(["athlete-imports", "athlete-profile", "me", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "athlete-templates", "plan-drafts", "lab", "context-docs"].map(key => qc.invalidateQueries({ queryKey: [key] })));
     void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {});
   }
   function open(next: AthleteImport, skipGuard = false) {

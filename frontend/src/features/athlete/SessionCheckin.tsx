@@ -23,7 +23,7 @@ export function SessionCheckin({ activityId, plannedSessionId, checkin }: { acti
     rpe:submitted.status==="skipped"?null:number(submitted.rpe),pain:submitted.pain===""?null:submitted.pain==="yes",felt_unwell:submitted.unwell===""?null:submitted.unwell==="yes",
     fatigue:number(submitted.fatigue),soreness:number(submitted.soreness),workout_quality:submitted.status==="skipped"?null:number(submitted.workout_quality),
     note:submitted.note,modification_reason:submitted.modification_reason,terrain_notes:submitted.terrain_notes,
-  }),onSuccess:receipt=>{const next=formOf(receipt);setForm(next);setSaved(JSON.stringify(next));setRevision(receipt.revision);for(const key of ["athlete-day","endurance","lab","sport-overview"])qc.invalidateQueries({queryKey:[key]});}});
+  }),onSuccess:receipt=>{const next=formOf(receipt);setForm(next);setSaved(JSON.stringify(next));setRevision(receipt.revision);for(const key of ["athlete-day","endurance","lab","athlete-sport-overview"])qc.invalidateQueries({queryKey:[key]});}});
   const choices=[{value:"",label:t("design.not_specified")},{value:"yes",label:t("athlete.yes")},{value:"no",label:t("athlete.no")}];
   return <details className="mt-3 border-t border-hairline pt-3 text-[13px]">
     <summary className="cursor-pointer text-ink2">{t("athlete.checkin_title")}</summary>

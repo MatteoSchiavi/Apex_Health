@@ -100,12 +100,12 @@ export function AthleteProfilePanel() {
         ftp: ftpConfirmed && ftpWatts && ftpDate ? { watts: Number(ftpWatts), measured_on: ftpDate, confirmed: true } : null },
     }),
     onSuccess: next => { if (uid != null) retainedDrafts.delete(uid); hydrate(next, undefined); qc.setQueryData(["athlete-profile", uid], next);
-      qc.invalidateQueries({ queryKey: ["athlete-day"] }); qc.invalidateQueries({ queryKey: ["lab"] });
+      qc.invalidateQueries({ queryKey: ["athlete-day"] }); qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }); qc.invalidateQueries({ queryKey: ["endurance"] }); qc.invalidateQueries({ queryKey: ["lab"] });
       void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); },
   });
   const remove = useMutation({ mutationFn: () => api.delete("/athlete/profile"), onSuccess: () => {
     save.reset(); if (uid != null) retainedDrafts.delete(uid); hydrate({ training_focus: [], context: {}, revision: revision + 1 }, undefined); qc.invalidateQueries({ queryKey: ["athlete-profile", uid] });
-    void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); qc.invalidateQueries({ queryKey: ["athlete-day"] });
+    void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); qc.invalidateQueries({ queryKey: ["athlete-day"] }); qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }); qc.invalidateQueries({ queryKey: ["endurance"] });
   } });
   if (profile.isLoading) return <Loading />;
   if (profile.isError || !profile.data) return <ErrorNote />;
