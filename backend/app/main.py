@@ -151,6 +151,8 @@ def create_app() -> FastAPI:
     app.include_router(me.router)
     app.include_router(dashboard.router)
     app.include_router(activities.router)
+    from app.api import activity_comparison
+    app.include_router(activity_comparison.router)
     app.include_router(sleep.router)
     app.include_router(metrics.router)
     app.include_router(chats.router)

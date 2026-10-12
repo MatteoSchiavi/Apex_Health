@@ -6,16 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.user import User
-from app.services.sport_progress import sport_overview
+from app.services.sport_progress import sport_overview, strength_overview
 
 router = APIRouter(prefix="/athlete/sports", tags=["sport-progress"])
 
 
 @router.get("/{sport}/overview")
-async def overview(sport: Literal["running", "cycling"], start: date | None = None,
+async def overview(sport: Literal["running", "cycling", "strength"], start: date | None = None,
         end: date | None = None, user: User = Depends(get_current_user),
         session: AsyncSession = Depends(get_session)):
     try:
+        if sport == "strength":
+            return await strength_overview(session, user, start, end)
         return await sport_overview(session, user, sport, start, end)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error

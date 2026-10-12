@@ -61,6 +61,8 @@ def normalized_power(segments):
 
 def confirmed_ftp(context, activity_day):
     ftp = (context or {}).get("ftp")
+    if isinstance(ftp, dict) and ftp.get("source") == "estimated":
+        return None, "unvalidated_estimated_ftp", None
     if not isinstance(ftp, dict) or ftp.get("confirmed") is not True or not positive(ftp.get("watts")):
         return None, "missing_confirmed_ftp", None
     try:

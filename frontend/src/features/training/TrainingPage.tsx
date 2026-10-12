@@ -390,6 +390,8 @@ function GymPlan() {
       setRest(resp?.rest_seconds ?? 90);
       setReps("");
       qc.invalidateQueries({ queryKey: ["gym-plan", day] });
+      qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] });
+      qc.invalidateQueries({ queryKey: ["lab"] });
     },
   });
 

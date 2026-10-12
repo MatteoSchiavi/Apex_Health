@@ -1,9 +1,11 @@
 export type Focus = "gym" | "running" | "cycling";
+export interface MeasurableGoal { metric: "weekly_distance_km" | "weekly_duration_min" | "longest_distance_km" | "best_power_w" | "exercise_estimated_1rm_kg"; target: number; duration_s?: number; exercise?: string }
 export interface SportContext {
   level?: string; weekly_frequency?: number; weekly_distance_km?: number; weekly_duration_min?: number;
   longest_distance_km?: number; preferred_days?: number[]; long_session_day?: number;
   goal?: string; event?: { title: string; date?: string; distance_km?: number; priority: number };
   equipment?: string[]; constraints?: string; power_available?: boolean;
+  measurable_goal?: MeasurableGoal;
 }
 export interface ZoneConfiguration { effective_from: string; bands: { name: string; lower: number; upper: number }[] }
 export interface AthleteContext {
@@ -15,7 +17,7 @@ export interface AthleteContext {
   sleep_work_schedule?: string; schedule_constraints?: string; gym_experience_years?: number; gym_split?: string;
   preferred_exercises?: string; rpe_preference?: boolean; self_declared_restrictions?: string; athlete_notes?: string;
   existing_plan?: string; recent_consistency?: string; event_history?: string; devices?: string; coaching_style?: string;
-  ftp?: { watts: number; measured_on: string; confirmed: true }; onboarding_step?: number;
+  ftp?: { watts: number; measured_on: string; confirmed: true; source?: "manual" | "tested" | "imported" | "estimated"; methodology?: string; source_reference?: string; protocol?: string }; onboarding_step?: number;
 }
 export interface AthleteProfile { training_focus: Focus[]; context: AthleteContext; revision: number }
 export interface AiState {

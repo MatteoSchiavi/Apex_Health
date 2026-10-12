@@ -44,6 +44,37 @@ EDUCATION = {
 }
 
 
+# These are block-specific general options, not edits to the saved prescription.
+EDUCATION_OPTIONS = {
+    'en': {
+        'warmup': ('Starting at main-work intensity or skipping preparation.', 'Start more gently and allow a gradual preparation; defer hard work if you remain unwell.'),
+        'easy': ('Turning comfortable work into a hard test.', 'Slow down or shorten this block when comfort or recovery deteriorates.'),
+        'endurance': ('Chasing an unrecorded zone or extending the block despite fatigue.', 'Use a shorter comfortable block; review any change to the recorded prescription.'),
+        'tempo': ('Starting too fast and losing control before the block ends.', 'Reduce effort or replace demanding work with comfortable work when recovery is poor.'),
+        'threshold': ('Treating the label as a measured physiological threshold or forcing the target.', 'Shorten the demanding block or choose easy work; the label alone does not define your threshold.'),
+        'interval': ('Racing early repetitions or skipping the following recovery.', 'Reduce the effort or number of repetitions; keep the recovery sequence.'),
+        'recovery': ('Keeping the effort high or omitting the prescribed recovery.', 'Make this block easier; allow more recovery rather than forcing the next effort.'),
+        'cooldown': ('Finishing with another hard effort or stopping abruptly while uncomfortable.', 'Reduce effort gently and use a comfortable transition; stop for concerning symptoms.'),
+        'strength': ('Adding load or repetitions when technique is deteriorating.', 'Reduce load or repetitions, or pause the exercise when controlled movement is no longer possible.'),
+        'technical': ('Prioritizing speed or load over movement control.', 'Simplify the drill and practice slowly in safe conditions.'),
+        'repeat': ('Repeating only the effort and omitting child recovery blocks.', 'Review fewer complete repetitions rather than removing recovery; keep child blocks in order.'),
+    },
+    'it': {
+        'warmup': ('Partire subito all’intensità del lavoro principale o saltare la preparazione.', 'Inizia più piano e preparati gradualmente; rimanda il lavoro intenso se continui a stare male.'),
+        'easy': ('Trasformare il lavoro comodo in un test impegnativo.', 'Rallenta o accorcia il blocco se peggiorano comfort o recupero.'),
+        'endurance': ('Inseguire una zona non registrata o prolungare il blocco nonostante la fatica.', 'Scegli un blocco più breve e comodo; rivedi ogni modifica alla prescrizione registrata.'),
+        'tempo': ('Partire troppo forte e perdere il controllo prima della fine del blocco.', 'Riduci lo sforzo o sostituisci il lavoro impegnativo con lavoro comodo se recuperi poco.'),
+        'threshold': ('Considerare l’etichetta una soglia fisiologica misurata o forzare l’obiettivo.', 'Accorcia il blocco impegnativo o scegli lavoro facile; l’etichetta da sola non definisce la tua soglia.'),
+        'interval': ('Gareggiare nelle prime ripetizioni o saltare il recupero successivo.', 'Riduci lo sforzo o il numero di ripetizioni; mantieni la sequenza dei recuperi.'),
+        'recovery': ('Mantenere uno sforzo elevato o saltare il recupero prescritto.', 'Rendi il blocco più facile; concediti più recupero senza forzare lo sforzo successivo.'),
+        'cooldown': ('Concludere con altro lavoro intenso o fermarsi bruscamente mentre si è a disagio.', 'Riduci lo sforzo gradualmente e torna con calma al riposo; fermati per sintomi preoccupanti.'),
+        'strength': ('Aumentare carico o ripetizioni quando la tecnica peggiora.', 'Riduci carico o ripetizioni, oppure interrompi l’esercizio se perdi il controllo del movimento.'),
+        'technical': ('Dare priorità a velocità o carico rispetto al controllo del movimento.', 'Semplifica l’esercizio e praticalo lentamente in condizioni sicure.'),
+        'repeat': ('Ripetere solo lo sforzo saltando i blocchi di recupero interni.', 'Rivedi un numero minore di ripetizioni complete senza togliere i recuperi; mantieni l’ordine dei blocchi.'),
+    },
+}
+
+
 def structure_of(row):
     return WorkoutStructure.model_validate_json(decrypt_bytes(row.structure_ciphertext))
 
@@ -176,8 +207,26 @@ async def approved_plan_steps(session,user_id,workout,steps):
 
 
 def education(structure,locale):
-    catalog = EDUCATION.get(locale,EDUCATION['en'])
-    return [{'id':step.id,'kind':step.kind,'objective':catalog[step.kind][0],'execution':catalog[step.kind][1],
-             'target':step.target.model_dump(mode='json') if step.target else None,
-             'limitation':'Generic workout education; no individualized medical prediction.' if locale!='it' else 'Indicazioni generali, senza previsioni mediche individuali.'}
-            for step in structure.steps]
+    language = 'it' if str(locale).lower().split('-')[0] == 'it' else 'en'
+    catalog, options = EDUCATION[language], EDUCATION_OPTIONS[language]
+    rows = []
+
+    def visit(steps, parent_id=None, prefix=''):
+        for index, step in enumerate(steps, 1):
+            number = f'{prefix}{index}'
+            rows.append({
+                'id':step.id, 'kind':step.kind, 'number':number, 'parent_id':parent_id,
+                'objective':catalog[step.kind][0], 'execution':catalog[step.kind][1],
+                'target':step.target.model_dump(mode='json') if step.target else None,
+                'duration_s':step.duration_s, 'distance_m':step.distance_m,
+                'description':step.description, 'repetitions':step.repetitions,
+                'exercise':step.exercise, 'sets':step.sets, 'reps':step.reps, 'load_kg':step.load_kg,
+                'common_mistake':options[step.kind][0], 'conservative_alternative':options[step.kind][1],
+                'limitation':('Indicazioni generali, senza previsioni mediche individuali. Le alternative non modificano il piano salvato.'
+                    if language == 'it' else 'Generic workout education; no individualized medical prediction. Alternatives do not change the saved plan.'),
+            })
+            if step.steps:
+                visit(step.steps, step.id, number+'.')
+
+    visit(structure.steps)
+    return rows

@@ -413,59 +413,10 @@ async def run_recipe(
             raise EvidenceError("INVALID_ARGUMENTS", "Choose an activity")
         result = await session_quality(session, user, activity_id, for_ai=for_ai)
     elif recipe == "gym_progression":
-        from app.models.gym_detail import GymSetLog, GymDayExercise, GymExercise
+        from app.services.gym_progression import recorded_sets, gym_progression
 
-        tz = ZoneInfo(user.timezone)
-        rows = (
-            await session.execute(
-                select(GymSetLog, GymExercise)
-                .join(
-                    GymDayExercise, GymSetLog.gym_day_exercise_id == GymDayExercise.id
-                )
-                .join(GymExercise, GymDayExercise.exercise_id == GymExercise.id)
-                .where(
-                    GymSetLog.user_id == user.id,
-                    GymSetLog.done_at
-                    >= datetime.combine(start, datetime.min.time(), tzinfo=tz),
-                    GymSetLog.done_at
-                    < datetime.combine(
-                        end + timedelta(days=1), datetime.min.time(), tzinfo=tz
-                    ),
-                )
-                .order_by(GymSetLog.done_at)
-                .limit(5000)
-            )
-        ).all()
-        groups = {}
-        for log, exercise in rows:
-            key = (exercise.id, str(log.done_at.astimezone(tz).date()))
-            bucket = groups.setdefault(
-                key,
-                {
-                    "exercise": exercise.name,
-                    "date": key[1],
-                    "sets": 0,
-                    "reps": 0,
-                    "volume_kg": 0,
-                    "e1rm_kg": None,
-                },
-            )
-            bucket["sets"] += 1
-            bucket["reps"] += log.reps_done
-            if log.weight_kg is not None:
-                weight = float(log.weight_kg)
-                bucket["volume_kg"] += weight * log.reps_done
-                if 1 <= log.reps_done <= 10 and weight > 0:
-                    estimate = weight * (1 + log.reps_done / 30)
-                    bucket["e1rm_kg"] = max(bucket["e1rm_kg"] or 0, round(estimate, 1))
-        result = {
-            "sample_count": len(rows),
-            "sessions": list(groups.values()),
-            "formula": "Epley: recorded load × (1 + reps/30), only 1–10 reps",
-            "limitations": [
-                "Estimated strength from recorded sets, not a tested maximum. Machine loads and different exercises are not comparable."
-            ],
-        }
+        rows, complete = await recorded_sets(session, user, start, end)
+        result = gym_progression(rows, user.timezone, complete=complete)
     elif recipe == "sleep_timing":
         from statistics import pstdev
 

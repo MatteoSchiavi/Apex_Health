@@ -53,6 +53,7 @@ const NAV = [
   { to: "/app/sleep", icon: Moon, key: "nav.sleep", end: false },
   { to: "/app/sports/running", icon: Activity, key: "sportProgress.title_running", end: false },
   { to: "/app/sports/cycling", icon: BarChart3, key: "sportProgress.title_cycling", end: false },
+  { to: "/app/sports/strength", icon: BarChart3, key: "sportProgress.title_strength", end: false },
   { to: "/app/sharing", icon: Users, key: "sharing.title", end: false },
   { to: "/app/training", icon: Trophy, key: "nav.training", end: false },
   { to: "/app/coach", icon: Bot, key: "nav.coach", end: false },

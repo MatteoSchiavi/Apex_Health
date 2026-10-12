@@ -9,7 +9,7 @@ from app.core.db import get_session
 from app.models.athlete import AthleteProfile, AiConsent
 from app.models.lab import AthleteEntry, ChangeAudit
 from app.models.user import User
-from app.schemas.athlete import AthleteUpdate, ConsentUpdate
+from app.schemas.athlete import AthleteUpdate, ConsentUpdate, ConfirmedFTP
 from app.services.ai_access import POLICY_VERSION, PURPOSE, provider_identity, effective_access, budget_state
 from app.services.evidence import scope_lock
 
@@ -42,6 +42,20 @@ async def write_profile(session, user, payload):
         raise HTTPException(409, "Athlete context changed; reload before editing")
     context = payload.context.model_dump(mode="json", exclude_none=True)
     previous_ftp = row.context.get("ftp") if row else None
+    submitted_ftp = payload.context.ftp
+    if (submitted_ftp and isinstance(previous_ftp, dict) and "source" not in submitted_ftp.model_fields_set
+            and all(context["ftp"].get(key) == previous_ftp.get(key) for key in ("watts", "measured_on"))):
+        # Older clients do not know provenance fields. Saving unrelated context
+        # must not relabel an unchanged estimate/test/import as manual FTP.
+        for key in ("source", "methodology", "source_reference", "protocol"):
+            if key in previous_ftp:
+                context["ftp"][key] = previous_ftp[key]
+    previous_ftp_normalized = previous_ftp
+    if isinstance(previous_ftp, dict):
+        try:
+            previous_ftp_normalized = ConfirmedFTP.model_validate(previous_ftp).model_dump(mode="json", exclude_none=True)
+        except (ValueError, TypeError):
+            pass
     if row is None:
         row = AthleteProfile(user_id=user.id, revision=1)
         session.add(row)
@@ -51,11 +65,13 @@ async def write_profile(session, user, payload):
         row.revision += 1
     row.training_focus, row.context, row.updated_at = payload.training_focus, context, datetime.now(UTC)
     ftp = context.get("ftp")
-    if ftp and ftp != previous_ftp:
+    if ftp and ftp != previous_ftp_normalized:
         # New accepted assertions only: existing profile values are never
         # backfilled into an invented measurement history.
         session.add(AthleteEntry(user_id=user.id,kind="ftp_assertion",date=date.fromisoformat(ftp["measured_on"]),
-            payload={"watts":ftp["watts"],"measured_on":ftp["measured_on"],"source":"user_confirmed","profile_revision":row.revision}))
+            payload={"watts":ftp["watts"],"measured_on":ftp["measured_on"],"source":"user_confirmed","profile_revision":row.revision,
+                "threshold_source":ftp.get("source", "manual"), "methodology":ftp.get("methodology", ""),
+                "source_reference":ftp.get("source_reference", ""), "protocol":ftp.get("protocol", "")}))
     from app.services.athlete_calendar import sync_profile_events
     await sync_profile_events(session, user, context)
     await session.flush()

@@ -1,6 +1,7 @@
 import { localDay } from "../../components/data";
 import { YourDay } from "../athlete/YourDay";
 import { EnduranceMetrics } from "../athlete/EnduranceMetrics";
+import { ComparisonContextEditor } from "./ComparisonContextEditor";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -366,6 +367,7 @@ export default function ActivityDetailPage() {
           <Link className="text-link text-[13px]" to={`/app/sharing?type=activity&id=${a.id}`}>{t("sharing.title")} ↗</Link>
           <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} /></div>
           {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
+          {["running", "cycling"].includes(kind) && <ComparisonContextEditor activityId={a.id} />}
           {kind === "strength" && <StrengthBodyMap activity={a} />}
           <div className={(!indoor || hasGps) ? "grid gap-6 xl:grid-cols-[1.6fr_1fr]" : "grid gap-6"}>
             {(!indoor || hasGps) && <Card>

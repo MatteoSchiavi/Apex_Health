@@ -150,7 +150,10 @@ def adherence(planned, links, checks, activities, end, *, complete=True):
     ids = {a.id for a in activities}
     associated = {link.planned_session_id for link in links
         if link.method == "user_confirmed" and link.activity_id in ids and link.planned_session_id is not None}
-    by_plan = {c.planned_session_id: c for c in checks if c.planned_session_id is not None}
+    by_plan = {}
+    for c in sorted(checks,key=lambda c:c.id,reverse=True):
+        if c.planned_session_id is not None:
+            by_plan.setdefault(c.planned_session_id,c)
     due = [p for p in planned if p.date <= end]
     completed, partial, skipped = [], [], []
     for p in due:
@@ -171,11 +174,11 @@ def adherence(planned, links, checks, activities, end, *, complete=True):
         prerequisites=["confirmed_active_or_completed_plan", "explicit_session_identity"])
 
 
-def best_duration_power(activity, streams):
+def best_duration_power(activity, streams, *, durations=POWER_DURATIONS):
     """Exact rolling means within the shared dense 1Hz power eligibility gate."""
     segments, valid, _ = dense_power(activity, streams)
     result = []
-    for seconds in POWER_DURATIONS:
+    for seconds in durations:
         best = None
         if valid:
             for segment in segments:
@@ -299,18 +302,121 @@ def aerobic_trend(rows, streams, disciplines, timezone):
             "speed_change_pct": (b[2]/a[2]-1)*100, "reference_date": local_day(a[0], timezone).isoformat(), "current_date": local_day(b[0], timezone).isoformat()}
         deps = [f"streams:{r[0].id}:speed,hr" for r in pair] + [f"activity:{r[0].id}:source_metrics,weather_snapshot" for r in pair]
     return outcome("comparable_easy_steady_speed_hr", value, "%", "(current_time_weighted_speed / reference_time_weighted_speed - 1) * 100",
-        deps, reason="insufficient_comparable_easy_steady_recordings", quality={"eligible_activity_count": len(eligible), "comparison": "latest_eligible_vs_earliest_matching"},
+        deps, reason="insufficient_comparable_easy_steady_recordings", quality={"eligible_activity_count": len(eligible), "comparison": "latest_eligible_vs_earliest_matching",
+            "comparison_context_provenance":[{"activity_id":r[0].id,"provider":r[1][0],
+                "assertion":(r[0].source_metrics.get(r[1][0],{}) or {}).get("provenance",{"kind":"recorded_context_verification_not_established"})} for r in pair] if pair else []},
         prerequisites=["explicit_easy_or_steady_context", "same_provider_discipline_route_terrain_indoor_and_time_convention", "HR_difference_at_most_3_bpm",
             "30min_contiguous_speed_HR", "90_percent_coverage", "time_weighted_speed_cv_at_most_10_percent", "outdoor_temperature_within_3C_humidity_10pp_wind_5kmh"],
-        limitations=["descriptive_comparison_not_causal_progress", "recording_and_environment_confound", "eligibility_cutoffs_not_physiological_thresholds"])
+        limitations=["descriptive_comparison_not_causal_progress", "recording_and_environment_confound", "eligibility_cutoffs_not_physiological_thresholds", "athlete_asserted_context_not_provider_verified"])
 
 
-def goal_progress(focus, weekly):
-    """Saved frequency/distance are context, not necessarily a target."""
-    event = (focus or {}).get("event")
-    return outcome("goal_progress", None, "context", "requires_explicit_comparable_goal_measurements",
-        ["athlete_profile:context.focuses"], reason="event_target_requires_matching_verified_performance" if event else "no_explicit_measurable_progress_target",
-        limitations=["saved_weekly_baseline_not_automatically_a_prescription", "no_mixed_quantity_progress_score"])
+def goal_progress(focus, weekly, *, rows=(), streams=None, end=None, today=None,
+        complete=True, streams_complete=True, profile_revision=None, strength=None):
+    """Compare one explicit target with compatible recorded evidence only."""
+    target = (focus or {}).get("measurable_goal")
+    deps = [f"athlete_profile:{profile_revision}:context.focuses.measurable_goal"]
+    value, unit, reason = None, "context", "no_explicit_measurable_progress_target"
+    quality = {"history_complete":complete}
+    formula = "recorded compatible measurement / explicit target * 100"
+    if isinstance(target,dict) and positive(target.get("target")):
+        key, goal = target.get("metric"), float(target["target"])
+        measured, details = None, {}
+        reason = "no_eligible_goal_measurement"
+        if key in {"weekly_distance_km","weekly_duration_min"}:
+            unit, attr, factor = ("km","distance_m",1000) if key == "weekly_distance_km" else ("min","duration_s",60)
+            if end and today:
+                # Most recent completed account-local Mon–Sun week, never a
+                # clipped boundary or the in-progress current week.
+                cutoff = min(end,today-timedelta(days=1))
+                sunday = cutoff-timedelta(days=(cutoff.weekday()+1)%7)
+                monday = sunday-timedelta(days=6)
+                quality.update(window_start=monday.isoformat(),window_end=sunday.isoformat(),period="latest_completed_calendar_week")
+                bucket = next((b for b in weekly if b["start"] == monday.isoformat() and b["end"] == sunday.isoformat()),None)
+                observed = "distance" if attr == "distance_m" else "duration"
+                if bucket and bucket["activity_count"] and bucket["observed"][observed] == bucket["activity_count"]:
+                    measured = bucket[attr]/factor
+                    deps.extend(bucket["source_dependencies"])
+                else:
+                    reason = "requires_complete_latest_calendar_week_measurements"
+        elif key == "longest_distance_km":
+            unit = "km"
+            eligible = [a for a in rows if eligible_run(a)]
+            # Missing distance/quality can hide a longer session.
+            if len(eligible) != len(rows):
+                reason = "incomplete_compatible_distance_measurements"
+            elif eligible:
+                winner = max(eligible,key=lambda a:(float(a.distance_m),a.start_time,a.id))
+                measured = float(winner.distance_m)/1000
+                details = {"activity_id":winner.id}
+                deps.append(f"activity:{winner.id}:distance_m")
+        elif key == "best_power_w":
+            unit = "W"
+            seconds = target.get("duration_s")
+            if isinstance(seconds,int) and not isinstance(seconds,bool) and 1 <= seconds <= 3600:
+                quality["duration_s"] = seconds
+                candidates = [best_duration_power(a,(streams or {}).get(a.id,[]),durations=(seconds,))[0] for a in rows]
+                candidates = [m for m in candidates if m["value"] is not None]
+                if candidates and streams_complete:
+                    winner = max(candidates,key=lambda m:m["value"])
+                    measured = winner["value"]
+                    details = {"activity_id":winner["quality"]["activity_id"],"duration_s":seconds}
+                    deps.extend(winner["source_dependencies"])
+                elif not streams_complete:
+                    reason = "incomplete_power_stream_history"
+            else:
+                reason = "requires_explicit_power_duration_1_to_3600s"
+        elif key == "exercise_estimated_1rm_kg":
+            unit = "kg"
+            sessions = [r for r in (strength or {}).get("sessions",[]) if r["exercise"] == target.get("exercise") and r["e1rm_kg"] is not None]
+            if (strength or {}).get("history_complete") is False:
+                reason = "incomplete_recorded_strength_history"
+            elif len({r["exercise_id"] for r in sessions}) == 1:
+                latest = max(sessions,key=lambda r:r["date"])
+                earliest = min(sessions,key=lambda r:r["date"])
+                measured = latest["e1rm_kg"]
+                details = {"exercise":latest["exercise"],"exercise_id":latest["exercise_id"],"measured_on":latest["date"],
+                    "reference_date":earliest["date"],"reference_estimate_kg":earliest["e1rm_kg"],
+                    "change_pct":(measured/earliest["e1rm_kg"]-1)*100 if latest["date"] != earliest["date"] else None}
+                deps.extend(latest["source_dependencies"]+earliest["source_dependencies"])
+                quality["measurement_formula_version"] = strength.get("formula_version")
+        else:
+            reason = "unsupported_measurable_goal_metric"
+        if not complete:
+            reason, measured = "incomplete_activity_history", None
+        if measured is not None:
+            value = {"metric":key,"measurement":measured,"target":goal,"measurement_unit":unit,
+                "progress_pct":measured/goal*100,**details}
+    return outcome("goal_progress",value,unit,formula,list(dict.fromkeys(deps)),reason=reason,quality=quality,
+        limitations=["saved_weekly_baseline_not_automatically_a_prescription", "no_mixed_quantity_progress_score",
+            "recorded_history_not_proof_of_no_training", "target_attainment_not_event_performance_prediction"]
+            + (["estimated_strength_not_tested_maximum", "same_catalog_exercise_only_equipment_and_technique_can_confound"] if unit == "kg" else []))
+
+
+async def strength_overview(session, user, start=None, end=None, *, now=None):
+    from app.services.gym_progression import recorded_sets, gym_progression
+    start,end = date_bounds(start,end,user.timezone,now=now)
+    today = (now or datetime.now(UTC)).astimezone(ZoneInfo(user.timezone)).date()
+    rows,complete = await recorded_sets(session,user,start,min(end,today))
+    # A future saved set is not an observed performance.
+    rows = [(log,exercise) for log,exercise in rows if log.done_at <= (now or datetime.now(UTC))]
+    progression = gym_progression(rows,user.timezone,complete=complete)
+    profile = await session.get(AthleteProfile,user.id)
+    focus = (profile.context or {}).get("focuses",{}).get("gym") if profile else None
+    left,right = utc_bounds(start,end,user.timezone)
+    activity_rows = (await session.scalars(select(Activity).join(Discipline,Discipline.id == Activity.discipline_id)
+        .where(Activity.user_id == user.id,Discipline.name == "strength",Activity.start_time >= left,
+            Activity.start_time < right,Activity.start_time <= (now or datetime.now(UTC)))
+        .order_by(Activity.start_time.desc(),Activity.id.desc()).limit(ACTIVITY_LIMIT+1))).all()
+    activity_complete = len(activity_rows) <= ACTIVITY_LIMIT
+    activity_rows = activity_rows[:ACTIVITY_LIMIT]
+    weekly = history_buckets(activity_rows,start,end,user.timezone)
+    weekly_goal = ((focus or {}).get("measurable_goal") or {}).get("metric") == "weekly_duration_min"
+    goal = goal_progress(focus,weekly,strength=progression,end=end,today=today,
+        profile_revision=profile.revision if profile else None,complete=activity_complete if weekly_goal else complete)
+    return {"sport":"strength","version":VERSION,"range":{"start":start.isoformat(),"end":end.isoformat(),"timezone":user.timezone},
+        "state":"partial" if not complete or not activity_complete else "ready" if rows or activity_rows else "empty","progression":progression,
+        "weekly":weekly,"quality":{"activity_history_complete":activity_complete,"set_history_complete":complete},
+        "goal_context":{"focus":focus,"goal_progress":goal}}
 
 
 def recent_body_mass(observations, at, *, excluded=(), complete=True):
@@ -640,8 +746,7 @@ def climb_progress(rows, disciplines, at):
 
 
 def unsupported(sport):
-    reasons = {"grade_adjusted_pace": "unsupported_model_no_validated_grade_adjustment",
-        "automatic_intervals": "unsupported_model_no_validated_interval_segmentation"} if sport == "running" else {}
+    reasons = {"grade_adjusted_pace": "unsupported_model_no_validated_grade_adjustment"} if sport == "running" else {}
     return [outcome(key, None, "context", "not_computed", reason=reason,
         limitations=["unsupported_inputs_or_method_not_inferred"]) for key,reason in reasons.items()]
 
@@ -656,6 +761,8 @@ def ftp_assertion_history(entries,start,end,*,complete=True):
         if payload.get("measured_on") != entry.date.isoformat():
             continue
         records.append({"entry_id":entry.id,"watts":watts,"measured_on":entry.date.isoformat(),"source":"user_confirmed",
+            "threshold_source":payload.get("threshold_source","manual"), "methodology":payload.get("methodology"),
+            "source_reference":payload.get("source_reference"), "protocol":payload.get("protocol"),
             "recorded_at":entry.created_at.isoformat(),"method":"explicit_dated_profile_assertion","profile_revision":payload.get("profile_revision")})
         deps.append(f"athlete_entry:{entry.id}:{entry.revision}")
     return outcome("ftp_trend",records if records and complete else None,"W","accepted dated confirmed profile assertions ordered by measurement date and assertion ID",
@@ -734,7 +841,12 @@ async def sport_overview(session, user, sport, start=None, end=None, *, now=None
         check_conditions.append(SessionCheckin.planned_session_id.in_(plan_ids))
     checks = (await session.scalars(select(SessionCheckin).where(SessionCheckin.user_id == user.id, or_(*check_conditions))
         .order_by(SessionCheckin.id.desc()).limit(ACTIVITY_LIMIT*2+1))).all() if check_conditions else []
-    checks_by_activity = {c.activity_id:c for c in checks if c.activity_id in id_set}
+    check_truncated = len(checks) > ACTIVITY_LIMIT*2
+    link_truncated = len(links) > ACTIVITY_LIMIT
+    checks_by_activity = {}
+    for c in checks:
+        if c.activity_id in id_set:
+            checks_by_activity.setdefault(c.activity_id,c)
     links_by_activity = {l.activity_id:l for l in links if l.method == "user_confirmed"}
     recent = []
     for a in rows[:RECENT_LIMIT]:
@@ -752,6 +864,8 @@ async def sport_overview(session, user, sport, start=None, end=None, *, now=None
             efficiency["key"] = "cycling_speed_hr_efficiency"
             efficiency["limitations"].extend(["speed_affected_by_coasting_wind_surface_and_bicycle", "HR_only_mode"])
             metrics.append(efficiency)
+        from app.services.interval_detection import automatic_intervals
+        metrics.append(automatic_intervals(a,streams[a.id],field="power" if sport == "cycling" and any(r.power is not None for r in streams[a.id]) else "speed", complete=len(streams[a.id]) == counts.get(a.id,0)))
         metrics.extend(stream_distribution(a,streams[a.id],field,width,unit) for field,width,unit in
             (("hr",10,"bpm"),("speed",1,"m/s"),("cadence",10,"cadence/min")) + ((("power",50,"W"),) if sport == "cycling" else ()))
         metrics.extend(lap_average_distribution(a,laps[a.id],field,width,unit) for field,width,unit in
@@ -778,12 +892,16 @@ async def sport_overview(session, user, sport, start=None, end=None, *, now=None
         AthleteEntry.kind == "observation_annotation", annotation_observation_id.in_(mass_ids))
         .distinct(annotation_observation_id)
         .order_by(annotation_observation_id,AthleteEntry.id.desc()).limit(ACTIVITY_LIMIT+1))).all() if mass_ids else []
+    mass_complete = mass_complete and len(annotations) <= ACTIVITY_LIMIT
     excluded_mass = {a.payload["observation_id"] for a in annotations if a.payload.get("exclude_from_analysis")}
     mass = recent_body_mass(mass_rows,mass_at,excluded=excluded_mass,complete=mass_complete)
     ftp, ftp_reason, measured = confirmed_ftp(context, end)
-    ftp_out = outcome("confirmed_ftp", {"watts": ftp, "measured_on": measured.isoformat(), "mode": "manually_confirmed", "source": "athlete_profile", "confirmed": True} if ftp else None,
+    ftp_out = outcome("confirmed_ftp", {"watts": ftp, "measured_on": measured.isoformat(), "mode": "manually_confirmed" if (context.get("ftp") or {}).get("source","manual") == "manual" else (context.get("ftp") or {}).get("source"), "source": "athlete_profile", "confirmed": True,
+        "threshold_source":(context.get("ftp") or {}).get("source","manual"), "methodology":(context.get("ftp") or {}).get("methodology"),
+        "source_reference":(context.get("ftp") or {}).get("source_reference"), "protocol":(context.get("ftp") or {}).get("protocol")} if ftp else None,
         "W", "explicitly_confirmed_profile_FTP_not_estimated", [f"athlete_profile:{profile.revision}:ftp"] if profile else [],
-        recorded=True, reason=ftp_reason, quality={"maximum_age_days":90}, limitations=["confirmation_not_protocol_validation", "no_historical_threshold_series"])
+        recorded=True, reason=ftp_reason, quality={"maximum_age_days":90,"threshold_eligible":ftp is not None,
+            "recorded_assertion":{k:(context.get("ftp") or {}).get(k) for k in ("watts","measured_on","confirmed","source","methodology","source_reference","protocol")}}, limitations=["confirmation_not_protocol_validation", "no_historical_threshold_series"])
     wkg = outcome("confirmed_ftp_watts_per_kg", ftp/mass["value"]["kg"] if ftp and mass["value"] else None,"W/kg",
         "explicitly_confirmed_FTP_watts / latest_eligible_recent_body_mass_kg",ftp_out["source_dependencies"]+mass["source_dependencies"],
         reason=ftp_reason or mass["unavailable_reason"],quality={"body_mass":mass["value"],"mass_window_days":30,"comparison_at":mass_at.isoformat()},
@@ -810,6 +928,8 @@ async def sport_overview(session, user, sport, start=None, end=None, *, now=None
         limitations.append("planned_session_history_truncated")
     if not mass_complete:
         limitations.append("body_mass_history_truncated")
+    if check_truncated or link_truncated:
+        limitations.append("feedback_or_association_history_truncated")
     day_index = defaultdict(list)
     for a in history:
         if eligible_run(a):
@@ -829,15 +949,15 @@ async def sport_overview(session, user, sport, start=None, end=None, *, now=None
             .order_by(AthleteEntry.date.desc(),AthleteEntry.id.desc()).limit(ACTIVITY_LIMIT+1))).all()
         advanced.append(ftp_assertion_history(ftp_history[:ACTIVITY_LIMIT],start,end,complete=len(ftp_history) <= ACTIVITY_LIMIT))
     return {"sport": sport, "version": VERSION, "range": {"start":start.isoformat(), "end":end.isoformat(), "timezone":user.timezone},
-        "state": "partial" if truncated or budget_exceeded or lap_exceeded or plan_truncated or not mass_complete else "ready" if rows else "empty",
+        "state": "partial" if truncated or budget_exceeded or lap_exceeded or plan_truncated or check_truncated or link_truncated or not mass_complete else "ready" if rows else "empty",
         "quality": {"activity_limit_reached":truncated, "stream_budget_exceeded":budget_exceeded, "limitations":limitations},
         "totals":volume_bucket(rows,start,end), "weekly":weekly, "monthly":history_buckets(rows,start,end,user.timezone,monthly=True),
         "recent_activities":recent, "best_efforts":recorded_best_efforts(rows),
         "power_duration":curve,
         "long_run_progression":[long_run_progression(a,history,user.timezone,complete=not truncated,day_index=day_index) for a in rows] if sport == "running" else [],
         "aerobic_trend":aerobic_trend(rows,streams,names,user.timezone), "consistency":consistency(rows,weekly,user.timezone,complete=not truncated),
-        "adherence":adherence(planned,links,checks,rows,min(end,(now or datetime.now(UTC)).astimezone(ZoneInfo(user.timezone)).date()),complete=not truncated and not plan_truncated),
-        "goal_context":{"training_focus":profile.training_focus if profile else [], "focus":focus, "goal_progress":goal_progress(focus,weekly),"focus_configuration":focus_configuration(profile,end)},
+        "adherence":adherence(planned,links,checks,rows,min(end,(now or datetime.now(UTC)).astimezone(ZoneInfo(user.timezone)).date()),complete=not truncated and not plan_truncated and not link_truncated and not check_truncated),
+        "goal_context":{"training_focus":profile.training_focus if profile else [], "focus":focus, "goal_progress":goal_progress(focus,weekly,rows=[a for a in rows if a.start_time <= (now or datetime.now(UTC))],streams=streams,end=end,today=(now or datetime.now(UTC)).astimezone(ZoneInfo(user.timezone)).date(),complete=not truncated,streams_complete=not budget_exceeded,profile_revision=profile.revision if profile else None),"focus_configuration":focus_configuration(profile,end)},
         "ftp":ftp_out if sport == "cycling" else outcome("confirmed_ftp",None,"W","not_applicable",reason="not_applicable_to_running"),
         "body_mass":mass if sport == "cycling" else outcome("recent_body_mass",None,"kg","not_applicable",reason="not_applicable_to_running"),
         "advanced_metrics":advanced}

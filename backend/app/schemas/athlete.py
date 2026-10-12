@@ -15,6 +15,29 @@ class TargetEvent(Strict):
     priority: Literal[1, 2, 3] = 2
 
 
+class MeasurableGoal(Strict):
+    metric: Literal["weekly_distance_km", "weekly_duration_min", "longest_distance_km", "best_power_w", "exercise_estimated_1rm_kg"]
+    target: float = Field(gt=0, le=100000, allow_inf_nan=False, strict=True)
+    duration_s: int | None = Field(default=None, ge=1, le=3600, strict=True)
+    exercise: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def required_reference(self):
+        maximum = {"weekly_distance_km":5000, "weekly_duration_min":10080, "longest_distance_km":5000,
+            "best_power_w":5000, "exercise_estimated_1rm_kg":2000}[self.metric]
+        if self.target > maximum:
+            raise ValueError("Goal exceeds the supported range for this measurement")
+        if self.metric == "best_power_w" and self.duration_s is None:
+            raise ValueError("Power goals require an explicit duration")
+        if self.metric == "exercise_estimated_1rm_kg" and not (self.exercise or "").strip():
+            raise ValueError("Strength goals require a comparable exercise")
+        if self.metric != "best_power_w" and self.duration_s is not None:
+            raise ValueError("Duration applies only to power goals")
+        if self.metric != "exercise_estimated_1rm_kg" and self.exercise is not None:
+            raise ValueError("Exercise applies only to strength goals")
+        return self
+
+
 class FocusContext(Strict):
     level: Literal["new", "beginner", "intermediate", "experienced"] | None = None
     weekly_frequency: int | None = Field(default=None, ge=0, le=21)
@@ -28,6 +51,7 @@ class FocusContext(Strict):
     equipment: list[str] = Field(default_factory=list, max_length=30)
     constraints: str = Field(default="", max_length=2000)
     power_available: bool | None = None
+    measurable_goal: MeasurableGoal | None = None
     @model_validator(mode="after")
     def unique_days(self):
         if len(self.preferred_days) != len(set(self.preferred_days)):
@@ -49,9 +73,23 @@ class AvailabilityWindow(Strict):
 
 
 class ConfirmedFTP(Strict):
-    watts: float = Field(gt=0, le=2000)
+    watts: float = Field(gt=0, le=2000, allow_inf_nan=False)
     measured_on: CalendarDate
     confirmed: Literal[True]
+    source: Literal["manual", "tested", "imported", "estimated"] = "manual"
+    methodology: str = Field(default="", max_length=500)
+    source_reference: str = Field(default="", max_length=300)
+    protocol: str = Field(default="", max_length=300)
+
+    @model_validator(mode="after")
+    def provenance_required(self):
+        if self.source != "manual" and not self.methodology.strip():
+            raise ValueError("Non-manual FTP requires its methodology")
+        if self.source == "tested" and not self.protocol.strip():
+            raise ValueError("Tested FTP requires a recorded protocol; user confirmation is not protocol validation")
+        if self.source == "imported" and not self.source_reference.strip():
+            raise ValueError("Imported FTP requires a source reference")
+        return self
 
 
 class ZoneBand(Strict):
@@ -146,6 +184,12 @@ class AthleteUpdate(Strict):
             raise ValueError("Training priorities must be unique and ordered")
         if not set(self.context.focuses) <= set(self.training_focus):
             raise ValueError("Focus details must refer to selected training priorities")
+        for focus, details in self.context.focuses.items():
+            goal = details.measurable_goal
+            if goal and ((goal.metric == "best_power_w" and focus != "cycling") or
+                         (goal.metric == "exercise_estimated_1rm_kg" and focus != "gym") or
+                         (focus == "gym" and goal.metric in {"weekly_distance_km", "longest_distance_km"})):
+                raise ValueError("Goal metric must be compatible with the selected sport")
         referenced = set(self.context.supporting_focus) | set(self.context.weekly_allocation_min)
         referenced.update(focus for season in self.context.seasonal_focus for focus in season.priorities)
         if not referenced <= set(self.training_focus):

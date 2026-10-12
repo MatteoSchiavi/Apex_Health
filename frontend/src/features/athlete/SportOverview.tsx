@@ -21,7 +21,7 @@ function HistoryChart({ label, unit, points, bar = false }: { label: string; uni
   </div>;
 }
 
-export default function SportOverview() {
+function EnduranceOverview() {
   const { t } = useTranslation();
   const { sport = "running" } = useParams();
   const uid = useUi(state => state.me?.user_id);
@@ -55,4 +55,41 @@ export default function SportOverview() {
       <details className="text-[12px] text-muted"><summary>{t("sportProgress.range_quality")}</summary><p className="mt-3">{data.version} · {data.range.start} – {data.range.end}</p><ul className="mt-3 space-y-2">{data.quality.limitations.map(key => <li key={key}>{t("sportProgress.rules." + key, { defaultValue: key.replaceAll("_", " ") })}</li>)}</ul><MetricProvenance metric={data.consistency} /></details>
     </>}
   </div>;
+}
+
+interface StrengthOverviewData {
+  sport: string; state: string; range: { start: string; end: string; timezone: string };
+  progression: { formula: string; formula_version: string; history_complete: boolean; sessions: {
+    exercise: string; exercise_id: number; date: string; e1rm_kg: number | null;
+    sets: number; reps: number; volume_kg: number | null; source_dependencies: string[];
+  }[]; limitations: string[] };
+  goal_context: { goal_progress: SportProgressMetric };
+}
+
+function StrengthOverview() {
+  const { t } = useTranslation();
+  const uid = useUi(state => state.me?.user_id);
+  const timezone = useUi(state => state.me?.timezone);
+  const today = localDay(timezone);
+  const [start, setStart] = useState(shiftDay(today, -83));
+  const [end, setEnd] = useState(today);
+  const [range, setRange] = useState({ start, end });
+  const validRange = !!start && !!end && start <= end && (Date.parse(end) - Date.parse(start)) / 86400000 < 730;
+  const query = useQuery({ queryKey: ["athlete-sport-overview", uid, "strength", range.start, range.end], queryFn: () => api.get<StrengthOverviewData>(`/athlete/sports/strength/overview?start=${range.start}&end=${range.end}`) });
+  const data = query.data;
+  return <div className="space-y-6"><PageHeader title={t("sportProgress.title_strength", { defaultValue: t("athlete.focus_gym") })} subtitle={t("sportProgress.subtitle")} />
+    <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={() => setRange({ start, end })}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert">{t("sportProgress.range_error")}</p>}</Card>
+    {query.isLoading && <Loading />}{query.isError && <ErrorNote message={t("sportProgress.load_error")} />}
+    {data && <><Card><CardHeader title={<h2>{t("sportProgress.goals_trends")}</h2>} right={<Badge>{t("sportProgress.state_" + data.state)}</Badge>} /><ProgressMetric metric={data.goal_context.goal_progress} /><Link className="mt-4 inline-block text-link" to="/app/settings?tab=profile">{t("sportProgress.review_goals")}</Link></Card>
+      <Card><CardHeader title={<h2>{t("athlete.focus_gym")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("sportProgress.strength_note", { defaultValue: "Estimated strength from recorded sets, not a tested maximum. Compare the same exercise and equipment; technique and conditions can affect the estimate." })}</p>
+        {data.state === "partial" && <p role="status">{t("sportProgress.partial")}</p>}
+        {!data.progression.sessions.length && <p>{t("sportProgress.empty")}</p>}
+        <div className="space-y-4">{data.progression.sessions.map(row => <section key={`${row.exercise_id}:${row.date}`} className="border-t border-hairline pt-4"><h3>{row.date} · {row.exercise}</h3><p className="mt-2">{t("sportProgress.strength_estimate", { defaultValue: "Estimated 1RM" })}: {fmtNum(row.e1rm_kg, 1)} kg</p><details className="mt-3 text-[12px] text-muted"><summary>{t("sportProgress.method")}</summary><p className="mt-2">{data.progression.formula} · {data.progression.formula_version}</p><p className="break-all">{row.source_dependencies.join(" · ")}</p></details></section>)}</div>
+      </Card></>}
+  </div>;
+}
+
+export default function SportOverview() {
+  const { sport } = useParams();
+  return sport === "strength" ? <StrengthOverview /> : <EnduranceOverview />;
 }

@@ -53,6 +53,10 @@ async def endurance(ident: int, user: User = Depends(get_current_user), session:
         for field,width,unit in fields:
             metrics.append(stream_distribution(activity,streams,field,width,unit))
             if field!='speed': metrics.append(lap_average_distribution(activity,laps,field,width,unit))
+    if kind in {'running','cycling'}:
+        from app.services.interval_detection import automatic_intervals
+        signal = 'power' if kind == 'cycling' and any(r.power is not None for r in streams) else 'speed'
+        metrics.append(automatic_intervals(activity, streams, field=signal, complete=len(streams) <= 200000))
     if len(streams) > 200000 or len(laps) > 2000:
         for result in metrics:
             if any(d.startswith(("streams:", "laps:")) for d in result["source_dependencies"]):

@@ -180,6 +180,36 @@ async def gear_history(gear_id:int,limit:int=Query(default=100,ge=1,le=200),offs
         'default_discipline_ids':defaults,'reminder_policy':'user_configured_intervals_only'}
 
 
+@router.get('/{gear_id}/comparison')
+async def compare_gear(gear_id:int, other_gear_id:int=Query(gt=0),
+        session:AsyncSession=Depends(get_session),user:User=Depends(get_current_user)):
+    from app.services.gear_comparison import ACTIVITY_LIMIT, comparison
+    gears = list((await session.scalars(select(Gear).where(
+        Gear.id.in_((gear_id,other_gear_id)),Gear.user_id==user.id))).all())
+    if len(gears) != 2:
+        if gear_id == other_gear_id and gears:
+            raise HTTPException(422,'Choose two different equipment items')
+        raise HTTPException(404,'Equipment not found')
+    items = {row.id:row for row in gears}
+    if items[gear_id].gear_type != items[other_gear_id].gear_type:
+        raise HTTPException(422,'Compare equipment of the same type')
+    rows = []
+    totals = []
+    for ident in (gear_id,other_gear_id):
+        conditions = (ActivityGearLink.gear_id==ident,Activity.user_id==user.id)
+        totals.append(await session.scalar(select(func.count(Activity.id)).select_from(ActivityGearLink)
+            .join(Activity,Activity.id==ActivityGearLink.activity_id).where(*conditions)))
+        rows.append(list((await session.scalars(select(Activity).select_from(ActivityGearLink)
+            .join(Activity,Activity.id==ActivityGearLink.activity_id).where(*conditions)
+            .order_by(Activity.start_time.desc(),Activity.id.desc()).limit(ACTIVITY_LIMIT))).all()))
+    result = comparison(rows[0],rows[1],user.timezone)
+    result.update({'selected_gear':{'id':gear_id,'name':items[gear_id].name},
+        'other_gear':{'id':other_gear_id,'name':items[other_gear_id].name},
+        'history_scope':{'activity_limit_per_gear':ACTIVITY_LIMIT,'selected_total':totals[0],
+            'other_total':totals[1],'truncated':any(count > ACTIVITY_LIMIT for count in totals)}})
+    return result
+
+
 @router.put('/{gear_id}/activities/{activity_id}')
 async def link_activity(gear_id:int,activity_id:int,session:AsyncSession=Depends(get_session),user:User=Depends(get_current_user)):
     await scope_lock(session,user.id,'changes')
