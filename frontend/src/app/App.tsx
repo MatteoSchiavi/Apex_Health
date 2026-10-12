@@ -35,6 +35,10 @@ const BiometricsHubPage = lazy(
   () => import("../features/biometrics/BiometricsHubPage"),
 );
 const MetricPage = lazy(() => import("../features/biometrics/MetricPage"));
+const SportOverview = lazy(() => import("../features/athlete/SportOverview"));
+const WorkoutDetail = lazy(() => import("../features/athlete/WorkoutDetail"));
+const Sharing = lazy(() => import("../features/athlete/Sharing"));
+const PublicSharedView = lazy(() => import("../features/athlete/Sharing").then(m => ({default:m.PublicSharedView})));
 const TrainingPage = lazy(() => import("../features/training/TrainingPage"));
 const CoachPage = lazy(() => import("../features/coach/CoachPage"));
 const SocialPage = lazy(() => import("../features/social/SocialPage"));
@@ -105,6 +109,10 @@ export default function App() {
           <Route path="/" element={<WelcomePage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/join" element={<Join />} />
+          <Route path="/share" element={<Suspense fallback={<Loading />}><PublicSharedView /></Suspense>} />
+          <Route path="/app/sports/:sport" element={<Protected><SportOverview /></Protected>} />
+          <Route path="/app/workouts/:id" element={<Protected><WorkoutDetail /></Protected>} />
+          <Route path="/app/sharing" element={<Protected><Sharing /></Protected>} />
           <Route path="/legal/privacy" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
           <Route path="/legal/terms" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />
           <Route path="/legal/cookies" element={<Suspense fallback={<Loading />}><LegalPage /></Suspense>} />

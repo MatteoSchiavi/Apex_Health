@@ -363,7 +363,8 @@ export default function ActivityDetailPage() {
       />
       {tab === "session" && (
         <>
-          <YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} />
+          <Link className="text-link text-[13px]" to={`/app/sharing?type=activity&id=${a.id}`}>{t("sharing.title")} ↗</Link>
+          <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} /></div>
           {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
           {kind === "strength" && <StrengthBodyMap activity={a} />}
           <div className={(!indoor || hasGps) ? "grid gap-6 xl:grid-cols-[1.6fr_1fr]" : "grid gap-6"}>
@@ -424,6 +425,8 @@ export default function ActivityDetailPage() {
                   unit="mm"
                 />
               </div>
+              <p className="mt-4 text-[12px] text-muted">{t("weather.recorded_context_limit")}</p>
+              <details className="mt-3 text-[12px] text-muted"><summary className="cursor-pointer">{t("weather.source_context")}</summary><p className="mt-3">{typeof weather.source === "string" ? weather.source : t("design.not_specified")} · {typeof weather.date === "string" ? weather.date : t("design.not_specified")}</p><p>{t("weather.kind_"+(typeof weather.data_kind==="string"?weather.data_kind:"unknown"))}</p><p>{t("weather.location_"+(typeof weather.coordinate_source==="string"?weather.coordinate_source:"unknown"))}</p><p>{t("weather.fetched_at")}: {typeof weather.fetched_at==="string"?new Date(weather.fetched_at).toLocaleString():t("design.not_specified")}</p></details>
             </Card>
           )}
         </>

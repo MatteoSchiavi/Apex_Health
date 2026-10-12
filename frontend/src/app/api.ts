@@ -40,8 +40,9 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
   if (method !== "GET" && method !== "HEAD") {
     if (!(body instanceof FormData)) headers["Content-Type"] = "application/json";
     // F-04 audit: double-submit — the header value MUST match the cookie.
@@ -89,6 +90,7 @@ async function request<T>(
 
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
+  getWithHeaders: <T>(path: string, headers: Record<string, string>) => request<T>("GET", path, undefined, headers),
   post: <T>(path: string, body?: unknown) =>
     request<T>("POST", path, body ?? {}),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body ?? {}),

@@ -1,4 +1,5 @@
 import { PlanDocumentPanel } from "../athlete/PlanDocumentPanel";
+import { AthleteInformationImport } from "../athlete/AthleteInformationImport";
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -497,7 +498,7 @@ function Nutrition() {
   return <NutritionIntegrations />;
 }
 
-function Documents() {
+function GeneralDocuments() {
   const { t } = useTranslation();
   const docs = useLab<Doc[]>("/lab/documents");
   const action = useAction();
@@ -537,8 +538,8 @@ function Documents() {
         error={docs.isError}
         empty={docs.data?.length === 0}
       />
-      {docs.data?.map((d) => (
-        <Card key={d.id}>
+      {docs.data?.filter(d => (d as Doc & { coach_eligible?: boolean }).coach_eligible !== false).map((d) => (
+        <div id={`document-${d.id}`} key={d.id}><Card>
           <CardHeader
             title={d.filename}
             right={
@@ -568,9 +569,7 @@ function Documents() {
               value={d.excerpt ?? ""}
               required
             />
-            <p className="break-all text-[11px] text-muted">
-              SHA-256 · {d.content_hash}
-            </p>
+            <details className="text-[11px] text-muted"><summary>{t("athleteImport.technical_details")}</summary><p className="mt-2 break-all">SHA-256 · {d.content_hash}</p></details>
           </Form>
           <PlanDocumentPanel document={d} />
           <div className="mt-5 flex flex-wrap gap-4">
@@ -590,10 +589,14 @@ function Documents() {
               {t("training.delete")}
             </Button>
           </div>
-        </Card>
+        </Card></div>
       ))}
     </div>
   );
+}
+function Documents() {
+  const { t } = useTranslation();
+  return <div className="space-y-6"><AthleteInformationImport /><details open={window.location.hash.startsWith("#document-")}><summary className="cursor-pointer text-[14px] font-medium">{t("athleteImport.general_documents")}</summary><p className="my-4 text-[13px] text-muted">{t("athleteImport.general_documents_note")}</p><GeneralDocuments /></details></div>;
 }
 function Labs() {
   const { t } = useTranslation();

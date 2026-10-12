@@ -432,6 +432,7 @@ export function Input({
   step,
   autoComplete,
   minLength,
+  maxLength,
   className = "",
 }: {
   value: string | number;
@@ -445,6 +446,7 @@ export function Input({
   step?: number;
   autoComplete?: string;
   minLength?: number;
+  maxLength?: number;
   className?: string;
 }) {
   return (
@@ -460,6 +462,7 @@ export function Input({
         placeholder={placeholder}
         autoComplete={autoComplete}
         minLength={minLength}
+        maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
         className="h-11 w-full rounded-control border border-hairline bg-transparent px-3 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
       />

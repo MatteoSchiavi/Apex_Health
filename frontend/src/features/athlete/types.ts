@@ -7,6 +7,8 @@ export interface SportContext {
 }
 export interface ZoneConfiguration { effective_from: string; bands: { name: string; lower: number; upper: number }[] }
 export interface AthleteContext {
+  focus_mode?: "prioritized" | "balanced"; supporting_focus?: Focus[]; weekly_allocation_min?: Partial<Record<Focus,number>>;
+  seasonal_focus?: {starts_on:string;ends_on:string;priorities:Focus[]}[];
   hr_zones?: ZoneConfiguration; power_zones?: ZoneConfiguration;
   focuses?: Partial<Record<Focus, SportContext>>; main_goal?: string; weekly_time_budget_min?: number;
   preferred_rest_day?: number; availability?: { day: number; start: string; end: string }[];
@@ -23,6 +25,7 @@ export interface AiState {
 }
 export interface Checkin {
   id: number; activity_id: number | null; planned_session_id: number | null; status: string;
+  fatigue?: number | null; soreness?: number | null; workout_quality?: number | null; modification_reason?: string; terrain_notes?: string;
   rpe: number | null; pain: boolean | null; felt_unwell: boolean | null; note: string; revision: number;
 }
 export interface DaySession {
@@ -39,4 +42,10 @@ export interface AthleteDay {
   date: string; timezone: string; training_focus: Focus[]; sessions: DaySession[]; activities: DayActivity[];
   legacy_gym_sessions: { gym_day_plan_id: number; title: string; status: string }[]; state: string;
   totals: Record<string, { value: number | null; unit: string; available_sessions: number; total_sessions: number }>;
+  sport_totals?: Record<string, AthleteDay["totals"]>;
+  planning_context?: { state: "no_profile" | "profile_incomplete" | "profile_ready" | "plan_draft" | "template_ready" | "active_rest_day";
+    profile_state: "none" | "incomplete" | "ready"; profile_revision: number; active_plan_id: number | null;
+    draft_id: number | null; draft_document_id: number | null; draft_template_id?: number | null; template_id?: number | null };
+  focus_configuration?: {focus_mode: "prioritized" | "balanced"; effective_priorities: Focus[]; supporting_focus: Focus[]; active_season: {starts_on:string;ends_on:string;priorities:Focus[]}|null};
+  is_historical?: boolean;
 }

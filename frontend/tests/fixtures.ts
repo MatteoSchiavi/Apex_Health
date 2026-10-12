@@ -369,7 +369,7 @@ export async function installApi(
     else if (path === "/legal/config") data = {};
     else if (path === "/athlete/profile") data = athleteProfile;
     else if (path === "/athlete/ai") data = aiState();
-    else if (path === "/athlete/life-events" || path === "/lab/plan-drafts") data = [];
+    else if (path === "/athlete/life-events" || path === "/lab/plan-drafts" || path === "/lab/athlete-imports" || path === "/athlete/templates") data = [];
     else if (path === "/athlete/disciplines") data = ["running", "road_cycling", "strength", "sailing", "skiing", "enduro", "hiit"].map(name => ({ name, category: "endurance" }));
     else if (path === "/athlete/day") data = { date: url.searchParams.get("date") ?? today, timezone: "UTC", training_focus: athleteProfile.training_focus, sessions: [], legacy_gym_sessions: [], state: options.empty ? "no_plan" : "activity_recorded", activities: options.empty ? [] : [{ ...activity, planned_session_id: null, association: "independent", candidate_session_ids: [], checkin: null, comparison: null }], totals: {} };
     else if (/^\/activities\/\d+\/endurance$/.test(path)) data = { sport: "cycling", metrics: [] };

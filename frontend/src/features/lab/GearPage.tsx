@@ -1,3 +1,4 @@
+import { GearHistory } from "../athlete/GearHistory";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -98,6 +99,7 @@ export default function GearPage() {
                   {t("lab.retire")}
                 </Button>
               </div>
+              <GearHistory id={g.gear_id} />
             </Card>
           ))}
         </div>
