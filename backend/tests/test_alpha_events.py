@@ -228,7 +228,7 @@ class LockConnection:
 
 
 @pytest.mark.parametrize("status,event,error_class", [("ok", "integration_sync_success", None),
-    ("partial", "integration_sync_failure", "normalization"), ("skipped", None, None)])
+    ("partial", "integration_sync_partial", None), ("skipped", None, None)])
 async def test_sync_events_record_actual_completed_attempt_status(db_session, monkeypatch, status, event, error_class):
     from app.tasks import provider_sync
     uid = await owner_id(db_session)
@@ -250,7 +250,7 @@ async def test_sync_retries_record_each_failed_attempt_with_sanitized_class(db_s
     monkeypatch.setattr(provider_sync, "engine", SimpleNamespace(connect=LockConnection))
     monkeypatch.setattr(provider_sync, "_sync_account", AsyncMock(side_effect=TimeoutError("token=SECRET health=PRIVATE")))
     for _ in range(2):
-        with pytest.raises(TimeoutError):
+        with pytest.raises(provider_sync.SyncTaskError):
             await provider_sync.sync_account("garmin", uid)
     captured = await events(db_session)
     assert len(captured) == 2

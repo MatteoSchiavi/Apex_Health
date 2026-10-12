@@ -121,6 +121,12 @@ async def test_sync_health_is_private_redacted_and_measurement_staleness_wins(
     assert account_sync["latest_measurement_at"] is None
     assert account_sync["last_attempt_at"] is None
     assert account_sync["credentials_state"] == "configured"
+    accounts = {row["provider"]: row for row in payload["accounts"]}
+    assert accounts["oura"]["state"] == "awaiting_new_data"
+    assert accounts["oura"]["data_freshness"] == "stale"
+    assert accounts["oura"]["has_successful_sync"] is True
+    assert accounts["strava"]["state"] == "awaiting_new_data"
+    assert accounts["strava"]["data_freshness"] == "not_measured"
 
     serialized = str(payload)
     for private_value in (

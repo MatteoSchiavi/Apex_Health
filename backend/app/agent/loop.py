@@ -233,22 +233,70 @@ async def _execute_tool_bounded(
         }
 
 
-def validate_answer(content, evidence_objects):
+VALIDATION_ERROR_CODES = frozenset({
+    "EMPTY_ANSWER", "MALFORMED_JSON", "INVALID_ANSWER_SHAPE", "INVALID_CLAIM_SHAPE",
+    "UNSUPPORTED_CLAIM_KIND", "UNSUPPORTED_ASSOCIATION", "UNSUPPORTED_CAUSAL_CERTAINTY",
+    "UNSAFE_MEDICAL_ADVICE", "EVIDENCE_NOT_ISSUED", "CLAIM_EVIDENCE_MISMATCH",
+    "UNCITED_NUMERIC_TEXT", "METRIC_BINDING_MISMATCH",
+})
+
+
+def _invalid_answer(code, locale="en", **details):
+    """Fail closed with useful next steps; never salvage rejected model prose."""
+    if code in {"UNSUPPORTED_CAUSAL_CERTAINTY", "UNSAFE_MEDICAL_ADVICE"}:
+        reply = (
+            "Le informazioni disponibili non permettono questa conclusione causale o medica. "
+            "Posso aiutarti a distinguere le osservazioni dalle ipotesi. Per sintomi preoccupanti, rivolgiti a un medico."
+            if locale == "it" else
+            "The available information does not support this causal or medical conclusion. "
+            "I can help separate observations from hypotheses. Seek medical help for concerning symptoms."
+        )
+    else:
+        reply = (
+            "Non sono riuscito a verificare l'analisi richiesta. Posso aiutarti con i tuoi obiettivi "
+            "e con indicazioni generali sull'allenamento. Per i valori registrati, consulta le pagine "
+            "delle metriche oppure chiedimi di analizzare una sola metrica in un periodo più breve."
+            if locale == "it" else
+            "I couldn't verify the requested analysis. I can help with your goals and general training "
+            "guidance. For recorded values, check the metrics pages or ask me to analyze one metric "
+            "over a shorter period."
+        )
+    return reply, {"status": "invalid", "verified_claims": [], "error_code": code, **details}
+
+
+def _log_answer_rejection(grounding):
+    code = grounding.get("error_code")
+    if code in VALIDATION_ERROR_CODES:
+        logger.info("Coach answer rejected", extra={
+            "event_code": "coach_answer_rejected", "error_code": code,
+        })
+
+
+def validate_answer(content, evidence_objects, *, locale="en"):
     """Validate explicit measured claims, never label prose as calibrated proof."""
-    from app.agent.claims import inspect_claim_safety, inspect_metric_bindings, validate_claim_kind
+    from app.agent.claims import inspect_claim_safety, inspect_metric_bindings, prose_numbers, validate_claim_kind
+    if not isinstance(content, str) or not content.strip():
+        return _invalid_answer("EMPTY_ANSWER", locale)
+    content = content.strip()
+    # Normalize only the complete provider envelope. Never extract a JSON
+    # object from surrounding prose or tolerate multiple fenced blocks.
+    fence = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", content, re.I | re.S)
+    if fence and "```" in fence[1]:
+        return _invalid_answer("MALFORMED_JSON", locale)
+    if fence:
+        content = fence[1].strip()
+    structured = bool(fence) or content.startswith(("{", "[", "```"))
     try:
-        answer = json.loads(content or "")
+        answer = json.loads(content)
     except (ValueError, TypeError):
-        violations = inspect_claim_safety(content or "")
+        violations = inspect_claim_safety(content)
         if violations:
-            return ("I cannot support that causal or medical conclusion from the available evidence. Please review the observations and seek appropriate help for concerning symptoms.",
-                    {"status": "invalid", "verified_claims": [], "violations": violations})
-        if re.search(r"(?<!\w)\d+(?:[.,]\d+)?", content or ""):
-            return (
-                "I could not verify the measured values in this answer. Please request an evidence-backed analysis.",
-                {"status": "invalid", "verified_claims": []},
-            )
-        return content or "", {
+            return _invalid_answer(violations[0], locale, violations=violations)
+        if structured or "```" in content:
+            return _invalid_answer("MALFORMED_JSON", locale)
+        if prose_numbers(content):
+            return _invalid_answer("UNCITED_NUMERIC_TEXT", locale)
+        return content, {
             "status": "narrative_only",
             "verified_claims": [],
             "note": "No structured measurement claims were verified.",
@@ -258,16 +306,12 @@ def validate_answer(content, evidence_objects):
         or not isinstance(answer.get("answer"), str)
         or not isinstance(answer.get("claims", []), list)
     ):
-        return (
-            "The analysis did not return a valid evidence-backed answer. Try a narrower question.",
-            {"status": "invalid"},
-        )
+        return _invalid_answer("INVALID_ANSWER_SHAPE", locale)
     indexed = {}
     analysis_metadata = {}
     violations = inspect_claim_safety(answer["answer"])
     if violations:
-        return ("I cannot support that causal or medical conclusion from the available evidence. Please review the observations and seek appropriate help for concerning symptoms.",
-                {"status": "invalid", "verified_claims": [], "violations": violations})
+        return _invalid_answer(violations[0], locale, violations=violations)
 
     def walk(obj):
         if isinstance(obj, dict):
@@ -300,15 +344,11 @@ def validate_answer(content, evidence_objects):
     qualitative = []
     for claim_index, claim in enumerate(answer.get("claims", [])):
         if not isinstance(claim, dict):
-            return (
-                "I could not verify the measured claims in this answer. Please request a fresh analysis.",
-                {"status": "invalid"},
-            )
+            return _invalid_answer("INVALID_CLAIM_SHAPE", locale)
         try:
             kind = validate_claim_kind(claim, is_analysis=str(claim.get("evidence_id", "")).startswith("analysis:"))
         except ValueError:
-            return ("I could not verify this claim type. Please request an evidence-backed analysis.",
-                    {"status": "invalid", "verified_claims": []})
+            return _invalid_answer("UNSUPPORTED_CLAIM_KIND", locale)
         row = indexed.get(claim.get("evidence_id"))
         if kind in {"HYPOTHESIS", "UNKNOWN"}:
             qualitative.append({**claim, "kind": kind})
@@ -316,7 +356,7 @@ def validate_answer(content, evidence_objects):
         if kind == "ASSOCIATION":
             # Association is admitted only from the registered observational recipe.
             if analysis_metadata.get(claim.get("evidence_id"), {}).get("recipe") != "intervention_association":
-                return ("No registered association analysis supports this statement.", {"status": "invalid", "verified_claims": []})
+                return _invalid_answer("UNSUPPORTED_ASSOCIATION", locale)
         if row is not None and str(claim.get("evidence_id", "")).startswith(
             "analysis:"
         ):
@@ -346,17 +386,15 @@ def validate_answer(content, evidence_objects):
                 and ("unit" not in claim or claim["unit"] == row.get("unit"))
             )
         if not matches:
-            return (
-                "I could not verify the measured claims in this answer. Please request a fresh analysis.",
-                {"status": "invalid", "verified_claims": [], "error_code":
-                 "EVIDENCE_NOT_ISSUED" if row is None else "CLAIM_EVIDENCE_MISMATCH",
-                 "claim_index": claim_index},
+            return _invalid_answer(
+                "EVIDENCE_NOT_ISSUED" if row is None else "CLAIM_EVIDENCE_MISMATCH",
+                locale, claim_index=claim_index,
             )
         checked_claim = {**claim, "kind": kind}
         if analysis_metadata.get(claim.get('evidence_id'), {}).get('recipe') == 'personal_baseline':
             checked_claim['measurement_metric'] = row.get('metric')
         valid.append(checked_claim)
-    numbers = re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?", answer["answer"])
+    numbers = prose_numbers(answer["answer"])
     claimed = {
         float(c["value"]) for c in valid if isinstance(c.get("value"), (int, float)) and not isinstance(c["value"], bool)
     }
@@ -366,14 +404,12 @@ def validate_answer(content, evidence_objects):
         if analysis_metadata.get(handle, {}).get('recipe') == 'personal_baseline' and claim.get('metric') in {'median', 'mad', 'mean'}:
             source = indexed[handle]
             bindings.append({**claim, 'metric': source.get('metric'), 'unit': source.get('unit')})
-    uncited = sum(float(n) not in claimed for n in numbers)
+    uncited = sum(n not in claimed for n in numbers)
     metric_errors = inspect_metric_bindings(answer["answer"], bindings)
     if uncited or metric_errors:
-        return (
-            "I could not verify all numeric claims in this answer. Please request a fresh analysis.",
-            {"status": "invalid", "verified_claims": [],
-             "error_code": "UNCITED_NUMERIC_TEXT" if uncited else "METRIC_BINDING_MISMATCH",
-             "uncited_number_count": uncited, "metric_binding_error_count": len(metric_errors)},
+        return _invalid_answer(
+            "UNCITED_NUMERIC_TEXT" if uncited else "METRIC_BINDING_MISMATCH", locale,
+            uncited_number_count=uncited, metric_binding_error_count=len(metric_errors),
         )
     return answer["answer"], {
         "status": "structured",
@@ -569,7 +605,8 @@ async def run_agent_loop(
         # A schema/claim mistake is often repairable without retrieving more
         # data. Permit one bounded correction, never bypass the validator or
         # present the rejected answer as verified.
-        reply, grounding = validate_answer(response.content, evidence_objects)
+        reply, grounding = validate_answer(response.content, evidence_objects, locale=locale)
+        _log_answer_rejection(grounding)
         reserve = max(4000, int(last_input_tokens * 1.1)) + 4096
         corrected = False
         if (grounding.get("status") == "invalid"
@@ -581,7 +618,8 @@ async def run_agent_loop(
             ])
             corrected = True
             response = await complete(closing=True)
-            reply, grounding = validate_answer(response.content, evidence_objects)
+            reply, grounding = validate_answer(response.content, evidence_objects, locale=locale)
+            _log_answer_rejection(grounding)
         grounding = {**grounding, 'correction_attempted': corrected, 'tokens_used': tokens}
         return response, reply, grounding
 
@@ -650,15 +688,27 @@ async def run_agent_loop(
                 reply, tier, response.model, audit, drafts, iteration, False, grounding
             )
     except (TimeoutError, EvidenceError) as exc:
-        if budget_kind == "daily_cost":
+        code = exc.code if isinstance(exc, EvidenceError) else "TIMEOUT"
+        # Policy may change between calls; a reservation can also reject a
+        # call before network I/O. Neither condition is a model timeout.
+        if code == "POLICY_DENIED":
+            reply = ("L'accesso AI non è attivo per questa richiesta. Controlla il consenso e le autorizzazioni nelle impostazioni; le funzioni senza AI restano disponibili."
+                     if locale == "it" else "AI access is not active for this request. Check consent and account access in settings; features without AI remain available.")
+        elif budget_kind == "daily_cost" or (code == "BUDGET_EXCEEDED" and budget_kind != "turn_tokens"):
             reply = ("Il budget AI giornaliero è esaurito. Le tue misurazioni restano disponibili nelle pagine metriche; riprova dopo il rinnovo del budget."
                      if locale == "it" else "The daily AI budget has been reached. Your recorded measurements remain available on the metrics pages; try again after the budget resets.")
         elif budget_kind == "turn_tokens":
             reply = ("L'analisi ha raggiunto il limite di contesto per questa richiesta. Riprova in una nuova conversazione con un periodo più breve."
                      if locale == "it" else "This analysis reached the context limit for this request. Try a new conversation with a shorter period.")
-        else:
+        elif code == "TIMEOUT":
             reply = ("L'analisi non è terminata entro il tempo disponibile. Riprova tra poco."
                      if locale == "it" else "The analysis did not finish within the available time. Try again shortly.")
+        else:
+            reply, _ = _invalid_answer("INVALID_ANSWER_SHAPE", locale)
+        safe_code = code if code in {"POLICY_DENIED", "BUDGET_EXCEEDED", "TIMEOUT"} else "ANALYSIS_UNAVAILABLE"
+        logger.info("Coach turn incomplete", extra={
+            "event_code": "coach_turn_incomplete", "error_code": safe_code,
+        })
         return AgentLoopResult(
             reply,
             tier,
@@ -668,7 +718,7 @@ async def run_agent_loop(
             iteration,
             False,
             {"status": "incomplete", "verified_claims": [], "error_code":
-             exc.code if isinstance(exc, EvidenceError) else "TIMEOUT", "limit": budget_kind},
+             safe_code, "limit": budget_kind},
         )
 
 

@@ -729,9 +729,15 @@ async def garmin_sync_status(
                    "completed": state in {"SUCCESS", "FAILURE", "REVOKED"}}
         if state == "SUCCESS" and isinstance(result.result, dict):
             payload["result"] = {k: v for k, v in result.result.items()
-                                 if k in {"status", "mode", "raw_stored", "unprocessed"}}
+                                 if k in {"status", "mode", "raw_stored", "unprocessed", "streams_failed"}}
+            if result.result.get("status") == "skipped" and result.result.get("reason") == "already_running":
+                payload["result"]["reason"] = "already_running"
         elif state == "FAILURE":
-            payload["error"] = "Sync failed after retries; retry or reconnect the provider."
+            from app.connectors.escalation import sync_error_class
+            payload["error_class"] = sync_error_class(result.result)
+            payload["error"] = ("Provider authentication or permission is required; reconnect or review provider access."
+                                if payload["error_class"] in {"authentication", "permission"}
+                                else "The synchronization attempt failed after retries; imported data remains available. Retry or review provider access.")
         return payload
     try:
         return await run_in_threadpool(read_status)

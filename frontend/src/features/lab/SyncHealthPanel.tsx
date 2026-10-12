@@ -1,37 +1,17 @@
 import { useTranslation } from "react-i18next";
-import { Badge, Card, CardHeader } from "../../components/kit";
-import { human, QueryState, useLab } from "./shared";
-
-interface SyncFeed {
-  provider: string;
-  feed: string;
-  state: string;
-  last_attempt_at: string | null;
-  last_success_at: string | null;
-  latest_measurement_at: string | null;
-  stale_after_hours: number;
-  error_class: string | null;
-  retry_state: "unknown" | "scheduled" | "reconnect_required" | "idle";
-  has_checkpoint: boolean;
-  failed_attempts: number;
-  credentials_state:
-    | "unknown"
-    | "configured"
-    | "reconnect_required"
-    | "not_required";
-}
-
-interface SyncHealth {
-  feeds: SyncFeed[];
-}
-
-function timestamp(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "—";
-}
+import { Badge, Card, CardHeader, ErrorNote, Loading } from "../../components/kit";
+import { useUi } from "../../app/stores/ui";
+import { human } from "./shared";
+import { useSyncHealth } from "./syncHealth";
 
 export default function SyncHealthPanel() {
-  const { t } = useTranslation();
-  const query = useLab<SyncHealth>("/lab/sync-health");
+  const { t, i18n } = useTranslation();
+  const timezone = useUi(s => s.me?.timezone);
+  const query = useSyncHealth();
+  const feeds = query.data?.feeds ?? [];
+  const accounts = query.data?.accounts ?? [];
+  const timestamp = (value: string | null) => value ? new Date(value).toLocaleString(i18n.language, { timeZone: timezone }) : t("lab.syncHealth.timeUnknown");
+  const issue = (error: string) => t(`lab.syncHealth.errors.${error}`, { defaultValue: t("lab.syncHealth.errors.unknown") });
 
   return (
     <Card>
@@ -46,13 +26,31 @@ export default function SyncHealthPanel() {
       <p className="mb-4 text-[12px] text-muted">
         {t("lab.syncHealth.subtitle")}
       </p>
-      <QueryState loading={query.isLoading} error={query.isError} />
-      {!query.isLoading && !query.isError && query.data?.feeds.length === 0 && (
+      {query.isLoading && <Loading />}
+      {query.isError && <ErrorNote message={t("lab.syncHealth.unavailable")} />}
+      {!query.isLoading && !query.isError && feeds.length === 0 && accounts.length === 0 && (
         <p className="text-[13px] text-muted">{t("lab.syncHealth.empty")}</p>
       )}
-      {!!query.data?.feeds.length && (
+      {!!accounts.length && <div className="mb-6 grid gap-4">{accounts.map(account => {
+        const provider = t(`lab.providers.${account.provider}`, { defaultValue: human(account.provider) });
+        return <section key={account.provider} aria-label={t("lab.syncHealth.accountRegion", { provider })} className="border-t border-hairline pt-4">
+          <div className="mb-3 flex flex-wrap items-center gap-3"><h3 className="text-[14px] font-medium">{provider}</h3><Badge tone={account.state === "successful" ? "positive" : account.state === "failed" || account.state === "auth_required" ? "alert" : account.state === "partial" || account.state === "delayed" ? "warning" : "neutral"}>{t("lab.syncHealth.accountStates." + account.state)}</Badge></div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[12px] sm:grid-cols-3">
+            <div><dt className="text-muted">{t("lab.syncHealth.lastAttempt")}</dt><dd>{timestamp(account.last_attempt_at)}</dd></div>
+            <div><dt className="text-muted">{t("lab.syncHealth.accountLastSuccess")}</dt><dd>{timestamp(account.last_success_at)}</dd>{account.has_successful_sync && !account.last_success_at && <dd className="mt-1 text-muted">{t("lab.syncHealth.successTimeUnknown")}</dd>}</div>
+            <div><dt className="text-muted">{t("lab.syncHealth.measurement")}</dt><dd>{timestamp(account.latest_measurement_at)}</dd></div>
+            <div><dt className="text-muted">{t("lab.syncHealth.dataFreshness")}</dt><dd>{t("lab.syncHealth.freshness." + account.data_freshness)}</dd></div>
+            <div><dt className="text-muted">{t("lab.syncHealth.credentials")}</dt><dd>{t("lab.syncHealth.credentialsStates." + account.credentials_state)}</dd></div>
+            <div><dt className="text-muted">{t("lab.syncHealth.failedAttempts")}</dt><dd className="num">{account.failed_attempts}</dd></div>
+            {account.error_class && <div><dt className="text-muted">{t("lab.syncHealth.error")}</dt><dd>{issue(account.error_class)}</dd></div>}
+          </dl>
+          {account.state === "partial" && <p className="mt-3 text-[13px] text-muted">{t("lab.syncHealth.partialCounts", { streams: account.streams_failed, records: account.unprocessed })}</p>}
+          {account.data_freshness === "stale" && <p className="mt-3 text-[12px] text-muted">{t("lab.syncHealth.oldMeasurementsNote", { hours: account.stale_after_hours })}</p>}
+        </section>;
+      })}</div>}
+      {!!feeds.length && (
         <div className="grid gap-3">
-          {query.data.feeds.map((feed) => (
+          {feeds.map((feed) => (
             <section
               key={`${feed.provider}:${feed.feed}`}
               className="grid gap-3 border-t border-hairline pt-4 first:border-0 first:pt-0 md:grid-cols-[minmax(120px,1fr)_minmax(0,2fr)]"
@@ -128,9 +126,7 @@ export default function SyncHealthPanel() {
                   <div>
                     <dt className="text-muted">{t("lab.syncHealth.error")}</dt>
                     <dd>
-                      {t(`lab.syncHealth.errors.${feed.error_class}`, {
-                        defaultValue: human(feed.error_class),
-                      })}
+                      {issue(feed.error_class)}
                     </dd>
                   </div>
                 )}

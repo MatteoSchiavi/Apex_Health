@@ -55,6 +55,12 @@ async def _daily_summary():
 @task_failure.connect
 def capture_task_failure(sender=None, **kwargs):
     import logging
+    # These tasks own account-scoped severity, retry and deduplication policy.
+    # Their expected SyncTaskError also uses Celery's INFO-level throws path.
+    if getattr(sender, "name", "") in {
+        f"{provider}.sync_user" for provider in ("garmin", "technogym", "strava", "whoop", "oura", "coros")
+    }:
+        return
     # Never log args, kwargs, exception, result or traceback from the signal.
     logging.getLogger('tasks.runtime').error('Task failed', extra={'event_code':'task_failed'})
 

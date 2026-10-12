@@ -10,6 +10,16 @@ from math import isfinite
 
 CLAIM_KINDS = frozenset({"MEASURED", "CALCULATED", "ASSOCIATION", "HYPOTHESIS", "UNKNOWN"})
 CLAIM_FIELDS = frozenset({"evidence_id", "metric", "value", "kind", "unit"})
+NUMBER_PATTERN = r"[+-]?\d+(?:[.,]\d+)?"
+
+
+def prose_number(value: str) -> float:
+    """Read one decimal token; evidence values themselves stay unchanged."""
+    return float(value.replace(",", "."))
+
+
+def prose_numbers(text: str) -> list[float]:
+    return [prose_number(token) for token in re.findall(rf"(?<!\w){NUMBER_PATTERN}", text)]
 
 
 def inspect_metric_bindings(text: str, claims: list[dict]) -> list[str]:
@@ -47,9 +57,9 @@ def inspect_metric_bindings(text: str, claims: list[dict]) -> list[str]:
              'recovery_time': {'min', 'minutes', 'minuti'},
              'steps': {'steps', 'passi'}, 'whoop_sleep_performance': {'%'}}
     for metric, label in patterns.items():
-        pattern = rf"\b{label}\s*(?:(?:is|was|of|è|era|di)\s*|[:=]\s*)?([+-]?\d+(?:\.\d+)?)(?:\s*(ml/kg/min|breaths/min|br/min|milliseconds|millisecondi|minutes|minuti|steps|passi|hours|degc|bpm|kg|ml|ms|min|ore|h|°c|%)(?=\W|$))?"
+        pattern = rf"\b{label}\s*(?:(?:is|was|of|è|era|di)\s*|[:=]\s*)?({NUMBER_PATTERN})(?:\s*(ml/kg/min|breaths/min|br/min|milliseconds|millisecondi|minutes|minuti|steps|passi|hours|degc|bpm|kg|ml|ms|min|ore|h|°c|%)(?=\W|$))?"
         for match in re.finditer(pattern, text, re.I):
-            if not any(c.get("metric") == metric and c.get("value") == float(match[1])
+            if not any(c.get("metric") == metric and c.get("value") == prose_number(match[1])
                        and not isinstance(c.get("value"), bool) for c in claims):
                 invalid.append(metric)
             elif match[2] and metric in units and match[2].lower() not in units[metric]:

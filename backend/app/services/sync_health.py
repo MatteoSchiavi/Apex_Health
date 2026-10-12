@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import Activity, ActivitySourceLink
 from app.models.integration import Integration
 from app.models.lab import FeedState, Observation
+from app.connectors.escalation import SYNC_ERROR_CLASSES
 
 STALE_AFTER_HOURS = 48
 _STALE_AFTER = timedelta(hours=STALE_AFTER_HOURS)
@@ -168,6 +169,62 @@ def _base_feed(
     }
 
 
+def _account_summary(provider, integration, feed_rows, measured_at, now):
+    """Attempt health is independent of the age of successfully fetched data."""
+    account = next((feed for feed in feed_rows if feed.feed == "account_sync"), None)
+    sources = [feed for feed in feed_rows if feed.feed != "account_sync"]
+    successes = [feed.last_success_at for feed in feed_rows if feed.last_success_at]
+    if integration is not None and integration.last_synced_at:
+        successes.append(integration.last_synced_at)
+    last_success = max(successes) if successes else None
+    attempts = [feed.last_attempt_at for feed in sources if feed.last_attempt_at]
+    last_attempt = account.last_attempt_at if account and account.last_attempt_at else max(attempts) if attempts else None
+    measurements = [feed.latest_measurement_at for feed in sources if feed.latest_measurement_at]
+    if measured_at:
+        measurements.append(measured_at)
+    latest_measurement = max(measurements) if measurements else None
+    freshness = "not_measured" if latest_measurement is None else "stale" if latest_measurement < now - _STALE_AFTER else "fresh"
+    credentials = _credentials_state(integration, provider)
+    details = (account.details or {}) if account else {}
+    error = details.get("error_class")
+    error = error if isinstance(error, str) and error in SYNC_ERROR_CLASSES else None
+    failures = (integration.consecutive_failures or 0) if integration else 0
+    partial_checkpoint = any(feed.last_success_at and last_attempt and feed.last_success_at >= last_attempt for feed in sources)
+    failed = bool(account and account.availability == "fetch_failed") or bool(
+        integration and (integration.status == "error" or failures))
+    partial = bool(account and account.availability == "partial") or any(
+        feed.availability in {"partial", "fetch_failed"} for feed in sources)
+    counts = {}
+    for key in ("streams_failed", "unprocessed"):
+        value = details.get(key, 0)
+        counts[key] = value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+    stream_failure = counts["streams_failed"] > 0 or any(
+        feed.feed == "activity_streams" and feed.availability == "fetch_failed" for feed in sources)
+    if credentials == "reconnect_required" or error in {"authentication", "permission"}:
+        state = "auth_required"
+    elif account and account.availability == "pending_sync":
+        state = "syncing" if last_attempt and last_attempt >= now - timedelta(minutes=30) else "delayed"
+    elif failed:
+        state = "partial" if partial_checkpoint else "failed"
+    elif partial and last_success:
+        state = "partial"
+    elif last_success and last_success < now - _STALE_AFTER:
+        state = "delayed"
+    elif last_success:
+        state = "successful" if freshness == "fresh" else "awaiting_new_data"
+    else:
+        state = "connected" if integration else "unknown"
+    return {
+        "provider": provider, "state": state, "last_attempt_at": last_attempt,
+        "last_success_at": last_success, "latest_measurement_at": latest_measurement,
+        "has_successful_sync": bool(last_success or latest_measurement),
+        "data_freshness": freshness, "stale_after_hours": STALE_AFTER_HOURS,
+        "error_class": error or ("sync_failed" if failed else "fetch_failed" if partial and stream_failure else "normalization_pending" if partial else None),
+        "failed_attempts": failures, "credentials_state": credentials,
+        **counts,
+    }
+
+
 async def sync_health(
     session: AsyncSession, user_id: int, *, now: datetime | None = None
 ) -> dict[str, list[dict]]:
@@ -230,5 +287,10 @@ async def sync_health(
             )
         )
 
+    accounts = []
+    for provider in sorted(set(integration_by_provider) | providers_with_feed_rows):
+        measured_at = await _latest_measurement(session, user_id, provider)
+        accounts.append(_account_summary(provider, integration_by_provider.get(provider),
+            [feed for feed in feed_rows if feed.provider == provider], measured_at, now))
     feeds.sort(key=lambda row: (row["provider"], row["feed"]))
-    return {"feeds": feeds}
+    return {"feeds": feeds, "accounts": accounts}

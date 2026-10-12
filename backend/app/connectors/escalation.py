@@ -9,14 +9,36 @@ sync's report, or None on failure.
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
+import httpx
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration import Integration
 from app.models.user import User
+from app.core.encryption import EncryptionError
 
 logger = logging.getLogger("connectors.escalation")
+
+SYNC_ERROR_CLASSES = frozenset({"authentication", "permission", "transport", "normalization", "timeout", "unknown"})
+
+
+def sync_error_class(exc: Exception) -> str:
+    """Classify without persisting exception messages, arguments or credentials."""
+    code = getattr(exc, "error_class", None)
+    if isinstance(code, str) and code in SYNC_ERROR_CLASSES:
+        return code
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        return "timeout"
+    if isinstance(exc, PermissionError):
+        return "permission"
+    if isinstance(exc, EncryptionError) or "auth" in type(exc).__name__.lower():
+        return "authentication"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return "authentication" if exc.response.status_code == 401 else "permission" if exc.response.status_code == 403 else "transport"
+    if isinstance(exc, (httpx.TransportError, ConnectionError, OSError)):
+        return "transport"
+    return "unknown"
 
 
 async def run_sync_with_escalation(
@@ -31,6 +53,7 @@ async def run_sync_with_escalation(
     """Run one sync pass with §21 bookkeeping. `source_label` names the
     provider in the alert message (e.g. "Garmin", "Technogym")."""
     integration_id, user_id = integration.id, user.id
+    integration._sync_failure_code = None
     try:
         report = await sync_fn(session, user, integration, *args, **kwargs)
     except Exception as exc:
@@ -59,13 +82,16 @@ async def run_sync_with_escalation(
         await session.commit()
         await session.refresh(integration)
         await session.refresh(user)
-        logger.error(
+        # Direct callers retain the existing None contract. The account task
+        # can recover this bounded signal without exposing the raw exception.
+        integration._sync_failure_code = sync_error_class(exc)
+        logger.warning(
             "%s sync failed for user %s (consecutive=%s, error=%s)",
             source_label,
             user_id,
             failures,
-            type(exc).__name__,
-            extra={"event_code": "connector_failed", "error_code": type(exc).__name__},
+            integration._sync_failure_code,
+            extra={"event_code": "connector_failed", "error_code": integration._sync_failure_code},
         )
         return None
     integration.consecutive_failures = 0

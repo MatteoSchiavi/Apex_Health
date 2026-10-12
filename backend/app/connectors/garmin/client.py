@@ -41,7 +41,7 @@ class GarminConnectTransport:
         except Exception as exc:
             # Fixed operation and exception class only, never request arguments,
             # provider response text, URLs, credentials or measurement dates.
-            logger.error("Garmin fetch failed (%s, %s)", operation, type(exc).__name__,
+            logger.warning("Garmin fetch failed (%s, %s)", operation, type(exc).__name__,
                          extra={"error_code": type(exc).__name__, "fetch_operation": operation})
             raise
 

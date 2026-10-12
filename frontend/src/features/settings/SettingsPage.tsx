@@ -13,7 +13,7 @@ import HealthKitPanel from "./HealthKitPanel";
  * locale files. Language changes apply the instant the segment is clicked.
  */
 
-import { Fragment, type FormEvent, useEffect, useState } from "react";
+import { Fragment, type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs } from "../../components/Tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ import { Check, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { api, type DeviceOut, type Me } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import DataHealthPage from "../lab/DataHealthPage";
+import { invalidateSyncedData, useSyncHealth } from "../lab/syncHealth";
 import { NotificationPreferences } from "../lab/NotificationsPage";
 import { InstallApp } from "../pwa/InstallApp";
 import { Link } from "react-router-dom";
@@ -353,8 +354,10 @@ function CorosConnectForm({ onDone }: { onDone: () => void }) {
 }
 
 function DevicesSection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const timezone = useUi(s => s.me?.timezone);
   const qc = useQueryClient();
+  const health = useSyncHealth();
   const devices = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.get<DeviceOut[]>("/settings/devices"),
@@ -408,14 +411,18 @@ function DevicesSection() {
     }
   });
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncProvider, setSyncProvider] = useState("garmin");
+  const [overlapProvider, setOverlapProvider] = useState<string | null>(null);
+  const overlapRunning = useRef(false);
   const syncStatus = useQuery({
     queryKey: ["sync-status", job],
     queryFn: () =>
       api.get<{
         state: string;
         completed: boolean;
-        result?: { status: string };
+        result?: { status: string; reason?: string; streams_failed?: number; unprocessed?: number };
         error?: string;
+        error_class?: string;
       }>("/settings/integrations/garmin/sync/" + job),
     enabled: !!job,
     refetchInterval: (query) =>
@@ -429,7 +436,8 @@ function DevicesSection() {
       api.post<{ job_id: string; enqueued: boolean; completed: boolean }>(
         `/settings/integrations/${provider}/sync`,
       ),
-    onSuccess: (res) => {
+    onSuccess: (res, provider) => {
+      setSyncProvider(provider); setOverlapProvider(null); overlapRunning.current = false;
       setJob(res.job_id);
       setSyncMessage(t("design.sync_queued"));
       setFlowError(null);
@@ -448,28 +456,34 @@ function DevicesSection() {
   useEffect(() => {
     const result = syncStatus.data;
     if (!result?.completed) return;
-    if (result.state === "SUCCESS" && result.result?.status === "ok")
-      setSyncMessage(t("design.sync_done"));
-    else if (result.state === "SUCCESS" && result.result?.status === "partial")
-      setSyncMessage(t("design.sync_partial"));
-    else {
-      setSyncMessage(null);
-      setFlowError(result.error ?? t("design.sync_failed"));
+    const outcome = result.result;
+    if (result.state === "SUCCESS" && (outcome?.status === "already_running" || (outcome?.status === "skipped" && outcome.reason === "already_running"))) {
+      setSyncMessage(t("design.sync_already_running")); setFlowError(null);
+      setOverlapProvider(syncProvider); overlapRunning.current = false;
+      setJob(null); void health.refetch();
+      return;
     }
-    // A completed job makes fresh data available; queued work does not.
-    for (const key of [
-      "devices",
-      "overview",
-      "sleep",
-      "sleep-stages",
-      "activities",
-      "activity",
-      "streams",
-      "metric",
-    ])
-      qc.invalidateQueries({ queryKey: [key] });
+    const streams = outcome?.streams_failed ?? 0;
+    const records = outcome?.unprocessed ?? 0;
+    if (result.state === "SUCCESS" && (outcome?.status === "partial" || streams > 0 || records > 0)) {
+      setSyncMessage(t(streams || records ? "design.sync_partial_counts" : "design.sync_partial", { streams, records }));
+      setFlowError(null);
+    } else if (result.state === "SUCCESS" && outcome?.status === "ok") {
+      setSyncMessage(t("design.sync_done"));
+      setFlowError(null);
+    } else {
+      setSyncMessage(null);
+      setFlowError(t(result.error_class === "authentication" || result.error_class === "permission" ? "design.sync_reconnect" : "design.sync_failed"));
+    }
+    invalidateSyncedData(qc);
     setJob(null);
-  }, [syncStatus.data, qc, t]);
+  }, [syncStatus.data, qc, t, syncProvider]);
+  useEffect(() => {
+    if (!overlapProvider) return;
+    const account = health.data?.accounts?.find(account => account.provider === overlapProvider);
+    if (account?.state === "syncing") overlapRunning.current = true;
+    else if (account && overlapRunning.current && account.state !== "unknown" && account.state !== "connected") { setOverlapProvider(null); setSyncMessage(null); }
+  }, [health.data, overlapProvider]);
   useEffect(() => {
     if (syncStatus.isError) {
       setFlowError(t("design.sync_status_failed"));
@@ -479,14 +493,24 @@ function DevicesSection() {
   }, [syncStatus.isError, t]);
 
   const byProvider = new Map((devices.data ?? []).map((d) => [d.provider, d]));
+  const accounts = new Map((health.data?.accounts ?? []).map(account => [account.provider, account]));
   const garminConnected = byProvider.get("garmin")?.status === "active";
+  function caption(provider: string, device: DeviceOut) {
+    const account = accounts.get(provider);
+    const feeds = (health.data?.feeds ?? []).filter(feed => feed.provider === provider);
+    const successful = [account?.last_success_at, device.last_synced_at, ...feeds.map(feed => feed.last_success_at)].filter((value): value is string => Boolean(value)).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+    const imported = account?.has_successful_sync || feeds.some(feed => feed.has_checkpoint || feed.last_success_at || feed.latest_measurement_at);
+    const status = account ? t("lab.syncHealth.accountStates." + account.state) : null;
+    const lastSuccess = successful ? `${t("lab.syncHealth.accountLastSuccess")}: ${new Date(successful).toLocaleString(i18n.language, { timeZone: timezone })}` : imported ? t("lab.syncHealth.successTimeUnknown") : health.isLoading ? t("lab.syncHealth.checking") : health.isError ? t("lab.syncHealth.unavailable") : t("lab.syncHealth.noRecordedSync");
+    return <><p>{status}</p><p>{lastSuccess}</p>{account?.state === "partial" && <p className="mt-1">{t("lab.syncHealth.partialCounts", { streams: account.streams_failed, records: account.unprocessed })}</p>}{account && <p className="mt-1">{t("lab.syncHealth.dataFreshness")}: {t("lab.syncHealth.freshness." + account.data_freshness)}</p>}</>;
+  }
 
   return (
     <Card>
       <CardHeader
         title={t("settings.devices")}
         right={
-          devices.isLoading ? undefined : (
+          devices.isLoading || devices.isError ? undefined : (
             <span className="num text-[12px] text-muted">
               {devices.data?.length ?? 0}
             </span>
@@ -498,6 +522,8 @@ function DevicesSection() {
       </p>
       {devices.isLoading ? (
         <Loading />
+      ) : devices.isError ? (
+        <ErrorNote />
       ) : (
         <div className="flex flex-col">
           {PROVIDERS.map(({ key, name }) => {
@@ -530,11 +556,7 @@ function DevicesSection() {
                     </div>
                     <div className="num mt-0.5 text-[12px] text-muted">
                       {connected
-                        ? `${t("settings.connected")} · ${
-                            d?.last_synced_at
-                              ? new Date(d.last_synced_at).toLocaleString()
-                              : t("settings.never")
-                          }`
+                        ? caption(key, d!)
                         : key === "garmin"
                           ? t("settings.garmin_not_connected")
                           : t("settings.provider_setup")}
@@ -562,10 +584,10 @@ function DevicesSection() {
                     {connected && (
                       <Button
                         variant="ghost"
-                        disabled={syncNow.isPending || !!job}
+                        disabled={syncNow.isPending || !!job || accounts.get(key)?.state === "syncing"}
                         onClick={() => syncNow.mutate(key)}
                       >
-                        {job
+                        {job || accounts.get(key)?.state === "syncing"
                           ? t("design.sync_running")
                           : t("settings.sync_now")}
                       </Button>
@@ -611,7 +633,7 @@ function DevicesSection() {
         </p>
       )}
       {setMain.isError && <ErrorNote />}
-      {devices.isError && <ErrorNote />}
+      {health.isError && Boolean(devices.data?.length) && <ErrorNote message={t("lab.syncHealth.unavailable")} />}
       {flowError && (
         <div className="mt-3">
           <ErrorNote message={flowError} />

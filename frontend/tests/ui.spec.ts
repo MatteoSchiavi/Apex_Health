@@ -99,6 +99,105 @@ test("queued sync waits for completion and clears persisted job", async ({
     await page.evaluate(() => localStorage.getItem("apex.sync.1")),
   ).toBeNull();
 });
+
+const garminAccount = {
+  provider: "garmin", state: "awaiting_new_data", last_attempt_at: today + "T08:00:00Z",
+  last_success_at: today + "T08:00:00Z", latest_measurement_at: "2025-01-01T08:00:00Z",
+  has_successful_sync: true, data_freshness: "stale", stale_after_hours: 48,
+  error_class: null, failed_attempts: 0, credentials_state: "configured", streams_failed: 0, unprocessed: 0,
+};
+
+for (const locale of ["en", "it"] as const) {
+  test(`owned successful sync and old measurements remain distinct; partial job counts are truthful: ${locale}`, async ({ page }) => {
+    await installApi(page, { locale });
+    await page.setViewportSize({ width: 390, height: 844 });
+    let partial = false, healthRequests = 0;
+    await page.route("**/settings/devices", route => route.fulfill({ json: [{ integration_id: 1, provider: "garmin", status: "active", is_main: true, last_synced_at: null, connected_at: today + "T00:00:00Z" }] }));
+    await page.route("**/lab/sync-health", route => {
+      healthRequests++;
+      return route.fulfill({ json: { feeds: [], accounts: [{ ...garminAccount, ...(partial ? { state: "partial", streams_failed: 1, unprocessed: 2 } : {}) }] } });
+    });
+    await page.route("**/settings/integrations/garmin/sync/test-sync", route => {
+      partial = true;
+      return route.fulfill({ json: { state: "SUCCESS", completed: true, result: { status: "ok", streams_failed: 1, unprocessed: 2 } } });
+    });
+    await page.goto("/app/settings?tab=devices");
+    await expect(page.getByText(locale === "en" ? "Awaiting new data" : "In attesa di nuovi dati", { exact: true })).toBeVisible();
+    await expect(page.getByText(locale === "en" ? "Older measurements" : "Misurazioni meno recenti", { exact: false })).toBeVisible();
+    await expect(page.getByText(locale === "en" ? "Never synced" : "Mai sincronizzato", { exact: false })).toHaveCount(0);
+    await page.getByRole("button", { name: locale === "en" ? "Sync now" : "Sincronizza ora", exact: true }).click();
+    const message = page.getByRole("status").filter({ hasText: locale === "en" ? "Sync finished with incomplete data:" : "Sincronizzazione terminata con dati incompleti:" });
+    await expect(message).toContainText(locale === "en" ? "1 feeds failed and 2 records await processing" : "1 flussi non riusciti e 2 record in attesa di elaborazione");
+    await expect(page.getByText(locale === "en" ? "Sync complete." : "Sincronizzazione completata.", { exact: false })).toHaveCount(0);
+    await expect.poll(() => healthRequests).toBeGreaterThan(1);
+    await page.getByRole("tab", { name: locale === "en" ? "Data health" : "Salute dati", exact: true }).click();
+    const account = page.getByRole("region", { name: locale === "en" ? "Garmin synchronization" : "Sincronizzazione Garmin", exact: true });
+    await expect(account.getByText(locale === "en" ? "Partially synchronized" : "Sincronizzazione parziale", { exact: true })).toBeVisible();
+    await expect(account.getByText(locale === "en" ? "Last successful attempt" : "Ultimo tentativo riuscito", { exact: true })).toBeVisible();
+    await expect(account.getByText(locale === "en" ? "Latest measurement" : "Ultima misurazione", { exact: true })).toBeVisible();
+    await expect(account.getByText(locale === "en" ? "1 feeds failed · 2 records awaiting processing." : "1 flussi non riusciti · 2 record in attesa di elaborazione.", { exact: false })).toBeVisible();
+    await expect(account.getByText(locale === "en" ? "Measurement age does not mean" : "La sua età non significa", { exact: false })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("overlapping sync is informational, follows account completion and refreshes the athlete day", async ({ page }) => {
+  await installApi(page);
+  let skipped = false, healthRequests = 0, dayRequests = 0;
+  await page.route(/\/athlete\/day\?/, route => { dayRequests++; return route.fallback(); });
+  await page.route("**/lab/sync-health", route => {
+    healthRequests++;
+    return route.fulfill({ json: { feeds: [], accounts: [{ ...garminAccount, state: skipped && healthRequests === 2 ? "syncing" : "awaiting_new_data" }] } });
+  });
+  await page.route("**/settings/integrations/garmin/sync/test-sync", route => {
+    skipped = true;
+    return route.fulfill({ json: { state: "SUCCESS", completed: true, result: { status: "skipped", reason: "already_running" } } });
+  });
+  await page.goto("/app");
+  await expect.poll(() => dayRequests).toBe(1);
+  await page.locator('a[href="/app/settings"]').first().click();
+  await page.getByRole("tab", { name: "Devices & services", exact: true }).click();
+  await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Another synchronization is already running." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Syncing…", exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => localStorage.getItem("apex.sync.1"))).toBeNull();
+  await expect(page.getByText("Sync complete.", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Sync did not complete.", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sync now", exact: true })).toBeEnabled({ timeout: 10000 });
+  await expect(page.getByText("Another synchronization is already running.", { exact: false })).toHaveCount(0);
+  await page.locator('a[href="/app"]').first().click();
+  await expect.poll(() => dayRequests).toBeGreaterThan(1);
+});
+
+test("legacy feed checkpoints prevent never-synced claims without inventing a success timestamp", async ({ page }) => {
+  await installApi(page);
+  await page.route("**/settings/devices", route => route.fulfill({ json: [{ integration_id: 1, provider: "garmin", status: "active", is_main: true, last_synced_at: null }] }));
+  await page.route("**/lab/sync-health", route => route.fulfill({ json: { feeds: [{ provider: "garmin", feed: "activities", has_checkpoint: true, last_success_at: null, latest_measurement_at: null }] } }));
+  await page.goto("/app/settings?tab=devices");
+  await expect(page.getByText("Imported data is available. The successful sync time is not recorded.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Never synced", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("No synchronization has been recorded yet.", { exact: true })).toHaveCount(0);
+});
+
+test("sync health keeps loading, empty and sanitized error states distinct", async ({ page }) => {
+  await installApi(page);
+  let finish: () => void = () => {};
+  await page.route("**/lab/sync-health", async route => {
+    await new Promise<void>(resolve => { finish = resolve; });
+    return route.fulfill({ json: { feeds: [], accounts: [] } });
+  });
+  await page.goto("/app/data-health");
+  const panel = page.locator(".panel").filter({ has: page.getByText("Sync health", { exact: true }) });
+  await expect(panel.getByRole("status")).toContainText("Loading");
+  await expect(panel.getByText("No provider syncs are configured.", { exact: true })).toHaveCount(0);
+  finish();
+  await expect(panel.getByText("No provider syncs are configured.", { exact: true })).toBeVisible();
+  await page.route("**/lab/sync-health", route => route.fulfill({ status: 503, json: { detail: "PRIVATE_CONNECTOR_DIAGNOSTIC" } }));
+  await page.reload();
+  await expect(panel.getByRole("alert")).toContainText("Synchronization status is unavailable.");
+  await expect(panel.getByText("No provider syncs are configured.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("PRIVATE_CONNECTOR_DIAGNOSTIC", { exact: false })).toHaveCount(0);
+});
 test("coach provider failure is visible and preserves the account-scoped draft", async ({
   page,
 }) => {

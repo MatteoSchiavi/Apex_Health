@@ -2,7 +2,7 @@
 from app.models.alpha import AlphaEvent
 
 EVENTS = frozenset({
-    'integration_connected', 'integration_sync_success', 'integration_sync_failure',
+    'integration_connected', 'integration_sync_success', 'integration_sync_partial', 'integration_sync_failure',
     'overview_viewed', 'metric_explanation_opened', 'agent_question_asked',
     'agent_answer_completed', 'agent_answer_failed', 'analysis_started',
     'analysis_completed', 'change_proposed', 'change_accepted', 'change_edited',

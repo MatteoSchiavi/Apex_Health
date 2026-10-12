@@ -5,7 +5,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from zoneinfo import ZoneInfo
-import httpx
 
 from sqlalchemy import or_, select, text, update
 
@@ -13,55 +12,79 @@ from app.core.config import get_settings
 from app.core.db import engine, sessionmaker
 from app.core.encryption import EncryptionError, decrypt_json, encrypt_json
 from app.models.integration import Integration
+from app.models.lab import FeedState
 from app.models.user import AuthCredential, User
 from app.tasks.celery_app import celery_app
 from app.tasks.runtime import run_async
 from app.services.alpha_events import record_event
+from app.connectors.escalation import sync_error_class as _sync_error_class
 
 logger = logging.getLogger(__name__)
 
 
 class SyncTaskError(Exception):
     """Sanitized failure that Celery can retry and expose as a failed job."""
-    def __init__(self, message, *, error_class="unknown"):
+    def __init__(self, message, *, error_class="unknown", failure_counted=False):
         super().__init__(message)
         self.error_class = error_class
+        self.failure_counted = failure_counted
 
 
-def _sync_error_class(exc):
-    if isinstance(exc, SyncTaskError):
-        return exc.error_class if exc.error_class in {
-            "authentication", "permission", "transport", "normalization", "timeout", "unknown"
-        } else "unknown"
-    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
-        return "timeout"
-    if isinstance(exc, PermissionError):
-        return "permission"
-    if isinstance(exc, EncryptionError) or "auth" in type(exc).__name__.lower():
-        return "authentication"
-    if isinstance(exc, httpx.HTTPStatusError):
-        if exc.response.status_code == 401:
-            return "authentication"
-        if exc.response.status_code == 403:
-            return "permission"
-        return "transport"
-    if isinstance(exc, (httpx.TransportError, ConnectionError, OSError)):
-        return "transport"
-    return "unknown"
-
-
-async def _record_sync_outcome(provider, user_id, *, error_class=None):
+async def _record_sync_outcome(provider, user_id, *, error_class=None, status="ok", result=None,
+                               failure_counted=False):
     # Connector checkpoint commits occur in a different session. Record the
     # outcome after they finish, and never turn telemetry failure into a retry.
     try:
         async with sessionmaker() as session:
             if await session.get(User, user_id) is None:
                 return
+            integration = await session.scalar(select(Integration).where(
+                Integration.user_id == user_id, Integration.provider == provider).with_for_update())
+            if status == "syncing":
+                credential = await session.get(AuthCredential, user_id)
+                if integration is None or integration.status != "active" or (credential is not None and credential.disabled):
+                    return
+            failure_count = 0
+            if integration is not None:
+                if error_class is not None and not failure_counted:
+                    integration.consecutive_failures = min(32767, integration.consecutive_failures + 1)
+                elif status in {"ok", "partial"} and error_class is None:
+                    integration.consecutive_failures = 0
+                failure_count = integration.consecutive_failures
+            feed = await session.scalar(select(FeedState).where(
+                FeedState.user_id == user_id, FeedState.provider == provider, FeedState.feed == "account_sync"))
+            if feed is None:
+                feed = FeedState(user_id=user_id, provider=provider, feed="account_sync", details={}, cursor={})
+                session.add(feed)
+            now = datetime.now(UTC)
+            if status == "syncing" or feed.last_attempt_at is None or feed.availability != "pending_sync":
+                feed.last_attempt_at = now
+            feed.availability = ("fetch_failed" if error_class else "pending_sync" if status == "syncing"
+                                 else "partial" if status == "partial" else "available")
+            details = {"state": "failed" if error_class else status}
+            if (feed.details or {}).get("alert_state") in {"failed", "auth_required", "partial"}:
+                details["alert_state"] = feed.details["alert_state"]
+            if error_class:
+                details["error_class"] = error_class
+            if status in {"ok", "partial"} and error_class is None:
+                feed.last_success_at = now
+                for key in ("streams_failed", "unprocessed"):
+                    value = (result or {}).get(key, 0)
+                    details[key] = value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+            feed.details = details
+            if status == "syncing":
+                await session.commit()
+                return
             metadata = {"provider": provider}
             if error_class is not None:
                 metadata["error_class"] = error_class
-            record_event(session, user_id, "integration_sync_failure" if error_class else "integration_sync_success", metadata)
+            event = "integration_sync_failure" if error_class else "integration_sync_partial" if status == "partial" else "integration_sync_success"
+            record_event(session, user_id, event, metadata)
             await session.commit()
+        from app.services.owner_notifications import connector_outcome_notification
+        await connector_outcome_notification(provider, user_id,
+            "failed" if error_class else "partial" if status == "partial" else "successful",
+            error_class=error_class, failure_count=failure_count)
     except Exception:
         logger.warning("sync outcome event unavailable")
 
@@ -72,21 +95,28 @@ async def sync_account(provider: str, user_id: int) -> dict:
     lock_id = int.from_bytes(hashlib.sha256(f"sync:{provider}:{user_id}".encode()).digest()[:8], "big", signed=True)
     async with engine.connect() as connection:
         if not await connection.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_id}):
-            # Commit/rollback alone cannot release session advisory locks.
-            raise SyncTaskError("This account already has a sync running")
+            return {"status": "skipped", "reason": "already_running"}
         try:
+            await _record_sync_outcome(provider, user_id, status="syncing")
             try:
                 result = await _sync_account(provider, user_id)
             except Exception as exc:
-                await _record_sync_outcome(provider, user_id, error_class=_sync_error_class(exc))
-                raise
+                code = _sync_error_class(exc)
+                await _record_sync_outcome(provider, user_id, error_class=code,
+                                           failure_counted=getattr(exc, "failure_counted", False))
+                raise SyncTaskError("Provider sync failed; retry or review provider access", error_class=code) from None
             if result.get("status") != "skipped":
                 await _record_sync_outcome(provider, user_id,
-                    error_class=("transport" if result.get("streams_failed") else "normalization")
-                    if result.get("status") == "partial" else None)
+                                           status=result.get("status", "ok"), result=result)
             return result
         finally:
-            await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
+            try:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_id})
+            except Exception:
+                # A lost connection releases the session lock itself. An
+                # unlock failure must not reclassify committed ingestion.
+                await connection.invalidate()
+                logger.warning("sync lock release unavailable")
 
 
 async def _sync_account(provider: str, user_id: int) -> dict:
@@ -160,7 +190,9 @@ async def _sync_account(provider: str, user_id: int) -> dict:
         await compute_missing_recorded_days(session, user, today - timedelta(days=365), today)
         await compute_user_range(session, user, today - timedelta(days=28), today)
         if report is None:
-            raise SyncTaskError("Provider sync failed; retrying may recover it", error_class="transport")
+            code = getattr(integration, "_sync_failure_code", None) or "transport"
+            raise SyncTaskError("Provider sync failed; retrying may recover it", error_class=code,
+                                failure_counted=bool(getattr(integration, "_sync_failure_code", None)))
         return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) or getattr(report, "streams_failed", 0) else "ok",
                 "mode": report.mode, "raw_stored": report.raw_rows_stored,
                 "streams_failed": getattr(report, "streams_failed", 0),
@@ -185,16 +217,17 @@ def register_tasks(provider: str):
         return run_async(enqueue_active(provider))
 
     @celery_app.task(name=f"{provider}.sync_user", autoretry_for=(SyncTaskError,),
-                     retry_backoff=60, retry_backoff_max=600, retry_jitter=True, max_retries=3)
+                     retry_backoff=60, retry_backoff_max=600, retry_jitter=True, max_retries=3,
+                     throws=(SyncTaskError,))
     def sync_user(user_id: int):
         try:
             return run_async(sync_account(provider, user_id))
         except Exception as exc:
-            if not isinstance(exc, SyncTaskError) or sync_user.request.retries >= 3:
-                from app.services.owner_notifications import critical_connector_error
+            if not isinstance(exc, SyncTaskError):
                 try:
-                    run_async(critical_connector_error(provider, user_id))
+                    run_async(_record_sync_outcome(provider, user_id, error_class=_sync_error_class(exc)))
                 except Exception:
                     pass
+                raise SyncTaskError("Provider sync failed; retry or review provider access", error_class=_sync_error_class(exc)) from None
             raise
     return sync_all, sync_user

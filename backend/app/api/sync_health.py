@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -34,8 +34,33 @@ class FeedHealth(BaseModel):
     ]
 
 
+class AccountHealth(BaseModel):
+    provider: str
+    state: Literal[
+        "syncing", "successful", "partial", "awaiting_new_data", "delayed",
+        "auth_required", "failed", "connected", "unknown",
+    ]
+    last_attempt_at: datetime | None
+    last_success_at: datetime | None
+    latest_measurement_at: datetime | None
+    has_successful_sync: bool
+    data_freshness: Literal["fresh", "stale", "not_measured"]
+    stale_after_hours: int
+    error_class: Literal[
+        "authentication", "permission", "transport", "normalization", "timeout",
+        "unknown", "sync_failed", "fetch_failed", "normalization_pending",
+    ] | None
+    failed_attempts: int
+    credentials_state: Literal[
+        "unknown", "configured", "reconnect_required", "not_required",
+    ]
+    streams_failed: int = Field(ge=0)
+    unprocessed: int = Field(ge=0)
+
+
 class SyncHealthResponse(BaseModel):
     feeds: list[FeedHealth]
+    accounts: list[AccountHealth]
 
 
 @router.get("/sync-health", response_model=SyncHealthResponse)

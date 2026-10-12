@@ -85,7 +85,10 @@ def test_celery_sync_retries_then_reports_failure(monkeypatch):
     result = sync_user_garmin.apply(args=[123], throw=False)
     assert result.state == "FAILURE"
     assert attempts.count('sync_account') == 4  # initial sync plus three retries
-    assert attempts.count('critical_connector_error') == 1
+    # The account outcome policy owns actionable alerts; expected Celery
+    # failures do not generate a second generic critical notification.
+    assert attempts.count('critical_connector_error') == 0
+    assert SyncTaskError in sync_user_garmin.throws
 
 
 async def test_oura_driver_uses_stored_credentials_and_real_sync(db_session, monkeypatch):
