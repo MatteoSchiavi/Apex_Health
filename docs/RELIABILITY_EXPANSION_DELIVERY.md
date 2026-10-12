@@ -20,7 +20,7 @@ Tests use a dedicated synthetic TimescaleDB/pgvector database and Redis on ports
 - Final integrated athlete/import/workout/focus/sharing/equipment/weather/sport backend run: **265 passed**.
 - Auth/Coach/sync/feature/registry regression run: **248 passed** (24 existing dependency deprecation warnings).
 - Additional sensor-unit, source-erasure, FIT/COROS, export and Lab checks: **59 passed**.
-- Integrated browser acceptance: **61 passed**, covering EN/IT profiles, mixed import, Today, journal, sharing, remember-me form, sync and sport views. Subsequent import/workout/sharing/sport checks: **31 passed**. Counts overlap and must not be summed.
+- Integrated browser acceptance: **61 passed**, covering EN/IT profiles, mixed import, Today, journal, sharing, remember-me form, sync and sport views. Subsequent import/workout/sharing/sport checks: **31 passed**; final shared block editor/import verification: **21 passed**; equipment control browser journey: **1 passed**. Counts overlap and must not be summed.
 - Actual persistent Chromium with a synthetic HTTPS backend: Secure/HttpOnly remembered cookie survived close/reopen, authenticated `/me`, and disappeared on logout.
 - Offline updater/Telegram tests: **81 passed**. Deterministic Coach evaluation: **26/26 passed**. PWA tests: **5 passed**.
 - Frontend production build, EN/IT parity, Python compilation and diff whitespace checks passed. Updated source retains a single additive migration chain through **0029**.
