@@ -14,6 +14,7 @@ The echoed coordinates are kept inside the payload for transparency.
 """
 
 import logging
+import math
 from datetime import date, datetime, timezone as tz_module
 from decimal import Decimal
 from typing import Any
@@ -137,6 +138,8 @@ def build_weather_snapshot(
     *,
     start_hour: int | None = None,
     fetched_at: datetime | None = None,
+    data_kind: str = "unknown",
+    coordinate_source: str = "unknown",
 ) -> dict[str, Any] | None:
     """§14: the activities.weather_snapshot value for one activity — the
     day's daily summary plus, when the hourly series and the activity's start
@@ -151,6 +154,12 @@ def build_weather_snapshot(
 
     snapshot: dict[str, Any] = {
         "source": SNAPSHOT_SOURCE,
+        "data_kind": data_kind if data_kind in {"archive_reanalysis", "forecast_recent_history"} else "unknown",
+        "coordinate_source": coordinate_source if coordinate_source in {"activity_stream", "configured_home"} else "unknown",
+        "method": "gridded_weather_estimate",
+        "limitations": ["modelled_grid_conditions_not_activity_sensor_measurements", "start_hour_estimate_not_entire_route_exposure"],
+        "temperature_c": None, "relative_humidity": None, "wind_speed_kmh": None,
+        "comparison_eligible": False,
         "date": day_iso,
         "latitude": payload.get("latitude"),
         "longitude": payload.get("longitude"),
@@ -162,21 +171,37 @@ def build_weather_snapshot(
         "precipitation_probability_max": _at(daily, "precipitation_probability_max", i),
         "wind_speed_10m_max": _at(daily, "wind_speed_10m_max", i),
         "weather_code": _at(daily, "weather_code", i),
-        "fetched_at": (fetched_at or datetime.now(tz_module.UTC)).isoformat(),
+        "fetched_at": (fetched_at or datetime.now(tz_module.utc)).isoformat(),
     }
 
     if start_hour is not None:
         hourly = payload.get("hourly") or {}
         htimes = hourly.get("time") or []
         prefix = f"{day_iso}T"
-        for j, stamp in enumerate(htimes):
-            if str(stamp).startswith(prefix) and str(stamp)[11:13].isdigit():
-                if int(str(stamp)[11:13]) == start_hour:
-                    snapshot["at_start"] = {
-                        "hour": start_hour,
-                        "temperature_2m": _at(hourly, "temperature_2m", j),
-                        "precipitation": _at(hourly, "precipitation", j),
-                        "weather_code": _at(hourly, "weather_code", j),
-                    }
-                    break
+        matches = [j for j,stamp in enumerate(htimes) if str(stamp).startswith(prefix)
+            and str(stamp)[11:13].isdigit() and int(str(stamp)[11:13]) == start_hour]
+        # A repeated DST local hour cannot identify the activity's UTC instant.
+        if len(matches) == 1:
+            j = matches[0]
+            snapshot["at_start"] = {
+                "hour": start_hour,
+                "temperature_2m": _at(hourly, "temperature_2m", j),
+                "relative_humidity_2m": _at(hourly, "relative_humidity_2m", j),
+                "wind_speed_10m": _at(hourly, "wind_speed_10m", j),
+                "precipitation": _at(hourly, "precipitation", j),
+                "weather_code": _at(hourly, "weather_code", j),
+            }
+            units = payload.get("hourly_units") or {}
+            snapshot["at_start"]["units"] = {key:units.get(key) for key in
+                ("temperature_2m", "relative_humidity_2m", "wind_speed_10m", "precipitation")}
+            if coordinate_source == "activity_stream":
+                for key,source,allowed,lower,upper in (
+                    ("temperature_c","temperature_2m",{"°C","C"},-100,70),
+                    ("relative_humidity","relative_humidity_2m",{"%"},0,100),
+                    ("wind_speed_kmh","wind_speed_10m",{"km/h","kmh"},0,500)):
+                    value = _at(hourly,source,j)
+                    if isinstance(value,(float,int)) and not isinstance(value,bool) and math.isfinite(value) and lower <= value <= upper and units.get(source) in allowed:
+                        snapshot[key] = value
+                snapshot["comparison_eligible"] = snapshot["data_kind"] != "unknown" and all(snapshot[key] is not None for key in
+                    ("temperature_c","relative_humidity","wind_speed_kmh"))
     return snapshot

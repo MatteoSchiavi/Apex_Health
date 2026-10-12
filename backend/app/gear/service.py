@@ -42,12 +42,17 @@ async def auto_link_gear(
     Returns the number of links added."""
     defaults = (
         await session.scalars(
-            select(DisciplineGearDefault.gear_id).where(
+            select(DisciplineGearDefault.gear_id).join(Gear, Gear.id == DisciplineGearDefault.gear_id).where(
                 DisciplineGearDefault.user_id == user_id,
                 DisciplineGearDefault.discipline_id == discipline_id,
+                Gear.user_id == user_id, Gear.active.is_(True),
             )
         )
     ).all()
+    owned_activity = await session.scalar(select(Activity.id).where(Activity.id == activity_id,
+        Activity.user_id == user_id, Activity.discipline_id == discipline_id))
+    if owned_activity is None:
+        return 0
     added = 0
     for gear_id in defaults:
         has_link = await session.scalar(
@@ -116,7 +121,7 @@ async def _gear_usage_since_last_service(
             GearServiceLog.gear_id == gear.id
         )
     )
-    conditions = [ActivityGearLink.gear_id == gear.id]
+    conditions = [ActivityGearLink.gear_id == gear.id, Activity.user_id == gear.user_id]
     if last_performed is not None:
         conditions.append(Activity.start_time > last_performed)
     row = (
@@ -157,21 +162,23 @@ async def accumulate_gear_usage(
     """Recompute one gear's usage counters; fire a new gear_service_due
     alert when an interval is crossed and none is open. The alert row is
     added to the session — caller commits, then pushes (§21)."""
-    if not gear.active:
-        return None
     hours, km = await _gear_usage_since_last_service(session, gear)
     gear.hours_since_service = hours
     gear.km_since_service = km
-
-    if await _has_open_alert(session, gear):
-        return None
-
     crossed = []
     if gear.service_interval_hours is not None and hours >= float(gear.service_interval_hours):
         crossed.append(f"{hours:.1f} h since last service (interval {float(gear.service_interval_hours):g} h)")
     if gear.service_interval_km is not None and km >= float(gear.service_interval_km):
         crossed.append(f"{km:.1f} km since last service (interval {float(gear.service_interval_km):g} km)")
-    if not crossed:
+    if not crossed or not gear.active:
+        # Corrected associations, removed reminders, or retired equipment must
+        # not leave an obsolete due warning open.
+        for alert in (await session.scalars(select(Alert).where(Alert.user_id==gear.user_id,
+            Alert.type=='gear_service_due',Alert.acknowledged.is_(False),
+            Alert.message.startswith(_alert_prefix(gear.id))))).all():
+            alert.acknowledged=True
+        return None
+    if await _has_open_alert(session, gear):
         return None
 
     alert = Alert(

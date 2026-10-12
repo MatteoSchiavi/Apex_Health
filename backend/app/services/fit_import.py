@@ -57,6 +57,11 @@ def parse_original(content):
                     continue
                 fields = {f.name: f.value for f in frame.fields if f.value is not None}
                 if frame.name == "session":
+                    from app.services.recorded_dynamics import decoded_fit_dynamics
+                    values,provenance=decoded_fit_dynamics(frame.fields)
+                    if values:
+                        fields['running_dynamics']=values
+                        fields['running_dynamics_provenance']=provenance
                     sessions.append(fields)
                 else:
                     records.append(fields)
@@ -186,7 +191,7 @@ async def import_original(session, user, filename, content, parsed):
             calories=summary.get("total_calories"),
             elevation_gain_m=summary.get("total_ascent"),
             data_completeness="partial",
-            source_metrics={"fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"]}},
+            source_metrics={"fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"], **({"running_dynamics":summary["running_dynamics"],"running_dynamics_provenance":summary["running_dynamics_provenance"]} if summary.get("running_dynamics") else {})}},
         )
         candidates = (
             (
@@ -233,7 +238,7 @@ async def import_original(session, user, filename, content, parsed):
             )
             candidate.source_metrics = {
                 **(candidate.source_metrics or {}),
-                "fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"]},
+                "fit": {"sport": sport, "file_hash": sha, "timer_time_s": summary["total_timer_time"], **({"running_dynamics":summary["running_dynamics"],"running_dynamics_provenance":summary["running_dynamics_provenance"]} if summary.get("running_dynamics") else {})},
             }
             activity = candidate
         else:

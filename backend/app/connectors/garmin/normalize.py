@@ -345,6 +345,11 @@ async def _upsert_activity(
         garmin_metrics["avg_cadence"] = value
     if (moving := _num(payload.get("movingDuration"))) is not None and 0 < moving <= duration_s:
         garmin_metrics["moving_time_s"] = moving
+    from app.services.recorded_dynamics import explicit_summary_dynamics
+    dynamics,provenance = explicit_summary_dynamics(payload)
+    if dynamics:
+        garmin_metrics["running_dynamics"] = dynamics
+        garmin_metrics["running_dynamics_provenance"] = provenance
     source_metrics["garmin"] = garmin_metrics
     activity.source_metrics = source_metrics
 

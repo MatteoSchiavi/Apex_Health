@@ -102,3 +102,32 @@ def test_zone_provenance_identifies_one_actual_provider_partition():
     zone=metrics(a)['hr_zone_time']
     assert len(zone['value'])==1 and zone['value'][0]['duration_s']==600
     assert zone['source_dependencies']==['activity:1:source_metrics.garmin.hr_zones']
+
+
+def test_interval_run_drift_is_unavailable_but_other_recorded_metrics_remain():
+    rows = stream()
+    for row in rows:
+        row.speed = 2 if (row.t_offset_s // 120) % 2 else 5
+    result = metrics(rows=rows)
+    assert result['cardiac_drift']['value'] is None
+    assert result['cardiac_drift']['unavailable_reason'] == 'requires_steady_speed_effort'
+    assert result['cardiac_drift']['formula_version'] == 'apex-running-v2'
+    assert result['average_pace']['value'] == 360
+    assert result['aerobic_efficiency']['value'] is not None
+
+
+def test_steadiness_gate_uses_time_weighted_speed_independently_of_hr_outcome():
+    from app.services.endurance_metrics import steady_effort
+    # Unequal sample durations: the short high effort cannot count as half the run.
+    assert steady_effort([(99, 3, 120), (1, 4, 240)])
+    assert not steady_effort([(1, 3, 120), (1, 4, 120)])
+    rows = stream()
+    for row in rows:
+        row.hr = 100 if row.t_offset_s < 1800 else 200
+    assert metrics(rows=rows)['cardiac_drift']['value'] == pytest.approx(100)
+
+
+def test_steady_speed_cv_implementation_cutoff():
+    from app.services.endurance_metrics import steady_effort
+    assert steady_effort([(1, 9, 120), (1, 11, 180)])
+    assert not steady_effort([(1, 8.9, 120), (1, 11.1, 120)])

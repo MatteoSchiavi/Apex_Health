@@ -2,6 +2,7 @@ from datetime import date as CalendarDate, time
 from typing import Literal
 from pydantic import Field, model_validator
 from app.schemas.changes import Strict
+from app.schemas.workouts import WorkoutStep, WorkoutStructure
 
 
 class ReviewedWorkout(Strict):
@@ -14,12 +15,15 @@ class ReviewedWorkout(Strict):
     description: str = Field(default="", max_length=2000)
     intensity_targets: dict[Literal["hr_bpm", "power_w", "pace_s_km", "rpe"], str] = Field(default_factory=dict)
     protected: bool = False
+    steps: list[WorkoutStep] = Field(default_factory=list,max_length=100)
     @model_validator(mode="after")
     def valid_targets(self):
         if self.start_time and self.start_time.tzinfo:
             raise ValueError("Workout start must be a local time")
         if any(len(v) > 200 for v in self.intensity_targets.values()):
             raise ValueError("Intensity targets must be at most 200 characters")
+        if self.steps:
+            WorkoutStructure(title=self.description[:200], steps=self.steps)
         return self
 
 
@@ -75,12 +79,17 @@ class CheckinIn(Strict):
     rpe: int | None = Field(default=None, ge=0, le=10)
     pain: bool | None = None
     felt_unwell: bool | None = None
+    fatigue: int | None = Field(default=None,ge=0,le=10)
+    soreness: int | None = Field(default=None,ge=0,le=10)
+    workout_quality: int | None = Field(default=None,ge=0,le=10)
+    modification_reason: str = Field(default='',max_length=1000)
+    terrain_notes: str = Field(default='',max_length=1000)
     note: str = Field(default="", max_length=2000)
     @model_validator(mode="after")
     def identity_required(self):
         if not self.activity_id and not self.planned_session_id:
             raise ValueError("Choose a recorded activity or planned session")
-        if self.status == "skipped" and (self.activity_id or self.rpe is not None):
+        if self.status == "skipped" and (self.activity_id or self.rpe is not None or self.workout_quality is not None):
             raise ValueError("Skipped sessions cannot have recorded activities or RPE")
         return self
 

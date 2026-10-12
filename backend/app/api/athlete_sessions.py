@@ -88,6 +88,14 @@ async def save_checkin(payload: CheckinIn, user: User = Depends(get_current_user
         raise HTTPException(409, "Session identities have separate check-ins; review them first")
     row = rows[0] if rows else None
     data = payload.model_dump(exclude={"expected_revision", "activity_id", "planned_session_id"})
+    # Older clients do not know the optional journal fields. Their save must
+    # preserve already entered feedback, while an explicit null still clears it.
+    if row:
+        for key in ("fatigue", "soreness", "workout_quality", "modification_reason", "terrain_notes"):
+            if key not in payload.model_fields_set:
+                data[key] = getattr(row, key)
+    if payload.status == "skipped":
+        data["workout_quality"] = None
     if row and all(getattr(row, k) == v for k, v in data.items()) and row.activity_id == activity_id and row.planned_session_id == workout_id:
         return checkin_out(row)  # idempotent exact retry
     if payload.expected_revision != (row.revision if row else 0):

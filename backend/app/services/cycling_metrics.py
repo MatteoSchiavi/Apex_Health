@@ -1,10 +1,10 @@
 """Second endurance release: recorded power streams and explicitly confirmed FTP."""
 from datetime import date
 from app.services.endurance_metrics import (metric, positive, running_metrics, moving_time,
-    paired_intervals, half_means, MIN_DRIFT_MOVING_S)
+    paired_intervals, half_means, steady_effort, MIN_DRIFT_MOVING_S)
 from app.services.activity_presentation import recorded_zones
 
-VERSION = "apex-cycling-v1"
+VERSION = "apex-cycling-v2"
 FTP_MAX_AGE_DAYS = 90
 NP_WINDOW_S = 30
 NP_MIN_CONTINUOUS_S = 300
@@ -12,13 +12,24 @@ NP_MIN_CONTINUOUS_S = 300
 
 def dense_power(activity, streams):
     moving, _ = moving_time(activity)
-    duration = positive(activity.duration_s)
-    exclude_pauses = moving is not None and duration is not None and moving < duration
+    return power_segments(streams, activity.duration_s, moving_s=moving)
+
+
+def power_segments(streams, duration_s, *, moving_s=None):
+    """Shared legacy/detail gate: contiguous recorded 1Hz samples, no filling."""
+    duration = positive(duration_s)
+    if duration is None:
+        return [], False, 0
+    offsets = [positive(row.t_offset_s, zero=True) for row in streams]
+    if (any(t is None or t > duration for t in offsets)
+            or any(b <= a for a, b in zip(offsets, offsets[1:]))):
+        return [], False, 0
+    exclude_pauses = moving_s is not None and moving_s < duration
     segments, current = [], []
     for a, b in zip(streams, streams[1:]):
         power = positive(a.power, zero=True)
         if (b.t_offset_s-a.t_offset_s == 1 and a.t_offset_s >= 0 and power is not None
-            and power <= 5000 and (not exclude_pauses or positive(a.speed))):
+            and power <= 5000 and (not exclude_pauses or positive(getattr(a, "speed", None)))):
             current.append(power)
         else:
             if current:
@@ -27,7 +38,7 @@ def dense_power(activity, streams):
     if current:
         segments.append(current)
     seconds = sum(len(s) for s in segments)
-    reference = moving or duration
+    reference = moving_s or duration
     valid = (reference and seconds >= NP_MIN_CONTINUOUS_S and segments
         and max(map(len, segments)) >= NP_MIN_CONTINUOUS_S and .95 <= seconds/reference <= 1.05)
     return segments, valid, seconds
@@ -119,11 +130,13 @@ def cycling_metrics(activity, streams, laps, *, context=None, activity_day=None,
                 run = 0
     paired_seconds = sum(row[0] for row in paired)
     reference = moving or duration
-    halves = half_means(paired) if reference and paired_seconds >= MIN_DRIFT_MOVING_S and longest >= MIN_DRIFT_MOVING_S and .9 <= paired_seconds/reference <= 1.1 else None
+    decoupling_inputs = bool(reference and paired_seconds >= MIN_DRIFT_MOVING_S and longest >= MIN_DRIFT_MOVING_S and .9 <= paired_seconds/reference <= 1.1)
+    steady = steady_effort(paired) if decoupling_inputs else False
+    halves = half_means(paired) if decoupling_inputs and steady else None
     decoupling = ((halves[1][1]/halves[1][0]) / (halves[0][1]/halves[0][0])-1)*100 if halves and all(x > 0 and y > 0 for x, y in halves) else None
     out.append(metric("power_hr_decoupling", decoupling, "%", "((mean_HR/mean_power)_second_moving_half / (mean_HR/mean_power)_first_moving_half − 1) × 100",
-        [stream_dep+":power", stream_dep+":hr"], version=VERSION, reason="requires_30min_continuous_valid_power_hr",
-        limitations=["terrain_temperature_and_intensity_confound", "descriptive_not_diagnosis"], prerequisites=["30min_continuous_moving_effort", "90_percent_power_hr_coverage"]))
+        [stream_dep+":power", stream_dep+":hr"], version=VERSION, reason="requires_steady_power_effort" if decoupling_inputs and not steady else "requires_30min_continuous_valid_power_hr",
+        limitations=["terrain_temperature_and_intensity_confound", "descriptive_not_diagnosis", "steadiness_cutoff_is_implementation_eligibility_not_physiology"], prerequisites=["30min_continuous_moving_effort", "90_percent_power_hr_coverage", "time_weighted_power_cv_at_most_10_percent"]))
     from app.services.endurance_metrics import zone_metric
     out.append(zone_metric(activity, streams, "power", context, activity_day, profile_revision, VERSION))
     return out

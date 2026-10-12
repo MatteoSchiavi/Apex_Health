@@ -3,14 +3,14 @@ import json
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.core.db import get_session, sessionmaker
 from app.core.encryption import decrypt_bytes, encrypt_bytes
 from app.core.llm import build_llm_client, extract_json_object, LLMError
 from app.models.activity import Discipline
-from app.models.athlete_training import PlanDocumentDraft
+from app.models.athlete_training import PlanDocumentDraft, WeeklyTrainingTemplate
 from app.models.lab import ChangeAudit
 from app.models.training import TrainingPlan, PlannedSession
 from app.models.user import User
@@ -28,6 +28,7 @@ def structure_of(row):
 
 def draft_out(row):
     return {"id": row.id, "document_id": row.document_id, "document_revision": row.document_revision,
+        "template_id": row.template_id, "template_revision": row.template_revision,
         "version": row.version, "structure": structure_of(row), "payload_hash": row.payload_hash,
         "status": row.status, "extraction_method": row.extraction_method,
         "confirmed_at": row.confirmed_at, "created_at": row.created_at}
@@ -95,13 +96,23 @@ async def confirm_plan(ident: int, payload: PlanConfirmationIn, user: User = Dep
         raise HTTPException(404, "Plan draft not found")
     if payload.payload_hash != row.payload_hash:
         raise HTTPException(409, "Confirmation does not match the displayed structure")
+    document, template = None, None
+    if row.document_id is not None:
+        document = await owned_document(session, user.id, row.document_id)
+        source_matches = document.status == "confirmed" and document.revision == row.document_revision
+        source_filter = PlanDocumentDraft.document_id == row.document_id
+    else:
+        template = await session.scalar(select(WeeklyTrainingTemplate).where(
+            WeeklyTrainingTemplate.id == row.template_id, WeeklyTrainingTemplate.user_id == user.id).with_for_update())
+        source_matches = template is not None and template.revision == row.template_revision
+        source_filter = PlanDocumentDraft.template_id == row.template_id
+    latest_version = await session.scalar(select(func.max(PlanDocumentDraft.version)).where(
+        source_filter, PlanDocumentDraft.user_id == user.id))
+    if not source_matches or row.version != latest_version:
+        raise HTTPException(409, "Document or extraction changed; review the current draft")
     if row.status == "confirmed":
         existing = await session.scalar(select(TrainingPlan).where(TrainingPlan.extraction_id == row.id, TrainingPlan.user_id == user.id))
         return {"plan_id": existing.id, "draft": draft_out(row)}
-    document = await owned_document(session, user.id, row.document_id)
-    latest_version = await session.scalar(select(func.max(PlanDocumentDraft.version)).where(PlanDocumentDraft.document_id == row.document_id))
-    if document.status != "confirmed" or document.revision != row.document_revision or row.version != latest_version:
-        raise HTTPException(409, "Document or extraction changed; review the current draft")
     structure = ReviewedPlan.model_validate(structure_of(row))
     if not structure.starts_on or not structure.ends_on or not structure.sessions or any(not s.date for s in structure.sessions):
         raise HTTPException(422, "Confirm actual plan dates and at least one dated workout; missing dates remain unknown")
@@ -113,7 +124,8 @@ async def confirm_plan(ident: int, payload: PlanConfirmationIn, user: User = Dep
     now = datetime.now(UTC)
     today = now.astimezone(ZoneInfo(user.timezone)).date()
     old_plans = (await session.scalars(select(TrainingPlan).where(TrainingPlan.user_id == user.id,
-        TrainingPlan.source_document_id.is_not(None), TrainingPlan.status == "active"))).all()
+        or_(TrainingPlan.extraction_id.is_not(None), TrainingPlan.source_document_id.is_not(None),
+            TrainingPlan.source_template_id.is_not(None)), TrainingPlan.status == "active"))).all()
     for old in old_plans:
         protected_upcoming = await session.scalar(select(PlannedSession.id).where(
             PlannedSession.training_plan_id == old.id, PlannedSession.date >= today,
@@ -124,18 +136,25 @@ async def confirm_plan(ident: int, payload: PlanConfirmationIn, user: User = Dep
         old.status, old.superseded_on = "completed", today
     plan = TrainingPlan(user_id=user.id, created_by="manual", week_start=structure.starts_on,
         end_date=structure.ends_on, title=structure.title, status="active", protected=structure.protected,
-        source_document_id=document.id, source_document_revision=document.revision, extraction_id=row.id,
+        source_document_id=document.id if document else None,
+        source_document_revision=document.revision if document else None,
+        source_template_id=template.id if template else None, extraction_id=row.id,
         activated_on=today, revision=1)
     session.add(plan)
     await session.flush()
     for workout in structure.sessions:
-        session.add(PlannedSession(training_plan_id=plan.id, date=workout.date, discipline_id=disciplines[workout.discipline],
+        planned = PlannedSession(training_plan_id=plan.id, date=workout.date, discipline_id=disciplines[workout.discipline],
             session_type=workout.session_type, target_duration_min=workout.duration_min, target_distance_m=workout.distance_m,
             start_time=workout.start_time, protected=workout.protected, description=workout.description,
-            intensity_targets=workout.intensity_targets))
+            intensity_targets=workout.intensity_targets)
+        session.add(planned)
+        from app.services.structured_workouts import approved_plan_steps
+        await approved_plan_steps(session,user.id,planned,workout.steps)
     row.status, row.confirmed_at = "confirmed", now
     session.add(ChangeAudit(user_id=user.id, action="plan_structure_confirmed", payload={
-        "draft_id": row.id, "payload_hash": row.payload_hash, "plan_id": plan.id, "document_revision": document.revision}))
+        "draft_id": row.id, "payload_hash": row.payload_hash, "plan_id": plan.id,
+        "document_revision": row.document_revision, "template_id": row.template_id,
+        "template_revision": row.template_revision}))
     await session.commit()
     return {"plan_id": plan.id, "draft": draft_out(row)}
 

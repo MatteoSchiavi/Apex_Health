@@ -194,7 +194,9 @@ class SecurityHeadersMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers["X-Frame-Options"] = "DENY"
                 headers["X-Content-Type-Options"] = "nosniff"
-                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                # Capability views deliberately use a stricter policy; never broaden it.
+                if headers.get("Referrer-Policy") != "no-referrer":
+                    headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["Content-Security-Policy"] = self.csp
                 headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=(self)"
                 if scope.get("scheme") == "https":

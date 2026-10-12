@@ -440,7 +440,7 @@ async def snapshot_revision(session, user_id):
     fingerprints.append(
         await session.scalar(
             text(
-                "SELECT md5(coalesce(string_agg(id::text || content_hash || status || revision::text, '' ORDER BY id), '')) FROM lab_documents WHERE user_id=:owner"
+                "SELECT md5(coalesce(string_agg(id::text || content_hash || status || revision::text, '' ORDER BY id), '')) FROM lab_documents WHERE user_id=:owner AND status='confirmed' AND coach_eligible"
             ),
             {"owner": user_id},
         )

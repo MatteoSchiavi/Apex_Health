@@ -13,15 +13,10 @@ classic heat/dehydration drift pattern. The metric name now matches the
 calculation; NULL is returned when either power or HR is missing (the old
 HR-only fallback was physiologically invalid).
 
-P-07 audit: NP uses an O(n) cumulative-sum sliding window with correct
-partial-window initialization (the first <30s of samples are scaled to the
-window size, not treated as zero-power contributions). The old O(n²)
-implementation under-read IF for short efforts and was a perf bottleneck
-on long streams.
-
-Steady-state gate: §7 scopes decoupling to steady-state efforts. For power
-sports the validated criterion is Coggan's Variability Index (NP / AP):
-VI <= 1.05 counts as steady.
+NP uses the same dense, contiguous recorded-power gate and complete 30-second
+windows as activity-detail cycling metrics. Missing samples are not filled.
+Decoupling additionally requires time-weighted power CV <=10%, independent
+of HR drift. This conservative eligibility cutoff is not a medical threshold.
 
 FTP (§17: validated protocols only, never ad hoc regression): the discipline
 row's ftp_model_type gates estimation. 'twenty_min_protocol' = FTP is 0.95 x
@@ -39,6 +34,8 @@ import bisect
 from types import SimpleNamespace
 
 from app.models.activity import Activity, ActivityStream
+from app.services.cycling_metrics import power_segments, normalized_power as segmented_normalized_power
+from app.services.endurance_metrics import paired_intervals, steady_effort
 
 STEADY_VI_MAX = 1.05
 FTP_TWENTY_MIN_WINDOW_S = 1200
@@ -113,55 +110,9 @@ def _sample_hold_power_at(
 
 
 def normalized_power(streams: list[ActivityStream], duration_s: int) -> float | None:
-    """Coggan NP: fourth root of the session mean of the 30-second rolling
-    mean power raised to the 4th power. Power is read as sample-and-hold
-    between samples.
-
-    P-07 audit: O(n) cumulative-sum sliding window with correct partial-window
-    initialization. The first <30 samples contribute a rolling mean scaled
-    to the available window size (NOT zero-padded, which under-read IF for
-    short efforts). The old O(n²) implementation called
-    ``_sample_hold_power_at`` at every 1s step, recomputing the trailing
-    window from scratch each time — performance bottleneck on long streams
-    AND under-read short efforts.
-    """
-    powered = sorted(
-        (s for s in streams if s.power is not None),
-        key=lambda s: s.t_offset_s,
-    )
-    if not powered or duration_s <= 0:
-        return None
-    # P-07: build a 1Hz sample-and-hold power series once, then use a
-    # cumulative-sum sliding window. O(n) instead of O(n²).
-    duration = int(duration_s)
-    if duration <= 0:
-        return None
-    # Build the per-second power series (sample-and-hold).
-    series = [0.0] * duration
-    sample_idx = 0
-    current_power = 0.0
-    for t in range(duration):
-        while sample_idx < len(powered) and powered[sample_idx].t_offset_s <= t:
-            current_power = float(powered[sample_idx].power)
-            sample_idx += 1
-        series[t] = current_power
-    # 30s rolling mean via cumulative sum. Partial windows at the start are
-    # scaled to the available window size (NOT zero-padded — that would
-    # under-read IF for short efforts).
-    window = 30
-    rolling_means: list[float] = []
-    cumsum = 0.0
-    for t in range(duration):
-        cumsum += series[t]
-        if t < window:
-            # Partial window: scale to available size.
-            rolling_means.append(cumsum / (t + 1))
-        else:
-            cumsum -= series[t - window]
-            rolling_means.append(cumsum / window)
-    # NP = fourth root of mean of rolling_mean^4.
-    total = sum(rm ** 4 for rm in rolling_means)
-    return (total / duration) ** 0.25
+    """Same recorded 1Hz coverage/continuity and full-window NP as detail."""
+    segments, valid, _ = power_segments(streams, duration_s)
+    return segmented_normalized_power(segments) if valid else None
 
 
 def best_mean_power(
@@ -206,12 +157,13 @@ def best_mean_power(
 
 
 def variability_index(streams: list[ActivityStream], duration_s: int) -> float | None:
-    """NP / AP — the steady-effort criterion for the decoupling gate."""
-    np_ = normalized_power(streams, duration_s)
-    ap = _time_weighted_mean(streams, duration_s, "power")
-    if np_ is None or ap is None or ap <= 0:
+    """NP / average power from the same eligible recorded samples."""
+    segments, valid, seconds = power_segments(streams, duration_s)
+    if not valid:
         return None
-    return np_ / ap
+    np_ = segmented_normalized_power(segments)
+    average = sum(sum(segment) for segment in segments) / seconds
+    return np_ / average if np_ is not None and average > 0 else None
 
 
 def aerobic_decoupling(
@@ -228,7 +180,8 @@ def aerobic_decoupling(
 
     Requires BOTH power and HR streams — NULL when either is missing (the
     old HR-only fallback was physiologically invalid). Gated to steady-state
-    efforts via the VI ≤ 1.05 criterion when power is available.
+    efforts via VI ≤1.05 and time-weighted recorded-power CV ≤10%.
+    Both are conservative implementation eligibility, not clinical cutoffs.
     """
     if activity.duration_s < MIN_SESSION_S:
         return None
@@ -238,7 +191,11 @@ def aerobic_decoupling(
     if not (has_power and has_hr):
         return None
     vi = variability_index(streams, activity.duration_s)
-    if vi is not None and vi > STEADY_VI_MAX:
+    if vi is None or vi > STEADY_VI_MAX:
+        return None
+    paired, longest = paired_intervals(streams, first="power", second="hr", allow_zero_first=True)
+    if (sum(dt for dt, _, _ in paired) < .9 * activity.duration_s
+            or longest < MIN_SESSION_S or not steady_effort(paired)):
         return None
     # P-08: compute EF for each half — EF = NP_half / avg_HR_half.
     # Use the time-offset-aligned half means of HR, and compute NP over
@@ -262,11 +219,11 @@ def aerobic_decoupling(
     if np1 is None or np2 is None:
         return None
     hr1 = _time_weighted_mean(
-        [s for s in streams if s.hr is not None and s.t_offset_s < split_s],
+        [s for s in streams if s.t_offset_s < split_s],
         first_duration, "hr",
     )
     hr2 = _time_weighted_mean(
-        [s for s in second_half if s.hr is not None],
+        second_half,
         second_duration, "hr",
     )
     if hr1 is None or hr2 is None or hr1 <= 0 or hr2 <= 0:

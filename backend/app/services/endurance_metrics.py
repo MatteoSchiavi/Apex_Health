@@ -8,10 +8,11 @@ from statistics import mean, pstdev
 from app.services.activity_presentation import number, recorded_zones
 from app.services.evidence import digest
 
-RUNNING_VERSION = "apex-running-v1"
+RUNNING_VERSION = "apex-running-v2"
 MAX_SAMPLE_GAP_S = 5
 MIN_DRIFT_MOVING_S = 1800
 MIN_COVERAGE = .9
+MAX_STEADY_EFFORT_CV = .10
 
 
 def positive(value, *, zero=False):
@@ -54,7 +55,9 @@ def paired_intervals(streams, first="speed", second="hr", *, allow_zero_first=Fa
         dt = b.t_offset_s - a.t_offset_s
         x, y = positive(getattr(a, first, None), zero=allow_zero_first), positive(getattr(a, second, None))
         moving = positive(getattr(a, "speed", None))
-        if 0 < dt <= MAX_SAMPLE_GAP_S and x is not None and y is not None and (first != "speed" or moving is not None):
+        if (0 < dt <= MAX_SAMPLE_GAP_S and x is not None and y is not None
+                and (first != "power" or x <= 5000)
+                and (first != "speed" or moving is not None)):
             intervals.append((dt, x, y))
             run += dt
             longest = max(longest, run)
@@ -75,6 +78,22 @@ def half_means(intervals):
             accum[index][2] += seconds * y
         elapsed += dt
     return [(row[1] / row[0], row[2] / row[0]) for row in accum] if all(row[0] for row in accum) else None
+
+
+def steady_effort(intervals):
+    """Conservative eligibility from recorded speed/power, never the HR outcome.
+
+    Time-weighted population SD / mean must be <=10%. This implementation
+    cutoff limits effort variability; it is not a physiological threshold.
+    """
+    seconds = sum(dt for dt, _, _ in intervals)
+    if seconds <= 0:
+        return False
+    average = sum(dt * effort for dt, effort, _ in intervals) / seconds
+    if average <= 0:
+        return False
+    variance = sum(dt * (effort - average) ** 2 for dt, effort, _ in intervals) / seconds
+    return sqrt(variance) / average <= MAX_STEADY_EFFORT_CV
 
 
 def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None, context=None, activity_day=None, profile_revision=None):
@@ -120,12 +139,14 @@ def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None, c
         "m/s/bpm", "time_weighted_mean_speed / time_weighted_mean_HR", [stream_dep+":speed", stream_dep+":hr"],
         reason="missing_hr_speed_or_continuity", limitations=["descriptive_not_threshold", "terrain_and_session_context"],
         prerequisites=["90_percent_valid_hr_speed_coverage", "sample_gaps_at_most_5s"]))
-    halves = half_means(intervals) if valid and seconds >= MIN_DRIFT_MOVING_S and longest >= MIN_DRIFT_MOVING_S else None
+    drift_inputs = valid and seconds >= MIN_DRIFT_MOVING_S and longest >= MIN_DRIFT_MOVING_S
+    steady = steady_effort(intervals) if drift_inputs else False
+    halves = half_means(intervals) if drift_inputs and steady else None
     drift = ((halves[1][1]/halves[1][0]) / (halves[0][1]/halves[0][0]) - 1) * 100 if halves and all(x > 0 and y > 0 for x, y in halves) else None
     out.append(metric("cardiac_drift", drift, "%", "((mean_HR/mean_speed)_second_moving_half / (mean_HR/mean_speed)_first_moving_half − 1) × 100",
-        [stream_dep+":speed", stream_dep+":hr"], reason="requires_30min_continuous_valid_hr_speed",
-        limitations=["descriptive_not_diagnosis", "terrain_temperature_and_intensity_confound"],
-        prerequisites=["30min_continuous_moving_effort", "90_percent_valid_hr_speed_coverage", "pauses_excluded"]))
+        [stream_dep+":speed", stream_dep+":hr"], reason="requires_steady_speed_effort" if drift_inputs and not steady else "requires_30min_continuous_valid_hr_speed",
+        limitations=["descriptive_not_diagnosis", "terrain_temperature_and_intensity_confound", "steadiness_cutoff_is_implementation_eligibility_not_physiology"],
+        prerequisites=["30min_continuous_moving_effort", "90_percent_valid_hr_speed_coverage", "pauses_excluded", "time_weighted_speed_cv_at_most_10_percent"]))
     out.append(zone_metric(activity, streams, "hr", context, activity_day, profile_revision))
     exertion = number(rpe)
     rpe_load = duration / 60 * exertion if duration and exertion is not None and 0 <= exertion <= 10 else None
@@ -136,9 +157,9 @@ def running_metrics(activity, streams, laps, *, rpe=None, rpe_dependency=None, c
 
 
 def input_revision(activity, streams, laps, profile=None, checkin=None):
-    return digest({"activity": {k: getattr(activity, k, None) for k in ("id", "duration_s", "distance_m", "elevation_gain_m", "source_metrics", "avg_power")},
+    return digest({"activity": {k: getattr(activity, k, None) for k in ("id", "duration_s", "distance_m", "elevation_gain_m", "source_metrics", "avg_power", "avg_hr", "start_time", "weather_snapshot")},
         "streams": [[getattr(r, k, None) for k in ("t_offset_s", "hr", "power", "speed", "cadence", "altitude")] for r in streams],
-        "laps": [[getattr(r, k, None) for k in ("lap_index", "duration_s", "distance_m")] for r in laps],
+        "laps": [[getattr(r, k, None) for k in ("lap_index", "duration_s", "distance_m", "avg_hr", "avg_power", "avg_cadence")] for r in laps],
         "profile_revision": profile.revision if profile else None, "checkin_revision": checkin.revision if checkin else None})
 
 

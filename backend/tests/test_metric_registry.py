@@ -245,11 +245,23 @@ def test_cold_start_load_distribution_component_is_absent_not_normal():
 
 
 @pytest.mark.parametrize("second_half_hr,expected", [(150, 0.), (165, 100 * (1 - 150/165))])
-def test_decoupling_aligns_second_half_offsets(second_half_hr, expected):
+def test_dense_decoupling_aligns_second_half_offsets(second_half_hr, expected):
     activity = Activity(id=1, user_id=1, duration_s=1200)
-    streams = [ActivityStream(t_offset_s=offset, power=200, hr=hr)
-               for offset, hr in [(0, 150), (300, 150), (600, second_half_hr), (900, second_half_hr)]]
+    streams = [ActivityStream(t_offset_s=offset, power=200, hr=150 if offset < 600 else second_half_hr)
+               for offset in range(1201)]
     assert aerobic_decoupling(activity, streams) == pytest.approx(expected)
+
+
+def test_sparse_decoupling_alignment_fixture_is_unavailable():
+    activity = Activity(id=1, user_id=1, duration_s=1200)
+    streams = [ActivityStream(t_offset_s=offset, power=200, hr=150 if offset < 600 else 165)
+               for offset in (0, 300, 600, 900)]
+    assert aerobic_decoupling(activity, streams) is None
+
+
+def test_dense_power_eligibility_changes_have_new_provenance_versions():
+    assert METRIC_REGISTRY['aerobic_decoupling'].formula_version == 'aerobic-decoupling-v3'
+    assert METRIC_REGISTRY['efficiency_factor'].formula_version == 'efficiency-factor-v2'
 
 
 def test_decoupling_absent_second_half_hr_is_unavailable():

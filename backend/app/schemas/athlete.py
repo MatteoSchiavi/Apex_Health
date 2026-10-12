@@ -1,6 +1,6 @@
 """Strict optional athlete assertions; empty context remains a valid profile."""
 from datetime import date as CalendarDate, time
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import Field, model_validator
 from app.schemas.changes import Strict
 
@@ -78,8 +78,26 @@ class ConfiguredZones(Strict):
         return self
 
 
+class SeasonalFocus(Strict):
+    starts_on: CalendarDate
+    ends_on: CalendarDate
+    priorities: list[Focus] = Field(min_length=1,max_length=3)
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.starts_on > self.ends_on:
+            raise ValueError("Seasonal focus requires increasing inclusive dates")
+        if len(self.priorities) != len(set(self.priorities)):
+            raise ValueError("Seasonal priorities must be unique")
+        return self
+
+
 class AthleteContext(Strict):
     focuses: dict[Focus, FocusContext] = Field(default_factory=dict)
+    focus_mode: Literal["prioritized","balanced"] = "prioritized"
+    supporting_focus: list[Focus] = Field(default_factory=list,max_length=3)
+    weekly_allocation_min: dict[Focus,Annotated[int,Field(strict=True,ge=0,le=10080)]] = Field(default_factory=dict)
+    seasonal_focus: list[SeasonalFocus] = Field(default_factory=list,max_length=30)
     main_goal: str = Field(default="", max_length=1000)
     weekly_time_budget_min: int | None = Field(default=None, ge=0, le=10080)
     preferred_rest_day: Day | None = None
@@ -103,6 +121,14 @@ class AthleteContext(Strict):
     onboarding_step: int = Field(default=0, ge=0, le=5)
     @model_validator(mode="after")
     def no_overlap(self):
+        if len(self.supporting_focus) != len(set(self.supporting_focus)):
+            raise ValueError("Supporting focuses must be unique")
+        if self.weekly_time_budget_min is not None and sum(self.weekly_allocation_min.values()) > self.weekly_time_budget_min:
+            raise ValueError("Sport allocations exceed the weekly time budget")
+        for i,a in enumerate(self.seasonal_focus):
+            for b in self.seasonal_focus[i+1:]:
+                if a.starts_on <= b.ends_on and b.starts_on <= a.ends_on:
+                    raise ValueError("Seasonal focus date ranges must not overlap")
         for i, a in enumerate(self.availability):
             for b in self.availability[i+1:]:
                 if a.day == b.day and a.start < b.end and b.start < a.end:
@@ -120,6 +146,10 @@ class AthleteUpdate(Strict):
             raise ValueError("Training priorities must be unique and ordered")
         if not set(self.context.focuses) <= set(self.training_focus):
             raise ValueError("Focus details must refer to selected training priorities")
+        referenced = set(self.context.supporting_focus) | set(self.context.weekly_allocation_min)
+        referenced.update(focus for season in self.context.seasonal_focus for focus in season.priorities)
+        if not referenced <= set(self.training_focus):
+            raise ValueError("Supporting, allocated and seasonal focuses must be selected training priorities")
         return self
 
 

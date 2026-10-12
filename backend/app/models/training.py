@@ -30,6 +30,7 @@ class TrainingPlan(Base):
     source_ai_report_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     source_document_id: Mapped[int | None] = mapped_column(ForeignKey("lab_documents.id", ondelete="SET NULL"))
     source_document_revision: Mapped[int | None] = mapped_column(Integer)
+    source_template_id: Mapped[int | None] = mapped_column(ForeignKey("weekly_training_templates.id", ondelete="SET NULL"))
     extraction_id: Mapped[int | None] = mapped_column(ForeignKey("plan_document_drafts.id", ondelete="SET NULL"))
     title: Mapped[str | None] = mapped_column(Text)
     end_date: Mapped[date | None] = mapped_column(Date)

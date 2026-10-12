@@ -364,7 +364,7 @@ async def _search(ctx, query, limit=5):
     files = (
         await ctx.session.scalars(
             select(LabDocument)
-            .where(LabDocument.user_id == user.id, LabDocument.status == "confirmed")
+            .where(LabDocument.user_id == user.id, LabDocument.status == "confirmed", LabDocument.coach_eligible.is_(True))
             .order_by(LabDocument.id.desc())
             .limit(50)
         )

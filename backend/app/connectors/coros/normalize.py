@@ -107,6 +107,12 @@ async def normalize_activity(
         }
         and value is not None
     }
+    from app.services.recorded_dynamics import explicit_summary_dynamics
+    dynamics,provenance = explicit_summary_dynamics(payload)
+    coros_metrics.pop("running_dynamics",None)
+    if dynamics:
+        coros_metrics["running_dynamics"] = dynamics
+        coros_metrics["running_dynamics_provenance"] = provenance
     if link is None:
         candidate = (
             await find_reconcilable_activity(

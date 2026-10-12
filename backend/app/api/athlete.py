@@ -1,5 +1,5 @@
 """Self-service athlete context and separate, voluntary AI consent."""
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -7,7 +7,7 @@ from app.models.activity import Discipline
 from app.auth.deps import get_current_user
 from app.core.db import get_session
 from app.models.athlete import AthleteProfile, AiConsent
-from app.models.lab import ChangeAudit
+from app.models.lab import AthleteEntry, ChangeAudit
 from app.models.user import User
 from app.schemas.athlete import AthleteUpdate, ConsentUpdate
 from app.services.ai_access import POLICY_VERSION, PURPOSE, provider_identity, effective_access, budget_state
@@ -30,22 +30,36 @@ async def profile(user: User = Depends(get_current_user), session: AsyncSession 
 @router.put("/profile")
 async def update_profile(payload: AthleteUpdate, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     await scope_lock(session, user.id, "changes")
+    await write_profile(session, user, payload)
+    await session.commit()
+    return await profile_out(session, user.id)
+
+
+async def write_profile(session, user, payload):
+    """Canonical profile/calendar write; caller owns receipt/audit transaction."""
     row = await session.get(AthleteProfile, user.id, populate_existing=True)
     if payload.expected_revision != (row.revision if row else 0):
         raise HTTPException(409, "Athlete context changed; reload before editing")
     context = payload.context.model_dump(mode="json", exclude_none=True)
+    previous_ftp = row.context.get("ftp") if row else None
     if row is None:
         row = AthleteProfile(user_id=user.id, revision=1)
         session.add(row)
     elif row.training_focus == payload.training_focus and row.context == context:
-        return await profile_out(session, user.id)
+        return row
     else:
         row.revision += 1
     row.training_focus, row.context, row.updated_at = payload.training_focus, context, datetime.now(UTC)
+    ftp = context.get("ftp")
+    if ftp and ftp != previous_ftp:
+        # New accepted assertions only: existing profile values are never
+        # backfilled into an invented measurement history.
+        session.add(AthleteEntry(user_id=user.id,kind="ftp_assertion",date=date.fromisoformat(ftp["measured_on"]),
+            payload={"watts":ftp["watts"],"measured_on":ftp["measured_on"],"source":"user_confirmed","profile_revision":row.revision}))
     from app.services.athlete_calendar import sync_profile_events
     await sync_profile_events(session, user, context)
-    await session.commit()
-    return await profile_out(session, user.id)
+    await session.flush()
+    return row
 
 
 @router.delete("/profile", status_code=204)

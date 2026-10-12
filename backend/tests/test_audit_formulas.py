@@ -127,7 +127,7 @@ def test_decoupling_returns_none_without_hr() -> None:
     assert aerobic_decoupling(_Activity(), streams) is None
 
 
-def test_decoupling_positive_when_ef_drops_in_second_half() -> None:
+def test_dense_decoupling_positive_when_ef_drops_in_second_half() -> None:
     """P-08: classic heat/dehydration drift → positive decoupling.
 
     The previous HR-only implementation reported NEGATIVE decoupling for
@@ -148,9 +148,9 @@ def test_decoupling_positive_when_ef_drops_in_second_half() -> None:
     # Second half: power 200, HR 160 → EF = 200/160 = 1.25
     # Drift = (1.47 - 1.25)/1.47 = +15% (positive — EF dropped).
     streams = []
-    for t in range(0, 1800, 30):
+    for t in range(0, 1800):
         streams.append(_Stream(t, 150, 220))
-    for t in range(1800, 3600, 30):
+    for t in range(1800, 3601):
         streams.append(_Stream(t, 160, 200))
     decoupling = aerobic_decoupling(_Activity(), streams)
     assert decoupling is not None

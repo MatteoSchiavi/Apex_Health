@@ -41,6 +41,18 @@ async def endurance(ident: int, user: User = Depends(get_current_user), session:
         metrics = cycling_metrics(activity, streams, laps, context=profile.context if profile else {},
             activity_day=activity.start_time.astimezone(ZoneInfo(user.timezone)).date(),
             profile_revision=profile.revision if profile else None, rpe=rpe, rpe_dependency=dependency)
+    if kind in {'running','cycling'} and len(streams) <= 200000 and len(laps) <= 2000:
+        from app.services.sport_progress import (recorded_running_dynamics,distance_half_split,cadence_relationship,
+            stream_distribution,lap_average_distribution,efficiency_retention)
+        if kind == 'running':
+            metrics.extend([recorded_running_dynamics(activity),distance_half_split(activity,streams,laps)])
+        metrics.extend([cadence_relationship(activity,streams,cycling=kind=='cycling'),
+            efficiency_retention(activity,streams,cycling=kind=='cycling')])
+        fields=(('hr',10,'bpm'),('speed',1,'m/s'),('cadence',10,'cadence/min'))
+        if kind=='cycling': fields += (('power',50,'W'),)
+        for field,width,unit in fields:
+            metrics.append(stream_distribution(activity,streams,field,width,unit))
+            if field!='speed': metrics.append(lap_average_distribution(activity,laps,field,width,unit))
     if len(streams) > 200000 or len(laps) > 2000:
         for result in metrics:
             if any(d.startswith(("streams:", "laps:")) for d in result["source_dependencies"]):

@@ -32,7 +32,7 @@ DAILY_FIELDS = (
     "precipitation_sum,precipitation_probability_max,"
     "wind_speed_10m_max,weather_code"
 )
-HOURLY_FIELDS = "temperature_2m,precipitation,weather_code"
+HOURLY_FIELDS = "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code"
 
 # The archive API's publication lag (upstream docs: ~5 days behind real time).
 # Enrichment routes dates newer than this to the forecast API's past window.
@@ -116,6 +116,7 @@ class OpenMeteoClient:
             "longitude": lon,
             "daily": DAILY_FIELDS,
             "hourly": HOURLY_FIELDS,
+            "temperature_unit": "celsius", "wind_speed_unit": "kmh", "precipitation_unit": "mm",
         }
         if timezone:
             params["timezone"] = timezone
@@ -149,5 +150,7 @@ class OpenMeteoClient:
         """Daily+hourly history for [start_date, end_date] (ISO dates) —
         activity enrichment for anything older than the archive lag."""
         params = self._base_params(lat, lon, timezone)
+        # Historical reanalysis has no forecast probability field.
+        params["daily"] = ",".join(field for field in DAILY_FIELDS.split(",") if field != "precipitation_probability_max")
         params.update(start_date=start_date, end_date=end_date)
         return await self._get(ARCHIVE_URL, params)

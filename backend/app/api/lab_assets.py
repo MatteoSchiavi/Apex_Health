@@ -36,6 +36,8 @@ def document_dict(row):
         "content_hash": row.content_hash,
         "status": row.status,
         "revision": row.revision,
+        "coach_eligible": row.coach_eligible,
+        "extraction_state": "text_ready" if row.excerpt_ciphertext else "manual_paste_required",
         "excerpt": decrypt_bytes(row.excerpt_ciphertext).decode()
         if row.excerpt_ciphertext
         else None,
@@ -61,6 +63,7 @@ async def documents(
 @router.post("/documents", status_code=201)
 async def upload_document(
     file: UploadFile,
+    for_athlete_import: bool = False,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
@@ -73,13 +76,18 @@ async def upload_document(
     excerpt = None
     if not name.lower().endswith(".pdf"):
         try:
-            excerpt = content.decode("utf-8")[:16000]
+            excerpt = content.decode("utf-8")
         except UnicodeDecodeError:
             raise HTTPException(422, "Text documents must use UTF-8") from None
         if "\x00" in excerpt:
             raise HTTPException(422, "Invalid text document")
+        if len(excerpt) > 16000:
+            raise HTTPException(422, "Text exceeds 16000 characters; shorten or split it before uploading. No text was imported.")
     elif not content.startswith(b"%PDF-"):
         raise HTTPException(422, "Invalid PDF header")
+    else:
+        from app.services.document_text import pdf_text
+        excerpt = await pdf_text(content)
     await scope_lock(session, user.id, "changes")
     sha = hashlib.sha256(content).hexdigest()
     row = await session.scalar(
@@ -87,6 +95,7 @@ async def upload_document(
             LabDocument.user_id == user.id,
             LabDocument.content_hash == sha,
             LabDocument.status != "source_file",
+            LabDocument.coach_eligible.is_(not for_athlete_import),
         )
     )
     if row is None:
@@ -99,6 +108,7 @@ async def upload_document(
             content_hash=sha,
             ciphertext=encrypt_bytes(content),
             excerpt_ciphertext=encrypt_bytes(excerpt.encode()) if excerpt else None,
+            coach_eligible=not for_athlete_import,
         )
         session.add(row)
         await session.flush()
@@ -244,7 +254,7 @@ async def export_account(
     # Explicit column whitelist. Never export sessions, tokens, provider secrets or ciphertext.
     credential = await session.get(AuthCredential, user.id)
     tables = {
-        "athlete_session_checkins": "activity_id,planned_session_id,status,rpe,pain,felt_unwell,note,revision,updated_at",
+        "athlete_session_checkins": "activity_id,planned_session_id,status,rpe,pain,felt_unwell,fatigue,soreness,workout_quality,modification_reason,terrain_notes,note,revision,updated_at",
         "activity_plan_links": "activity_id,planned_session_id,method,created_at",
         "athlete_profiles": "training_focus,context,revision,updated_at",
         "ai_consents": "active,policy_version,purpose,provider_identity,accepted_at,withdrawn_at",
@@ -263,8 +273,8 @@ async def export_account(
         "gear": "*",
         "gym_day_plans": "*",
         "gym_set_logs": "*",
-        "lab_documents": "id,filename,media_type,content_hash,status,revision",
-        "training_plans": "id,week_start,status,created_by,title,end_date,source_document_id,source_document_revision,extraction_id,protected,revision,activated_on,superseded_on",
+        "lab_documents": "id,filename,media_type,content_hash,status,revision,coach_eligible",
+        "training_plans": "id,week_start,status,created_by,title,end_date,source_document_id,source_document_revision,source_template_id,extraction_id,protected,revision,activated_on,superseded_on",
         "raw_ingest": "id,source,payload_type,fetched_at,raw_json,processed",
     }
     from app.models.athlete_training import PlanDocumentDraft
@@ -290,6 +300,24 @@ async def export_account(
             "created_at": user.created_at,
         },
     }
+    from app.models.athlete_training import AthleteImportDraft, WeeklyTrainingTemplate
+    from app.services.athlete_import import import_out, template_out
+    imports = (await session.execute(select(AthleteImportDraft, LabDocument).join(LabDocument,
+        AthleteImportDraft.document_id == LabDocument.id).where(AthleteImportDraft.user_id == user.id,
+        LabDocument.user_id == user.id).limit(100000))).all()
+    result["athlete_import_drafts"] = [import_out(row, document) for row, document in imports]
+    templates = (await session.scalars(select(WeeklyTrainingTemplate).where(WeeklyTrainingTemplate.user_id == user.id).limit(100000))).all()
+    result["weekly_training_templates"] = [template_out(row) for row in templates]
+    from app.models.structured_workout import StructuredWorkoutVersion, StructuredWorkoutDraft
+    from app.services.structured_workouts import receipt as workout_receipt, draft_out as workout_draft_out
+    versions = (await session.scalars(select(StructuredWorkoutVersion).where(StructuredWorkoutVersion.user_id == user.id).limit(100000))).all()
+    workout_drafts = (await session.scalars(select(StructuredWorkoutDraft).where(StructuredWorkoutDraft.user_id == user.id).limit(100000))).all()
+    result["structured_workout_versions"] = [workout_receipt(row) for row in versions]
+    result["structured_workout_drafts"] = [workout_draft_out(row) for row in workout_drafts]
+    from app.models.sharing import AthleteShare
+    from app.services.sharing import metadata as share_metadata
+    grants = (await session.scalars(select(AthleteShare).where(AthleteShare.user_id == user.id).limit(100000))).all()
+    result["athlete_shares"] = [share_metadata(row) for row in grants]
     from app.models.training import PlannedSession, TrainingPlan
     workouts = (await session.scalars(select(PlannedSession).join(TrainingPlan).where(TrainingPlan.user_id == user.id).limit(100000))).all()
     result["planned_sessions"] = [{c.name: getattr(r, c.name) for c in PlannedSession.__table__.columns} for r in workouts]
@@ -396,15 +424,30 @@ async def export_workout(
     )
     if row is None:
         raise HTTPException(404, "Workout not found")
+    from app.models.activity import Discipline
+    from app.services.structured_workouts import latest, receipt
+    plan = await session.get(TrainingPlan, row.training_plan_id)
+    discipline = await session.get(Discipline, row.discipline_id) if row.discipline_id else None
+    approved = await latest(session, user.id, row.id)
+    structured = receipt(approved) if approved else None
+    if structured:
+        structured = {key:structured[key] for key in ("revision", "payload_hash", "source", "structure", "duration_total_s")}
     payload = {
-        "format": "apex-workout-v1",
+        "format": "apex-workout-v2",
+        "planned_session_id": row.id, "plan_revision": plan.revision, "plan_status": plan.status,
         "date": str(row.date),
+        "discipline": discipline.name if discipline else None,
         "session_type": row.session_type,
         "duration_min": row.target_duration_min,
-        "description": row.description,
+        "distance_m": float(row.target_distance_m) if row.target_distance_m is not None else None,
+        "start_time": row.start_time.isoformat() if row.start_time else None,
+        "description": row.description or "", "intensity_targets": {key:value for key,value in (row.intensity_targets or {}).items()
+            if key in {"hr_bpm", "power_w", "pace_s_km", "rpe"} and isinstance(value,str) and len(value)<=200},
+        "structured_workout": structured,
         "delivery_state": "exported",
         "device_delivery": "not_requested",
-        "note": "Portable workout description; importing or copying this file does not confirm device delivery.",
+        "device_compatibility": "not_verified",
+        "note": "Portable Apex workout JSON. No device delivery or device compatibility has been verified.",
     }
     session.add(
         ChangeAudit(
@@ -418,7 +461,8 @@ async def export_workout(
         json.dumps(payload),
         media_type="application/json",
         headers={
-            "Content-Disposition": f'attachment; filename="apex-workout-{ident}.json"'
+            "Content-Disposition": f'attachment; filename="apex-workout-{ident}.json"',
+            "Cache-Control": "no-store"
         },
     )
 
@@ -467,6 +511,11 @@ async def source_preview(session, user_id, source):
             ),
             {"owner": user_id, "source": source},
         )
+    counts["athlete_shares_affected"] = await session.scalar(text(
+        "SELECT count(*) FROM athlete_shares s WHERE s.user_id=:owner AND s.snapshot_ciphertext IS NOT NULL AND EXISTS ("
+        "SELECT 1 FROM jsonb_array_elements_text(coalesce(s.dependencies->'activity','[]'::jsonb)) dep(id) "
+        "JOIN activity_source_links l ON l.activity_id::text=dep.id WHERE l.user_id=:owner AND l.source=:source)"
+    ), {"owner":user_id,"source":source})
     revision = await snapshot_revision(session, user_id)
     content_revision = None
     scope = "Source observations/raw records and canonical activities linked to this source, including merged rows. Wearable erasure removes source-owned wellness and legacy wellness of unknown origin; explicitly attributed other-provider wellness and feed states are preserved. Cached analyses, chats and reports are erased. Disconnect pauses new imports; reconnecting can restore upstream data."
@@ -498,6 +547,7 @@ async def source_preview(session, user_id, source):
             "SELECT device_id,batch_id,content_hash,checkpoint FROM healthkit_batches WHERE device_id IN (SELECT id FROM device_tokens WHERE user_id=:owner) ORDER BY device_id,batch_id",
         ))
         scope = "Revoke all Apple Health native tokens and pending pairings; erase this account's HealthKit UUID ledger, tombstones, batches, source observations and source-owned projections. Preserve other-provider activity links, fields and legacy wellness of unknown origin. Cached analyses, chats and reports are erased. Re-pairing can restore upstream data."
+    scope += " Shared snapshots involving erased source activities are revoked and their encrypted payloads erased."
     return {
         "source": source,
         "counts": counts,
@@ -549,6 +599,16 @@ async def erase_source(
         from app.services.healthkit_ingest import erase_healthkit_source
         await erase_healthkit_source(session, user)
     ids = "SELECT activity_id FROM activity_source_links WHERE user_id=:owner AND source=:source"
+    source_activity_ids = list((await session.scalars(text(ids), params)).all())
+    # Frozen private snapshots must also be erased when their source is erased.
+    # Hashes remain only as audit identities; no previously shared content survives.
+    if source_activity_ids:
+        await session.execute(text(
+            "UPDATE athlete_shares s SET snapshot_ciphertext=NULL, revoked_at=coalesce(revoked_at,now()), erased_at=coalesce(erased_at,now()) "
+            "WHERE s.user_id=:owner AND s.snapshot_ciphertext IS NOT NULL AND EXISTS ("
+            "SELECT 1 FROM jsonb_array_elements_text(coalesce(s.dependencies->'activity','[]'::jsonb)) dep(id) "
+            "WHERE dep.id::bigint=ANY(:ids))"
+        ), {"owner":user.id,"ids":source_activity_ids})
     # Delete dependent canonical rows before source links, so provenance is never orphaned.
     for table in (() if source == "apple_healthkit" else (
         "activity_streams",
@@ -640,6 +700,10 @@ async def erase_source(
                 LabDocument.user_id == user.id, LabDocument.status == "source_file"
             )
         )
+    await session.flush()
+    from app.services.sharing import erase_unavailable, revoke_for_activity_ids
+    await revoke_for_activity_ids(session, user.id, source_activity_ids)
+    await erase_unavailable(session, user.id)
     session.add(
         ChangeAudit(
             user_id=user.id,

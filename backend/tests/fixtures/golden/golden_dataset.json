@@ -2556,36 +2556,36 @@
    {
     "discipline": "road_cycling",
     "date": "2025-03-12",
-    "efficiency_factor": 1.285714,
-    "aerobic_decoupling_pct": 0.0,
+    "efficiency_factor": null,
+    "aerobic_decoupling_pct": null,
     "estimated_ftp": 171.0
    },
    {
     "discipline": "road_cycling",
     "date": "2025-03-15",
-    "efficiency_factor": 1.37931,
-    "aerobic_decoupling_pct": -7.142857,
+    "efficiency_factor": null,
+    "aerobic_decoupling_pct": null,
     "estimated_ftp": 190.0
    },
    {
     "discipline": "road_cycling",
     "date": "2025-03-20",
-    "efficiency_factor": 1.874432,
+    "efficiency_factor": null,
     "aerobic_decoupling_pct": null,
     "estimated_ftp": 285.0
    },
    {
     "discipline": "road_cycling",
     "date": "2025-03-25",
-    "efficiency_factor": 1.466667,
-    "aerobic_decoupling_pct": 0.0,
+    "efficiency_factor": null,
+    "aerobic_decoupling_pct": null,
     "estimated_ftp": 209.0
    },
    {
     "discipline": "road_cycling",
     "date": "2025-04-08",
-    "efficiency_factor": 1.285714,
-    "aerobic_decoupling_pct": 0.0,
+    "efficiency_factor": null,
+    "aerobic_decoupling_pct": null,
     "estimated_ftp": 171.0
    }
   ],

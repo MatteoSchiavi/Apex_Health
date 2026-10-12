@@ -28,6 +28,7 @@ dependencies = [
     # FIT enrichment (§3b): parse Garmin FIT files for laps/streams the
     # Connect JSON API hides (DATA_COVERAGE.md)
     "fitdecode>=0.10",
+    "pypdf>=6.1,<7",
 ]
 
 [dependency-groups]

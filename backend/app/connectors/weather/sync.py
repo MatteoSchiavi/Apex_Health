@@ -216,7 +216,9 @@ async def enrich_activities(
                 )
                 continue
             snapshot = normalize.build_weather_snapshot(
-                payload, day, start_hour=start_hour, fetched_at=now
+                payload, day, start_hour=start_hour, fetched_at=now,
+                data_kind="archive_reanalysis" if day in bucket["archive"] else "forecast_recent_history",
+                coordinate_source="activity_stream" if activity.id in coords_map else "configured_home",
             )
             if snapshot is not None:
                 activity.weather_snapshot = snapshot

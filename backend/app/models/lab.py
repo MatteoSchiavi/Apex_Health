@@ -210,6 +210,7 @@ class LabDocument(Base):
     excerpt_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(Text, default="pending_confirmation")
     revision: Mapped[int] = mapped_column(Integer, default=1)
+    coach_eligible: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

@@ -1,7 +1,7 @@
 """ORM models."""
 
 from app.models.lab import LabDocument
-from app.models.athlete_training import PlanDocumentDraft, ActivityPlanLink, SessionCheckin
+from app.models.athlete_training import PlanDocumentDraft, AthleteImportDraft, WeeklyTrainingTemplate, ActivityPlanLink, SessionCheckin
 from app.models.athlete import AthleteProfile, AiConsent, AiBudgetReservation
 from app.models.admin import Feedback, OwnerNotification
 from app.models.alpha import AlphaEvent
@@ -47,6 +47,8 @@ from app.models.medical import (
     SupplementProtocol,
 )
 from app.models.telegram import TelegramLink, TelegramMessage
+from app.models.structured_workout import StructuredWorkoutDraft, StructuredWorkoutVersion
+from app.models.sharing import AthleteShare
 from app.models.training import PlannedSession, TrainingPlan
 from app.models.user import AuthCredential, User, UserSession
 from app.models.watch import DeviceToken
