@@ -156,7 +156,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     generated = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     assert generated.status_code == 200
     body = generated.json()
-    assert body["source"] == "ai"  # advisor adjusted something
+    assert body["source"] == "template"  # deterministic advisor; no LLM used
     assert "taper" in body["adjustment_note"]
     exercises = body["exercises"]
     assert exercises
@@ -167,7 +167,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     assert leg_heavy == []  # no high-impact leg work inside the taper window
 
     plan_id = body["plan_id"]
-    confirm = await client.post(f"/gym/plan/{date.today().isoformat()}/confirm", headers=csrf_headers(client))
+    confirm = await client.post(f"/gym/plan/{date.today().isoformat()}/confirm", json={"expected_revision": body["revision"]}, headers=csrf_headers(client))
     assert confirm.status_code == 200
     assert confirm.json()["status"] == "confirmed"
 

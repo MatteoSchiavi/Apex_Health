@@ -1,3 +1,4 @@
+import { TrainingSections } from "../training/TrainingSections";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -41,7 +42,6 @@ function EnduranceOverview() {
   const densePower = data?.power_duration.some(metric => metric.value !== null);
   return <div className="space-y-6"><PageHeader title={t("sportProgress.title_" + sport)} subtitle={t("sportProgress.subtitle")} />
     <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={() => setRange({ start, end })}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert" className="mt-3 text-[13px]">{t("sportProgress.range_error")}</p>}<p className="mt-3 text-[12px] text-muted">{t("sportProgress.timezone", { timezone: data?.range.timezone ?? timezone })}</p></Card>
-    <Link className="text-link text-[13px]" to={`/app/sharing?type=progress&sport=${sport}&start=${range.start}&end=${range.end}`}>{t("sharing.title")} ↗</Link>
     {query.isLoading && <Loading />}{query.isError && <ErrorNote message={t("sportProgress.load_error")} />}
     {data && <>
       <Card><CardHeader title={<h2>{t("sportProgress.recorded_totals")}</h2>} right={<Badge>{t("sportProgress.state_" + data.state)}</Badge>} /><div className="grid grid-cols-2 gap-5 md:grid-cols-4"><StatPod label={t("sportProgress.activities")} value={String(data.totals.activity_count)} /><StatPod label={t("activities.distance")} value={fmtNum(data.totals.distance_m === null ? null : data.totals.distance_m / 1000, 2)} unit="km" /><StatPod label={t("activities.duration")} value={fmtDuration(data.totals.duration_s)} /><StatPod label={t("activities.elevation")} value={fmtNum(data.totals.elevation_gain_m)} unit="m" /></div><p className="mt-4 text-[13px] text-muted">{t("sportProgress.missing_note")}</p>{data.state === "empty" && <p className="mt-3 text-[14px]">{t("sportProgress.empty")}</p>}{data.state === "partial" && <p role="status" className="mt-3 text-[13px]">{t("sportProgress.partial")}</p>}<details className="mt-3 text-[12px] text-muted"><summary>{t("sportProgress.method")}</summary><p className="mt-3 break-words">{data.totals.formula} · {data.totals.formula_version}</p><p>{t("sportProgress.coverage", { distance: data.totals.observed.distance, duration: data.totals.observed.duration, count: data.totals.activity_count })}</p><p className="mt-3 break-all">{data.totals.source_dependencies.join(" · ")}</p></details></Card>
@@ -91,5 +91,5 @@ function StrengthOverview() {
 
 export default function SportOverview() {
   const { sport } = useParams();
-  return sport === "strength" ? <StrengthOverview /> : <EnduranceOverview />;
+  return <div className="space-y-6"><TrainingSections />{sport === "strength" ? <StrengthOverview /> : <EnduranceOverview />}</div>;
 }

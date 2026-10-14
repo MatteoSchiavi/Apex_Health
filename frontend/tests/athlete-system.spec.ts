@@ -294,6 +294,7 @@ test("Your day requires confirmation, shares session identity and keeps other sp
   });
   await page.goto("/app");
   const hero = page.locator(".panel").filter({ has: page.getByText("Your day",{exact:true}) });
+  await hero.getByTestId("daily-details").locator("summary").first().click();
   await expect(hero.getByText("Needs confirmation",{exact:true})).toBeVisible();
   await expect(hero.getByRole("link",{name:"Sailing ↗",exact:true})).toBeVisible();
   await expect(hero.getByText("Protected",{exact:true})).toBeVisible();

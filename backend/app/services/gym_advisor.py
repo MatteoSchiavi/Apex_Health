@@ -27,12 +27,11 @@ import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.coach import SessionFeedback, UserContextDoc, UserEvent
 from app.models.gym_detail import GymDayPlan, GymDayExercise, GymExercise
-from app.queries.gym import resolve_day
 from app.services.safety_interlock import (
     VetoDecision,
     exertion_veto,
@@ -407,175 +406,441 @@ def adjust(
 
 # ------------------------------------------------------------- day plan gen
 
+ENGINE_VERSION = "recorded-history-v1"
+_HISTORY_DAYS = 7  # scheduling observation window, not a recovery deadline
+_GROUPS = {"legs", "push", "pull", "core", "full_body"}
 
-async def generate_day_plan(
-    session: AsyncSession,
-    user,  # User
-    day: date,
-) -> tuple[GymDayPlan, list[dict], str]:
-    """Generate (or return the existing) concrete gym plan for `day`.
 
-    Resolution order mirrors the watch: a concrete GymDayPlan wins if one
-    exists; otherwise the recurring template slot for the weekday defines
-    the session title, and the exercise rows are composed from the catalog
-    split, then adjusted by the advisor.
+def _groups_in_text(text: str) -> list[str]:
+    """Only explicit split labels; free text never becomes an instruction."""
+    text = text.lower().replace("_", " ").replace("-", " ")
+    if re.search(r"\b(full body|total body|corpo intero)\b", text):
+        return ["legs", "push", "pull", "core"]
+    groups = []
+    if re.search(r"\b(upper body|upper|parte superiore)\b", text):
+        groups.extend(["push", "pull"])
+    for group, pattern in (
+        ("legs", r"\b(legs|leg day|lower body|lower|gambe)\b"),
+        ("push", r"\b(push|petto|chest|spinta)\b"),
+        ("pull", r"\b(pull|dorso|tirata)\b"),
+        ("core", r"\b(core|addominali)\b"),
+    ):
+        if re.search(pattern, text) and group not in groups:
+            groups.append(group)
+    return groups
 
-    P-04 audit: pulls the latest ``DailyFeature`` row and passes its risk
-    scores to ``adjust(safety=...)`` so the deterministic veto layer gates
-    every prescription BEFORE the events/feedback rules run.
-    """
-    existing = await session.scalar(
-        select(GymDayPlan).where(GymDayPlan.user_id == user.id, GymDayPlan.date == day)
-    )
-    if existing is not None:
-        rows = await _plan_rows(session, existing)
-        return existing, rows, "existing plan returned unchanged"
+
+def _prescription(entry: dict | None, catalog: list) -> tuple[list[str], list[int]]:
+    """Actual named exercise prescription wins over a misleading title."""
+    if not entry:
+        return [], []
+    if "steps" in entry:
+        rows = _programmed_rows(entry, catalog)
+        return list(dict.fromkeys(r["muscle_group"] for r in rows)), [r["exercise_id"] for r in rows]
+    description = (entry.get("description") or "").lower()
+    prescribed = [e for e in catalog if re.search(r"(?<!\w)" + re.escape(e.name.lower()) + r"(?!\w)", description)]
+    if prescribed:
+        return list(dict.fromkeys(e.muscle_group for e in prescribed)), [e.id for e in prescribed]
+    groups = _groups_in_text(description)
+    if not groups:
+        groups = _groups_in_text(entry.get("session_type") or entry.get("title") or "")
+    return groups, []
+
+
+def choose_split(day: date, intended: list[str], history: list[dict], *,
+                 preferred_split: str = "", upcoming: list[dict] | None = None,
+                 confirmed: bool = False, locale: str = "en") -> tuple[list[str], str]:
+    """Scheduling diversity for suggestions; never estimate physiological recovery."""
+    italian = locale == "it"
+    relevant = [h for h in history if 0 <= (day - h["date"]).days <= _HISTORY_DAYS]
+    group_days = {g: sorted({h["date"] for h in relevant if h.get("groups", {}).get(g, 0) > 0}) for g in _GROUPS}
+    groups = list(intended)
+    if not groups:
+        split = preferred_split.lower()
+        if re.search(r"upper.*lower|lower.*upper", split):
+            upper = max(group_days["push"] + group_days["pull"], default=date.min)
+            lower = max(group_days["legs"], default=date.min)
+            groups = ["push", "pull", "core"] if lower >= upper else ["legs", "core"]
+        elif all(g in split for g in ("push", "pull")) and ("leg" in split or "gambe" in split):
+            choice = min(("push", "legs", "pull"), key=lambda g: (max(group_days[g], default=date.min), ("push", "legs", "pull").index(g)))
+            groups = [choice, "core"]
+        elif _groups_in_text(preferred_split):
+            groups = _groups_in_text(preferred_split)
+        elif any(group_days[g] for g in ("legs", "push", "pull")):
+            lower = max(group_days["legs"], default=date.min)
+            upper = max(group_days["push"] + group_days["pull"], default=date.min)
+            groups = ["push", "pull", "core"] if lower >= upper else ["legs", "core"]
+        else:
+            groups = list(DEFAULT_WEEK_SPLIT[day.weekday()][1])
+    lower_work = [h for h in relevant if h.get("groups", {}).get("legs", 0) > 0 and (day - h["date"]).days <= 1]
+    repeated_lower = [h for h in relevant if h.get("groups", {}).get("legs", 0) >= 6 and (day - h["date"]).days <= 3]
+    hard_endurance = next((u for u in upcoming or [] if u.get("hard") and 0 <= (u["date"] - day).days <= 1), None)
+    conflict = "legs" in groups or "full_body" in groups
+    inferred_upper = not intended and "legs" not in groups and bool(lower_work)
+    reason = ""
+    if (conflict or inferred_upper) and (lower_work or len(repeated_lower) >= 2):
+        recorded = max(lower_work or repeated_lower, key=lambda h: h["date"])
+        reason = (f"Lavoro gambe registrato il {recorded['date']} ({recorded['source']}); " if italian else
+                  f"Lower-body work recorded on {recorded['date']} ({recorded['source']}); ")
+    elif conflict and hard_endurance:
+        reason = (f"Seduta endurance intensa confermata il {hard_endurance['date']} ({hard_endurance['source']}); " if italian else
+                  f"Confirmed hard endurance session on {hard_endurance['date']} ({hard_endurance['source']}); ")
+    if reason:
+        if confirmed:
+            return groups, reason + ("programma confermato mantenuto. Valuta un'alternativa per la parte superiore prima di modificarlo." if italian else
+                "confirmed session retained. Review an upper-body alternative before changing it.")
+        return ["push", "pull", "core"], reason + ("proposta per la parte superiore per evitare di sovrapporre il lavoro gambe." if italian else
+            "suggesting upper body to avoid stacking lower-body work.")
+    upper_overlap = [h for h in relevant if (day - h["date"]).days <= 1
+        and any(h.get("groups", {}).get(g, 0) >= 6 for g in groups if g in {"push", "pull"})]
+    if upper_overlap:
+        recorded = max(upper_overlap, key=lambda h: h["date"])
+        reason = (f"Volume per la parte superiore registrato il {recorded['date']} ({recorded['source']}); " if italian else
+            f"Upper-body set volume recorded on {recorded['date']} ({recorded['source']}); ")
+        if confirmed:
+            return groups, reason + ("programma confermato mantenuto; valuta un'alternativa prima di modificarlo." if italian else
+                "confirmed session retained; review an alternative before changing it.")
+        trained = {g for h in upper_overlap for g in ("push", "pull") if h.get("groups", {}).get(g, 0) >= 6}
+        alternative = [g for g in ("push", "pull") if g not in trained] + ["core"]
+        if not alternative[:-1] and not lower_work and not hard_endurance:
+            alternative = ["legs", "core"]
+        return alternative, reason + ("proposta per i gruppi meno allenati recentemente." if italian else
+            "suggesting groups with less recent recorded work.")
+    if any(h.get("unknown_strength") for h in relevant):
+        return groups, ("Forza registrata senza dettagli degli esercizi: gruppi allenati e intensità non verificabili." if italian else
+            "Strength activity recorded without exercise details: trained groups and intensity are unknown.")
+    if not relevant:
+        return groups, ("Nessuna attività recente registrata; recupero e lavoro precedente non sono verificabili. Suddivisione indicativa." if italian else
+            "No recent activity recorded; recovery and prior training are unknown. Split is provisional.")
+    return groups, ("Proposta basata sul programma e sul lavoro registrato; il recupero non è stimato." if italian else
+        "Suggestion follows the intended split and recorded work; recovery is not inferred.")
+
+
+def _flatten_steps(steps: list[dict]) -> list[dict]:
+    rows = []
+    for step in steps:
+        if step.get("kind") == "repeat":
+            for _ in range(step.get("repetitions", 1)):
+                rows.extend(step.get("steps", []))
+        else:
+            rows.append(step)
+    return rows
+
+
+def _programmed_rows(entry: dict, catalog: list) -> list[dict]:
+    """Approved explicit exercise/sets/reps; unknown prescriptions stay unknown."""
+    result = []
+    for step in _flatten_steps(entry.get("steps", [])):
+        if step.get("kind") != "strength":
+            continue
+        exercise = next((e for e in catalog if e.name.casefold() == (step.get("exercise") or "").casefold()), None)
+        if exercise is None or step.get("sets") is None or step.get("reps") is None:
+            return []
+        note = step.get("description") or None
+        if step.get("load_kg") is not None:
+            note = " | ".join(filter(None, [note, f"{step['load_kg']} kg prescribed"]))
+        result.append({"exercise_id": exercise.id, "name": exercise.name, "muscle_group": exercise.muscle_group,
+            "movement_pattern": exercise.movement_pattern, "impact_level": exercise.impact_level,
+            "sets": step["sets"], "reps_min": step["reps"], "reps_max": step["reps"],
+            "rest_seconds": 90, "notes": note})
+    return result
+
+
+async def planning_inputs(session: AsyncSession, user, day: date) -> dict:
+    """Bounded, owned actual logs, imports and approved future sessions."""
+    from app.models.activity import Activity, Discipline
+    from app.models.athlete import AthleteProfile
+    from app.models.athlete_training import SessionCheckin
+    from app.models.features import DailyFeature
+    from app.models.gym_detail import GymSetLog
+    from app.models.training import PlannedSession, TrainingPlan
+    from app.models.structured_workout import StructuredWorkoutVersion
+    from app.services.structured_workouts import structure_of
+    from app.services.activity_presentation import imported_strength, sport_kind
+    from app.services.athlete_day import plan_conditions
 
     tz = ZoneInfo(user.timezone)
-    # All advisory lookups must be anchored to the requested plan date. This
-    # avoids applying today's feedback or future feature data to backdated plans.
-    today = day
-    template = await resolve_day(session, user.id, day)
-    title = template[0]["title"] if template else DEFAULT_WEEK_SPLIT[day.weekday()][0].title()
-    groups = DEFAULT_WEEK_SPLIT[day.weekday()][1]
+    start = datetime.combine(day - timedelta(days=_HISTORY_DAYS), datetime.min.time(), tzinfo=tz)
+    end = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+    logs = (await session.execute(select(GymSetLog, GymExercise)
+        .join(GymDayExercise, GymSetLog.gym_day_exercise_id == GymDayExercise.id)
+        .join(GymDayPlan, GymDayExercise.gym_day_plan_id == GymDayPlan.id)
+        .join(GymExercise, GymDayExercise.exercise_id == GymExercise.id)
+        .where(GymSetLog.user_id == user.id, GymDayPlan.user_id == user.id,
+               GymSetLog.done_at >= start, GymSetLog.done_at < end)
+        .order_by(GymSetLog.done_at, GymSetLog.id).limit(5001))).all()
+    activities = (await session.execute(select(Activity, Discipline.name).outerjoin(Discipline)
+        .where(Activity.user_id == user.id, Activity.start_time >= start, Activity.start_time < end)
+        .order_by(Activity.start_time, Activity.id).limit(201))).all()
+    checks = (await session.scalars(select(SessionCheckin).outerjoin(Activity, SessionCheckin.activity_id == Activity.id)
+        .outerjoin(PlannedSession, SessionCheckin.planned_session_id == PlannedSession.id)
+        .where(SessionCheckin.user_id == user.id, or_(
+            and_(Activity.start_time >= start, Activity.start_time < end),
+            and_(PlannedSession.date >= day - timedelta(days=2), PlannedSession.date <= day)))
+        .order_by(SessionCheckin.updated_at, SessionCheckin.id).limit(201))).all()
+    planned = (await session.execute(select(TrainingPlan, PlannedSession, Discipline.name)
+        .join(PlannedSession, PlannedSession.training_plan_id == TrainingPlan.id)
+        .outerjoin(Discipline, PlannedSession.discipline_id == Discipline.id)
+        .where(TrainingPlan.user_id == user.id, PlannedSession.date >= day,
+            PlannedSession.date <= day + timedelta(days=3), *plan_conditions(PlannedSession.date))
+        .order_by(PlannedSession.date, PlannedSession.start_time, PlannedSession.id).limit(101))).all()
+    versions = (await session.scalars(select(StructuredWorkoutVersion).where(
+        StructuredWorkoutVersion.user_id == user.id,
+        StructuredWorkoutVersion.planned_session_id.in_([workout.id for _, workout, _ in planned[:100]]))
+        .distinct(StructuredWorkoutVersion.planned_session_id)
+        .order_by(StructuredWorkoutVersion.planned_session_id, StructuredWorkoutVersion.revision.desc()).limit(101))).all()
+    structured = {}
+    for version in versions[:100]:
+        if version.planned_session_id not in structured:
+            structured[version.planned_session_id] = {"steps": [step.model_dump(mode="json") for step in structure_of(version).steps],
+                "workout_revision": version.revision, "workout_hash": version.payload_hash}
+    history, buckets = [], {}
+    for log, ex in logs[:5000]:
+        if log.reps_done <= 0:
+            continue
+        observed_day = log.done_at.astimezone(tz).date()
+        bucket = buckets.setdefault(observed_day, {"date": observed_day, "groups": {}, "patterns": [], "exercise_ids": [],
+            "source": "gym set logs", "set_ids": [], "volume_kg": 0, "weight_known_sets": 0})
+        bucket["groups"][ex.muscle_group] = bucket["groups"].get(ex.muscle_group, 0) + 1
+        bucket["patterns"].append(ex.movement_pattern)
+        bucket["exercise_ids"].append(ex.id)
+        bucket["set_ids"].append(log.id)
+        if log.weight_kg is not None:
+            bucket["volume_kg"] += float(log.weight_kg) * log.reps_done
+            bucket["weight_known_sets"] += 1
+    history.extend(buckets.values())
+    for activity, discipline in activities[:200]:
+        local_day = activity.start_time.astimezone(tz).date()
+        kind = sport_kind(discipline, activity.source_metrics)
+        details = imported_strength(activity.source_metrics) if kind == "strength" else []
+        # Actual set timestamps, not a same-date plan, establish overlap.
+        overlapping = any(activity.start_time <= log.done_at < activity.start_time + timedelta(seconds=activity.duration_s)
+                          and log.reps_done > 0 for log, _ in logs[:5000])
+        groups = {}
+        if not overlapping:
+            for ex in details:
+                if ex.get("muscle_group"):
+                    groups[ex["muscle_group"]] = groups.get(ex["muscle_group"], 0) + ex["sets"]
+        history.append({"date": local_day, "groups": groups, "source": f"activity:{activity.id}",
+            "unknown_strength": kind == "strength" and not overlapping and not groups,
+            "kind": kind, "duration_s": activity.duration_s, "training_load": activity.training_load,
+            "exercise_names": [e["name"] for e in details], "recorded_exercises": details})
+    upcoming, intended = [], []
+    for plan, workout, discipline in planned[:100]:
+        kind = sport_kind(discipline)
+        item = {"date": workout.date, "title": workout.session_type or "Strength", "session_type": workout.session_type,
+            "description": workout.description, "source": f"planned_session:{workout.id}",
+            "plan_id": plan.id, "revision": plan.revision, "protected": plan.protected or workout.protected,
+            "intensity_targets": workout.intensity_targets, "kind": kind}
+        item.update(structured.get(workout.id, {}))
+        if workout.date == day and kind == "strength":
+            intended.append(item)
+        if kind in {"running", "cycling"}:
+            label = " ".join((workout.session_type or "", workout.description or "")).lower()
+            rpe = str((workout.intensity_targets or {}).get("rpe", ""))
+            item["hard"] = bool(re.search(r"\b(intervals?|ripetute|tempo|threshold|soglia|race|gara|vo2\w*)\b", label)
+                                or re.fullmatch(r"(?:8|9|10)(?:\s*[-–]\s*(?:9|10))?", rpe)
+                                or any(step.get("kind") in {"interval", "threshold", "tempo"} for step in _flatten_steps(item.get("steps", []))))
+            upcoming.append(item)
+    feature = await session.scalar(select(DailyFeature).where(DailyFeature.user_id == user.id,
+        DailyFeature.date <= day, DailyFeature.date >= day - timedelta(days=2)).order_by(DailyFeature.date.desc()).limit(1))
+    safety = {"date": feature.date, "systemic_stress": feature.systemic_stress_signal,
+        "load_spike": feature.load_spike_indicator, "acwr": feature.acwr,
+        "hrv_dev_pct": feature.hrv_deviation_from_baseline} if feature else None
+    profile = await session.get(AthleteProfile, user.id)
+    return {"history": history, "intended": intended, "upcoming": upcoming, "safety": safety,
+        "checks": [{"id": c.id, "revision": c.revision, "fatigue": c.fatigue, "soreness": c.soreness,
+                    "rpe": c.rpe, "pain": c.pain, "felt_unwell": c.felt_unwell, "status": c.status} for c in checks[:200]],
+        "profile": profile.context if profile else {}, "profile_revision": profile.revision if profile else 0,
+        "training_focus": profile.training_focus if profile else [],
+        "complete": len(logs) <= 5000 and len(activities) <= 200 and len(checks) <= 200 and len(planned) <= 100 and len(versions) <= 100}
 
-    catalog = (
-        (await session.scalars(select(GymExercise).order_by(GymExercise.id))).all()
-    )
-    exercises: list[dict] = []
-    for group in groups:
-        pool = [e for e in catalog if e.muscle_group == group]
-        for e in pool:
-            reps_min, reps_max = _REP_TARGETS.get(e.movement_pattern, _DEFAULT_REPS)
-            exercises.append(
-                {
-                    "exercise_id": e.id,
-                    "name": e.name,
-                    "muscle_group": e.muscle_group,
-                    "movement_pattern": e.movement_pattern,
-                    "impact_level": e.impact_level,
-                    "sets": 3 if e.muscle_group != "core" else 3,
-                    "reps_min": reps_min,
-                    "reps_max": reps_max,
-                    "rest_seconds": 120 if e.impact_level != "low" else 90,
-                    "notes": None,
-                }
-            )
-    catalog_exercises = exercises
-    exercises = _select_diverse_exercises(catalog_exercises)
 
-    events = [
-        {
-            "kind": ev.kind,
-            "priority": ev.priority,
-            "starts_at": ev.starts_at.astimezone(tz).date(),
-            "taper_days": ev.taper_days,
-            "title": ev.title,
-        }
-        for ev in await upcoming_events(session, user.id, today, horizon_days=14)
-    ]
-    feedback = [
-        {
-            "date": fb.date,
-            "activity_kind": fb.activity_kind,
-            "rpe": fb.rpe,
-            "soreness": fb.soreness,
-            "injury_flag": fb.injury_flag,
-            "notes": fb.notes,
-        }
-        for fb in await recent_feedback(session, user.id, today)
-    ]
+def _catalog_rows(catalog: list, groups: list[str], history: list[dict], day: date,
+                  prescribed: list[int], preferred: str = "") -> list[dict]:
+    rows = []
+    observed_ids = {i for h in history for i in h.get("exercise_ids", [])}
+    observed_names = {name.lower() for h in history for name in h.get("exercise_names", [])}
+    pool = [e for e in catalog if (e.id in prescribed if prescribed else e.muscle_group in groups)]
+    # Programmed/recorded exercises stay stable for progression. Unestablished
+    # choices alternate deterministically by week, never randomly per request.
+    pool.sort(key=lambda e: (prescribed.index(e.id) if e.id in prescribed else 999,
+        0 if e.id in observed_ids or e.name.lower() in observed_names or e.name.lower() in preferred.lower() else 1,
+        (e.id + day.toordinal() // 7) % max(len(catalog), 1), e.id))
+    for ex in pool:
+        reps_min, reps_max = _REP_TARGETS.get(ex.movement_pattern, _DEFAULT_REPS)
+        rows.append({"exercise_id": ex.id, "name": ex.name, "muscle_group": ex.muscle_group,
+            "movement_pattern": ex.movement_pattern, "impact_level": ex.impact_level,
+            "sets": 3, "reps_min": reps_min, "reps_max": reps_max,
+            "rest_seconds": 120 if ex.impact_level != "low" else 90, "notes": None})
+    return rows if prescribed else _select_diverse_exercises(rows)
 
-    # P-04: pull the latest DailyFeature and pass its risk scores to the
-    # safety interlock. Falls back gracefully (no feature row → no veto).
-    from app.models.features import DailyFeature
-    latest_feature = await session.scalar(
-        select(DailyFeature)
-        .where(DailyFeature.user_id == user.id, DailyFeature.date <= day)
-        .order_by(DailyFeature.date.desc())
-        .limit(1)
-    )
-    safety: dict | None = None
-    if latest_feature is not None:
-        safety = {
-            "systemic_stress": latest_feature.systemic_stress_signal,
-            "load_spike": latest_feature.load_spike_indicator,
-            "acwr": latest_feature.acwr,
-            "hrv_dev_pct": latest_feature.hrv_deviation_from_baseline,
-        }
 
-    adjusted, notes = adjust(
-        exercises, events, feedback, today, safety=safety, locale=user.locale
-    )
-    if len(exercises) < len(catalog_exercises):
-        notes.append(
-            "selezione varia dal catalogo: limitate le varianti di squat e hip hinge nella stessa sessione"
-            if user.locale == "it" else
-            "varied catalog selection: limited squat and hip-hinge variations in one session"
-        )
-    season = await season_plan_note(session, user.id)
-    if season:
-        notes.append(f"season plan on file: {season}")
+def _snapshot(title: str, rows: list[dict], note: str, *, source: str = "template") -> dict:
+    return {"title": title, "status": "draft", "source": source, "exercises": [{k: r.get(k) for k in ("exercise_id", "sets", "reps_min", "reps_max", "rest_seconds", "notes")} for r in rows],
+            "adjustment_note": note}
 
-    # 'ai' when the advisor changed anything (or a season plan informed the
-    # day); 'template' when the session is straight from the catalog split.
-    unchanged_note = (
-        "nessuna modifica — sessione completa del programma (nessun evento prioritario imminente, nessun indolenzimento)"
-        if user.locale == "it" else _NO_ADJUSTMENT_NOTE
-    )
-    changed = adjusted != exercises or notes != [unchanged_note] or bool(season)
-    plan = GymDayPlan(
-        user_id=user.id,
-        date=day,
-        title=title,
-        source="ai" if changed else "template",
-        status="draft",
-        adjustment_note=" | ".join(notes)[:800],
-    )
-    session.add(plan)
+
+async def _generation_context(session: AsyncSession, user, day: date) -> tuple:
+    """Read exactly the inputs used for generation, without proposing or writing."""
+    from app.queries.gym import list_slots
+
+    inputs = await planning_inputs(session, user, day)
+    catalog = list((await session.scalars(select(GymExercise).order_by(GymExercise.id))).all())
+    entry = inputs["intended"][0] if inputs["intended"] else None
+    if not entry:
+        slots = [s for s in await list_slots(session, user.id) if s.active and s.weekday == day.weekday()]
+        if slots:
+            entry = {"title": slots[0].title, "description": slots[0].description, "source": f"gym_schedule_slot:{slots[0].id}"}
+    tz = ZoneInfo(user.timezone)
+    events = [{"kind": ev.kind, "priority": ev.priority, "starts_at": ev.starts_at.astimezone(tz).date(),
+        "taper_days": ev.taper_days, "title": ev.title} for ev in await upcoming_events(session, user.id, day)]
+    feedback = [{"date": fb.date, "activity_kind": fb.activity_kind, "rpe": fb.rpe, "soreness": fb.soreness,
+        "injury_flag": fb.injury_flag, "notes": fb.notes} for fb in await recent_feedback(session, user.id, day)]
+    return inputs, catalog, entry, events, feedback
+
+
+def _input_fingerprint(user, day: date, context: tuple) -> str:
+    import hashlib
+    import json
+
+    inputs, catalog, entry, events, feedback = context
+    evidence = {"version": ENGINE_VERSION, "day": day, "timezone": user.timezone, "locale": user.locale,
+        "inputs": inputs, "entry": entry,
+        "catalog": [(e.id, e.name, e.muscle_group, e.movement_pattern, e.impact_level) for e in catalog],
+        "events": events, "feedback": feedback}
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True, default=str).encode()).hexdigest()
+
+
+async def current_input_fingerprint(session: AsyncSession, user, day: date) -> str:
+    """Confirmation freshness check; caller holds changes then gym-day locks."""
+    return _input_fingerprint(user, day, await _generation_context(session, user, day))
+
+
+async def generate_day_plan(session: AsyncSession, user, day: date) -> tuple[GymDayPlan, list[dict], str]:
+    """POST generates or safely refreshes a draft; GET never writes anything.
+
+    Confirmed/completed/manual plans and any plan with recorded sets are
+    retained. Draft revisions preserve before/after snapshots and the input
+    fingerprint in ChangeAudit. No canonical session is written here.
+    """
+    from app.models.gym_detail import GymSetLog
+    from app.models.lab import ChangeAudit
+    from app.services.evidence import scope_lock
+    # Shared evidence writers take changes first; never acquire it after a
+    # gym-day lock (profile updates and confirmations must see one snapshot).
+    await scope_lock(session, user.id, "changes")
+    await scope_lock(session, user.id, f"gym-plan:{day}")
+    existing = await session.scalar(select(GymDayPlan).where(GymDayPlan.user_id == user.id, GymDayPlan.date == day))
+    context = await _generation_context(session, user, day)
+    inputs, catalog, entry, events, feedback = context
+    intended, prescribed = _prescription(entry, catalog)
+    groups, explanation = choose_split(day, intended, inputs["history"], preferred_split=inputs["profile"].get("gym_split", ""),
+        upcoming=inputs["upcoming"], confirmed=bool(inputs["intended"]), locale=user.locale)
+    immutable = existing is not None and (existing.status != "draft" or existing.source == "manual")
+    if existing is not None and not immutable:
+        immutable = bool(await session.scalar(select(GymSetLog.id).join(GymDayExercise,
+            GymSetLog.gym_day_exercise_id == GymDayExercise.id).where(GymSetLog.user_id == user.id,
+                GymDayExercise.gym_day_plan_id == existing.id).limit(1)))
+    if immutable:
+        rows = await _plan_rows(session, existing)
+        _, conflict = choose_split(day, list(dict.fromkeys(r["muscle_group"] for r in rows)), inputs["history"],
+            upcoming=inputs["upcoming"], confirmed=True, locale=user.locale)
+        return existing, rows, " | ".join(filter(None, [existing.adjustment_note, conflict]))
+    exercises = _catalog_rows(catalog, groups, inputs["history"], day, prescribed, inputs["profile"].get("preferred_exercises", ""))
+    if entry and "steps" in entry:
+        exercises = _programmed_rows(entry, catalog)
+    adjusted, safety_notes = adjust(exercises, events, feedback, day, safety=inputs["safety"], locale=user.locale)
+    # Canonical prescriptions remain reviewable and unchanged even with a veto.
+    # Concerns are disclosed; this advisor cannot approve a canonical mutation.
+    if inputs["intended"] and adjusted != exercises:
+        adjusted = exercises
+        explanation += (" Modifiche per sicurezza proposte da rivedere; prescrizione confermata mantenuta." if user.locale == "it" else
+                        " Safety adjustments require review; confirmed prescription retained.")
+    notes = [explanation]
+    if not inputs["intended"]:
+        notes.extend(n for n in safety_notes if n != _NO_ADJUSTMENT_NOTE and not n.startswith("nessuna modifica"))
+        checks = inputs["checks"]
+        reported = any(c.get("fatigue") is not None and c["fatigue"] >= 7 or c.get("soreness") is not None and c["soreness"] >= 7
+                       or c.get("pain") is True or c.get("felt_unwell") is True for c in checks)
+        if reported:
+            adjusted = [dict(r, sets=min(r["sets"], 2)) for r in adjusted if r["impact_level"] != "high"]
+            notes.append("Fatica, indolenzimento o malessere segnalati: volume della proposta ridotto." if user.locale == "it" else
+                "Reported fatigue, soreness or discomfort: proposal volume reduced.")
+        hard_recent = any(h.get("kind") in {"running", "cycling"} and h.get("duration_s", 0) >= 5400
+                          and (day - h["date"]).days <= 1 for h in inputs["history"])
+        if hard_recent and any(r["muscle_group"] in {"legs", "full_body"} for r in adjusted):
+            adjusted = [dict(r, sets=min(r["sets"], 2)) if r["muscle_group"] in {"legs", "full_body"} else r for r in adjusted]
+            notes.append("Endurance di almeno 90 minuti registrata recentemente: volume gambe della proposta ridotto; intensità non nota." if user.locale == "it" else
+                "Recent recorded endurance lasted at least 90 minutes: proposed leg volume reduced; intensity unknown.")
+    elif safety_notes != [_NO_ADJUSTMENT_NOTE] and not all(n.startswith("nessuna modifica") for n in safety_notes):
+        notes.append("Contesto di sicurezza da rivedere prima della sessione confermata." if user.locale == "it" else
+            "Review available safety context before the confirmed session.")
+    if not inputs["intended"] and inputs["profile"].get("preferred_rest_day") == day.weekday():
+        adjusted = []
+        notes.insert(0, "Giorno di riposo preferito nel profilo: nessuna seduta suggerita." if user.locale == "it" else
+            "Saved preferred rest day: no workout suggested.")
+    if inputs["profile"].get("self_declared_restrictions"):
+        notes.append("Rivedi le limitazioni dichiarate nel profilo prima di confermare." if user.locale == "it" else
+            "Review your saved self-declared restrictions before confirming.")
+    if not inputs["safety"]:
+        notes.append("Dati di recupero recenti non disponibili." if user.locale == "it" else "Recent recovery data unavailable.")
+    if not inputs["complete"]:
+        notes.append("Storia parziale: limite dei dati raggiunto." if user.locale == "it" else "History incomplete: observation limit reached.")
+    if inputs["training_focus"] and "gym" not in inputs["training_focus"]:
+        notes.append("Forza non inclusa nelle priorità salvate; proposta facoltativa." if user.locale == "it" else "Strength is outside saved training priorities; suggestion is optional.")
+    if len(inputs["intended"]) > 1:
+        notes.append("Più sessioni forza confermate: questa proposta descrive solo la prima." if user.locale == "it" else "Multiple confirmed strength sessions: this suggestion covers only the first.")
+    if inputs["intended"] and not intended:
+        adjusted = []
+        notes.insert(0, "Prescrizione forza confermata senza gruppi o esercizi riconoscibili: consulta il programma, nessun esercizio inventato." if user.locale == "it" else
+            "Confirmed strength prescription has no identifiable groups or exercises: consult the program; no exercises inferred.")
+    upper_only = "legs" not in groups and "full_body" not in groups
+    fallback_title = ("Parte superiore" if user.locale == "it" else "Upper body") if upper_only else ("Forza" if user.locale == "it" else "Strength")
+    title = entry["title"] if entry else fallback_title
+    if entry and not inputs["intended"] and groups != intended:
+        title = fallback_title
+    if inputs["intended"] and "steps" not in entry and adjusted:
+        notes.append("Serie e ripetizioni sono una proposta da confermare, non obiettivi del programma." if user.locale == "it" else
+            "Sets and reps are a proposal for review, not recorded program targets.")
+    note = " | ".join(notes)[:1800]
+    fingerprint = _input_fingerprint(user, day, context)
+    previous_audit = await session.scalar(select(ChangeAudit).where(ChangeAudit.user_id == user.id,
+        ChangeAudit.action.in_(("gym_draft_generated", "gym_draft_refreshed")),
+        ChangeAudit.payload["plan_id"].astext == str(existing.id if existing else 0)).order_by(ChangeAudit.id.desc()).limit(1)) if existing else None
+    before = _snapshot(existing.title, await _plan_rows(session, existing), existing.adjustment_note or "", source=existing.source) if existing else None
+    after = _snapshot(title, adjusted, note)
+    if existing and before == after and previous_audit and previous_audit.payload.get("input_fingerprint") == fingerprint:
+        return existing, await _plan_rows(session, existing), existing.adjustment_note or ""
+    revision = int(previous_audit.payload.get("revision", 1)) + 1 if previous_audit else (2 if existing else 1)
+    plan = existing or GymDayPlan(user_id=user.id, date=day, status="draft")
+    plan.title, plan.source, plan.adjustment_note = title, "template", note
+    plan.updated_at = datetime.now(ZoneInfo("UTC"))
+    if existing:
+        await session.execute(delete(GymDayExercise).where(GymDayExercise.gym_day_plan_id == existing.id))
+    else:
+        session.add(plan)
     await session.flush()
     for pos, row in enumerate(adjusted, start=1):
-        session.add(
-            GymDayExercise(
-                gym_day_plan_id=plan.id,
-                exercise_id=row["exercise_id"],
-                position=pos,
-                sets=row["sets"],
-                reps_min=row["reps_min"],
-                reps_max=row.get("reps_max"),
-                rest_seconds=row.get("rest_seconds", 90),
-                notes=row.get("notes"),
-            )
-        )
+        session.add(GymDayExercise(gym_day_plan_id=plan.id, exercise_id=row["exercise_id"], position=pos,
+            sets=row["sets"], reps_min=row["reps_min"], reps_max=row.get("reps_max"),
+            rest_seconds=row.get("rest_seconds", 90), notes=row.get("notes")))
+    session.add(ChangeAudit(user_id=user.id, action="gym_draft_refreshed" if existing else "gym_draft_generated",
+        payload={"plan_id": plan.id, "revision": revision, "engine_version": ENGINE_VERSION,
+                 "input_fingerprint": fingerprint, "before": before, "after": after}))
     await session.flush()
-    rows = await _plan_rows(session, plan)
-    return plan, rows, plan.adjustment_note or ""
+    return plan, await _plan_rows(session, plan), note
 
 
 async def _plan_rows(session: AsyncSession, plan: GymDayPlan) -> list[dict]:
-    rows = (
-        await session.scalars(
-            select(GymDayExercise)
-            .where(GymDayExercise.gym_day_plan_id == plan.id)
-            .order_by(GymDayExercise.position)
-        )
-    ).all()
+    rows = (await session.scalars(select(GymDayExercise).where(GymDayExercise.gym_day_plan_id == plan.id)
+                                 .order_by(GymDayExercise.position))).all()
     return [await _exercise_row(session, row) for row in rows]
 
 
 async def _exercise_row(session: AsyncSession, row: GymDayExercise) -> dict:
     ex = await session.get(GymExercise, row.exercise_id)
-    return {
-        "gym_day_exercise_id": row.id,
-        "exercise_id": row.exercise_id,
-        "name": ex.name if ex else "?",
-        "muscle_group": ex.muscle_group if ex else "",
-        "movement_pattern": ex.movement_pattern if ex else "",
-        "impact_level": ex.impact_level if ex else "low",
-        "position": row.position,
-        "sets": row.sets,
-        "reps_min": row.reps_min,
-        "reps_max": row.reps_max,
-        "rest_seconds": row.rest_seconds,
-        "notes": row.notes,
-    }
+    return {"gym_day_exercise_id": row.id, "exercise_id": row.exercise_id, "name": ex.name if ex else "?",
+        "muscle_group": ex.muscle_group if ex else "", "movement_pattern": ex.movement_pattern if ex else "",
+        "impact_level": ex.impact_level if ex else "low", "position": row.position, "sets": row.sets,
+        "reps_min": row.reps_min, "reps_max": row.reps_max, "rest_seconds": row.rest_seconds, "notes": row.notes}

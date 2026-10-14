@@ -54,16 +54,16 @@ function LoadPanel({ o }: { o: Overview }) {
         title={t("design.training_load")}
         right={<More to="/app/training">{t("design.view_training")}</More>}
       />
-      <div className="grid grid-cols-3 gap-4">
+      <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatPod
-          label={t("design.acute")}
+          label={t("betaDaily.acute_scope")}
           value={fmtNum(o.acute_load, 1)}
-          unit={o.load_metadata?.unit ?? t("lab.legacy_load_unit")}
+          unit={o.load_metadata?.unit ?? t("betaDaily.load_unit_unknown")}
         />
         <StatPod
-          label={t("design.chronic")}
+          label={t("betaDaily.chronic_scope")}
           value={fmtNum(o.chronic_load, 1)}
-          unit={o.load_metadata?.unit ?? t("lab.legacy_load_unit")}
+          unit={o.load_metadata?.unit ?? t("betaDaily.load_unit_unknown")}
         />
         <StatPod
           label="ACWR"
@@ -93,7 +93,7 @@ function LoadPanel({ o }: { o: Overview }) {
           points={trend.data?.points ?? []}
           start={trend.data?.start_date}
           end={o.date}
-          unit={o.load_metadata?.unit ?? t("lab.legacy_load_unit")}
+          unit={o.load_metadata?.unit ?? t("betaDaily.load_unit_unknown")}
           label={t("design.training_load")}
         />
       )}
@@ -173,7 +173,7 @@ export default function OverviewPage() {
     { key: "floors", value: o.floors, unit: "" },
     { key: "hydration", value: units.metric("hydration", o.hydration_ml ?? null), unit: units.metricUnit("hydration", "ml") },
   ];
-  const hasData = signals.some((r) => r.fallback != null) || body.some((r) => r.value != null) || o.activities.length > 0 || !!o.sleep || o.readiness.value != null || o.recovery.value != null || o.strain.value != null || o.acute_load != null;
+  const hasData = signals.some((r) => r.fallback != null) || body.some((r) => r.value != null) || o.activities.length > 0 || !!o.sleep || o.readiness.value != null || o.recovery.value != null || o.strain.value != null || o.sleep_score.value != null || o.acute_load != null;
   const recentActivities = o.recent_activities ?? o.activities;
   const connectedSources = setupDevices.data?.filter((device) => device.status === "active").length ?? 0;
   const recordedNights = setupSleep.data?.points.filter((p) => p.value != null).length ?? 0;
@@ -191,11 +191,23 @@ export default function OverviewPage() {
       <button disabled={requestedDay >= today} className="p-2 text-muted hover:text-ink disabled:opacity-30" aria-label={t("common.next_day")} onClick={() => setParams({ date: shiftDay(requestedDay, 1) })}><ChevronRight size={18} /></button>
       {date && <button onClick={() => setParams({})} className="text-link">{t("common.today")}</button>}
     </div>} />
-    <nav aria-label={t("refinement.quick_access")} className="flex flex-wrap gap-x-6 gap-y-3 border-b border-hairline pb-4 text-[13px]">
-      {[{ to: "/app/calendar", key: "lab.calendar" }, { to: "/app/training", key: "design.view_training" }, { to: "/app/biometrics?tab=labs", key: "biometrics.labs" }, { to: "/app/coach", key: "nav.coach" }, { to: "/app/settings?tab=devices", key: "settings.devices" }].map((link) => <More key={link.to} to={link.to}>{t(link.key)}</More>)}
-    </nav>
-    <YourDay date={requestedDay} />
     {!o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
+    <section aria-label={t("completion.daily_scores")} className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(({ key, score }) => <Card key={key} className="!p-4 sm:!p-5">
+        <Link to={`/app/biometrics/${key}`} className="block">
+          <div className="stat-pod !py-0">
+            <p className="eyebrow">{t(METRIC_LABELS[key])}</p>
+            <div className="stat-value num mt-2 flex flex-wrap items-baseline justify-between gap-x-2">
+              <span data-testid="score-value">{fmtNum(score.value)}{score.value != null && <span className="ml-1 text-[12px] font-normal tracking-normal text-muted">/100</span>}</span>
+              {score.value != null && <DeltaChip delta={score.delta_7d} compact />}
+            </div>
+          </div>
+          <p className="mt-2 text-[12px] text-muted">{t(score.value == null ? "betaDaily.score_missing" : key === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p>
+        </Link>
+      </Card>)}
+    </section>
+    <a href="#training-load" className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-ink2"><span>{t("betaDaily.acute_scope")}</span><span className="num font-medium text-ink">{fmtNum(o.acute_load, 1)} {o.acute_load != null && (o.load_metadata?.unit ?? t("betaDaily.load_unit_unknown"))}</span><span className="text-[12px] text-muted">{o.acute_load == null ? t("completion.load_missing") : t("betaDaily.load_trend")} →</span></a>
+    <YourDay date={requestedDay} />
     {!setupHidden && !setupComplete.every(Boolean) && <Card className="!p-4 sm:!p-5">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow text-primaryText">{t("setup.eyebrow")}</p><h2 className="mt-1 text-[18px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[13px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
       <ul className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">{[
@@ -204,10 +216,11 @@ export default function OverviewPage() {
         { done: setupComplete[2], label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
       ].map((item) => <li key={item.label}><Link to={item.to} className="flex min-h-11 items-center gap-3 border border-hairline px-3 py-2 hover:bg-surface2"><span aria-hidden="true" className={item.done ? "text-positiveText" : "text-faint"}>{item.done ? "✓" : "○"}</span><span className="min-w-0"><span className="block font-medium text-ink">{item.label}</span><span className="block text-[12px] text-muted">{item.state}</span></span><ArrowRight size={14} className="ml-auto shrink-0" /></Link></li>)}</ul>
     </Card>}
-    {hasData && <section aria-label={t("completion.daily_scores")} className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-      {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(e => <Card key={e.key}><Link to={`/app/biometrics/${e.key}`}><StatPod label={t(METRIC_LABELS[e.key])} value={fmtNum(e.score.value)} unit="/100" /><DeltaChip delta={e.score.delta_7d} compact /><p className="mt-2 text-[12px] text-muted">{t(e.key === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p></Link></Card>)}
-    </section>}
-    <details className="border-t border-hairline pt-4"><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.recovery_context")}</summary><div className="mt-4"><DecisionCard date={requestedDay} /></div></details>
+    <details className="border-t border-hairline pt-4"><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.recovery_context")}</summary><div className="mt-4"><DecisionCard date={requestedDay} /></div>
+      <nav aria-label={t("refinement.quick_access")} className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
+        {[{ to: "/app/calendar", key: "lab.calendar" }, { to: "/app/training", key: "design.view_training" }, { to: "/app/biometrics?tab=labs", key: "biometrics.labs" }, { to: "/app/coach", key: "nav.coach" }, { to: "/app/settings?tab=devices", key: "settings.devices" }].map(link => <More key={link.to} to={link.to}>{t(link.key)}</More>)}
+      </nav>
+    </details>
     {hasData && <section aria-label={t("refinement.recorded_signals")}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
@@ -218,17 +231,17 @@ export default function OverviewPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Card><CardHeader title={t("completion.recent_activities")} right={<More to="/app/activities">{t("design.view_log")}</More>} />
           {!recentActivities.length ? <Empty>{t("overview.no_activities")}</Empty> : recentActivities.map((a) => <Link key={a.id} to={`/app/activities/${a.id}`} className="flex items-center gap-4 border-b border-hairline py-5 last:border-0"><span className="flex h-10 w-10 shrink-0 items-center justify-center bg-surface2"><SportIcon discipline={a.discipline} size={19} /></span><div className="min-w-0 flex-1"><p className="font-medium">{friendlyDiscipline(a.discipline, t)}</p><p className="mt-1 text-[12px] text-muted">{new Date(a.start_time).toLocaleDateString(undefined, { timeZone: me?.timezone, month: "short", day: "numeric" })} · {fmtDuration(a.duration_s)} · {a.discipline === "sailing" ? `${fmtNum(a.distance_m == null ? null : a.distance_m / 1852, 1)} nmi` : `${fmtNum(units.distance(a.distance_m), 1)} ${units.distanceUnit}`} · {fmtNum(a.avg_hr)} bpm</p></div><ArrowRight size={16} /></Link>)}
-          <p className="mt-4 text-[12px] text-muted">{t("design.week_load", { value: fmtNum(o.training_load_7d) })}</p>
         </Card>
         <Card><CardHeader title={t("overview.last_night")} right={<More to={o.sleep ? "/app/sleep/" + o.date : "/app/sleep"}>{t("design.view_sleep")}</More>} />
           {o.sleep ? <><div className="mb-6 flex items-baseline gap-3"><span className="num text-[48px] font-medium tracking-[-.055em]">{fmtHours(o.sleep.total_sleep_s)}</span><span className="text-[13px] text-muted">{t("sleep.asleep")}</span></div><ZoneBar parts={stageParts} height={12} gap={2} /><div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">{stageParts.map((part) => <div key={part.key}><span className="flex items-center gap-2 text-[12px] text-muted"><span className="h-2 w-2" style={{ backgroundColor: part.color }} />{t("stage." + part.key)}</span><span className="num mt-2 block text-[20px]">{fmtHours(part.value)}</span></div>)}</div>{o.sleep.sleep_score != null && <p className="mt-5 border-t border-hairline pt-4 text-[12px] text-muted">{t("metricView.provider_sleep_score")}: {fmtNum(o.sleep.sleep_score)} / 100</p>}</> : <Empty>{t("overview.no_sleep")}</Empty>}
         </Card>
       </div>
       <Card className="!py-4"><div className="grid grid-cols-2 gap-4"><Link to="/app/biometrics/steps"><StatPod label={t(METRIC_LABELS.steps)} value={fmtNum(o.steps)} /></Link><Link to="/app/biometrics/floors"><StatPod label={t(METRIC_LABELS.floors)} value={fmtNum(o.floors)} /></Link></div></Card>
-      <LoadPanel o={o} />
+      <div id="training-load" className="scroll-mt-5"><LoadPanel o={o} /></div>
 
 
     </>}
+    {!hasData && <div id="training-load" className="scroll-mt-5"><LoadPanel o={o} /></div>}
     <ActivityCalendar date={date ?? today} />
   </div>;
 }

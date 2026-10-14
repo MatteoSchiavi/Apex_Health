@@ -34,6 +34,7 @@ test('recorded activities come before planned workouts and distances stay within
     sport_totals:{running:{duration_s:total(3600,'s'),distance_m:total(10000,'m')},cycling:{duration_s:total(7200,'s'),distance_m:total(40000,'m')}}}}));
   await page.goto('/app');
   const panel=page.locator('.panel').filter({has:page.getByText('Your day',{exact:true})});
+  await panel.getByTestId('daily-details').locator('summary').first().click();
   await expect(panel.getByRole('region',{name:'Recorded activities',exact:true})).toBeVisible();
   const labels=await panel.locator('section[aria-label]').evaluateAll(elements=>elements.map(e=>e.getAttribute('aria-label')));
   expect(labels.indexOf('Recorded activities')).toBeLessThan(labels.indexOf('Planned sessions'));

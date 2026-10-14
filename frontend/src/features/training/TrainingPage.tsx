@@ -1,3 +1,4 @@
+import { TrainingSections } from "./TrainingSections";
 /**
  * Training Plan & Load — event calendar (AI-aware: race/ski/sail events
  * drive the gym tapper), the ACWR load chart, and the gym prescription with
@@ -17,7 +18,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
-import { api, type Overview } from "../../app/api";
+import { api, ApiError, type Overview } from "../../app/api";
 import {
   Badge,
   Button,
@@ -331,6 +332,7 @@ interface GymExerciseRow {
 
 interface PlanView {
   plan_id: number;
+  revision?: number;
   date: string;
   title: string;
   source: string;
@@ -361,11 +363,14 @@ function GymPlan() {
   });
 
   const generate = useMutation({
-    mutationFn: () => api.post(`/gym/plan/${day}/generate`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["gym-plan", day] }),
+    mutationFn: () => api.post<PlanView>(`/gym/plan/${day}/generate`),
+    onSuccess: () => {
+      confirm.reset();
+      return qc.invalidateQueries({ queryKey: ["gym-plan", day] });
+    },
   });
   const confirm = useMutation({
-    mutationFn: () => api.post(`/gym/plan/${day}/confirm`),
+    mutationFn: () => api.post(`/gym/plan/${day}/confirm`, {expected_revision: plan.data?.plan?.revision}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gym-plan", day] }),
   });
 
@@ -424,7 +429,7 @@ function GymPlan() {
 
   return (
     <Card>
-      {(generate.isError || confirm.isError || logOne.isError) && <ErrorNote />}
+      {(generate.isError || confirm.isError || logOne.isError) && <ErrorNote message={t(confirm.error instanceof ApiError && confirm.error.status === 409 ? "betaNavigation.gym_context_changed" : "betaNavigation.gym_action_failed")} />}
       <CardHeader
         eyebrow={t("training.gym_plan")}
         title={p ? p.title : (data?.template?.title ?? undefined)}
@@ -432,10 +437,10 @@ function GymPlan() {
           <div className="flex items-center gap-2">
             {p && (
               <Badge tone={p.status === "done" ? "positive" : "primary"}>
-                {p.status}
+                {t("betaNavigation.gym_status_"+p.status,{defaultValue:p.status})}
               </Badge>
             )}
-            {!p && data?.template && (
+            {!p && (
               <Button
                 variant="ghost"
                 onClick={() => generate.mutate()}
@@ -445,10 +450,11 @@ function GymPlan() {
                 {t("training.gym_generate")}
               </Button>
             )}
+            {p?.status === "draft" && <Button variant="ghost" disabled={generate.isPending || confirm.isPending} onClick={()=>generate.mutate()}>{t("betaNavigation.refresh_gym")}</Button>}
             {p?.status === "draft" && (
               <Button
                 onClick={() => confirm.mutate()}
-                disabled={confirm.isPending}
+                disabled={confirm.isPending || generate.isPending || exercises.length === 0}
                 className="!h-9 !px-2.5 text-[12px]"
               >
                 {t("training.gym_confirm")}
@@ -458,12 +464,12 @@ function GymPlan() {
         }
       />
 
-      {p?.adjustment_note && (
+      {(generate.data?.adjustment_note ?? p?.adjustment_note) && (
         <div className="mb-3 rounded-card bg-primarySoft px-3 py-2 text-[12px] text-ink2">
           <span className="eyebrow mr-2 text-primaryText">
             {t("training.gym_advice")}
           </span>
-          {p.adjustment_note}
+          {generate.data?.adjustment_note ?? p?.adjustment_note}
         </div>
       )}
 
@@ -496,8 +502,9 @@ function GymPlan() {
                       total: nextEx.sets,
                     })}{" "}
                     × {nextEx.reps_min}
-                    {nextEx.reps_max ? `-${nextEx.reps_max}` : ""}
+                    {nextEx.reps_max && nextEx.reps_max !== nextEx.reps_min ? `-${nextEx.reps_max}` : ""}
                   </div>
+                  {nextEx.notes && <p className="mt-2 max-w-lg text-[12px] text-muted">{nextEx.notes}</p>}
                 </div>
                 {rest !== null && rest > 0 && (
                   <div className="text-right">
@@ -558,7 +565,7 @@ function GymPlan() {
                   <th className="eyebrow py-2 pr-3">
                     {t("training.exercise")}
                   </th>
-                  <th className="eyebrow py-2 pr-3">{t("training.sets")}</th>
+                  <th className="eyebrow py-2 pr-3">{t("betaNavigation.sets_label")}</th>
                   <th className="eyebrow py-2 pr-3">{t("training.reps")}</th>
                   <th className="eyebrow py-2">{t("training.rest_timer")}</th>
                 </tr>
@@ -577,6 +584,7 @@ function GymPlan() {
                     <td className="py-2 pr-3">{i + 1}</td>
                     <td className="py-2 pr-3 font-medium text-ink">
                       {ex.name}
+                      {ex.notes && <p className="mt-1 max-w-64 whitespace-normal text-[12px] font-normal text-muted">{ex.notes}</p>}
                       {ex.complete && (
                         <span className="ml-2">
                           <Badge tone="positive">{t("training.done")}</Badge>
@@ -584,16 +592,14 @@ function GymPlan() {
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      {t("training.sets_short", {
-                        done: ex.sets_done,
-                        total: ex.sets,
-                      })}
+                      {ex.sets}
+                      {p?.status !== "draft" && <span className="mt-1 block text-[12px] text-muted">{t("betaNavigation.sets_completed", {count: ex.sets_done ?? 0})}</span>}
                     </td>
                     <td className="py-2 pr-3">
                       {ex.reps_min}
-                      {ex.reps_max ? `-${ex.reps_max}` : ""}
+                      {ex.reps_max && ex.reps_max !== ex.reps_min ? `-${ex.reps_max}` : ""}
                     </td>
-                    <td className="py-2">{ex.rest_seconds ?? 90}s</td>
+                    <td className="py-2">{ex.rest_seconds == null ? "—" : `${ex.rest_seconds}s`}</td>
                   </tr>
                 ))}
               </tbody>
@@ -657,6 +663,7 @@ export default function TrainingPage() {
         title={t("training.title")}
         subtitle={t("training.subtitle")}
       />
+      <TrainingSections />
       <Tabs
         value={tab}
         onChange={tab => setParams({ tab })}

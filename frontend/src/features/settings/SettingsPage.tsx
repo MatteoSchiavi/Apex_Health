@@ -1,3 +1,4 @@
+import Sharing from "../athlete/Sharing";
 import { AthleteProfilePanel } from "../athlete/AthleteProfilePanel";
 import HealthKitPanel from "./HealthKitPanel";
 /**
@@ -879,6 +880,7 @@ export default function SettingsPage() {
     { value: "notifications", label: t("lab.notification_preferences") },
     { value: "data-health", label: t("lab.data_health") },
     { value: "account", label: t("settings.account") },
+    { value: "privacy", label: t("betaNavigation.privacy") },
     ...(me?.role === "owner"
       ? [{ value: "invites", label: t("settings.invites") }]
       : []),
@@ -905,6 +907,7 @@ export default function SettingsPage() {
         {tab === "devices" && <div className="flex flex-col gap-6"><DevicesSection /><HealthKitPanel /></div>}
         {tab === "notifications" && <NotificationPreferences />}
         {tab === "data-health" && <DataHealthPage embedded />}
+        {tab === "privacy" && <Sharing embedded />}
         {tab === "account" && (
           <div className="flex flex-col gap-6">
             <AccountSection />

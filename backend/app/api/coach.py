@@ -22,10 +22,12 @@ from app.queries.gym_detail import (
     log_set,
     next_up,
     plan_for_date,
+    plan_revision,
     session_view,
 )
 from app.services.gym_advisor import (
     generate_day_plan,
+    current_input_fingerprint,
     recent_feedback,
     upcoming_events,
 )
@@ -302,6 +304,7 @@ async def post_generate_gym_plan(
     return {
         "plan_id": plan.id,
         "date": plan.date.isoformat(),
+        "revision": await plan_revision(session, user.id, plan.id),
         "title": plan.title,
         "source": plan.source,
         "status": plan.status,
@@ -310,15 +313,42 @@ async def post_generate_gym_plan(
     }
 
 
+class GymConfirmationIn(BaseModel):
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 @router.post("/gym/plan/{day}/confirm")
 async def post_confirm_gym_plan(
     day: date,
+    payload: GymConfirmationIn | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict:
+    from app.services.evidence import scope_lock
+    from app.models.lab import ChangeAudit
+
+    await scope_lock(session, user.id, "changes")
+    await scope_lock(session, user.id, f"gym-plan:{day}")
     plan = await plan_for_date(session, user.id, day)
     if plan is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="no plan for that date")
+    revision = await plan_revision(session, user.id, plan.id)
+    if plan.status == "done":
+        raise HTTPException(409, "Completed sessions cannot be confirmed again")
+    audited = await session.scalar(select(ChangeAudit).where(ChangeAudit.user_id == user.id,
+        ChangeAudit.action.in_(("gym_draft_generated", "gym_draft_refreshed")),
+        ChangeAudit.payload["plan_id"].astext == str(plan.id)).order_by(ChangeAudit.id.desc()).limit(1))
+    if plan.status == "draft" and audited and (payload is None or payload.expected_revision != revision):
+        raise HTTPException(409, "Suggestion changed; review the latest revision before confirming")
+    if payload and payload.expected_revision is not None and payload.expected_revision != revision:
+        raise HTTPException(409, "Suggestion changed; review the latest revision before confirming")
+    if plan.status == "draft" and audited:
+        current_fingerprint = await current_input_fingerprint(session, user, day)
+        if audited.payload.get("input_fingerprint") != current_fingerprint:
+            raise HTTPException(409, "Training context changed; refresh the suggestion and review it before confirming")
+    if plan.status == "draft":
+        session.add(ChangeAudit(user_id=user.id, action="gym_draft_confirmed",
+            payload={"plan_id": plan.id, "revision": revision}))
     plan.status = "confirmed"
     await session.commit()
     return {"plan_id": plan.id, "status": plan.status}
@@ -388,6 +418,9 @@ async def post_feedback(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user.id, "changes")
     fb = SessionFeedback(user_id=user.id, **payload.model_dump())
     session.add(fb)
     await session.commit()

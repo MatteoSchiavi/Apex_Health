@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -51,10 +51,6 @@ const NAV = [
   },
   { to: "/app/activities", icon: BarChart3, key: "nav.activities", end: false },
   { to: "/app/sleep", icon: Moon, key: "nav.sleep", end: false },
-  { to: "/app/sports/running", icon: Activity, key: "sportProgress.title_running", end: false },
-  { to: "/app/sports/cycling", icon: BarChart3, key: "sportProgress.title_cycling", end: false },
-  { to: "/app/sports/strength", icon: BarChart3, key: "sportProgress.title_strength", end: false },
-  { to: "/app/sharing", icon: Users, key: "sharing.title", end: false },
   { to: "/app/training", icon: Trophy, key: "nav.training", end: false },
   { to: "/app/coach", icon: Bot, key: "nav.coach", end: false },
   { to: "/app/lab", icon: FlaskConical, key: "lab.nav", end: false },
@@ -258,14 +254,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.scrollTo(0, 0);
   }, [location.pathname]);
   const closeSearch = useCallback(() => setSearch(false), []);
-  const current =
-    NAV.find((n) =>
-      n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),
-    ) ?? (location.pathname === "/admin" ? { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true } : NAV[0]);
+  const inTraining = location.pathname.startsWith("/app/sports/");
+  const inSharing = location.pathname.startsWith("/app/sharing");
+  const isSectionActive = (to: string, end?: boolean) => (to === "/app/training" && inTraining) || (to === "/app/settings" && inSharing) || (end ? location.pathname === to : location.pathname === to || location.pathname.startsWith(to+"/"));
+  const current = NAV.find(n=>isSectionActive(n.to,n.end)) ?? (location.pathname === "/admin" ? { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true } : NAV[0]);
   const visibleNav = me?.role === "owner" ? [...NAV, { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true }] : NAV;
   const mobilePrimary = visibleNav.filter((n) => ["/app", "/app/biometrics", "/app/activities", "/app/sleep"].includes(n.to));
   const mobileMore = visibleNav.filter((n) => !mobilePrimary.includes(n));
-  const mobileMoreActive = mobileMore.some((n) => location.pathname === n.to || location.pathname.startsWith(`${n.to}/`));
+  const mobileMoreActive = mobileMore.some(n=>isSectionActive(n.to,n.end));
   async function logout() {
     try {
       await api.post("/auth/logout");
@@ -307,22 +303,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-y-auto"
         >
           {visibleNav.map(({ to, icon: Icon, key, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              title={sidebarCollapsed ? t(key) : undefined}
-              aria-label={sidebarCollapsed ? t(key) : undefined}
-              className={({ isActive }) =>
-                "flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") +
-                (isActive
-                  ? "bg-ink font-medium text-canvas"
-                  : "text-muted hover:bg-surface2 hover:text-ink")
-              }
-            >
+            <Link key={to} to={to} title={sidebarCollapsed ? t(key) : undefined} aria-label={sidebarCollapsed ? t(key) : undefined} aria-current={isSectionActive(to,end) ? "page" : undefined}
+              className={"flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") + (isSectionActive(to,end) ? "bg-ink font-medium text-canvas" : "text-muted hover:bg-surface2 hover:text-ink")}>
               <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
               <span className={sidebarCollapsed ? "sr-only" : "truncate"}>{t(key)}</span>
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <div className="shrink-0 pt-6">
@@ -412,7 +397,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <nav aria-label={t("design.navigation")} className="hidden gap-6 overflow-x-auto border-b border-hairline px-5 md:flex lg:hidden">
-          {visibleNav.map((n) => <NavLink to={n.to} end={n.end} key={n.to} className={({ isActive }) => "shrink-0 border-b-2 py-4 text-[13px] " + (isActive ? "border-ink font-semibold text-ink" : "border-transparent text-muted")}>{t(n.key)}</NavLink>)}
+          {visibleNav.map((n) => <Link to={n.to} key={n.to} aria-current={isSectionActive(n.to,n.end) ? "page" : undefined} className={ "shrink-0 border-b-2 py-4 text-[13px] " + (isSectionActive(n.to,n.end) ? "border-ink font-semibold text-ink" : "border-transparent text-muted")}>{t(n.key)}</Link>)}
         </nav>
         <main
           id="main"
@@ -434,12 +419,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </footer>
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
           {mobileMoreOpen && <nav aria-label={t("admin.more_navigation")} className="absolute bottom-full right-3 mb-2 flex max-h-[65dvh] w-64 flex-col overflow-y-auto border border-hairline bg-surface p-2 shadow-xl">
-            {mobileMore.map(({ to, icon: Icon, key, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex items-center gap-3 px-3 py-3 text-sm ${isActive ? "bg-ink text-canvas" : "text-muted hover:bg-surface2"}`}><Icon size={17} aria-hidden="true" />{t(key)}</NavLink>)}
+            {mobileMore.map(({ to, icon: Icon, key, end }) => <Link key={to} to={to} aria-current={isSectionActive(to,end) ? "page" : undefined} className={ `flex items-center gap-3 px-3 py-3 text-sm ${isSectionActive(to,end) ? "bg-ink text-canvas" : "text-muted hover:bg-surface2"}`}><Icon size={17} aria-hidden="true" />{t(key)}</Link>)}
             <button type="button" onClick={() => { searchOpener.current = mobileMoreButton.current; setMobileMoreOpen(false); setSearch(true); }} className="flex items-center gap-3 px-3 py-3 text-left text-sm text-muted hover:bg-surface2"><Search size={17} aria-hidden="true" />{t("search.placeholder")}</button>
             <button type="button" onClick={logout} className="border-t border-hairline px-3 py-3 text-left text-sm text-muted">{t("auth.logout")}</button>
           </nav>}
           <nav aria-label={t("design.navigation")} className="mx-auto grid max-w-xl grid-cols-5">
-            {mobilePrimary.map(({ to, icon: Icon, key, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${isActive ? "text-ink" : "text-muted"}`}><Icon size={18} aria-hidden="true" /><span>{t(key)}</span></NavLink>)}
+            {mobilePrimary.map(({ to, icon: Icon, key, end }) => <Link key={to} to={to} aria-current={isSectionActive(to,end) ? "page" : undefined} className={ `flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${isSectionActive(to,end) ? "text-ink" : "text-muted"}`}><Icon size={18} aria-hidden="true" /><span>{t(key)}</span></Link>)}
             <button ref={mobileMoreButton} type="button" aria-label={t("admin.more_navigation")} aria-expanded={mobileMoreOpen} aria-haspopup="true" onClick={() => setMobileMoreOpen((open) => !open)} className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${mobileMoreActive || mobileMoreOpen ? "text-ink" : "text-muted"}`}><MoreHorizontal size={18} aria-hidden="true" /><span>{t("admin.more_navigation")}</span></button>
           </nav>
         </div>

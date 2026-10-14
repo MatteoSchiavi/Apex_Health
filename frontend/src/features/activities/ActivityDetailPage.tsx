@@ -329,7 +329,7 @@ export default function ActivityDetailPage() {
           minute: "2-digit",
           timeZone: timezone,
         })}
-        actions={<Badge>{a.data_completeness}</Badge>}
+        actions={<div className="flex flex-wrap items-center gap-3"><Badge>{a.data_completeness}</Badge>{["running","cycling","strength"].includes(kind) && <Link className="text-link text-[13px]" to={`/app/sports/${kind}`}>{t("betaNavigation.sport_progress")}</Link>}</div>}
       />
       <div className="stat-row">
         <StatPod
@@ -364,7 +364,6 @@ export default function ActivityDetailPage() {
       />
       {tab === "session" && (
         <>
-          <Link className="text-link text-[13px]" to={`/app/sharing?type=activity&id=${a.id}`}>{t("sharing.title")} ↗</Link>
           <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} /></div>
           {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
           {["running", "cycling"].includes(kind) && <ComparisonContextEditor activityId={a.id} />}

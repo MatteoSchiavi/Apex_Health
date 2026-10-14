@@ -5,9 +5,10 @@ import { Segmented } from "../../components/kit";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowUpRight, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Plus, Send, Trash2 } from "lucide-react";
 import {
   api,
+  ApiError,
   type ChatSessionDetail,
   type ChatSessionOut,
 } from "../../app/api";
@@ -64,6 +65,11 @@ export default function CoachPage() {
   );
   const [draft, setDraft] = useState(() => stored(draftKey));
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [openActionsId, setOpenActionsId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChatSessionOut | null>(null);
+  const [deletedTitle, setDeletedTitle] = useState<string | null>(null);
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const newChatButton = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const sessions = useQuery({
     queryKey: ["chats", uid],
@@ -117,39 +123,104 @@ export default function CoachPage() {
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.delete("/coach/chats/" + id),
-    onSuccess: (_data, id) => {
+    onSuccess: async (_data, id) => {
+      // A detail request already in flight must not restore a deleted transcript.
+      await qc.cancelQueries({ queryKey: ["chat", uid, id], exact: true });
       if (id === activeId) setActiveId(null);
-      qc.removeQueries({ queryKey: ["chat", uid, id] });
-      qc.invalidateQueries({ queryKey: ["chats", uid] });
+      qc.removeQueries({ queryKey: ["chat", uid, id], exact: true });
+      qc.setQueryData<ChatSessionOut[]>(["chats", uid], (rows) =>
+        rows?.filter((row) => row.id !== id),
+      );
+      setDeletedTitle(deleteTarget?.title ?? t("coach.new_chat"));
+      setDeleteTarget(null);
+      void qc.invalidateQueries({ queryKey: ["chats", uid], exact: true });
+      requestAnimationFrame(() => newChatButton.current?.querySelector("button")?.focus());
     },
   });
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const dialog = deleteDialog.current;
+    if (deleteTarget && dialog && !dialog.open) dialog.showModal();
+    else if (!deleteTarget && dialog?.open) dialog.close();
+  }, [deleteTarget]);
+  const conversationUnavailable = active.error instanceof ApiError && active.error.status === 404;
+  useEffect(() => {
+    if (conversationUnavailable && activeId != null) {
+      qc.invalidateQueries({ queryKey: ["chats", uid], exact: true });
+    }
+  }, [conversationUnavailable, activeId, qc, uid]);
+  useEffect(() => {
+    if ((active.data?.messages.length ?? 0) > 0 || send.isPending) {
+      bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   }, [active.data?.messages.length, send.isPending]);
   function submit() {
-    if (aiAllowed && draft.trim() && !send.isPending && !active.isLoading)
+    if (aiAllowed && draft.trim() && !send.isPending && !remove.isPending && !active.isLoading && !active.isError)
       send.mutate({ text: draft.trim(), sessionId: activeId });
   }
   return (
     <div className="flex flex-col gap-6">
-      {!aiAllowed && <AiConsentPanel />}
       <PageHeader
         title={t("coach.title")}
         subtitle={t("coach.subtitle")}
         actions={
-          <Button
+          <div ref={newChatButton}><Button
             variant="ghost"
             icon={<Plus size={16} />}
-            disabled={send.isPending}
+            disabled={send.isPending || remove.isPending}
             onClick={() => {
               setActiveId(null);
               send.reset();
             }}
           >
             {t("coach.new_chat")}
-          </Button>
+          </Button></div>
         }
       />
+      {deletedTitle && <p role="status" className="text-[13px] text-muted">
+        {t("betaCoach.deleted", { title: deletedTitle })}
+      </p>}
+      {!aiAllowed && <details className="border border-hairline p-4">
+        <summary className="min-h-6 cursor-pointer text-[13px]">{t("athlete.ai_disabled")} · {t("betaCoach.consent_details")}</summary>
+        <div className="mt-4"><AiConsentPanel /></div>
+      </details>}
+      <dialog
+        ref={deleteDialog}
+        aria-labelledby="delete-conversation-title"
+        aria-describedby="delete-conversation-description"
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+          const first = buttons[0];
+          const last = buttons.at(-1);
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault(); last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault(); first?.focus();
+          }
+        }}
+        onCancel={(event) => {
+          event.preventDefault();
+          if (!remove.isPending) { setDeleteTarget(null); remove.reset(); }
+        }}
+        className="m-auto w-[calc(100%_-_2rem)] max-w-md border border-hairline bg-surface p-6 text-ink shadow-xl backdrop:bg-black/50"
+      >
+        <h2 id="delete-conversation-title" className="text-lg font-medium">{t("betaCoach.confirm_title")}</h2>
+        <p id="delete-conversation-description" className="mt-3 break-words text-[14px] leading-relaxed text-muted">
+          {t("betaCoach.confirm_body", { title: deleteTarget?.title ?? t("coach.new_chat") })}
+        </p>
+        {remove.isError && <p role="alert" className="mt-4 text-[13px] text-alertText">{t("betaCoach.delete_failed")}</p>}
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button autoFocus disabled={remove.isPending}
+            onClick={() => { setDeleteTarget(null); remove.reset(); }}
+            className="min-h-11 rounded-control border border-hairline px-4 text-[13px] disabled:opacity-50">
+            {t("betaCoach.cancel")}
+          </button>
+          <Button variant="danger" disabled={remove.isPending || !deleteTarget}
+            onClick={() => { if (deleteTarget) remove.mutate(deleteTarget.id); }}>
+            {t(remove.isPending ? "betaCoach.deleting" : "betaCoach.delete")}
+          </Button>
+        </div>
+      </dialog>
       <div>
         <Segmented
           value={tab}
@@ -193,7 +264,7 @@ export default function CoachPage() {
                       }
                     >
                       <button
-                        disabled={send.isPending}
+                        disabled={send.isPending || remove.isPending}
                         className="min-w-0 flex-1 text-left"
                         onClick={() => {
                           setActiveId(s.id);
@@ -209,24 +280,43 @@ export default function CoachPage() {
                           {s.message_count}
                         </span>
                       </button>
-                      <button
-                        disabled={send.isPending || remove.isPending}
-                        onClick={() => {
-                          if (confirm(t("coach.delete_confirm")))
-                            remove.mutate(s.id);
-                        }}
-                        aria-label={t("training.delete")}
-                        className="p-2 text-muted hover:text-alertText"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <details name="coach-conversation-actions" className="relative shrink-0"
+                        onToggle={(event) => {
+                          const isOpen = event.currentTarget.open;
+                          setOpenActionsId((current) => isOpen ? s.id : current === s.id ? null : current);
+                        }}>
+                        <summary
+                          role="button"
+                          aria-expanded={openActionsId === s.id}
+                          aria-label={t("betaCoach.actions", { title: s.title ?? t("coach.new_chat") })}
+                          className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-control text-muted hover:bg-surface3 focus-visible:outline focus-visible:outline-2 [&::-webkit-details-marker]:hidden"
+                        >
+                          <MoreHorizontal size={18} aria-hidden="true" />
+                        </summary>
+                        <button
+                          disabled={send.isPending || remove.isPending}
+                          onClick={(event) => {
+                            const disclosure = event.currentTarget.closest("details");
+                            if (disclosure) {
+                              disclosure.open = false;
+                              disclosure.querySelector("summary")?.focus();
+                            }
+                            setDeletedTitle(null);
+                            remove.reset();
+                            setDeleteTarget(s);
+                          }}
+                          className="absolute right-0 z-10 flex min-h-11 w-52 items-center gap-2 border border-hairline bg-surface px-3 text-left text-[13px] text-alertText shadow-lg disabled:opacity-50"
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                          {t("betaCoach.delete")}
+                        </button>
+                      </details>
                     </div>
                   ))}
                 </div>
               )}
-              {remove.isError && <ErrorNote />}
               <p className="mt-6 border-t border-hairline pt-4 text-[12px] text-muted">
-                {t("coach.saved_locally")}
+                {t("betaCoach.saved_account")}
               </p>
             </div>
           </aside>
@@ -243,7 +333,12 @@ export default function CoachPage() {
               {active.isLoading ? (
                 <Loading />
               ) : active.isError ? (
-                <ErrorNote />
+                <div role="alert">
+                  <ErrorNote message={t(conversationUnavailable ? "betaCoach.unavailable" : "betaCoach.load_failed")} />
+                  {!conversationUnavailable && <Button variant="ghost" onClick={() => { void active.refetch(); }}>
+                    {t("betaCoach.retry")}
+                  </Button>}
+                </div>
               ) : !active.data?.messages.length && !send.isPending ? (
                 <div className="flex h-full flex-col items-start justify-center">
                   <span className="mb-6 text-[12px] text-muted">
@@ -345,6 +440,7 @@ export default function CoachPage() {
               >
                 <textarea
                   value={draft}
+                  disabled={remove.isPending}
                   onChange={(e) => setDraft(e.target.value)}
                   maxLength={8000}
                   aria-label={t("coach.placeholder")}
@@ -362,7 +458,7 @@ export default function CoachPage() {
                   type="submit"
                   disabled={
                     !aiAllowed || !draft.trim() ||
-                    send.isPending ||
+                    send.isPending || remove.isPending ||
                     active.isLoading ||
                     active.isError
                   }

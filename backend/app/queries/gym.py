@@ -45,6 +45,9 @@ async def create_slot(
     title: str,
     description: str | None = None,
 ) -> GymScheduleSlot:
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user_id, "changes")
     slot = GymScheduleSlot(
         user_id=user_id,
         weekday=weekday,
@@ -66,6 +69,9 @@ async def update_slot(
 ) -> GymScheduleSlot | None:
     """Patch allowed fields (weekday/start_time/title/description/active);
     a foreign slot id is just 'not found' (404 convention across the API)."""
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user_id, "changes")
     slot = await session.get(GymScheduleSlot, slot_id)
     if slot is None or slot.user_id != user_id:
         return None
@@ -81,6 +87,9 @@ async def update_slot(
 async def delete_slot(session: AsyncSession, user_id: int, slot_id: int) -> bool:
     """Hard delete — a removed routine slot is gone. Pausing is PATCH
     active=false (kept distinct on purpose)."""
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user_id, "changes")
     result = await session.execute(
         delete(GymScheduleSlot).where(
             GymScheduleSlot.id == slot_id, GymScheduleSlot.user_id == user_id

@@ -91,6 +91,15 @@ def _row_dict(day_row: GymDayExercise, ex: GymExercise, done: int) -> dict:
     }
 
 
+async def plan_revision(session: AsyncSession, user_id: int, plan_id: int) -> int:
+    """Audited advisor revision; legacy/manual plans start at one."""
+    from app.models.lab import ChangeAudit
+    audit = await session.scalar(select(ChangeAudit).where(ChangeAudit.user_id == user_id,
+        ChangeAudit.action.in_(("gym_draft_generated", "gym_draft_refreshed")),
+        ChangeAudit.payload["plan_id"].astext == str(plan_id)).order_by(ChangeAudit.id.desc()).limit(1))
+    return int(audit.payload.get("revision", 1)) if audit else 1
+
+
 async def session_view(
     session: AsyncSession, user_id: int, plan_id: int
 ) -> dict:
@@ -106,6 +115,7 @@ async def session_view(
     done_sets = sum(e["sets_done"] for e in exercises)
     return {
         "plan_id": plan.id,
+        "revision": await plan_revision(session, user_id, plan.id),
         "date": plan.date.isoformat(),
         "title": plan.title,
         "source": plan.source,
@@ -157,6 +167,10 @@ async def log_set(
 ) -> dict:
     """Log one completed set. Returns the rest-timer value for the UI/watch."""
     plan = await get_owned_plan(session, user_id, plan_id)
+    from app.services.evidence import scope_lock
+
+    await scope_lock(session, user_id, "changes")
+    await scope_lock(session, user_id, f"gym-plan:{plan.date}")
     day_row = await session.get(GymDayExercise, gym_day_exercise_id)
     if day_row is None or day_row.gym_day_plan_id != plan.id:
         raise PlanNotFoundError(gym_day_exercise_id)
