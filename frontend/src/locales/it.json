@@ -137,7 +137,8 @@
     "para_tone": "Tono Parasimpatico",
     "history_notice": "Dati registrati del {{date}}.",
     "connect_cta": "Collega un dispositivo",
-    "empty_body": "Collega un dispositivo per iniziare a registrare salute e allenamento."
+    "empty_body": "Collega un dispositivo per iniziare a registrare salute e allenamento.",
+    "no_sleep": "Nessun sonno registrato per questo giorno."
   },
   "activities": {
     "title": "Attività",
@@ -2704,5 +2705,9 @@
     "sets_label": "Serie",
     "sets_completed": "{{count}} completate",
     "gym_context_changed": "Il contesto di allenamento o questa proposta è cambiato. Aggiorna la proposta e rivedila prima di confermare."
+  },
+  "overviewLatest": {
+    "as_of": "Ultimo · {{date}}",
+    "unavailable": "Impossibile caricare il punteggio più recente. Apri i dettagli per verificare."
   }
 }

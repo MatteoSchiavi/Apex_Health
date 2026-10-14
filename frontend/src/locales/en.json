@@ -137,7 +137,8 @@
     "para_tone": "Parasympathetic Tone",
     "history_notice": "Showing recorded data for {{date}}.",
     "connect_cta": "Connect a device",
-    "empty_body": "Connect a device to start recording your health and training history."
+    "empty_body": "Connect a device to start recording your health and training history.",
+    "no_sleep": "No sleep recorded for this day."
   },
   "activities": {
     "title": "Activities",
@@ -2704,5 +2705,9 @@
     "sets_label": "Sets",
     "sets_completed": "{{count}} completed",
     "gym_context_changed": "Training context or this suggestion changed. Refresh the suggestion and review it before confirming."
+  },
+  "overviewLatest": {
+    "as_of": "Latest · {{date}}",
+    "unavailable": "Latest score could not be loaded. Open details to check."
   }
 }

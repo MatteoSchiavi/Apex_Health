@@ -134,3 +134,43 @@ Local validation:
 Production deployment and updater resumption remain owner actions. Successful tests do not
 claim that every unknown exercise prescription or unrecorded measurement is
 available; those states remain explicit and reviewable.
+
+## Follow-up: scores and overnight HRV after the local day changes
+
+The October 14 live browser check reproduced a separate availability bug:
+Overview showed four missing scores and missing overnight HRV, while the
+detail pages contained valid October 13 measurements. Partial current-day
+biometrics kept the dashboard anchored to October 14 even though these metrics
+had no current-day value. The previous layout audit used a day with available
+scores and did not cover this transition.
+
+The default Overview now reads the latest available score and signal from the
+same 90-day metric endpoint used by its detail page when the current-day value
+is missing. It displays the actual measurement date. Available current-day
+values, including zero, take precedence. Explicit date selections retain
+missing values instead of borrowing measurements from another day. The daily
+workout view remains on the requested day.
+
+When all current-day load values are missing, its summary and chart use one
+dated dashboard snapshot, preserving the source unit and compatible averages.
+Signals such as overnight HRV retain their selected chart window, with a dated
+latest reading available even when it lies outside that shorter window. No
+metric calculations, athlete records or plan approvals are changed.
+
+Read-only Chromium previews at 1440px and 390px verified that all four score
+values and overnight HRV matched the real detail-page API responses. Neither
+view had page errors, failing HTTP responses or horizontal overflow. The
+mobile score strip remained compact at 284px. Private before/after evidence is
+in `/workspace/apex-cloud/score-private`; credentials and health screenshots
+are excluded from Git.
+
+Regression cases cover the new-day transition in English/Italian, legitimate
+zero values, historical date selection, empty/error responses, overnight HRV
+outside the short chart window, and coherent load date/unit selection.
+
+Follow-up validation: the full 224-case browser run passed 222 cases and skipped
+one; it identified excessive card height with Italian mobile labels. After
+reducing mobile padding, all 24 focused Overview tests passed on the rebuilt
+production bundle, including that case. Locale parity (2441 keys), the build,
+all five PWA tests and diff checks passed. GitHub repeats the full release
+workflow for the published commit.

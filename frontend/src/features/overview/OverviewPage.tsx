@@ -40,6 +40,57 @@ function More({ to, children }: { to: string; children: string }) {
     </Link>
   );
 }
+function latestPoint(data: MetricTrend | undefined, end: string) {
+  return [...(data?.points ?? [])].reverse().find(point => point.value != null && point.date <= end);
+}
+
+function ScoreCard({ metric, score, date, displayedDay, allowLatest }: { metric: string; score: Overview["readiness"]; date: string; displayedDay: string; allowLatest: boolean }) {
+  const { t } = useTranslation();
+  const history = useQuery({
+    queryKey: ["metric", metric, "90", date],
+    queryFn: () => api.get<MetricTrend>(`/metrics/${metric}?days=90&end=${date}`),
+    enabled: allowLatest && score.value == null,
+    refetchInterval: 300_000,
+  });
+  const latest = allowLatest && score.value == null ? latestPoint(history.data, date) : undefined;
+  const value = score.value ?? latest?.value ?? null;
+  const sourceDay = score.value != null ? date : latest?.date;
+  return <Card className="!p-3 sm:!p-5">
+    <Link to={`/app/biometrics/${metric}`} className="block">
+      <div className="stat-pod !py-0">
+        <p className="eyebrow">{t(METRIC_LABELS[metric])}</p>
+        <div className="stat-value num mt-2 flex flex-wrap items-baseline justify-between gap-x-2">
+          <span data-testid="score-value">{fmtNum(value)}{value != null && <span className="ml-1 text-[12px] font-normal tracking-normal text-muted">/100</span>}</span>
+          {score.value != null && <DeltaChip delta={score.delta_7d} compact />}
+        </div>
+      </div>
+      <p className="mt-2 text-[12px] text-muted">{t(value == null ? allowLatest && history.isLoading ? "common.loading" : allowLatest && history.isError ? "overviewLatest.unavailable" : "betaDaily.score_missing" : metric === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p>
+      {allowLatest && sourceDay && sourceDay !== displayedDay && <p className="mt-1 text-[12px] text-muted">{t("overviewLatest.as_of", {date: sourceDay})}</p>}
+    </Link>
+  </Card>;
+}
+
+function useLatestLoad(o: Overview | undefined, allowLatest: boolean) {
+  // Keep the three load numbers, their units and their chart on one snapshot.
+  // Never replace any load measurement already available for the selected day.
+  const date = o?.date ?? "";
+  const missing = !!o && o.acute_load == null && o.chronic_load == null && o.acwr == null;
+  const history = useQuery({
+    queryKey: ["metric", "acute_load", "90", date],
+    queryFn: () => api.get<MetricTrend>(`/metrics/acute_load?days=90&end=${date}`),
+    enabled: allowLatest && missing,
+    refetchInterval: 300_000,
+  });
+  const day = latestPoint(history.data, date)?.date;
+  const snapshot = useQuery({
+    queryKey: ["overview", day],
+    queryFn: () => api.get<Overview>(`/dashboard/overview?date=${day}`),
+    enabled: allowLatest && missing && !!day && day < date,
+    refetchInterval: 300_000,
+  });
+  return allowLatest && missing && day && day < date && snapshot.data?.date === day ? snapshot.data : o;
+}
+
 function LoadPanel({ o }: { o: Overview }) {
   const { t } = useTranslation();
   const [metric, setMetric] = useState("acute_load");
@@ -103,22 +154,33 @@ function LoadPanel({ o }: { o: Overview }) {
     </Card>
   );
 }
-function Signal({ metric, fallback, unit, date, days }: { metric: string; fallback: number | null; unit: string; date: string; days: string }) {
+function Signal({ metric, fallback, unit, date, days, allowLatest }: { metric: string; fallback: number | null; unit: string; date: string; days: string; allowLatest: boolean }) {
   const { t } = useTranslation();
   const trend = useQuery({
     queryKey: ["metric", metric, days, date],
     queryFn: () => api.get<MetricTrend>(`/metrics/${metric}?days=${days}&end=${date}`),
   });
   const data = trend.data;
-  const value = data?.points.find((p) => p.date === date)?.value ?? fallback;
+  const selectedValue = data?.points.find((p) => p.date === date)?.value ?? fallback;
+  const withinRange = latestPoint(data, date);
+  const history = useQuery({
+    queryKey: ["metric", metric, "90", date],
+    queryFn: () => api.get<MetricTrend>(`/metrics/${metric}?days=90&end=${date}`),
+    enabled: allowLatest && selectedValue == null && trend.isSuccess && !withinRange,
+    refetchInterval: 300_000,
+  });
+  const latest = allowLatest && selectedValue == null ? withinRange ?? latestPoint(history.data, date) : undefined;
+  const value = selectedValue ?? latest?.value ?? null;
+  const valueDate = selectedValue != null ? date : latest?.date;
+  const valueTrend = withinRange ? data : history.data;
   const byDate = new Map(data?.points.map((p) => [p.date, p.value]) ?? []);
   const chart = Array.from({ length: Number(days) }, (_, i) => byDate.get(shiftDay(date, i - Number(days) + 1)) ?? null);
   const label = t(METRIC_LABELS[metric]);
-  const latest = data?.points.filter((p) => p.value != null).at(-1);
   return <Card className="!p-4 sm:!p-5">
     <Link to={`/app/biometrics/${metric}`} className="flex items-center justify-between text-[13px] text-ink2"><span>{label}</span><ArrowRight size={14} aria-hidden="true" /></Link>
     <div className="my-3 flex items-baseline gap-2"><span className="num text-[28px] sm:text-[34px] font-medium tracking-[-.045em]">{unit === "h" ? fmtHours(value == null ? null : value * 3600) : fmtNum(value, metric === "spo2" || metric === "respiration" || metric === "vo2max" ? 1 : 0)}</span>{unit !== "h" && <span className="text-[12px] text-muted">{unit}</span>}</div>
-    {trend.isError ? <span className="text-[12px] text-muted">{t("refinement.trend_unavailable")}</span> : RANGE_METRICS.has(metric) && value != null && data ? <PersonalRange compact trend={latest?.date === date ? data : { ...data, points: [{ date, value }], reference_range: null }} /> : <>
+    {allowLatest && valueDate && valueDate !== date && <p className="mb-2 text-[12px] text-muted">{t("overviewLatest.as_of", {date: valueDate})}</p>}
+    {trend.isError ? <span className="text-[12px] text-muted">{t("refinement.trend_unavailable")}</span> : RANGE_METRICS.has(metric) && value != null && valueTrend ? <PersonalRange compact trend={valueDate === latestPoint(valueTrend, date)?.date ? valueTrend : { ...valueTrend, points: [{ date, value }], reference_range: null }} /> : <>
       <div role="img" aria-label={t("refinement.recorded_trend", { days })}><Sparkline points={chart} height={26} color="var(--c-text-muted)" /></div>
       {data && <div className="mt-2"><MetricDirection metric={metric} points={data.points} /></div>}
     </>}
@@ -153,9 +215,11 @@ export default function OverviewPage() {
     queryFn: () => api.get<Overview>("/dashboard/overview" + (date ? "?date=" + date : "")),
     refetchInterval: 300_000,
   });
+  const latestLoad = useLatestLoad(overview.data, overview.isSuccess && !date);
   if (overview.isLoading) return <Loading />;
   if (overview.isError || !overview.data) return <ErrorNote />;
   const o = overview.data;
+  const load = latestLoad ?? o;
   const today = localDay(me?.timezone);
   const requestedDay = date ?? today;
   const signals = [
@@ -193,20 +257,9 @@ export default function OverviewPage() {
     </div>} />
     {!o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
     <section aria-label={t("completion.daily_scores")} className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(({ key, score }) => <Card key={key} className="!p-4 sm:!p-5">
-        <Link to={`/app/biometrics/${key}`} className="block">
-          <div className="stat-pod !py-0">
-            <p className="eyebrow">{t(METRIC_LABELS[key])}</p>
-            <div className="stat-value num mt-2 flex flex-wrap items-baseline justify-between gap-x-2">
-              <span data-testid="score-value">{fmtNum(score.value)}{score.value != null && <span className="ml-1 text-[12px] font-normal tracking-normal text-muted">/100</span>}</span>
-              {score.value != null && <DeltaChip delta={score.delta_7d} compact />}
-            </div>
-          </div>
-          <p className="mt-2 text-[12px] text-muted">{t(score.value == null ? "betaDaily.score_missing" : key === "provider_sleep_score" ? "metricView.provider_sleep_score" : "metricView.estimates")}</p>
-        </Link>
-      </Card>)}
+      {[{ key: "readiness", score: o.readiness }, { key: "recovery", score: o.recovery }, { key: "strain", score: o.strain }, { key: "provider_sleep_score", score: o.sleep_score }].map(({key, score}) => <ScoreCard key={key} metric={key} score={score} date={o.date} displayedDay={requestedDay} allowLatest={!date} />)}
     </section>
-    <a href="#training-load" className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-ink2"><span>{t("betaDaily.acute_scope")}</span><span className="num font-medium text-ink">{fmtNum(o.acute_load, 1)} {o.acute_load != null && (o.load_metadata?.unit ?? t("betaDaily.load_unit_unknown"))}</span><span className="text-[12px] text-muted">{o.acute_load == null ? t("completion.load_missing") : t("betaDaily.load_trend")} →</span></a>
+    <a href="#training-load" className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-ink2"><span>{t("betaDaily.acute_scope")}</span><span className="num font-medium text-ink">{fmtNum(load.acute_load, 1)} {load.acute_load != null && (load.load_metadata?.unit ?? t("betaDaily.load_unit_unknown"))}</span>{load.date !== o.date && <span className="text-[12px] text-muted">{t("overviewLatest.as_of", {date: load.date})}</span>}<span className="text-[12px] text-muted">{load.acute_load == null ? t("completion.load_missing") : t("betaDaily.load_trend")} →</span></a>
     <YourDay date={requestedDay} />
     {!setupHidden && !setupComplete.every(Boolean) && <Card className="!p-4 sm:!p-5">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow text-primaryText">{t("setup.eyebrow")}</p><h2 className="mt-1 text-[18px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[13px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
@@ -223,7 +276,7 @@ export default function OverviewPage() {
     </details>
     {hasData && <section aria-label={t("refinement.recorded_signals")}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="section-label">{t("refinement.recorded_signals")}</h2><Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} /></div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} />)}</div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">{signals.map((signal) => <Signal key={signal.metric} {...signal} date={o.date} days={range} allowLatest={!date} />)}</div>
         <p className="mt-3 text-[12px] text-muted">{t("refinement.signal_note")}</p>
       </section>}
     {!hasData ? <><Card><Empty action={<More to="/app/settings?tab=devices">{t("overview.connect_cta")}</More>}>{t("design.connect_empty")}</Empty></Card></> : <>
@@ -237,11 +290,11 @@ export default function OverviewPage() {
         </Card>
       </div>
       <Card className="!py-4"><div className="grid grid-cols-2 gap-4"><Link to="/app/biometrics/steps"><StatPod label={t(METRIC_LABELS.steps)} value={fmtNum(o.steps)} /></Link><Link to="/app/biometrics/floors"><StatPod label={t(METRIC_LABELS.floors)} value={fmtNum(o.floors)} /></Link></div></Card>
-      <div id="training-load" className="scroll-mt-5"><LoadPanel o={o} /></div>
+      <div id="training-load" className="scroll-mt-5">{load.date !== o.date && <p className="mb-2 text-[12px] text-muted">{t("overviewLatest.as_of", {date: load.date})}</p>}<LoadPanel o={load} /></div>
 
 
     </>}
-    {!hasData && <div id="training-load" className="scroll-mt-5"><LoadPanel o={o} /></div>}
+    {!hasData && <div id="training-load" className="scroll-mt-5">{load.date !== o.date && <p className="mb-2 text-[12px] text-muted">{t("overviewLatest.as_of", {date: load.date})}</p>}<LoadPanel o={load} /></div>}
     <ActivityCalendar date={date ?? today} />
   </div>;
 }
