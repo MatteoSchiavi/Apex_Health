@@ -20,6 +20,7 @@ import {
 } from "../../components/kit";
 import { assess, shiftDay, localDay } from "../../components/data";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
+import { sleepDurations } from "./sleep-summary";
 function StageTimeline({ stages }: { stages: SleepStages }) {
   const { t } = useTranslation();
   const c = useChartTheme();
@@ -236,10 +237,8 @@ export default function SleepNightPage() {
   if (day.isError || !day.data) return <ErrorNote />;
   const d = day.data,
     s = d.session;
-  const state = assess("sleep_score", s?.sleep_score ?? null);
-  const inBed = s
-    ? (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 1000
-    : null;
+  const state = assess("provider_sleep_score", s?.sleep_score ?? null);
+  const duration = s ? sleepDurations(s) : null;
   const hrv = d.hrv_readings.length
     ? d.hrv_readings.reduce((a, r) => a + r.hrv_ms, 0) / d.hrv_readings.length
     : null;
@@ -312,7 +311,7 @@ export default function SleepNightPage() {
           <div className="grid gap-6 xl:grid-cols-[.8fr_1.6fr]">
             <Card>
               <CardHeader
-                title={t("overview.sleep_score")}
+                title={t("metricView.provider_sleep_score")}
                 right={<Badge tone={state.tone}>{t(state.key)}</Badge>}
               />
               <div className="my-6">
@@ -322,12 +321,7 @@ export default function SleepNightPage() {
               <div className="mt-6 border-t border-hairline">
                 <StatPod
                   label={t("sleep.efficiency")}
-                  value={fmtNum(
-                    inBed && s.total_sleep_s != null
-                      ? (s.total_sleep_s / inBed) * 100
-                      : null,
-                    1,
-                  )}
+                  value={fmtNum(duration?.efficiency, 1)}
                   unit="%"
                 />
               </div>
@@ -341,14 +335,14 @@ export default function SleepNightPage() {
                 />
                 <StatPod
                   label={t("sleep.time_in_bed")}
-                  value={fmtHours(inBed)}
+                  value={fmtHours(duration?.windowSeconds)}
                 />
               </div>
               <div className="mt-4">
-                <ZoneBar
+                {duration?.inconsistent ? <p className="text-sm text-muted">{t("v01Data.sleep_inconsistent")}</p> : <ZoneBar
                   parts={parts.map((p) => ({ ...p, value: p.value ?? 0 }))}
                   height={14}
-                />
+                />}
                 <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   {parts.map((p) => (
                     <div key={p.key}>
@@ -364,7 +358,7 @@ export default function SleepNightPage() {
                       </p>
                       <p className="mt-1 text-[12px] text-muted">
                         {fmtNum(
-                          total && p.value != null
+                          !duration?.inconsistent && total && p.value != null
                             ? (p.value / total) * 100
                             : null,
                         )}{" "}

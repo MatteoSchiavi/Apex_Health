@@ -168,6 +168,45 @@ interface ChallengeRow {
   ends_at: string | null;
   member_count: number;
   created_by_name: string;
+  is_member: boolean;
+}
+
+function ChallengeResults({ challenge }: { challenge: ChallengeRow }) {
+  const { t } = useTranslation();
+  const me = useUi((s) => s.me);
+  const result = useQuery({
+    queryKey: ["challenge", challenge.id],
+    queryFn: () => api.get<{ entries: (RankingRow & { rank: number })[] }>(`/challenges/${challenge.id}`),
+  });
+  const meta = METRICS.find((m) => m.key === challenge.metric);
+  if (result.isLoading) return <Loading />;
+  if (result.isError) return <ErrorNote />;
+  if (!result.data?.entries.length) return <Empty>{t("social.no_data")}</Empty>;
+  return (
+    <div className="table-scroll">
+      <table className="data-table" aria-label={t("v01Data.challenge_results", { name: challenge.name })}>
+        <thead>
+          <tr>
+            <th>{t("social.rank")}</th>
+            <th>{t("social.athlete")}</th>
+            <th className="numeric">{t("social.value")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.data.entries.map((entry) => (
+            <tr key={entry.user_id} className={entry.user_id === me?.user_id ? "bg-primarySoft/50" : ""}>
+              <td>{entry.rank}</td>
+              <td>
+                {entry.display_name}
+                {entry.user_id === me?.user_id && <span className="ml-2"><Badge tone="primary">{t("social.you")}</Badge></span>}
+              </td>
+              <td className="numeric">{fmtValue(challenge.metric, entry.value)} {entry.value != null && meta?.unit}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function Challenges() {
@@ -176,22 +215,27 @@ function Challenges() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [metric, setMetric] = useState("steps");
+  const [period, setPeriod] = useState("weekly");
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const list = useQuery({
     queryKey: ["challenges"],
     queryFn: () => api.get<ChallengeRow[]>("/challenges"),
   });
   const create = useMutation({
-    mutationFn: () => api.post("/challenges", { name, metric }),
+    mutationFn: () => api.post("/challenges", { name: name.trim(), metric, period }),
     onSuccess: () => {
       setCreating(false);
       setName("");
       qc.invalidateQueries({ queryKey: ["challenges"] });
     },
   });
-  const join = useMutation({
-    mutationFn: (id: number) => api.post(`/challenges/${id}/join`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["challenges"] }),
+  const membership = useMutation({
+    mutationFn: (challenge: ChallengeRow) => api.post(`/challenges/${challenge.id}/${challenge.is_member ? "leave" : "join"}`),
+    onSuccess: (_, challenge) => {
+      qc.invalidateQueries({ queryKey: ["challenges"] });
+      qc.invalidateQueries({ queryKey: ["challenge", challenge.id] });
+    },
   });
 
   return (
@@ -212,7 +256,7 @@ function Challenges() {
         <form
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            create.mutate();
+            if (name.trim()) create.mutate();
           }}
           className="mb-3 flex flex-col gap-3 bg-surface2 p-3"
         >
@@ -231,16 +275,23 @@ function Challenges() {
               label: t(m.labelKey),
             }))}
           />
+          <Select
+            label={t("social.period")}
+            value={period}
+            onChange={setPeriod}
+            options={["weekly", "monthly", "all_time"].map((value) => ({ value, label: t(`social.${value}`) }))}
+          />
+          <p className="text-xs text-muted">{t("social.period_utc")}</p>
           <Button
             type="submit"
-            disabled={create.isPending}
+            disabled={create.isPending || !name.trim()}
             className="self-start"
           >
             {t("social.create")}
           </Button>
         </form>
       )}
-      {(create.isError || join.isError) && <ErrorNote />}
+      {(create.isError || membership.isError) && <ErrorNote />}
       {list.isLoading ? (
         <Loading />
       ) : list.isError ? (
@@ -254,27 +305,42 @@ function Challenges() {
             return (
               <div
                 key={ch.id}
-                className="flex flex-wrap items-center justify-between gap-4 border-b border-hairline py-5"
+                className="border-b border-hairline py-5"
               >
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-ink">
-                    {ch.name}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-semibold text-ink">
+                      {ch.name}
+                    </div>
+                    <div className="num text-[12px] text-muted">
+                      {meta ? t(meta.labelKey) : ch.metric} ·{" "}
+                      {ch.period === "custom"
+                        ? `${ch.starts_at?.slice(0, 10) ?? "—"} → ${ch.ends_at?.slice(0, 10) ?? "—"}`
+                        : t(`social.${ch.period}`)} ·{" "}
+                      {ch.member_count} {t("social.members").toLowerCase()}
+                    </div>
                   </div>
-                  <div className="num text-[12px] text-muted">
-                    {meta ? t(meta.labelKey) : ch.metric} ·{" "}
-                    {ch.starts_at ? ch.starts_at.slice(0, 10) : "—"} →{" "}
-                    {ch.ends_at ? ch.ends_at.slice(0, 10) : "—"} ·{" "}
-                    {ch.member_count} {t("social.members").toLowerCase()}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {ch.is_member && <Badge tone="primary">{t("v01Data.joined")}</Badge>}
+                    <button
+                      type="button"
+                      className="min-h-10 rounded-control border border-hairline px-2.5 text-[12px] text-ink2 hover:bg-surface3"
+                      onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}
+                      aria-expanded={expanded === ch.id}
+                    >
+                      {t(expanded === ch.id ? "v01Data.hide_results" : "v01Data.view_results")}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      className="!h-9 !px-2.5 text-[12px]"
+                      onClick={() => membership.mutate(ch)}
+                      disabled={membership.isPending}
+                    >
+                      {t(ch.is_member ? "v01Data.leave" : "social.join")}
+                    </Button>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  className="!h-9 !px-2.5 text-[12px]"
-                  onClick={() => join.mutate(ch.id)}
-                  disabled={join.isPending}
-                >
-                  {t("social.join")}
-                </Button>
+                {expanded === ch.id && <div className="mt-4"><ChallengeResults challenge={ch} /></div>}
               </div>
             );
           })}

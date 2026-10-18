@@ -12,7 +12,11 @@ export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
   useEffect(() => setSelected(null), [activity.id]);
   const exercises = activity.presentation?.strength ?? [];
   const totalSets = exercises.reduce((total, exercise) => total + exercise.sets, 0);
-  const totalReps = exercises.reduce((total, exercise) => total + exercise.reps, 0);
+  const repValues = exercises.flatMap(exercise => exercise.reps == null ? [] : [exercise.reps]);
+  const totalReps = repValues.length ? repValues.reduce((total, reps) => total + reps, 0) : null;
+  const duration = exercises.reduce((total, exercise) => total + (exercise.duration_s ?? 0), 0);
+  const countedSets = (exercise: typeof exercises[number]) => exercise.recorded_sets?.filter(set => set.reps != null).length ?? exercise.sets;
+  const totalCountedSets = exercises.reduce((total, exercise) => total + countedSets(exercise), 0);
   const weightedSets = exercises.reduce((total, exercise) => total + exercise.weighted_sets, 0);
   const knownVolumes = exercises.flatMap(exercise => exercise.volume_kg == null ? [] : [exercise.volume_kg]);
   const totalVolume = knownVolumes.length ? knownVolumes.reduce((total, volume) => total + volume, 0) : null;
@@ -36,7 +40,8 @@ export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
           <StatPod label={t("sportView.reps")} value={fmtNum(totalReps)} />
           <StatPod label={t("sportView.volume")} value={fmtNum(units.weight(totalVolume))} unit={units.weightUnit} />
         </div>
-        {weightedSets < totalSets && <p className="mt-3 text-[12px] text-muted">{t("sportView.partial_volume", { known: weightedSets, total: totalSets })}</p>}
+        {duration > 0 && <p className="mt-3 text-[13px]">{t("v01Training.recorded_hold")}: {duration} s</p>}
+        {weightedSets < totalCountedSets && <p className="mt-3 text-[12px] text-muted">{t("sportView.partial_volume", { known: weightedSets, total: totalCountedSets })}</p>}
       </div>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
       <div className="min-w-0">
@@ -56,24 +61,25 @@ export function StrengthBodyMap({ activity }: { activity: ActivityDetail }) {
           <p className="mt-1 text-[12px] text-muted">{label(exercise.muscle_group)}</p>
           <dl className="mt-4 grid grid-cols-3 gap-4 text-[13px]">
             <div><dt className="text-muted">{t("sportView.sets")}</dt><dd className="num mt-1">{exercise.sets}</dd></div>
-            <div><dt className="text-muted">{t("sportView.reps")}</dt><dd className="num mt-1">{exercise.reps}</dd></div>
+            <div><dt className="text-muted">{t("sportView.reps")}</dt><dd className="num mt-1">{fmtNum(exercise.reps)}</dd></div>
             <div><dt className="text-muted">{t("sportView.volume")}</dt><dd className="num mt-1">{fmtNum(units.weight(exercise.volume_kg))} {units.weightUnit}</dd></div>
           </dl>
-          {exercise.weighted_sets < exercise.sets && <p className="mt-3 text-[12px] text-muted">{t("sportView.partial_volume", { known: exercise.weighted_sets, total: exercise.sets })}</p>}
+          {exercise.duration_s != null && <p className="mt-3 text-[13px]">{t("v01Training.recorded_hold")}: {exercise.duration_s} s</p>}
+          {exercise.weighted_sets < countedSets(exercise) && <p className="mt-3 text-[12px] text-muted">{t("sportView.partial_volume", { known: exercise.weighted_sets, total: countedSets(exercise) })}</p>}
           {!!exercise.recorded_sets?.length && <details className="mt-4 text-[12px]">
             <summary className="cursor-pointer text-muted">{t("sportView.set_details")}</summary>
             <div className="table-scroll mt-3">
               <table className="data-table" aria-label={exercise.name + " · " + t("sportView.set_details")}>
-                <thead><tr><th>{t("sportView.sets")}</th><th>{t("sportView.reps")}</th><th>{t("sportView.weight")}</th></tr></thead>
+                <thead><tr><th>{t("sportView.sets")}</th><th>{t("v01Training.target")}</th><th>{t("sportView.weight")}</th></tr></thead>
                 <tbody>{exercise.recorded_sets.map((set, index) => <tr key={index}>
-                  <td>{index + 1}</td><td>{set.reps}</td><td>{fmtNum(units.weight(set.weight_kg), 1)} {units.weightUnit}</td>
+                  <td>{index + 1}</td><td>{set.duration_s != null ? `${set.duration_s} s` : fmtNum(set.reps)}</td><td>{fmtNum(units.weight(set.weight_kg), 1)} {units.weightUnit}</td>
                 </tr>)}</tbody>
               </table>
             </div>
           </details>}
           {exercise.previous ? <div className="mt-4 text-[12px] text-muted">
-            <p>{t("sportView.previous")} · {exercise.previous.date}: {exercise.previous.sets} {t("sportView.sets")} · {exercise.previous.reps} {t("sportView.reps")} · {fmtNum(units.weight(exercise.previous.volume_kg))} {units.weightUnit}</p>
-            {exercise.previous.weighted_sets != null && exercise.previous.weighted_sets < exercise.previous.sets && <p className="mt-2">{t("sportView.partial_volume", { known: exercise.previous.weighted_sets, total: exercise.previous.sets })}</p>}
+            <p>{t("sportView.previous")} · {exercise.previous.date}: {exercise.previous.sets} {t("sportView.sets")} · {exercise.previous.duration_s != null ? `${exercise.previous.duration_s} s` : `${fmtNum(exercise.previous.reps)} ${t("sportView.reps")}`} · {fmtNum(units.weight(exercise.previous.volume_kg))} {units.weightUnit}</p>
+            {exercise.previous.reps != null && exercise.previous.weighted_sets != null && exercise.previous.weighted_sets < exercise.previous.sets && <p className="mt-2">{t("sportView.partial_volume", { known: exercise.previous.weighted_sets, total: exercise.previous.sets })}</p>}
             <p className="mt-2">{t("sportView.delta")}: {delta(exercise.delta_sets)} {t("sportView.sets")} · {delta(exercise.delta_reps)} {t("sportView.reps")} · {delta(units.weight(exercise.delta_volume_kg))} {units.weightUnit}</p>
           </div> : <p className="mt-4 text-[12px] text-muted">{t("sportView.no_previous")}</p>}
         </div>)}

@@ -23,7 +23,7 @@ const retainedReviews = new Map<number, RetainedReview>();
 const emptyEntry = (): AvailabilityEntry => ({ selected: [0, 1, 2, 3, 4], start: "", end: "" });
 const proposedFields = (proposal: ImportProposal) => [...(proposal.profile.training_focus !== null ? ["training_focus"] : []), ...Object.keys(proposal.profile.context).filter(key => !["ftp", "hr_zones", "power_zones", "onboarding_step"].includes(key)).map(key => "context." + key)];
 
-export function AthleteInformationImport() {
+export function AthleteInformationImport({ planning = false }: { planning?: boolean }) {
   const { t } = useTranslation();
   const uid = useUi(s => s.me?.user_id);
   const location = useLocation();
@@ -50,7 +50,7 @@ export function AthleteInformationImport() {
   const [selected, setSelected] = useState<string[]>(retained?.selected ?? []);
   const [expectedProfileRevision, setExpectedProfileRevision] = useState<number | null>(retained?.expectedProfileRevision ?? null);
   const [entry, setEntry] = useState<AvailabilityEntry>(retained?.entry ?? emptyEntry());
-  const [planOpen, setPlanOpen] = useState(retained?.planOpen ?? false);
+  const [planOpen, setPlanOpen] = useState(retained?.planOpen ?? planning);
   const [message, setMessage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [chosenTemplate, setChosenTemplate] = useState<AthleteTemplate | null>(null);
@@ -74,7 +74,7 @@ export function AthleteInformationImport() {
     setCurrent(next); setProposal(structuredClone(next.proposal)); setSelected(next.receipts.profile?.fields ?? proposedFields(next.proposal));
     setExpectedProfileRevision(profile.data?.revision ?? null); setEntry(emptyEntry());
     const savedDraft = planDrafts.data?.find(draft => draft.id === next.receipts.dated_plan?.draft_id);
-    setPlanOpen(!!savedDraft); setPreview(savedDraft ?? null); setChosenTemplate(null); setMessage(null); setLocalError(null);
+    setPlanOpen(planning || !!savedDraft); setPreview(savedDraft ?? null); setChosenTemplate(null); setMessage(null); setLocalError(null);
     action.reset(); previewTemplate.reset(); activate.reset();
     requestAnimationFrame(() => reviewRoot.current?.focus());
   }
@@ -161,7 +161,7 @@ export function AthleteInformationImport() {
     const hash = anchor;
     if (!hash || hash === handledAnchor.current || !profile.data || !planDrafts.data || dirty || entry.start || entry.end) return;
     const templateId = hash.match(/^#template-(\d+)$/)?.[1];
-    const documentId = hash.match(/^#document-(\d+)$/)?.[1];
+    const documentId = hash.match(/^#(?:import-)?document-(\d+)$/)?.[1];
     if (templateId) {
       const template = templates.data?.find(item => item.id === Number(templateId));
       if (!template) return;
@@ -184,7 +184,7 @@ export function AthleteInformationImport() {
     void next.text().then(text => { if (fileReadSequence.current !== sequence) return; if (text.length > 16000) { setLocalError(t("athleteImport.source_too_long")); setFile(null); } else setSourceText(text); }).catch(() => setLocalError(t("athleteImport.read_error")));
   }
   return <div data-athlete-import className="space-y-6">
-    <Card><CardHeader title={<h2>{t("athleteImport.title")}</h2>} /><p className="mb-5 max-w-2xl text-[14px] text-muted">{t("athleteImport.intro")}</p>
+    {(!planning || (!current && !chosenTemplate)) && <Card><CardHeader title={<h2>{t("athleteImport.title")}</h2>} /><p className="mb-5 max-w-2xl text-[14px] text-muted">{t("athleteImport.intro")}</p>
       <fieldset disabled={pending} className="space-y-4">
         <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-hairline2 p-4 text-center focus-within:outline focus-within:outline-2" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); selectFile(e.dataTransfer.files[0] ?? null); }}><span>{source?.filename ?? file?.name ?? t("lab.document_drop")}</span><span className="text-[12px] text-muted">{t("lab.document_rules")}</span><input ref={fileInput} type="file" className="sr-only" accept=".txt,.md,.pdf" aria-label={t("athleteImport.source_file")} onChange={e => selectFile(e.target.files?.[0] ?? null)} /></label>
         {(source?.extraction_state === "manual_paste_required") && <p className="text-[13px] text-muted">{t("athleteImport.pdf_paste")}</p>}
@@ -194,31 +194,33 @@ export function AthleteInformationImport() {
         {aiAvailable ? <label className="flex min-h-11 items-center gap-2 text-[13px]"><input type="checkbox" checked={useAi} onChange={e => setUseAi(e.target.checked)} />{t("athleteImport.ai_assistance")}</label> : <p className="text-[13px] text-muted">{t("athleteImport.manual_available")}</p>}
         <div className="flex flex-wrap gap-3"><Button disabled={pending || !!localError || !sourceText.trim() || profile.isLoading || profile.isError} onClick={() => { if ((dirty || entry.start || entry.end) && !window.confirm(t("athlete.leave_unsaved"))) return; analyze.mutate(); }}>{t(analyze.isPending ? "athleteImport.analyzing" : "athleteImport.analyze")}</Button>{source && <Button variant="ghost" onClick={() => { setSource(null); setFile(null); setSourceText(""); if (fileInput.current) fileInput.current.value = ""; }}>{t("athleteImport.new_source")}</Button>}</div>
       </fieldset>{analyze.isSuccess && <p role="status" className="mt-3 text-[13px]">{t("athleteImport.analyzed")}</p>}{error && <p role="alert" className="mt-3 text-[13px] text-alertText">{error}</p>}
-    </Card>
+    </Card>}
     {(imports.isLoading || templates.isLoading) && <Loading />}
     {(imports.isError || documents.isError || templates.isError || profile.isError) && <p role="alert" className="text-[13px]">{t("athleteImport.load_error")}</p>}
-    {(documents.data?.some(doc => doc.coach_eligible === false) || !!imports.data?.length) && <Card><CardHeader title={<h2>{t("athleteImport.import_history")}</h2>} /><div className="space-y-4">{documents.data?.filter(doc => doc.coach_eligible === false).map(doc => {
+    {!planning && (documents.data?.some(doc => doc.coach_eligible === false) || !!imports.data?.length) && <Card><CardHeader title={<h2>{t("athleteImport.import_history")}</h2>} /><div className="space-y-4">{documents.data?.filter(doc => doc.coach_eligible === false).map(doc => {
       const latest = imports.data?.find(item => item.document_id === doc.id);
       return <section id={`document-${doc.id}`} key={doc.id} className="border-t border-hairline pt-3"><h3 className="text-[14px] font-medium">{doc.filename}</h3><p className="mt-1 text-[12px] text-muted">{t(imports.data?.some(item => item.document_id === doc.id && item.receipts.profile) ? "athleteImport.profile_receipt" : latest ? "athleteImport.review_receipt" : "athleteImport.source_receipt")}</p><Button variant="ghost" className="mt-3" disabled={pending} onClick={() => { if (latest) open(latest); else { setSource(doc); setFile(null); setSourceText(doc.excerpt ?? ""); setMessage(null); } }}>{t(latest ? "athleteImport.continue_review" : "athleteImport.analyze_source")}</Button></section>;
     })}{imports.data?.filter(item => !documents.data?.some(doc => doc.id === item.document_id && doc.coach_eligible === false)).map(item => <section key={item.id} className="border-t border-hairline pt-3"><p className="text-[13px]">{documents.data?.find(doc => doc.id === item.document_id)?.filename ?? t("athleteImport.review_title")}</p><Button variant="ghost" disabled={pending} onClick={() => open(item)}>{t("athleteImport.continue_review")}</Button></section>)}</div></Card>}
-    {current && proposal && <Card><div ref={reviewRoot} tabIndex={-1} className="outline-none"><CardHeader title={<h2>{t("athleteImport.review_title")}</h2>} right={<Badge>{t(current.extraction_method.startsWith("ai") ? "athleteImport.ai_review" : "athleteImport.manual_review")}</Badge>} />
+    {current && proposal && <Card><div ref={reviewRoot} tabIndex={-1} className="outline-none"><CardHeader title={<h2>{t(planning ? "v01Plan.import_review_title" : "athleteImport.review_title")}</h2>} right={<Badge>{t(current.extraction_method.startsWith("ai") ? "athleteImport.ai_review" : "athleteImport.manual_review")}</Badge>} />
       <p className="mb-4 text-[13px] text-muted">{t("athleteImport.review_note")}</p>
       {!!current.category_hints?.length && <p className="mb-4 text-[13px]">{t("athleteImport.contains")} {current.category_hints.map(category => t("athleteImport.category_" + category)).join(" · ")}</p>}
       <details className="mb-5"><summary className="cursor-pointer text-[13px]">{t("athleteImport.review_source")}</summary><blockquote className="mt-3 whitespace-pre-wrap break-words text-[13px]">{current.source_text}</blockquote></details>
+      <details open={!planning}><summary className={planning ? "mb-4 cursor-pointer text-[14px] font-medium" : "hidden"}>{t("v01Plan.profile_details")}</summary>
       <fieldset disabled={pending}><ImportProfileReview proposal={proposal} onChange={edit} selected={selected} onSelected={setSelected} entry={entry} onEntry={setEntry} revision={current.version} /></fieldset>
       <p role="status" className="mt-5 text-[13px] font-medium">{t(action.isPending ? "athleteImport.saving" : dirty ? "athlete.unsaved_changes" : message ?? (current.receipts.profile ? "athleteImport.profile_receipt" : "athleteImport.profile_scope"))}</p>
       {requiredProfileIssues && <p className="mt-2 text-[13px] text-muted">{t("athleteImport.required_profile_note")}</p>}
       {invalidSelection && <p role="alert" className="mt-2 text-[13px]">{t("athleteImport.enter_selected_fields")}</p>}
-      <div className="mt-4 flex flex-wrap gap-3"><Button disabled={pending || !selected.length || incompleteAvailability || invalidSelection || !!requiredProfileIssues || expectedProfileRevision === null} onClick={() => action.mutate("profile")}>{t("athleteImport.save_profile")}</Button><Button variant="ghost" disabled={pending || incompleteAvailability} onClick={() => action.mutate("review")}>{t("athleteImport.save_review")}</Button><Button variant="ghost" disabled={pending} onClick={() => setPlanOpen(!planOpen)}>{t("athleteImport.review_plan")}</Button></div>
+      <div className="mt-4 flex flex-wrap gap-3"><Button disabled={pending || !selected.length || incompleteAvailability || invalidSelection || !!requiredProfileIssues || expectedProfileRevision === null} onClick={() => action.mutate("profile")}>{t("athleteImport.save_profile")}</Button><Button variant="ghost" disabled={pending || incompleteAvailability} onClick={() => action.mutate("review")}>{t("athleteImport.save_review")}</Button>{!planning && <Button variant="ghost" disabled={pending} onClick={() => setPlanOpen(!planOpen)}>{t("athleteImport.review_plan")}</Button>}</div>
       {current.receipts.profile && <Link to="/app/settings?tab=profile" className="mt-3 inline-block text-link">{t("athleteImport.view_profile")}</Link>}
-      {planOpen && <section className="mt-6 space-y-4 border-t border-hairline pt-5"><fieldset disabled={pending}><ImportPlanReview proposal={proposal} onChange={edit} /></fieldset><div className="flex flex-wrap gap-3">
+      </details>
+      {planOpen && <section className="mt-6 space-y-4 border-t border-hairline pt-5"><fieldset disabled={pending}><ImportPlanReview proposal={proposal} onChange={edit} /></fieldset>{planning && <><p className="text-[13px] text-muted">{t("v01Plan.save_review_note")}</p><p role="status" className="text-[13px] font-medium">{t(action.isPending ? "athleteImport.saving" : dirty ? "athlete.unsaved_changes" : message ?? "athleteImport.review_receipt")}</p><Button variant="ghost" disabled={pending || incompleteAvailability} onClick={() => action.mutate("review")}>{t("athleteImport.save_review")}</Button></>}<div className="flex flex-wrap gap-3">
         {proposal.weekly && <Button disabled={pending || incompleteAvailability || !proposal.weekly.rows.length || proposal.weekly.rows.some(row => !row.discipline) || !!requiredWeeklyIssues} onClick={() => action.mutate("template")}>{t("athleteImport.save_template")}</Button>}
         {proposal.dated && <Button variant="ghost" disabled={pending || incompleteAvailability || !proposal.dated.starts_on || !proposal.dated.ends_on || !proposal.dated.sessions.length || proposal.dated.sessions.some(row => !row.date || !row.discipline) || !!proposal.dated.ambiguities.length || !!requiredDatedIssues} onClick={() => { setChosenTemplate(null); action.mutate("dated"); }}>{t("athleteImport.preview_dated")}</Button>}
       </div></section>}
       {!!proposal.issues.filter(issue => !/^(profile\.)?(training_focus|context\.)/.test(issue.field) && !/^(weekly|dated)(\.|$)/.test(issue.field)).length && <section className="mt-5 space-y-3"><h3>{t("athlete.ambiguities")}</h3>{proposal.issues.filter(issue => !/^(profile\.)?(training_focus|context\.)/.test(issue.field) && !/^(weekly|dated)(\.|$)/.test(issue.field)).map(issue => <ImportEvidence key={issue.field} field={issue.field} proposal={proposal} onResolve={(field, defer) => { if (!defer || !issue.required) edit({ ...proposal, issues: proposal.issues.filter(old => old.field !== field) }); }} />)}</section>}
       {action.isError && <p role="alert" className="mt-4 text-[13px] text-alertText">{errorText(action.error)}</p>}
     </div></Card>}
-    {!!templates.data?.length && <Card><CardHeader title={<h2>{t("athleteImport.saved_templates")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.template_scope")}</p><div className="space-y-3">{templates.data.map(template => <div id={`template-${template.id}`} key={template.id} className="border-t border-hairline pt-3"><h3 className="text-[14px] font-medium">{template.structure.title || t("athlete.untitled_plan")}</h3><Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template)}>{t("athleteImport.choose_dates")}</Button>{planDrafts.data?.some(draft => draft.template_id === template.id && draft.template_revision === template.revision && draft.status === "draft") && <Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template, true)}>{t("athleteImport.resume_calendar")}</Button>}</div>)}</div></Card>}
+    {!planning && !!templates.data?.length && <Card><CardHeader title={<h2>{t("athleteImport.saved_templates")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.template_scope")}</p><div className="space-y-3">{templates.data.map(template => <div id={`template-${template.id}`} key={template.id} className="border-t border-hairline pt-3"><h3 className="text-[14px] font-medium">{template.structure.title || t("athlete.untitled_plan")}</h3><Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template)}>{t("athleteImport.choose_dates")}</Button>{planDrafts.data?.some(draft => draft.template_id === template.id && draft.template_revision === template.revision && draft.status === "draft") && <Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template, true)}>{t("athleteImport.resume_calendar")}</Button>}</div>)}</div></Card>}
     {chosenTemplate && <Card><CardHeader title={chosenTemplate.structure.title || t("athleteImport.weekly_template")} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.explicit_dates_note")}</p><div className="grid gap-3 sm:grid-cols-2"><Input label={t("athlete.event_start")} type="date" value={startsOn} onChange={v => { setStartsOn(v); setPreview(null); }} /><Input label={t("athlete.event_end")} type="date" value={endsOn} onChange={v => { setEndsOn(v); setPreview(null); }} /></div><Button className="mt-4" disabled={pending || !startsOn || !endsOn || endsOn < startsOn || (Date.parse(endsOn) - Date.parse(startsOn)) / 86400000 > 366} onClick={() => previewTemplate.mutate()}>{t("athleteImport.preview_calendar")}</Button>{previewTemplate.isError && <p role="alert" className="mt-3 text-[13px] text-alertText">{errorText(previewTemplate.error)}</p>}</Card>}
     {preview && <Card><CalendarPreview draft={preview} pending={activate.isPending} error={errorText(activate.error)} onActivate={() => activate.mutate()} /></Card>}
   </div>;

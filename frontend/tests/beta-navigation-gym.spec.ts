@@ -21,8 +21,7 @@ for(const locale of ['en','it'] as const){
   await page.setViewportSize({width:390,height:844});await page.goto('/app/training');
   await sections.getByRole('link',{name:locale==='en'?'Running':'Corsa',exact:true}).click();
   await expect(sections).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.getByRole('button',{name:locale==='en'?'More':'Altro',exact:true}).click();
-  await expect(page.getByRole('navigation').filter({has:page.locator('a[href="/app/training"]')}).last().locator('a[href="/app/training"]')).toHaveAttribute('aria-current','page');
+  await expect(page.locator('nav').filter({has:page.locator('a[href="/app/training"]')}).last().locator('a[href="/app/training"]')).toHaveAttribute('aria-current','page');
  });
 }
 

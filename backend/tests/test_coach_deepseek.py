@@ -104,13 +104,15 @@ async def test_coach_reserves_a_final_completion_before_token_exhaustion(db_sess
     monkeypatch.setattr(TOOL_REGISTRY['data_get_recovery_summary'],'handler',handler)
     response = lambda ident, days: LLMResponse(content=None,model='fixture',tokens_in=10000,tokens_out=100,
         tool_calls=[ToolCallRequest(ident,'data_get_recovery_summary',{'days':days})])
-    llm = FixtureAgentLLMClient([response('week',7),response('fortnight',14),
-        LLMResponse(content='Recorded recovery evidence is limited.',model='fixture',tokens_in=11000,tokens_out=100)])
+    llm = FixtureAgentLLMClient([response('week',7),
+        LLMResponse(content='Review 3 sessions.',model='fixture',tokens_in=11000,tokens_out=100),
+        LLMResponse(content='Recorded recovery evidence is limited.',model='fixture',tokens_in=900,tokens_out=100)])
     result = await run_agent_loop(sessionmaker,llm,user_id=1,session_id=chat.id,text='Recovery?',system='Grounded',tier='cheap',today=date.today())
     assert result.reply == 'Recorded recovery evidence is limited.'
     assert result.grounding['status'] != 'incomplete'
     assert len(llm.calls) == 3 and llm.calls[-1]['tools'] is None
-    assert handler.await_count == 2
+    assert handler.await_count == 1
+    assert result.grounding['correction_attempted'] is True
 
 
 async def test_weekly_recovery_values_survive_the_model_payload_budget(db_session):

@@ -26,7 +26,9 @@ class ChallengeIn(BaseModel):
     ends_at: datetime | None = None
 
 
-def _challenge_dict(challenge: Challenge, member_count: int, user: User) -> dict:
+def _challenge_dict(
+    challenge: Challenge, member_count: int, user: User, *, is_member: bool
+) -> dict:
     return {
         "id": challenge.id,
         "name": challenge.name,
@@ -38,6 +40,7 @@ def _challenge_dict(challenge: Challenge, member_count: int, user: User) -> dict
         "created_by_name": user.name,
         "is_active": challenge.is_active,
         "member_count": member_count,
+        "is_member": is_member,
     }
 
 
@@ -74,8 +77,13 @@ async def list_challenges(
             .order_by(Challenge.id.desc())
         )
     ).all()
+    memberships = set(
+        (await session.scalars(
+            select(ChallengeMember.challenge_id).where(ChallengeMember.user_id == user.id)
+        )).all()
+    )
     return [
-        _challenge_dict(challenge, count or 0, creator)
+        _challenge_dict(challenge, count or 0, creator, is_member=challenge.id in memberships)
         for challenge, creator, count in rows
     ]
 
@@ -108,7 +116,7 @@ async def create_challenge(
     await session.flush()
     session.add(ChallengeMember(challenge_id=challenge.id, user_id=user.id))
     await session.commit()
-    return _challenge_dict(challenge, 1, user)
+    return _challenge_dict(challenge, 1, user, is_member=True)
 
 
 @router.post("/challenges/{challenge_id}/join", status_code=status.HTTP_200_OK)

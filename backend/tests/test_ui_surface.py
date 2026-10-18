@@ -230,6 +230,31 @@ async def test_activities_list_and_detail(client: AsyncClient, db_session):
     assert leak.status_code == 404
 
 
+async def test_unmapped_activity_exposes_recorded_source_type_without_reclassification(client: AsyncClient, db_session):
+    await _login(client)
+    user = await _owner_user(db_session)
+    activity = Activity(
+        user_id=user.id,
+        discipline_id=None,
+        start_time=datetime(2026, 9, 22, 9, 0, tzinfo=UTC),
+        start_tz_offset_minutes=0,
+        local_date=TODAY,
+        duration_s=1800,
+        source_metrics={"garmin": {"type_key": "disc_golf"}},
+    )
+    db_session.add(activity)
+    await db_session.commit()
+    listed = (await client.get("/activities")).json()
+    row = next(item for item in listed["items"] if item["id"] == activity.id)
+    assert row["discipline"] is None
+    assert row["source_activity_type"] == "disc_golf"
+    detail = (await client.get(f"/activities/{activity.id}")).json()
+    assert detail["discipline"] is None
+    assert detail["source_activity_type"] == "disc_golf"
+    await db_session.refresh(activity)
+    assert activity.discipline_id is None
+
+
 # ------------------------------------------------------------------- /sleep
 
 

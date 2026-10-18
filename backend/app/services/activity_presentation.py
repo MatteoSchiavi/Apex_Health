@@ -17,6 +17,22 @@ GROUPS = {"legs", "push", "pull", "core", "full_body"}
 STRENGTH = {"strength", "gym_general"}
 
 
+def source_activity_type(metrics: dict | None) -> str | None:
+    """Expose a recorded sport label without reclassifying the activity.
+
+    Conflicting provider labels remain unknown rather than choosing a source
+    arbitrarily. Older imports without a recorded type remain unknown too.
+    """
+    labels = {
+        block["type_key"].strip()
+        for block in (metrics or {}).values()
+        if isinstance(block, dict)
+        and isinstance(block.get("type_key"), str)
+        and block["type_key"].strip()
+    }
+    return next(iter(labels)) if len(labels) == 1 else None
+
+
 def sport_kind(discipline: str | None, metrics: dict | None = None) -> str:
     if discipline in {None, "gym_general", "hiit"} and any(
         isinstance(block, dict) and block.get("type_key") in ("hiit", "high_intensity_interval_training")
@@ -99,16 +115,23 @@ def strength_summary(exercise_id, name: str, group: str | None, sets: list[dict]
 
     identified = identify(name, group)
     name, group = identified["name"], identified["muscle_group"]
-    known = [s for s in sets if s["weight_kg"] is not None]
+    known = [s for s in sets if s["weight_kg"] is not None and s["reps"] is not None]
+    counted = [s["reps"] for s in sets if s["reps"] is not None]
+    durations = [s["duration_s"] for s in sets if s.get("duration_s") is not None]
     volume = sum(s["reps"] * s["weight_kg"] for s in known) if known else None
     result = {"exercise_id": exercise_id, "name": name, "muscle_group": group if isinstance(group, str) and group in GROUPS else None,
-              "sets": len(sets), "reps": sum(s["reps"] for s in sets), "volume_kg": volume,
-              "weighted_sets": len(known), "recorded_sets": [{"reps": s["reps"], "weight_kg": s["weight_kg"]} for s in sets],
+              "sets": len(sets), "reps": sum(counted) if counted else None, "volume_kg": volume,
+              "weighted_sets": len(known), "recorded_sets": [{"reps": s["reps"], "weight_kg": s["weight_kg"], **({"duration_s": s["duration_s"]} if s.get("duration_s") is not None else {})} for s in sets],
               "previous": None, "delta_sets": None, "delta_reps": None, "delta_volume_kg": None}
+    if durations:
+        result["duration_s"] = sum(durations)
     if previous is not None:
         result["previous"] = {k: previous[k] for k in ("date", "sets", "reps", "volume_kg", "weighted_sets")}
         result["delta_sets"] = result["sets"] - previous["sets"]
-        result["delta_reps"] = result["reps"] - previous["reps"]
+        if result["reps"] is not None and previous["reps"] is not None:
+            result["delta_reps"] = result["reps"] - previous["reps"]
+        if previous.get("duration_s") is not None:
+            result["previous"]["duration_s"] = previous["duration_s"]
         if len(known) == len(sets) and previous["weighted_sets"] == previous["sets"]:
             result["delta_volume_kg"] = volume - previous["volume_kg"]
     return result
@@ -149,7 +172,8 @@ def imported_strength(metrics: dict | None) -> list[dict]:
 
 def _set(log: GymSetLog) -> dict:
     weight = number(log.weight_kg)
-    return {"reps": log.reps_done, "weight_kg": weight if weight is not None and weight >= 0 else None}
+    return {"reps": log.reps_done, "weight_kg": weight if weight is not None and weight >= 0 else None,
+            **({"duration_s": log.duration_s} if getattr(log, "duration_s", None) is not None else {})}
 
 
 async def gym_strength(session: AsyncSession, activity: Activity) -> list[dict]:

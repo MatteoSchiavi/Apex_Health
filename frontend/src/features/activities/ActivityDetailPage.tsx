@@ -319,7 +319,7 @@ export default function ActivityDetailPage() {
         {t("activities.all")}
       </Link>
       <PageHeader
-        title={friendlyDiscipline(a.discipline, t)}
+        title={friendlyDiscipline(a.discipline ?? a.source_activity_type, t)}
         subtitle={new Date(a.start_time).toLocaleString(undefined, {
           weekday: "long",
           day: "numeric",
@@ -331,6 +331,7 @@ export default function ActivityDetailPage() {
         })}
         actions={<div className="flex flex-wrap items-center gap-3"><Badge>{a.data_completeness}</Badge>{["running","cycling","strength"].includes(kind) && <Link className="text-link text-[13px]" to={`/app/sports/${kind}`}>{t("betaNavigation.sport_progress")}</Link>}</div>}
       />
+      {!a.discipline && a.source_activity_type && <p className="text-sm text-muted">{t("v01Data.recorded_sport")}</p>}
       <div className="stat-row">
         <StatPod
           label={t("activities.duration")}

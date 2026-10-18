@@ -24,7 +24,7 @@ from app.models.activity import (
 )
 from app.models.user import User
 from app.schemas.ui import ActivityDetailOut, ActivityListOut, ActivityOut, StreamOut
-from app.services.activity_presentation import activity_presentation
+from app.services.activity_presentation import activity_presentation, source_activity_type
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 
@@ -52,6 +52,7 @@ async def _activity_out(session: AsyncSession, a: Activity, discipline_name: str
         start_time=a.start_time,
         local_date=a.local_date,
         discipline=discipline_name,
+        source_activity_type=source_activity_type(a.source_metrics),
         duration_s=a.duration_s,
         distance_m=_fl(a.distance_m),
         elevation_gain_m=_fl(a.elevation_gain_m),
@@ -176,6 +177,7 @@ async def activity_detail(
         start_time=a.start_time,
         local_date=a.local_date,
         discipline=disciplines.get(a.discipline_id),
+        source_activity_type=source_activity_type(a.source_metrics),
         duration_s=a.duration_s,
         distance_m=_fl(a.distance_m),
         elevation_gain_m=_fl(a.elevation_gain_m),

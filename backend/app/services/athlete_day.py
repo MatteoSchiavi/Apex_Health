@@ -8,6 +8,7 @@ from app.models.athlete import AthleteProfile
 from app.models.athlete_training import ActivityPlanLink, PlanDocumentDraft, SessionCheckin, WeeklyTrainingTemplate
 from app.models.coach import UserContextDoc
 from app.models.gym_detail import GymDayPlan
+from app.queries.gym_detail import done_counts, plan_rows
 from app.models.lab import ChangeDraft, LabDocument
 from app.models.training import TrainingPlan, PlannedSession
 from app.services.activity_presentation import sport_kind
@@ -101,7 +102,14 @@ async def your_day(session, user, day):
     modified_ids = {r.after.get("target_id") for r in modifications}
     # Legacy gym day plans stay visible; they lack an enduring planned-session identity.
     gyms = (await session.scalars(select(GymDayPlan).where(GymDayPlan.user_id == user.id, GymDayPlan.date == day,
-        GymDayPlan.status.in_(("confirmed", "active", "completed"))))).all()
+        GymDayPlan.status.in_(("confirmed", "active", "done", "completed"))))).all()
+    gym_sessions = []
+    for gym in gyms:
+        counts = await done_counts(session, gym.id)
+        exercise_rows = await plan_rows(session, gym.id)
+        complete = bool(exercise_rows) and all(counts.get(row.id, 0) >= row.sets for row, _ in exercise_rows)
+        gym_status = "completed" if gym.status in {"done", "completed"} or complete else "active" if any(counts.values()) else gym.status
+        gym_sessions.append({"gym_day_plan_id": gym.id, "title": gym.title, "status": gym_status})
     plans = []
     for workout, plan, discipline in rows:
         linked = by_planned.get(workout.id)
@@ -155,6 +163,6 @@ async def your_day(session, user, day):
         "focus_configuration": configuration,
         "sport_totals": sport_totals, "planning_context": context,
         "is_historical": day < datetime.now(tz).date(),
-        "legacy_gym_sessions": [{"gym_day_plan_id": g.id, "title": g.title, "status": g.status} for g in gyms],
+        "legacy_gym_sessions": gym_sessions,
         "state": "multiple_sessions" if len(recorded) > 1 else "activity_recorded" if recorded else "before_training" if plans or gyms else "no_plan",
         "limitations": ["Suggested associations require confirmation; provider load scales are never aggregated."]}

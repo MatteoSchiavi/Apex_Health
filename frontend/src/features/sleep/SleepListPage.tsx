@@ -18,6 +18,7 @@ import {
 import { assess } from "../../components/data";
 import { SleepTimingChart } from "./SleepTimingChart";
 import { useUi } from "../../app/stores/ui";
+import { sleepDurations } from "./sleep-summary";
 export default function SleepListPage() {
   const { t } = useTranslation();
   const timezone = useUi((s) => s.me?.timezone);
@@ -86,7 +87,7 @@ export default function SleepListPage() {
                   <tr>
                     <th>{t("design.night")}</th>
                     <th>{t("sleep.time_asleep")}</th>
-                    <th>{t("overview.sleep_score")}</th>
+                    <th>{t("metricView.provider_sleep_score")}</th>
                     <th>{t("sleep.bed_window")}</th>
                     <th>{t("sleep.architecture")}</th>
                     <th className="numeric">{t("sleep.efficiency")}</th>
@@ -95,11 +96,8 @@ export default function SleepListPage() {
                 </thead>
                 <tbody>
                   {nights.map((n) => {
-                    const state = assess("sleep_score", n.sleep_score);
-                    const inBed =
-                      (new Date(n.end_time).getTime() -
-                        new Date(n.start_time).getTime()) /
-                      1000;
+                    const state = assess("provider_sleep_score", n.sleep_score);
+                    const duration = sleepDurations(n);
                     return (
                       <tr key={n.local_date}>
                         <td>
@@ -130,7 +128,7 @@ export default function SleepListPage() {
                           {clock(n.start_time)} – {clock(n.end_time)}
                         </td>
                         <td className="min-w-[160px]">
-                          <ZoneBar
+                          {duration.inconsistent ? <span className="text-xs text-muted">{t("v01Data.sleep_totals_unavailable")}</span> : <ZoneBar
                             height={8}
                             parts={[
                               {
@@ -154,14 +152,10 @@ export default function SleepListPage() {
                                 color: "var(--c-stage-awake)",
                               },
                             ]}
-                          />
+                          />}
                         </td>
                         <td className="numeric">
-                          {fmtNum(
-                            inBed > 0 && n.total_sleep_s != null
-                              ? (n.total_sleep_s / inBed) * 100
-                              : null,
-                          )}{" "}
+                          {fmtNum(duration.efficiency)}{" "}
                           %
                         </td>
                         <td>

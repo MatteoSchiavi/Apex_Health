@@ -193,6 +193,7 @@ export interface ActivityListItem {
   start_time: string;
   local_date: string;
   discipline: string | null;
+  source_activity_type?: string | null;
   duration_s: number;
   distance_m: number | null;
   elevation_gain_m: number | null;
@@ -216,9 +217,9 @@ export interface ActivityDetail extends ActivityListItem {
     zones: { metric: "hr" | "power"; name: string; duration_s: number; lower: number | null; upper: number | null }[];
     strength: {
       exercise_id: number | null; name: string; muscle_group: string | null;
-      sets: number; reps: number; volume_kg: number | null; weighted_sets: number;
-      recorded_sets?: { reps: number; weight_kg: number | null }[];
-      previous: { date: string; sets: number; reps: number; volume_kg: number | null; weighted_sets?: number } | null;
+      sets: number; reps: number | null; duration_s?: number | null; volume_kg: number | null; weighted_sets: number;
+      recorded_sets?: { reps: number | null; duration_s?: number | null; weight_kg: number | null }[];
+      previous: { date: string; sets: number; reps: number | null; duration_s?: number | null; volume_kg: number | null; weighted_sets?: number } | null;
       delta_sets: number | null; delta_reps: number | null; delta_volume_kg: number | null;
     }[];
   };

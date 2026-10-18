@@ -200,7 +200,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     logs = (await db_session.scalars(select(GymSetLog))).all()
     assert len(logs) == target["sets"]
     plan = (await db_session.scalars(select(GymDayPlan))).one()
-    assert plan.status == "confirmed"
+    assert plan.status == "active"
 
 
 async def test_generate_is_idempotent_per_day(client: AsyncClient):

@@ -53,20 +53,19 @@ test("favourites persist on the account and can be unstarred", async ({ page }) 
   await expect(page.getByText("Star metrics in Health or Training & recovery to build your quick view.")).toBeVisible();
 });
 
-test("sidebar expands on hover and keyboard focus without moving its targets", async ({ page }) => {
+test("sidebar labels and layout stay stable for pointer and keyboard navigation", async ({ page }) => {
   await installApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/app");
   const aside = page.locator("aside");
-  await expect(aside).toHaveCSS("width", "76px");
+  await expect(aside).toHaveCSS("width", "224px");
   await aside.hover();
   await expect(aside).toHaveCSS("width", "224px");
   await aside.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/settings$/);
   await page.mouse.move(800, 200);
-  await expect(aside).toHaveCSS("width", "76px");
-  // Keyboard navigation deliberately opens labels; mouse focus must not keep
-  // the sidebar expanded after the pointer has left it.
+  await expect(aside).toHaveCSS("width", "224px");
+  // Labels remain visible when the pointer leaves and keyboard focus arrives.
   await page.keyboard.press("Tab");
   const settings = aside.getByRole("link", { name: "Settings", exact: true });
   await settings.focus();
@@ -94,7 +93,7 @@ test("overview has one warning, a full activity grid and visible daily scores", 
   await installApi(page);
   await page.route("**/dashboard/overview*", route => route.fulfill({ json: { ...overview, alerts: Array.from({ length: 8 }, (_, i) => ({ severity: "warning", type: "sync_failure", message: `Garmin warning ${i}` })) } }));
   await page.goto("/app");
-  await expect(page.getByText(/Garmin warning \d/)).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Review sync status →", exact: true })).toHaveCount(1);
   const grid = page.getByRole("group", { name: "Activity · last 52 weeks" });
   await expect(grid.locator(":scope > *")).toHaveCount(364);
   await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();

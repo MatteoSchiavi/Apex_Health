@@ -88,7 +88,9 @@ class GymDayExercise(Base):
     )
     position: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     sets: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    reps_min: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    reps_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    duration_min_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_max_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reps_max: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     rest_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, default=90, server_default="90"
@@ -111,7 +113,8 @@ class GymSetLog(Base):
         ForeignKey("gym_day_exercises.id", ondelete="CASCADE"), nullable=False
     )
     set_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    reps_done: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    reps_done: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     done_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default="now()"
