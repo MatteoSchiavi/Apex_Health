@@ -1943,7 +1943,7 @@
     "review_document_first": "Rivedi e conferma questo documento prima di usarlo per la pianificazione.",
     "plan_document_title": "Piano di allenamento esistente",
     "plan_document_note": "Un file caricato non è un piano attivo. Rivedi una bozza strutturata, conferma date e sessioni reali e approvala esplicitamente. Gli elementi incerti restano visibili.",
-    "revise_structure": "Rivedi una nuova versione",
+    "revise_structure": "Modifica allenamenti e date",
     "use_active_plan": "Usa questo come mio piano attivo",
     "extract_with_ai": "Estrai una bozza con l'IA",
     "ai_optional_extraction": "L'estrazione IA è facoltativa. Gestisci il consenso nel Profilo.",

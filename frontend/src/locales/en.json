@@ -1943,7 +1943,7 @@
     "review_document_first": "Review and confirm this document before using it as planning context.",
     "plan_document_title": "Existing training plan",
     "plan_document_note": "An upload is not an active plan. Review a structured draft, confirm actual dates and workouts, and approve it explicitly. Unclear items remain visible.",
-    "revise_structure": "Review a new revision",
+    "revise_structure": "Edit workouts and dates",
     "use_active_plan": "Use this as my active plan",
     "extract_with_ai": "Extract a draft with AI",
     "ai_optional_extraction": "AI extraction is optional. Manage consent in Profile.",

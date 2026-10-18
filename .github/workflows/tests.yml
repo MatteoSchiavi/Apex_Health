@@ -98,8 +98,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       redis:
-        # Avoid Docker Hub's shared anonymous pull quota on hosted runners.
-        image: public.ecr.aws/docker/library/redis:7-alpine
+        # Public cache avoids Docker Hub and ECR shared anonymous pull quotas.
+        image: mirror.gcr.io/library/redis:7-alpine
         ports:
           - 6380:6379
         options: >-
@@ -189,8 +189,8 @@ jobs:
         run: |
           docker pull mirror.gcr.io/timescale/timescaledb-ha:pg16
           docker tag mirror.gcr.io/timescale/timescaledb-ha:pg16 timescale/timescaledb-ha:pg16
-          docker pull public.ecr.aws/docker/library/redis:7-alpine
-          docker tag public.ecr.aws/docker/library/redis:7-alpine redis:7-alpine
+          docker pull mirror.gcr.io/library/redis:7-alpine
+          docker tag mirror.gcr.io/library/redis:7-alpine redis:7-alpine
       - name: Build and start the production stack
         env:
           APEX_COMMIT: ${{ github.sha }}

@@ -39,7 +39,7 @@ test("Training makes all twelve missing dates actionable and activates only the 
   await page.getByRole("checkbox", { name: /I have reviewed these workouts/ }).check();
   await expect(activate).toBeDisabled();
   expect(writes).toEqual([]);
-  await page.getByRole("button", { name: "Revise structure", exact: true }).click();
+  await page.getByRole("button", { name: "Edit workouts and dates", exact: true }).click();
   await expect(page.getByLabel("Workout description", { exact: true }).first()).toBeHidden();
   const dates = page.getByLabel("Date (optional for a draft)", { exact: true });
   await expect(dates).toHaveCount(12);
@@ -60,7 +60,7 @@ test("Training makes all twelve missing dates actionable and activates only the 
 test("date corrections show invalid ranges and out-of-range sessions before writing a draft", async ({ page }) => {
   const writes = await legacyPlanApi(page, { count: 1 });
   await page.goto("/app/training?tab=planning#document-4");
-  await page.getByRole("button", { name: "Revise structure", exact: true }).click();
+  await page.getByRole("button", { name: "Edit workouts and dates", exact: true }).click();
   const save = page.getByRole("button", { name: "Save reviewable structure", exact: true });
   await page.getByLabel("Start date", { exact: true }).fill("2026-10-20");
   await page.getByLabel("End date", { exact: true }).fill("2026-10-19");
