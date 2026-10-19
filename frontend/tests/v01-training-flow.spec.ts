@@ -137,6 +137,7 @@ test('rest countdown uses elapsed time and does not restart after a suspended br
 });
 
 test('a timed hold uses seconds through logging and completion without inventing repetitions', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await installApi(page, { empty: true });
   const plan = { ...planFor(today), exercises: [{ ...exercise(9, 1, 30), name: 'Plank', reps_min: null,
     reps_max: null, duration_min_s: 30, duration_max_s: 60 }], progress: { sets_done: 0, sets_total: 1, complete: false } };
@@ -152,6 +153,9 @@ test('a timed hold uses seconds through logging and completion without inventing
   const seconds = gym(page).getByRole('spinbutton', { name: 'Duration (seconds)', exact: true });
   await expect(seconds).toHaveValue('30');
   await expect(gym(page)).toContainText('30–60 s');
+  await expect(page.getByTestId('gym-exercise-list')).toContainText('30–60 s');
+  await expect(page.getByTestId('gym-exercise-list')).toContainText('60s');
+  expect(await page.getByTestId('gym-exercise-list').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await seconds.fill('45');
   await gym(page).getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(gym(page).getByRole('status')).toContainText('Workout complete');

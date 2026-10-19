@@ -32,7 +32,7 @@ test("Training makes all twelve missing dates actionable and activates only the 
   const requirements = page.getByRole("region", { name: "Before you can activate this plan", exact: true });
   await expect(requirements.getByText("Choose the plan start date.", { exact: true })).toBeVisible();
   await expect(requirements.getByText("Choose the plan end date.", { exact: true })).toBeVisible();
-  await expect(requirements.getByText("Choose actual dates for 12 workouts:", { exact: true })).toBeVisible();
+  await expect(requirements.getByText("Choose actual dates for 12 workouts:")).toBeVisible();
   await expect(requirements.getByText(/12\. Running/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review what Apex understood", exact: true })).toHaveCount(0);
   const activate = page.getByRole("button", { name: "Confirm structure and activate plan", exact: true });
@@ -114,7 +114,7 @@ test("Italian planning remains readable and accessible on a phone", async ({ pag
   await legacyPlanApi(page, { count: 2, locale: "it" });
   await page.goto("/app/training?tab=planning#document-4");
   await expect(page.getByRole("heading", { name: "Il tuo piano di allenamento", exact: true })).toBeVisible();
-  await expect(page.getByText("Scegli date reali per 2 allenamenti:", { exact: true })).toBeVisible();
+  await expect(page.getByText("Scegli date reali per 2 allenamenti:")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
 });

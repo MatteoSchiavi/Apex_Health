@@ -581,7 +581,19 @@ function GymPlan({ day }: { day: string }) {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <ol className="space-y-3 sm:hidden" data-testid="gym-exercise-list">
+            {exercises.map((ex, i) => <li key={ex.gym_day_exercise_id} className={`border border-hairline p-3 ${ex.gym_day_exercise_id === nextEx?.gym_day_exercise_id ? "bg-primarySoft/40" : ""}`}>
+              <div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 text-[14px] font-medium">{i + 1}. {ex.name}</p>{ex.complete && <Badge tone="positive">{t("training.done")}</Badge>}</div>
+              {ex.notes && <p className="mt-2 break-words text-[12px] text-muted">{ex.notes}</p>}
+              <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+                <div><dt className="text-muted">{t("betaNavigation.sets_label")}</dt><dd className="num mt-1">{ex.sets}</dd></div>
+                <div><dt className="text-muted">{t("v01Training.target")}</dt><dd className="num mt-1">{target(ex)}</dd></div>
+                <div><dt className="text-muted">{t("training.rest_timer")}</dt><dd className="num mt-1">{ex.rest_seconds == null ? "—" : `${ex.rest_seconds}s`}</dd></div>
+              </dl>
+              {p?.status !== "draft" && <p className="mt-3 text-[12px] text-muted">{t("betaNavigation.sets_completed", {count: ex.sets_done ?? 0})}</p>}
+            </li>)}
+          </ol>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="data-table">
               <thead>
                 <tr className="border-b border-hairline text-left">

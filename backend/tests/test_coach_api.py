@@ -176,7 +176,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
     assert nxt.status_code == 200
     first = nxt.json()
     assert first["exercise"] is not None
-    assert first["reps_target"]
+    assert bool(first["reps_target"]) != bool(first["duration_target_s"])
     target = first["exercise"]
 
     for set_number in range(1, target["sets"] + 1):
@@ -185,7 +185,7 @@ async def test_generate_plan_applies_taper_and_tracks_sets(client: AsyncClient, 
             json={
                 "gym_day_exercise_id": target["gym_day_exercise_id"],
                 "set_number": set_number,
-                "reps_done": 10,
+                **({"duration_s": 45} if target["duration_min_s"] is not None else {"reps_done": 10}),
                 "weight_kg": 60.0,
             },
             headers=csrf_headers(client),
@@ -208,6 +208,8 @@ async def test_generate_is_idempotent_per_day(client: AsyncClient):
     first = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     second = await client.post(f"/gym/plan/{date.today().isoformat()}/generate", headers=csrf_headers(client))
     assert first.json()["plan_id"] == second.json()["plan_id"]
+    assert first.json()["revision"] == second.json()["revision"]
+    assert first.json()["exercises"] == second.json()["exercises"]
 
 
 async def test_plan_endpoints_are_user_scoped(client: AsyncClient, db_session):

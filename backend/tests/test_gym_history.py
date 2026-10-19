@@ -103,7 +103,9 @@ def engine(monkeypatch):
     async def noop(*args,**kwargs): pass
     async def rows(session,plan):
         return [{"exercise_id":r.exercise_id,"muscle_group":next(e.muscle_group for e in CATALOG if e.id==r.exercise_id),
-            "sets":r.sets,"reps_min":r.reps_min,"reps_max":r.reps_max,"rest_seconds":r.rest_seconds,"notes":r.notes} for r in session.rows]
+            "sets":r.sets,"reps_min":r.reps_min,"reps_max":r.reps_max,
+            "duration_min_s":r.duration_min_s,"duration_max_s":r.duration_max_s,
+            "rest_seconds":r.rest_seconds,"notes":r.notes} for r in session.rows]
     monkeypatch.setattr(advisor,"planning_inputs",inputs)
     monkeypatch.setattr(advisor,"recent_feedback",empty)
     monkeypatch.setattr(advisor,"upcoming_events",empty)

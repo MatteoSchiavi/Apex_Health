@@ -88,7 +88,7 @@ test("new challenges submit a chosen period and trim the name", async ({ page })
   await page.goto("/app/social");
   await page.getByRole("button", { name: /Create Challenge/ }).click();
   await page.getByLabel("Name", { exact: true }).fill("  Weekend friends  ");
-  await page.getByLabel("Period", { exact: true }).selectOption("monthly");
+  await page.getByRole("combobox", { name: "Period", exact: true }).selectOption("monthly");
   await page.getByRole("button", { name: "Create Challenge", exact: true }).click();
   await expect.poll(() => writes.find((write) => write.path === "/challenges")?.body).toEqual({ name: "Weekend friends", metric: "steps", period: "monthly" });
 });
