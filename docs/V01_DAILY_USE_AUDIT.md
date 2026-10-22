@@ -78,7 +78,7 @@ Verification continued on 23 October 2026. No production deployment is implied
 by these results.
 
 - Production frontend build and TypeScript check pass; English/Italian have
-  2,546 matching translation keys. All five PWA tests passed on `405256c`;
+  2,547 matching translation keys. All five PWA tests passed on `405256c`;
   the final combined revision runs them again in CI.
 - The complete GitHub Actions run for `405256c` passed 1,412 backend tests
   and 248 browser tests, with one intentional skip in each suite. Its frontend,
@@ -99,6 +99,12 @@ by these results.
 - Follow-up browser regressions cover legacy missing-set recovery, workout
   completion from its detail screen, historical activity context, mismatched
   identities, saved-vs-local check-in review and existing-email recovery.
+- A real backend plus 390px Chromium acceptance run verified a new friend's
+  invitation signup, initial Overview, workout completion and persisted
+  feedback after reload, with no page errors or horizontal overflow. Plan and
+  profile setup for that run used the API and is not claimed as a complete UI
+  onboarding journey. Screenshots prompted a shorter check-in with optional
+  feedback collapsed and saved plain-text workout descriptions shown directly.
 - A separate database migration probe verified upgrade from populated 0029,
   preservation of historical reps/weights, the new in-progress state and
   timed records, atomic rejection of a lossy downgrade, and safe downgrade
@@ -145,6 +151,11 @@ live acceptance. The 20 October review found four further concrete issues:
 4. The primary workout detail destination exposes instructions and export but
    no completion action. Put the existing completion/feedback form beside
    that workout, using its exact date, session and associated activity.
+
+The final screenshot review also shortened that form to the session result,
+optional effort and note, with other feedback behind an optional disclosure.
+Workouts without structured blocks now show their saved description and
+planned duration rather than only explaining that no blocks exist.
 
 These follow-up fixes and their targeted regressions belong to the same PR.
 The final combined commit must pass all release checks before deployment.

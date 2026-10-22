@@ -54,6 +54,8 @@ test('the workout destination records completion, refreshes editability and reta
   const state = await setup(page);
   await page.goto('/app/workouts/8');
   const panel = completion(page);
+  await expect(page.getByText('Comfortable effort', { exact: true })).toBeVisible();
+  await expect(panel.getByLabel('Perceived fatigue', {exact:true})).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit workout blocks', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Save check-in', exact: true })).toBeVisible();
   await panel.getByLabel('Optional note', { exact: true }).fill('Comfortable all the way');

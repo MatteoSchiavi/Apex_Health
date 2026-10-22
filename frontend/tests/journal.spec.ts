@@ -11,6 +11,8 @@ test('journal saves correct activity, preserves optional feedback and tracks lat
   await page.goto('/app');
   await page.getByTestId('daily-details').locator('summary').first().click();
   await page.locator('summary').filter({hasText:'Quick post-session check-in'}).click();
+  await expect(page.getByLabel('Perceived fatigue', {exact:true})).not.toBeVisible();
+  await page.locator('summary').filter({hasText:'More feedback (optional)'}).click();
   await page.getByLabel('Perceived fatigue', {exact:true}).fill('7');
   await page.getByLabel('Soreness', {exact:true}).fill('3');
   await page.getByLabel('Workout quality', {exact:true}).fill('8');

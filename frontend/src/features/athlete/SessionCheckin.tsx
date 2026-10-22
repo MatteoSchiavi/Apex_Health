@@ -57,10 +57,19 @@ export function SessionCheckin({ activityId, plannedSessionId, checkin, defaultO
     <form className="mt-4 space-y-3" onSubmit={e=>{e.preventDefault();if(!conflict&&!refresh.isPending&&!review)save.mutate(form);}}>
       <fieldset disabled={save.isPending||refresh.isPending} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2"><Select label={t("athlete.session_status")} value={form.status} onChange={value=>set("status",value)} options={(activityId?["completed","partial"]:["completed","partial","skipped"]).map(value=>({value,label:t("athlete.state_"+value)}))}/>
-          {(["rpe","fatigue","soreness","workout_quality"] as const).filter(key=>form.status!=="skipped"||(key!=="rpe"&&key!=="workout_quality")).map(key=><Input key={key} label={t("athlete."+key)} type="number" min={0} max={10} step={1} value={form[key]} onChange={value=>set(key,value)}/>)}
-          <Select label={t("athlete.pain")} value={form.pain} onChange={value=>set("pain",value)} options={choices}/><Select label={t("athlete.felt_unwell")} value={form.unwell} onChange={value=>set("unwell",value)} options={choices}/>
+          {form.status!=="skipped"&&<Input label={t("athlete.rpe")} type="number" min={0} max={10} step={1} value={form.rpe} onChange={value=>set("rpe",value)}/>}
         </div>
-        {(["note","modification_reason","terrain_notes"] as const).map(key=><Input key={key} label={t(key==="note"?"athlete.checkin_note":"athlete."+key)} value={form[key]} maxLength={key==="note"?2000:1000} onChange={value=>set(key,value)}/>)}
+        <Input label={t("athlete.checkin_note")} value={form.note} maxLength={2000} onChange={value=>set("note",value)}/>
+        <details className="border-t border-hairline pt-3">
+          <summary className="cursor-pointer text-ink2">{t("athlete.additional_feedback")}</summary>
+          <div className="mt-3 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["fatigue","soreness","workout_quality"] as const).filter(key=>form.status!=="skipped"||key!=="workout_quality").map(key=><Input key={key} label={t("athlete."+key)} type="number" min={0} max={10} step={1} value={form[key]} onChange={value=>set(key,value)}/>)}
+              <Select label={t("athlete.pain")} value={form.pain} onChange={value=>set("pain",value)} options={choices}/><Select label={t("athlete.felt_unwell")} value={form.unwell} onChange={value=>set("unwell",value)} options={choices}/>
+            </div>
+            {(["modification_reason","terrain_notes"] as const).map(key=><Input key={key} label={t("athlete."+key)} value={form[key]} maxLength={1000} onChange={value=>set(key,value)}/>)}
+          </div>
+        </details>
         <p className="text-[12px] text-muted">{t("athlete.checkin_limits")}</p>
         {save.isError&&<p role="alert" className="text-alertText">{t(conflict?"athlete.conflict":"athlete.save_error")}</p>}
         {conflict&&!review&&<Button variant="ghost" type="button" disabled={refresh.isPending} onClick={()=>refresh.mutate()}>{t(refresh.isPending?"common.loading":"athlete.checkin_review_current")}</Button>}
