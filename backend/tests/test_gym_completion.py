@@ -158,3 +158,22 @@ def test_log_requires_exactly_one_positive_measurement(measurement):
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         SetLogIn(gym_day_exercise_id=1, set_number=1, **measurement)
+
+
+async def test_legacy_gap_returns_first_missing_set_and_completes_without_overwriting_saved_set(db_session):
+    athlete, plan, exercise = await session_fixture(db_session)
+    db_session.add(GymSetLog(user_id=athlete.id, gym_day_exercise_id=exercise.id,
+        set_number=2, reps_done=10, weight_kg=45))
+    await db_session.commit()
+    view = await session_view(db_session, athlete.id, plan.id)
+    row = view["exercises"][0]
+    assert row["sets_done"] == 1
+    assert row["next_set_number"] == 1
+    result = await save(db_session, athlete, plan, exercise, row["next_set_number"])
+    assert result["next"]["done"] and plan.status == "done"
+    complete = await session_view(db_session, athlete.id, plan.id)
+    assert complete["progress"]["complete"]
+    assert complete["exercises"][0]["next_set_number"] is None
+    logs = (await db_session.scalars(select(GymSetLog).where(
+        GymSetLog.gym_day_exercise_id == exercise.id).order_by(GymSetLog.set_number))).all()
+    assert [(row.set_number, row.reps_done, row.weight_kg) for row in logs] == [(1, 8, 40), (2, 10, 45)]

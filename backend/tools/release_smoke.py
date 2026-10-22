@@ -1,7 +1,7 @@
 """Exercise the deployed backend with synthetic accounts on a disposable stack.
 
 Requires --allow-test-writes; use only against an isolated release-test
-deployment. Adds a friend account and one CSV activity to each account.
+deployment. Adds a friend account, CSV activities and a synthetic training plan.
 Credentials come from the process environment and are never printed.
 """
 
@@ -11,6 +11,7 @@ import os
 import secrets
 import sys
 from pathlib import Path
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
@@ -20,6 +21,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 def csrf(client):
     return {"X-CSRF-Token": client.cookies.get("csrf_token", "")}
+
+
+async def first_plan(friend, owner):
+    """Exercise a new athlete's consent, plan and completion with real persistence."""
+    ai = (await friend.get("/athlete/ai")).json()
+    assert ai["consent"] is None and ai["effective_access"] == "disabled"
+    assert (await friend.post("/coach/chats", headers=csrf(friend), json={"text": "Synthetic boundary check"})).status_code == 403
+    profile = await friend.put("/athlete/profile", headers=csrf(friend), json={
+        "expected_revision": 0, "training_focus": ["running"],
+        "context": {"main_goal": "Synthetic first plan", "onboarding_step": 5},
+    })
+    assert profile.status_code == 200
+    assert (await friend.get("/athlete/profile")).json()["revision"] == 1
+    assert (await friend.get("/athlete/ai")).json()["consent"] is None
+    assert (await friend.put("/me", headers=csrf(friend), json={"timezone": "UTC"})).status_code == 200
+    day = datetime.now(UTC).date().isoformat()
+    uploaded = await friend.post("/lab/documents", headers=csrf(friend), files={
+        "file": ("synthetic-plan.txt", b"Synthetic plan: easy run for 20 minutes.", "text/plain"),
+    })
+    assert uploaded.status_code == 201
+    document = uploaded.json()
+    reviewed = await friend.post(f"/lab/documents/{document['id']}/confirm", headers=csrf(friend), json={
+        "content_hash": document["content_hash"], "reviewed_text": document["excerpt"],
+    })
+    assert reviewed.status_code == 200
+    drafted = await friend.post(f"/lab/documents/{document['id']}/plan-drafts", headers=csrf(friend), json={
+        "expected_document_revision": reviewed.json()["revision"],
+        "structure": {"title": "Synthetic friend first plan", "starts_on": day, "ends_on": day,
+                      "sessions": [{"date": day, "discipline": "running", "duration_min": 20}]},
+    })
+    assert drafted.status_code == 201
+    draft = drafted.json()
+    assert not (await friend.get(f"/athlete/day?date={day}")).json()["sessions"]
+    confirm_path = f"/lab/plan-drafts/{draft['id']}/confirm"
+    payload = {"payload_hash": draft["payload_hash"]}
+    assert (await owner.post(confirm_path, headers=csrf(owner), json=payload)).status_code == 404
+    assert (await owner.get(f"/lab/documents/{document['id']}/original")).status_code == 404
+    assert (await friend.post(confirm_path, headers=csrf(friend), json=payload)).status_code == 200
+    sessions = (await friend.get(f"/athlete/day?date={day}")).json()["sessions"]
+    assert len(sessions) == 1 and sessions[0]["discipline"] == "running"
+    workout_id = sessions[0]["id"]
+    workout_path = f"/athlete/planned-sessions/{workout_id}/workout"
+    assert (await friend.get(workout_path)).json()["editable"]
+    checkin = {"planned_session_id": workout_id, "expected_revision": 0,
+               "status": "completed", "rpe": 4, "note": "Synthetic completion"}
+    saved = await friend.put("/athlete/checkins", headers=csrf(friend), json=checkin)
+    assert saved.status_code == 200 and saved.json()["revision"] == 1
+    assert (await friend.put("/athlete/checkins", headers=csrf(friend), json=checkin)).json()["id"] == saved.json()["id"]
+    conflict = await friend.put("/athlete/checkins", headers=csrf(friend), json={**checkin, "note": "Stale edit"})
+    assert conflict.status_code == 409
+    refreshed = (await friend.get(f"/athlete/day?date={day}")).json()["sessions"][0]
+    assert refreshed["status"] == "completed" and refreshed["checkin"]["note"] == checkin["note"]
+    assert not (await friend.get(workout_path)).json()["editable"]
 
 
 async def main(base_url):
@@ -59,9 +113,10 @@ async def main(base_url):
             friend_activities = (await friend.get("/activities")).json()["items"]
             assert len(friend_activities) == 1
             assert friend_activities[0]["id"] != activity_id
+            await first_plan(friend, owner)
             assert (await friend.post("/auth/logout", headers=csrf(friend))).status_code == 204
             assert (await friend.get("/me")).status_code == 401
-    print("RELEASE SMOKE: PASSED — auth, CSRF, invitations, roles, CSV idempotency and account isolation")
+    print("RELEASE SMOKE: PASSED — auth, CSRF, invitations, roles, CSV idempotency, account isolation, consent, plan activation and completion")
 
 
 if __name__ == "__main__":

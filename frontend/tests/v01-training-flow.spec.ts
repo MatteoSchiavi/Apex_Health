@@ -161,3 +161,23 @@ test('a timed hold uses seconds through logging and completion without inventing
   await expect(gym(page).getByRole('status')).toContainText('Workout complete');
   expect(saved).toEqual({ gym_day_exercise_id: 9, set_number: 1, duration_s: 45, weight_kg: null });
 });
+
+test('a resumed legacy workout fills the missing set instead of submitting an already saved number', async ({ page }) => {
+  await installApi(page, { empty: true });
+  const plan = { ...planFor(today, 'active'), exercises: [{ ...exercise(7, 2, 8), sets_done: 1, next_set_number: 1 as number | null }],
+    progress: { sets_done: 1, sets_total: 2, complete: false } };
+  await page.route(url => url.pathname === `/gym/plan/${today}`, route => route.fulfill({ json: { date: today, plan, template: null } }));
+  const logs: unknown[] = [];
+  await page.route('**/gym/session/15/log', route => {
+    const body = route.request().postDataJSON(); logs.push(body);
+    if (body.set_number !== 1) return route.fulfill({ status: 409, json: { detail: 'Set 2 is already saved' } });
+    plan.exercises[0] = { ...plan.exercises[0], sets_done: 2, complete: true, next_set_number: null };
+    plan.progress = { sets_done: 2, sets_total: 2, complete: true }; plan.status = 'done';
+    return route.fulfill({ json: { rest_seconds: null, next: { done: true } } });
+  });
+  await page.goto('/app/training');
+  await gym(page).getByRole('button', { name: 'Log set', exact: true }).click();
+  await expect(gym(page).getByRole('status')).toContainText('Workout complete');
+  await expect(gym(page).getByRole('button', { name: 'Log set', exact: true })).toHaveCount(0);
+  expect(logs).toEqual([{ gym_day_exercise_id: 7, set_number: 1, reps_done: 8, weight_kg: null }]);
+});

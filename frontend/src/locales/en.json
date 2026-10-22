@@ -38,6 +38,7 @@
     "choose_theme": "Theme",
     "error": "Invalid email or password",
     "invite_error": "Invite code is not valid (unknown, already used, or expired)",
+    "email_registered": "This email is already registered. Log in to your existing account; your invite is still available.",
     "welcome": "Welcome to Apex",
     "remember_me": "Remember me on this device"
   },
@@ -1904,6 +1905,13 @@
     "felt_unwell": "Did you feel unwell? (optional)",
     "checkin_note": "Optional note",
     "checkin_limits": "Self-reported planning context, not a medical assessment. A check-in does not change your plan automatically.",
+    "checkin_review_current": "Review the saved check-in",
+    "checkin_review_error": "The saved check-in could not be loaded. Your edits are still here; try again.",
+    "checkin_review_note": "Review the saved version alongside your edits. Choosing a version does not save anything yet.",
+    "checkin_saved_value": "Saved version",
+    "checkin_your_value": "Your edits",
+    "checkin_keep_edits": "Keep my edits",
+    "checkin_use_saved": "Use saved version",
     "save_checkin": "Save check-in",
     "life_events": "Life and schedule changes",
     "life_events_note": "Record constraints without re-entering your profile. These inputs may support a reviewable adaptation; they never apply a change automatically.",
@@ -2296,7 +2304,11 @@
     "kind_repeat": "Repeat a group",
     "history": "Approved workout history",
     "version": "Version {{revision}}",
-    "duration_review": "Recorded total block duration: {{seconds}} seconds. Confirming a fully timed sequence also updates the planned duration to its rounded-up minutes. Unknown block duration preserves the current planned duration."
+    "duration_review": "Recorded total block duration: {{seconds}} seconds. Confirming a fully timed sequence also updates the planned duration to its rounded-up minutes. Unknown block duration preserves the current planned duration.",
+    "completion_title": "Record this workout",
+    "completion_note": "After training, record what you completed and how it felt.",
+    "completion_unavailable": "Completion details are unavailable for this workout. Open its day or try again.",
+    "completion_retry": "Reload completion details"
   },
   "sportProgress": {
     "title_running": "Running Overview",

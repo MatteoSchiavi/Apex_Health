@@ -330,6 +330,7 @@ interface GymExerciseRow {
   rest_seconds: number | null;
   notes: string | null;
   sets_done: number;
+  next_set_number?: number | null;
   complete: boolean;
 }
 
@@ -444,10 +445,12 @@ function GymPlan({ day }: { day: string }) {
 
   function logSet(ex: GymExerciseRow) {
     if (!p || !editable || !validEntry || logOne.isPending || complete || !["confirmed", "active"].includes(p.status)) return;
+    const setNumber = ex.next_set_number === undefined ? ex.sets_done + 1 : ex.next_set_number;
+    if (setNumber === null) return;
     logOne.mutate({
       plan_id: p.plan_id,
       gym_day_exercise_id: ex.gym_day_exercise_id,
-      set_number: ex.sets_done + 1,
+      set_number: setNumber,
       reps_done: timed ? null : Number(reps),
       duration_s: timed ? Number(reps) : null,
       weight_kg: weight ? Number(weight) : null,

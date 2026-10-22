@@ -38,6 +38,7 @@
     "choose_theme": "Tema",
     "error": "Email o password non validi",
     "invite_error": "Codice invito non valido (sconosciuto, già usato o scaduto)",
+    "email_registered": "Questa email è già registrata. Accedi al tuo account esistente; il tuo invito è ancora disponibile.",
     "welcome": "Benvenuto in Apex",
     "remember_me": "Ricordami su questo dispositivo"
   },
@@ -1904,6 +1905,13 @@
     "felt_unwell": "Ti sei sentito male? (facoltativo)",
     "checkin_note": "Nota facoltativa",
     "checkin_limits": "Contesto dichiarato da te per la pianificazione, non una valutazione medica. Il riscontro non modifica automaticamente il piano.",
+    "checkin_review_current": "Rivedi il riscontro salvato",
+    "checkin_review_error": "Non è stato possibile caricare il riscontro salvato. Le modifiche sono ancora qui; riprova.",
+    "checkin_review_note": "Confronta la versione salvata con le tue modifiche. Scegliere una versione non salva ancora nulla.",
+    "checkin_saved_value": "Versione salvata",
+    "checkin_your_value": "Le tue modifiche",
+    "checkin_keep_edits": "Mantieni le mie modifiche",
+    "checkin_use_saved": "Usa la versione salvata",
     "save_checkin": "Salva il riscontro",
     "life_events": "Cambiamenti nella vita e negli orari",
     "life_events_note": "Registra i vincoli senza reinserire il profilo. Questi dati possono supportare un adattamento da rivedere; non applicano mai una modifica automaticamente.",
@@ -2296,7 +2304,11 @@
     "kind_repeat": "Ripeti un gruppo",
     "history": "Storico allenamenti approvati",
     "version": "Versione {{revision}}",
-    "duration_review": "Durata totale dei blocchi: {{seconds}} secondi. Confermare una sequenza interamente temporizzata aggiorna la durata prevista ai minuti arrotondati per eccesso. Una durata sconosciuta conserva quella prevista attuale."
+    "duration_review": "Durata totale dei blocchi: {{seconds}} secondi. Confermare una sequenza interamente temporizzata aggiorna la durata prevista ai minuti arrotondati per eccesso. Una durata sconosciuta conserva quella prevista attuale.",
+    "completion_title": "Registra questo allenamento",
+    "completion_note": "Dopo l’allenamento, registra quanto hai completato e come ti sei sentito.",
+    "completion_unavailable": "I dettagli di completamento di questo allenamento non sono disponibili. Apri la giornata o riprova.",
+    "completion_retry": "Ricarica i dettagli di completamento"
   },
   "sportProgress": {
     "title_running": "Panoramica corsa",

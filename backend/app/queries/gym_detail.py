@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.gym_detail import GymDayExercise, GymDayPlan, GymExercise, GymSetLog
@@ -64,21 +64,32 @@ async def plan_rows(
     )
 
 
+async def _logged_set_numbers(
+    session: AsyncSession, plan_id: int
+) -> dict[int, set[int]]:
+    """Valid saved set numbers, including gaps in legacy workouts."""
+    rows = await session.execute(
+        select(GymSetLog.gym_day_exercise_id, GymSetLog.set_number).distinct()
+        .join(GymDayExercise, GymDayExercise.id == GymSetLog.gym_day_exercise_id)
+        .where(GymDayExercise.gym_day_plan_id == plan_id,
+            GymSetLog.set_number >= 1, GymSetLog.set_number <= GymDayExercise.sets)
+    )
+    numbers: dict[int, set[int]] = {}
+    for gde_id, number in rows.all():
+        numbers.setdefault(gde_id, set()).add(number)
+    return numbers
+
+
 async def done_counts(
     session: AsyncSession, plan_id: int
 ) -> dict[int, int]:
     """Logged set count per gym_day_exercise_id for one plan."""
-    rows = await session.execute(
-        select(GymSetLog.gym_day_exercise_id, func.count(func.distinct(GymSetLog.set_number)))
-        .join(GymDayExercise, GymDayExercise.id == GymSetLog.gym_day_exercise_id)
-        .where(GymDayExercise.gym_day_plan_id == plan_id,
-            GymSetLog.set_number >= 1, GymSetLog.set_number <= GymDayExercise.sets)
-        .group_by(GymSetLog.gym_day_exercise_id)
-    )
-    return {gde_id: count for gde_id, count in rows.all()}
+    return {gde_id: len(numbers) for gde_id, numbers in
+        (await _logged_set_numbers(session, plan_id)).items()}
 
 
-def _row_dict(day_row: GymDayExercise, ex: GymExercise, done: int) -> dict:
+def _row_dict(day_row: GymDayExercise, ex: GymExercise, numbers: set[int]) -> dict:
+    done = len(numbers)
     return {
         "gym_day_exercise_id": day_row.id,
         "exercise_id": day_row.exercise_id,
@@ -95,6 +106,7 @@ def _row_dict(day_row: GymDayExercise, ex: GymExercise, done: int) -> dict:
         "rest_seconds": day_row.rest_seconds,
         "notes": day_row.notes,
         "sets_done": done,
+        "next_set_number": next((n for n in range(1, day_row.sets + 1) if n not in numbers), None),
         "complete": done >= day_row.sets,
     }
 
@@ -114,9 +126,9 @@ async def session_view(
     """Full plan view with per-exercise completion — the tracker page payload."""
     plan = await get_owned_plan(session, user_id, plan_id)
     rows = await plan_rows(session, plan.id)
-    counts = await done_counts(session, plan.id)
+    numbers = await _logged_set_numbers(session, plan.id)
     exercises = [
-        _row_dict(day_row, ex, counts.get(day_row.id, 0))
+        _row_dict(day_row, ex, numbers.get(day_row.id, set()))
         for day_row, ex in rows
     ]
     total_sets = sum(e["sets"] for e in exercises)

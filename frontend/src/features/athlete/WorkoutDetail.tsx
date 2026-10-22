@@ -6,10 +6,43 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { Badge, Button, Card, CardHeader, ErrorNote, Input, Loading, PageHeader, fmtDuration, friendlyDiscipline } from "../../components/kit";
+import { SessionCheckin } from "./SessionCheckin";
+import { useAthleteDay } from "./YourDay";
 
 interface WorkoutReceipt { id: number; planned_session_id: number; revision: number; payload_hash: string; source: string; structure: StructuredWorkout; duration_total_s: number | null }
 interface WorkoutDraft { id: number; planned_session_id: number; plan_revision: number; workout_revision: number; payload_hash: string; status: string; structure: StructuredWorkout; duration_total_s: number | null }
 interface WorkoutDetailResponse { pending_draft?: WorkoutDraft | null; history?: WorkoutReceipt[]; planned_session_id: number; plan_revision: number; protected: boolean; editable: boolean; edit_block_reason: "past" | "protected" | "completed_or_skipped" | "recorded" | null; workout: WorkoutReceipt | null; session: { date: string; discipline: string; session_type: string | null; duration_min: number | null; description: string | null }; education: (WorkoutStep & { number?: string; parent_id?: string | null; objective: string; execution: string; common_mistake?: string; conservative_alternative?: string; limitation: string })[] }
+
+function WorkoutCompletion({ sessionId, date }: { sessionId: number; date: string }) {
+  const { t } = useTranslation();
+  const day = useAthleteDay(date);
+  const context = !day.isError && day.data?.date === date ? day.data : null;
+  const session = context?.sessions.find(item => item.id === sessionId);
+  const activity = session?.activity_id == null ? null : context?.activities.find(item =>
+    item.id === session.activity_id && item.planned_session_id === sessionId);
+  const checkin = activity?.checkin ?? session?.checkin;
+  const validReceipt = !checkin || (checkin.planned_session_id === sessionId
+    && checkin.activity_id === (activity?.id ?? null));
+  const available = !!session && (session.activity_id == null || !!activity) && validReceipt;
+  return <Card>
+    <CardHeader title={<h2>{t("structuredWorkout.completion_title")}</h2>}
+      right={available && <Badge tone={session.status === "completed" ? "positive" : "neutral"}>{t("athlete.state_" + session.status)}</Badge>} />
+    {day.isLoading ? <Loading /> : available ? <>
+      <p className="text-[13px] text-muted">{t("structuredWorkout.completion_note")}</p>
+      {activity && <Link className="text-link mt-3 inline-block text-[13px]" to={`/app/activities/${activity.id}`}>{t("athlete.view_activity")} ↗</Link>}
+      <SessionCheckin key={`${sessionId}:${activity?.id ?? "unrecorded"}`} defaultOpen
+        plannedSessionId={sessionId} activityId={activity?.id} checkin={checkin} />
+    </> : <>
+      <p role="status" className="text-[13px] text-muted">{t("structuredWorkout.completion_unavailable")}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
+        {session?.activity_id != null && <Link className="text-link" to={`/app/activities/${session.activity_id}`}>{t("athlete.view_activity")} ↗</Link>}
+        <Link className="text-link" to={`/app?date=${date}`}>{t("athlete.your_day")}</Link>
+        <Button variant="ghost" disabled={day.isFetching} onClick={() => void day.refetch()}>{t("structuredWorkout.completion_retry")}</Button>
+      </div>
+    </>}
+  </Card>;
+}
+
 export default function WorkoutDetail() {
   const { t } = useTranslation();
   const { id = "" } = useParams();
@@ -44,7 +77,7 @@ export default function WorkoutDetail() {
   }
   function edit(next: StructuredWorkout) { setEditing(next); setSaved(false); }
   if (query.isLoading) return <Loading />;
-  if (!query.data || query.isError) return <ErrorNote message={t("structuredWorkout.load_error")} />;
+  if (!query.data || query.isError || query.data.planned_session_id !== Number(id)) return <ErrorNote message={t("structuredWorkout.load_error")} />;
   const data = query.data;
   const show = editing ?? draft?.structure ?? data.workout?.structure;
   const error = create.error ?? confirm.error;
@@ -60,6 +93,7 @@ export default function WorkoutDetail() {
       {errorMessage && <p role="alert" className="mt-4 text-[13px] text-alertText">{errorMessage}</p>}
       {error && <Button className="mt-3" variant="ghost" disabled={pending} onClick={async () => { if (editing && dirty && !window.confirm(t("athlete.leave_unsaved"))) return; const next = await query.refetch(); if (next.data) { setEditing(null); setDraft(null); create.reset(); confirm.reset(); setSaved(false); } }}>{t("structuredWorkout.reload")}</Button>}
     </Card>
+    <WorkoutCompletion key={`${uid}:${id}:${data.session.date}`} sessionId={data.planned_session_id} date={data.session.date} />
     {!!data.education.length && !editing && !draft && <Card><CardHeader title={<h2>{t("structuredWorkout.education")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("structuredWorkout.education_note")}</p><div className="space-y-5">{data.education.map((item,index) => <section key={item.id} className={`border-t border-hairline pt-4 ${item.parent_id ? "ml-4 border-l pl-4" : ""}`}><h3 className="text-[15px] font-medium">{item.number ?? index+1}. {t("structuredWorkout.kind_" + item.kind)} · {item.objective}</h3>{item.description && <p className="mt-2 text-[13px]">{item.description}</p>}{item.kind === "repeat" ? <p className="mt-2 text-[13px]">{t("structuredWorkout.repeat_count")}: {item.repetitions}</p> : <div className="mt-2 space-y-1 text-[13px]"><p>{item.duration_s != null ? fmtDuration(item.duration_s) : item.distance_m != null ? `${item.distance_m} m` : t("structuredWorkout.unspecified_stop")}</p><p>{item.target ? `${t("structuredWorkout.target_"+item.target.kind)}: ${item.target.lower}–${item.target.upper}` : t("structuredWorkout.no_target")}</p>{item.kind === "strength" && <p>{item.exercise} · {t("structuredWorkout.strength_summary",{sets:item.sets??"—",reps:item.reps??"—",load:item.load_kg??"—"})}</p>}</div>}<p className="mt-2 text-[14px]">{item.execution}</p><p className="mt-2 text-[12px] text-muted">{item.limitation}</p><details className="mt-3"><summary className="cursor-pointer text-[13px]">{t("structuredWorkout.mistakes_alternatives")}</summary>{item.common_mistake && <p className="mt-3 text-[13px]">{item.common_mistake}</p>}{item.conservative_alternative && <p className="mt-3 text-[13px]">{item.conservative_alternative}</p>}{!item.common_mistake && !item.conservative_alternative && <p className="mt-3 text-[13px]">{t("structuredWorkout.conservative_note")}</p>}</details></section>)}</div></Card>}
     {!!data.history?.length && <Card><h2 className="mb-4 text-[15px] font-medium">{t("structuredWorkout.history")}</h2>{data.history.map(version=><details key={version.id} className="mt-3 border-t border-hairline pt-3"><summary className="cursor-pointer text-[13px]">{t("structuredWorkout.version",{revision:version.revision})} · {version.structure.title}</summary><ol className="mt-4 space-y-4">{version.structure.steps.map((step,index)=><StepSummary key={step.id} step={step} number={String(index+1)}/>)}</ol></details>)}</Card>}
     <Card><h2 className="mb-3 text-[15px] font-medium">{t("structuredWorkout.export")}</h2><p className="mb-4 text-[13px] text-muted">{t("structuredWorkout.export_note")}</p><a className="text-link" href={`/lab/workouts/${id}/export`} download>{t("structuredWorkout.export")}</a></Card>

@@ -67,30 +67,38 @@ revision remain explicit acceptance checks.
 Optional integrations whose provider setup is absent must remain clearly
 unavailable. Fitbit nutrition, partner integrations and native HealthKit/watch
 support cannot be certified by mocked browser tests. Real training choices,
-plan activation and consent remain athlete decisions. Garmin's current
-connection failure requires diagnosis; hiding the warning is not a repair.
+plan activation and consent remain athlete decisions. Garmin's historical
+failed attempts require diagnosis and a completed account sync still needs
+verification; incoming measurements alone do not establish full sync success.
 
 ## Verification log
 
 Candidate: [PR #5](https://github.com/MatteoSchiavi/Apex_Health/pull/5).
-Verification continued on 19 October 2026. No production deployment is implied
+Verification continued on 23 October 2026. No production deployment is implied
 by these results.
 
 - Production frontend build and TypeScript check pass; English/Italian have
-  2,534 matching translation keys; all five PWA tests pass.
-- The full backend run passed 1,410 tests with one intentional skip. Two old
-  tests assumed every exercise used repetitions and omitted duration from a
-  persistence fixture. After updating those contracts, all 44 tests in the
-  affected Coach/gym files pass, including persisted-generation idempotency.
-- The full browser run passed 242 tests with one intentional skip. Six
-  outdated destination/label/locator assertions were corrected. All 21 tests
-  covering those files and the phone gym view pass against the built bundle.
+  2,546 matching translation keys. All five PWA tests passed on `405256c`;
+  the final combined revision runs them again in CI.
+- The complete GitHub Actions run for `405256c` passed 1,412 backend tests
+  and 248 browser tests, with one intentional skip in each suite. Its frontend,
+  pytest, agent-evals, updater and backend-release jobs all passed. Subsequent
+  fixes require a fresh successful run on their exact commit.
 - All 26 deterministic Coach evaluations and all 81 updater tests pass.
   Installer shell validation and generated systemd unit verification pass.
 - Actual Chromium with the built SPA and a synthetic account on a separate
   FastAPI/PostgreSQL/Redis stack verified explicit date review and plan
   activation, gym confirmation, repetition and timed-set logging, completion,
   persisted state after reload, and desktop/phone layouts.
+- The 23 October synthetic onboarding check passed over real local HTTP,
+  PostgreSQL and Redis: invitation redemption, profile persistence without
+  granting AI consent, empty states, reusable invitation after an email
+  conflict, source review, explicit plan activation and persistence after
+  logout/login. The release smoke now continuously checks profile/consent,
+  plan activation, completion, rejected stale edits and account isolation.
+- Follow-up browser regressions cover legacy missing-set recovery, workout
+  completion from its detail screen, historical activity context, mismatched
+  identities, saved-vs-local check-in review and existing-email recovery.
 - A separate database migration probe verified upgrade from populated 0029,
   preservation of historical reps/weights, the new in-progress state and
   timed records, atomic rejection of a lossy downgrade, and safe downgrade
@@ -100,6 +108,60 @@ by these results.
   restore atomicity. Consult the current PR revision's checks; previous runs
   do not certify a later commit. A Redis registry quota failure was resolved
   by using the verified public image mirror for CI.
+
+## Self-assessment: what was actually covered
+
+The route inventory and the main daily workflows have been reviewed. Every
+line, integration and possible user state has not been exhaustively audited.
+Finding more defects during this second pass is evidence that the list is
+iterative, not proof that all defects are now known. Automated regressions
+establish specific behavior; they do not establish product usefulness for a
+new athlete or successful delivery to a physical device.
+
+| Feature group | Evidence established | Acceptance still needed |
+| --- | --- | --- |
+| Overview, navigation and data freshness | Live read/navigation audit; responsive browser regressions | Installed-candidate phone navigation and current Garmin account completion |
+| Plan import, explicit dates, review and activation | Built SPA with real disposable API/database; reload verified | Athlete's intended plan and actual source documents |
+| Gym workout execution | Built SPA with real disposable API/database: confirm, repetitions, seconds, completion and reload; migration preservation probe | Actual athlete workout on installed candidate |
+| Coach and proposed changes | Live failure reproduced; routing, bounded correction, consent and evidence regressions; deterministic evaluations; UI recovery tests | Useful response from the configured live model after deployment |
+| Activity, sleep, health, calendar, gear, challenges and Lab | Live read audit; backend and browser regressions | All write variants have not been exercised through the real UI/backend together |
+| Invitation, login and account isolation | Production-stack smoke plus real local onboarding/profile/plan persistence; roles, CSRF, isolation and logout | Full first-use UI journey and owner-controlled invitation of actual testers |
+| Profile, consent, check-ins, sharing, exports and account deletion | Backend tests and browser contract coverage where present | Combined real UI/backend journeys, especially recovery and revocation |
+| Owner administration and deployment | Owner UI read audit; updater tests, production-stack worker restart and encrypted backup/restore checks | Installed host updater status, migration preflight and running revision |
+| Provider connections, phone/watch and external notifications | Connector fixtures and configuration/availability checks | Actual provider authorization, device delivery and physical-device behavior |
+
+All 16 findings in the original table have corresponding implementations.
+That means the scoped fix list is implemented, not that every row has passed
+live acceptance. The 20 October review found four further concrete issues:
+
+1. A legacy gym session with set 2 saved and set 1 missing repeatedly submits
+   the already saved set. Return the first missing set number and preserve
+   historical log values.
+2. A conflicting check-in edit can repeatedly submit a stale revision. Keep
+   local edits, reload the current saved values and require an explicit choice
+   before saving again.
+3. Joining with an already registered email reports generic login failure.
+   Explain that the account exists and direct the user to log in.
+4. The primary workout detail destination exposes instructions and export but
+   no completion action. Put the existing completion/feedback form beside
+   that workout, using its exact date, session and associated activity.
+
+These follow-up fixes and their targeted regressions belong to the same PR.
+The final combined commit must pass all release checks before deployment.
+
+Garmin's reopened Personal and Business APIs change the integration roadmap.
+The [verified research and migration plan](GARMIN_API_REOPENING_2026_10.md)
+separates owner-only ingestion from multi-user authorization and workout
+delivery. No official Garmin API integration or live API-key validation has
+been completed; the news does not remove this acceptance gap.
+
+The next step is deployment preflight and installed-version acceptance after
+the candidate passes those checks. Production still returned `5d516d4` on
+20 October. Repository code cannot establish whether the host's installed
+updater is current or enabled: the deployment guide records a recovered,
+paused installation. Obtain host `status`, `doctor` and `verify` results before
+attempting recovery or resuming its timer. Do not equate merging/publishing an
+image with installing it.
 
 ## Production acceptance and rollout
 

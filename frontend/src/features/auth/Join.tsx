@@ -42,9 +42,11 @@ export default function Join() {
       setError(
         err instanceof ApiError && err.status === 400
           ? t("auth.invite_error")
-          : err instanceof ApiError && err.status === 422
-            ? t("design.join_validation")
-            : t("design.login_unavailable"),
+          : err instanceof ApiError && err.status === 409
+            ? t("auth.email_registered")
+            : err instanceof ApiError && err.status === 422
+              ? t("design.join_validation")
+              : t("design.login_unavailable"),
       );
     } finally {
       setBusy(false);
