@@ -48,7 +48,9 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Chromium's OS dependency downloads can consume most of a 10-minute job.
+    # Keep a separate bound on browser tests so slow setup cannot hide a hang.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,6 +71,7 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Exercise UI data contracts and responsive layouts
+        timeout-minutes: 10
         working-directory: frontend
         run: npm run test:ui
       - uses: actions/upload-artifact@v4

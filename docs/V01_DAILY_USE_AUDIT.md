@@ -114,6 +114,11 @@ by these results.
   restore atomicity. Consult the current PR revision's checks; previous runs
   do not certify a later commit. A Redis registry quota failure was resolved
   by using the verified public image mirror for CI.
+- The 23 October final run exposed a date-dependent test fixture: its fixed
+  September measurement had aged out of the rolling 30-day query. The test
+  now requests an explicit end date. A separate frontend run exhausted its
+  job timeout while downloading Chromium OS dependencies; setup now has a
+  larger allowance while browser execution retains its own 10-minute limit.
 
 ## Self-assessment: what was actually covered
 
@@ -168,7 +173,7 @@ been completed; the news does not remove this acceptance gap.
 
 The next step is deployment preflight and installed-version acceptance after
 the candidate passes those checks. Production still returned `5d516d4` on
-20 October. Repository code cannot establish whether the host's installed
+23 October. Repository code cannot establish whether the host's installed
 updater is current or enabled: the deployment guide records a recovered,
 paused installation. Obtain host `status`, `doctor` and `verify` results before
 attempting recovery or resuming its timer. Do not equate merging/publishing an

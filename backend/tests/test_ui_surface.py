@@ -291,11 +291,12 @@ async def test_metrics_catalog_and_trend(client: AsyncClient, db_session):
     assert "resting_hr" in catalog.json()
     assert "acwr" in catalog.json()
 
-    trend = await client.get("/metrics/resting_hr?days=30")
+    trend = await client.get(f"/metrics/resting_hr?days=30&end={TODAY.isoformat()}")
     assert trend.status_code == 200
     body = trend.json()
     assert body["metric"] == "resting_hr"
     assert body["unit"] == "bpm"
+    assert body["end_date"] == TODAY.isoformat()
     values = [p["value"] for p in body["points"] if p["value"] is not None]
     assert 44.0 in values
 
