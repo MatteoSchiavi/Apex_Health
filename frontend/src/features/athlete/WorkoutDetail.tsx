@@ -30,7 +30,7 @@ function WorkoutCompletion({ sessionId, date }: { sessionId: number; date: strin
     {day.isLoading ? <Loading /> : available ? <>
       <p className="text-[13px] text-muted">{t("structuredWorkout.completion_note")}</p>
       {activity && <Link className="text-link mt-3 inline-block text-[13px]" to={`/app/activities/${activity.id}`}>{t("athlete.view_activity")} ↗</Link>}
-      <SessionCheckin key={`${sessionId}:${activity?.id ?? "unrecorded"}`} defaultOpen
+      <SessionCheckin key={`${sessionId}:${activity?.id ?? "unrecorded"}`} defaultOpen anchor="planned"
         plannedSessionId={sessionId} activityId={activity?.id} checkin={checkin} />
     </> : <>
       <p role="status" className="text-[13px] text-muted">{t("structuredWorkout.completion_unavailable")}</p>

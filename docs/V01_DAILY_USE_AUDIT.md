@@ -78,7 +78,7 @@ Verification continued on 23 October 2026. No production deployment is implied
 by these results.
 
 - Production frontend build and TypeScript check pass; English/Italian have
-  2,547 matching translation keys. All five PWA tests passed on `405256c`;
+  2,549 matching translation keys. All five PWA tests passed on `405256c`;
   the final combined revision runs them again in CI.
 - The complete GitHub Actions run for `405256c` passed 1,412 backend tests
   and 248 browser tests, with one intentional skip in each suite. Its frontend,
@@ -119,6 +119,10 @@ by these results.
   now requests an explicit end date. A separate frontend run exhausted its
   job timeout while downloading Chromium OS dependencies; setup now has a
   larger allowance while browser execution retains its own 10-minute limit.
+- All five release checks subsequently passed on `a9482b5`, including the
+  production-stack smoke, workers and encrypted backup/restore. The later
+  association-recovery change passes its production build and 12 focused
+  browser tests locally and requires its own complete CI run before release.
 
 ## Self-assessment: what was actually covered
 
@@ -164,6 +168,16 @@ planned duration rather than only explaining that no blocks exist.
 
 These follow-up fixes and their targeted regressions belong to the same PR.
 The final combined commit must pass all release checks before deployment.
+
+A focused independent review on 23 October found one additional recovery
+case: publishing a refreshed activity association could unmount a conflicting
+check-in before the athlete chose which edits to retain. The review now keeps
+the refreshed day private until the athlete uses the saved version or saves
+their edits. Writes retain the opened workout/activity as their stable target;
+reassociation cannot redirect a workout's note to a different workout. A local
+"skipped" result remains visible but requires an explicit valid result when
+an activity has since been recorded. Browser regressions cover both daily and
+workout-detail forms, both review choices and reassociation to another workout.
 
 Garmin's reopened Personal and Business APIs change the integration roadmap.
 The [verified research and migration plan](GARMIN_API_REOPENING_2026_10.md)

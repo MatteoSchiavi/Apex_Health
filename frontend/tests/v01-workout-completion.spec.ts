@@ -39,7 +39,7 @@ async function setup(page: Page, options: { date?: string; activityId?: number; 
   await page.route('**/athlete/checkins', route => {
     const body = route.request().postDataJSON();
     writes.push(body);
-    const receipt = { ...body, activity_id: body.activity_id ?? null, planned_session_id: 8,
+    const receipt = { ...body, activity_id: options.activityId ?? null, planned_session_id: 8,
       id: 15, revision: (scheduled.checkin?.revision ?? 0) + 1 } as Checkin;
     scheduled.checkin = receipt; scheduled.status = receipt.status;
     if (day.activities[0]) day.activities[0].checkin = receipt;
@@ -86,7 +86,8 @@ test('historical workout feedback uses its date and associated recorded activity
   await panel.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await expect(panel.getByRole('button', { name: 'Save check-in', exact: true })).toBeDisabled();
   expect(state.writes).toHaveLength(1);
-  expect(state.writes[0]).toMatchObject({ planned_session_id: 8, activity_id: 44, status: 'partial', note: 'Stopped early' });
+  expect(state.writes[0]).toMatchObject({ planned_session_id: 8, status: 'partial', note: 'Stopped early' });
+  expect(state.writes[0]).not.toHaveProperty('activity_id');
   expect(state.dayDates.every(date => date === '2026-09-18')).toBe(true);
   await page.reload();
   await expect(result).toHaveValue('partial');

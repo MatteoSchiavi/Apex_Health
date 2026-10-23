@@ -1909,6 +1909,8 @@
     "checkin_review_error": "Non è stato possibile caricare il riscontro salvato. Le modifiche sono ancora qui; riprova.",
     "checkin_review_note": "Confronta la versione salvata con le tue modifiche. Scegliere una versione non salva ancora nulla.",
     "checkin_saved_value": "Versione salvata",
+    "checkin_association_changed": "Il collegamento tra questo allenamento e l’attività registrata è cambiato. Le tue modifiche sono ancora qui: rivedi il riscontro attuale prima di salvare.",
+    "checkin_recorded_result": "Questo allenamento ora ha un’attività registrata. Scegli completato o completato parzialmente prima di salvare.",
     "checkin_your_value": "Le tue modifiche",
     "checkin_keep_edits": "Mantieni le mie modifiche",
     "additional_feedback": "Altri dettagli (facoltativi)",

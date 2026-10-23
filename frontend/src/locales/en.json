@@ -1908,6 +1908,8 @@
     "checkin_review_current": "Review the saved check-in",
     "checkin_review_error": "The saved check-in could not be loaded. Your edits are still here; try again.",
     "checkin_review_note": "Review the saved version alongside your edits. Choosing a version does not save anything yet.",
+    "checkin_association_changed": "The link between this workout and its recorded activity has changed. Your edits are still here; review the current feedback before saving.",
+    "checkin_recorded_result": "This workout now has a recorded activity. Choose completed or partially completed before saving.",
     "checkin_saved_value": "Saved version",
     "checkin_your_value": "Your edits",
     "checkin_keep_edits": "Keep my edits",
