@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.agent import loop
-from app.core.llm import LLMResponse, parse_completion
+from app.core.llm import LLMResponse, ToolCallRequest, parse_completion
 from app.models.athlete import AiConsent
 from app.services import ai_access
 from app.services.evidence import EvidenceError
@@ -177,6 +177,80 @@ async def test_single_correction_can_recover_a_valid_answer(runtime):
     assert result.grounding["correction_attempted"] is True
     assert len(provider.calls) == 2 and provider.calls[1]["tools"] is None
     assert result.grounding["verified_claims"][0]["value"] == 50.5
+
+
+async def test_token_heavy_planning_turn_reserves_a_compact_correction(runtime, monkeypatch):
+    """A third retrieval previously left 29,853 tokens spent and no repair."""
+    store, _ = runtime
+    reads = []
+
+    async def summary(ctx, days=7):
+        reads.append(days)
+        return {"data": {"observations": EVIDENCE}, "evidence_refs": [CLAIM["evidence_id"]]}
+
+    monkeypatch.setattr(loop.TOOL_REGISTRY["data_get_recovery_summary"], "handler", summary)
+
+    class PlanningProvider:
+        def __init__(self):
+            self.calls = []
+            self.read_calls = 0
+            self.final_calls = 0
+
+        async def complete(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs["tools"]:
+                self.read_calls += 1
+                return LLMResponse(None, "fixture", tokens_in=6000, tokens_out=400,
+                    tool_calls=[ToolCallRequest(str(self.read_calls), "data_get_recovery_summary",
+                                               {"days": [7, 14, 28][self.read_calls - 1]})])
+            self.final_calls += 1
+            if self.final_calls == 1:
+                return LLMResponse(answer("Proposta: 3 serie da 8 ripetizioni. Rivedi il piano prima di attivarlo.", [CLAIM]),
+                                   "fixture", tokens_in=9500, tokens_out=1153)
+            return LLMResponse(answer("Rivedi la proposta prima di attivarla. Le osservazioni registrate restano distinte dai carichi suggeriti.", [CLAIM]),
+                               "fixture", tokens_in=900, tokens_out=150)
+
+    provider = PlanningProvider()
+    result = await loop.run_agent_loop(store.sessionmaker, provider, user_id=1, session_id=1,
+        text="Proponi una sessione da rivedere usando il piano e il recupero.",
+        system="Synthetic context only " + "history " * 2000, tier="cheap", today=NOW.date(),
+        initial_evidence=EVIDENCE, locale="it")
+    assert reads == [7, 14] and len(provider.calls) == 4
+    assert result.grounding["status"] == "structured"
+    assert result.grounding["correction_attempted"] is True
+    assert result.grounding["tokens_used"] == 24503 < loop.MAX_TURN_TOKENS
+    correction = provider.calls[-1]
+    assert correction["tools"] is None
+    assert correction["system"] == loop.CORRECTION_SYSTEM
+    assert "history history" not in json.dumps(correction)
+    assert "UNCITED_NUMERIC_TEXT" in correction["messages"][0]["content"]
+    assert result.grounding["verified_claims"][0]["value"] == 50.5
+
+
+async def test_compact_correction_keeps_consent_and_claim_validation(runtime):
+    store, _ = runtime
+    provider = ScriptedProvider([answer("Do 3 sets and your HRV will be 99 ms."),
+                                 answer("Recorded HRV is 99 ms.")])
+    result = await run_turn(store, provider)
+    assert result.grounding["status"] == "invalid"
+    assert result.grounding["verified_claims"] == []
+    assert len(provider.calls) == 2 and provider.calls[-1]["tools"] is None
+
+
+def test_correction_input_is_bounded_for_multibyte_candidates_without_changing_evidence():
+    content = "È una proposta da rivedere, non un piano attivo. " * 500
+    remaining = 8500
+    messages = loop._correction_messages(content, {"error_code": "UNCITED_NUMERIC_TEXT"}, EVIDENCE,
+                                        locale="it", tier="powerful", remaining_tokens=remaining)
+    assert messages is not None
+    payload = json.loads(messages[0]["content"])
+    assert payload["candidate_truncated"] is True
+    assert content.startswith(payload["candidate"])
+    assert payload["claim_examples"] == [{**CLAIM, "kind": "MEASURED"}]
+    request = {"messages": messages, "system": loop.CORRECTION_SYSTEM, "tier": "powerful", "tools": None}
+    assert len(loop._dumps(request).encode()) + 4096 + 256 <= remaining
+    assert loop._correction_messages(content, {}, EVIDENCE, locale="it", tier="powerful",
+                                     remaining_tokens=1000) is None
 
 
 @pytest.mark.parametrize("locale,phrase", [("en", "one metric"), ("it", "una sola metrica")])

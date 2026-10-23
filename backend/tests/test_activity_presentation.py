@@ -13,8 +13,17 @@ from app.models.gym_detail import GymDayExercise, GymDayPlan, GymExercise, GymSe
 from app.models.user import User
 from app.services.activity_presentation import (
     activity_presentation, gym_strength, imported_strength, recorded_zones,
-    slope_count, sport_kind, strength_summary,
+    slope_count, source_activity_type, sport_kind, strength_summary,
 )
+
+
+def test_provider_sport_label_requires_unambiguous_recorded_data():
+    assert source_activity_type({"garmin": {"type_key": "disc_golf"}}) == "disc_golf"
+    assert source_activity_type({"garmin": {"type_key": " sailing "}}) == "sailing"
+    assert source_activity_type({"garmin": {"type_key": "sailing"}, "other": {"type_key": "sailing"}}) == "sailing"
+    assert source_activity_type({"garmin": {"type_key": "sailing"}, "other": {"type_key": "rowing"}}) is None
+    assert source_activity_type({"garmin": {"type_key": 99}, "other": {"type_key": " "}}) is None
+    assert source_activity_type(None) is None
 
 
 def test_partial_volume_does_not_invent_missing_weight_or_progression():

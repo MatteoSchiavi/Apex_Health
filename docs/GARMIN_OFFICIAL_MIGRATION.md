@@ -1,5 +1,16 @@
 # Garmin official API migration boundary
 
+## 22 October 2026: official access has changed
+
+Garmin now publishes a Personal API and reopened Business access. See
+[the verified research and Apex migration plan](GARMIN_API_REOPENING_2026_10.md).
+Personal access uses a self-generated key for the owner's data; it does not
+require the Business approval workflow described below. Business access is
+the intended route for Apex's multi-user integration and workout delivery.
+This changes the access prerequisite, not the implementation status: the
+current runtime still uses the unofficial connector and the official class
+below remains a placeholder.
+
 ## Current architecture
 
 The existing Garmin path is an unofficial Garmin Connect integration. The
@@ -33,7 +44,7 @@ states that automated tests never call Garmin's live API. The checked-in
 fixtures establish only those test shapes. No live Garmin account validation
 is recorded.
 
-## Official access is a separate integration
+## Official Business access is a separate integration
 
 The repository has no Garmin official API OAuth adapter, official API
 credential settings, webhook receiver, official response fixtures, or
@@ -115,7 +126,7 @@ product documentation is available, decide whether a canonical client protocol
 can be shared or whether official sync needs a distinct transport protocol.
 That decision should follow actual payloads and operations contracts.
 
-## Credential and release dependencies
+## Business credential and release dependencies
 
 The official path cannot be considered ready until all of these are satisfied:
 

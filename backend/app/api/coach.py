@@ -19,6 +19,7 @@ from app.models.user import User
 from app.queries.gym_detail import (
     NotPlanOwnerError,
     PlanNotFoundError,
+    SetLogConflictError,
     log_set,
     next_up,
     plan_for_date,
@@ -333,7 +334,7 @@ async def post_confirm_gym_plan(
     if plan is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="no plan for that date")
     revision = await plan_revision(session, user.id, plan.id)
-    if plan.status == "done":
+    if plan.status in {"done", "completed"}:
         raise HTTPException(409, "Completed sessions cannot be confirmed again")
     audited = await session.scalar(select(ChangeAudit).where(ChangeAudit.user_id == user.id,
         ChangeAudit.action.in_(("gym_draft_generated", "gym_draft_refreshed")),
@@ -349,7 +350,8 @@ async def post_confirm_gym_plan(
     if plan.status == "draft":
         session.add(ChangeAudit(user_id=user.id, action="gym_draft_confirmed",
             payload={"plan_id": plan.id, "revision": revision}))
-    plan.status = "confirmed"
+    if plan.status == "draft":
+        plan.status = "confirmed"
     await session.commit()
     return {"plan_id": plan.id, "status": plan.status}
 
@@ -371,8 +373,15 @@ async def get_next_exercise(
 class SetLogIn(BaseModel):
     gym_day_exercise_id: int
     set_number: int = Field(ge=1, le=30)
-    reps_done: int = Field(ge=0, le=500)
-    weight_kg: float | None = Field(default=None, ge=0, le=500)
+    reps_done: int | None = Field(default=None, ge=1, le=500)
+    duration_s: int | None = Field(default=None, ge=1, le=86400)
+    weight_kg: float | None = Field(default=None, ge=0, le=500, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def measurement(self):
+        if (self.reps_done is None) == (self.duration_s is None):
+            raise ValueError("Record either repetitions or duration, matching the exercise target")
+        return self
 
 
 @router.post("/gym/session/{plan_id}/log")
@@ -391,7 +400,10 @@ async def post_log_set(
             payload.set_number,
             payload.reps_done,
             payload.weight_kg,
+            duration_s=payload.duration_s,
         )
+    except SetLogConflictError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from None
     except (PlanNotFoundError, NotPlanOwnerError):
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail="plan not found"

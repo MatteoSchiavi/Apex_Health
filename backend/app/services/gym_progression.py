@@ -29,12 +29,15 @@ def gym_progression(rows, timezone, *, complete=True):
         key = (exercise.id, str(log.done_at.astimezone(tz).date()))
         bucket = groups.setdefault(key, {"exercise":exercise.name, "exercise_id":exercise.id,
             "equipment":getattr(exercise,"equipment",None), "date":key[1], "sets":0,
-            "reps":0, "volume_kg":None, "observed_weight_sets":0, "e1rm_kg":None, "source_dependencies":[]})
+            "reps":None, "duration_s":None, "volume_kg":None, "observed_weight_sets":0, "e1rm_kg":None, "source_dependencies":[]})
         bucket["sets"] += 1
-        bucket["reps"] += log.reps_done
+        if log.reps_done is not None:
+            bucket["reps"] = (bucket["reps"] or 0) + log.reps_done
+        if getattr(log, "duration_s", None) is not None:
+            bucket["duration_s"] = (bucket["duration_s"] or 0) + log.duration_s
         bucket["source_dependencies"].append(f"gym_set_log:{log.id}")
         weight = positive(log.weight_kg, zero=True)
-        if weight is not None:
+        if weight is not None and log.reps_done is not None:
             bucket["observed_weight_sets"] += 1
             bucket["volume_kg"] = (bucket["volume_kg"] or 0)+weight*log.reps_done
             if 1 <= log.reps_done <= 10 and weight > 0:

@@ -9,6 +9,7 @@ from app.models.activity import Activity, ActivitySourceLink
 from app.models.integration import Integration
 from app.models.lab import FeedState, Observation
 from app.connectors.escalation import SYNC_ERROR_CLASSES
+from app.services.evidence import METRICS
 
 STALE_AFTER_HOURS = 48
 _STALE_AFTER = timedelta(hours=STALE_AFTER_HOURS)
@@ -104,6 +105,8 @@ async def _latest_measurement(
             Observation.user_id == user_id,
             Observation.origin == provider,
             Observation.current.is_(True),
+            Observation.availability == "available",
+            Observation.value["value"].astext.is_not(None),
         )
     )
     activity_at = await session.scalar(
@@ -169,17 +172,27 @@ def _base_feed(
     }
 
 
-def _account_summary(provider, integration, feed_rows, measured_at, now):
+def _account_summary(provider, integration, feed_rows, measured_at, now, *, metric_measurements=None):
     """Attempt health is independent of the age of successfully fetched data."""
     account = next((feed for feed in feed_rows if feed.feed == "account_sync"), None)
     sources = [feed for feed in feed_rows if feed.feed != "account_sync"]
-    successes = [feed.last_success_at for feed in feed_rows if feed.last_success_at]
+    # A metric checkpoint is not a completed account synchronization. Once
+    # account telemetry exists, only its completion (or the connector's own
+    # completion) can be labelled a successful account attempt.
+    successes = [account.last_success_at] if account and account.last_success_at else []
+    if account is None:
+        successes.extend(feed.last_success_at for feed in sources if feed.last_success_at)
     if integration is not None and integration.last_synced_at:
         successes.append(integration.last_synced_at)
     last_success = max(successes) if successes else None
     attempts = [feed.last_attempt_at for feed in sources if feed.last_attempt_at]
     last_attempt = account.last_attempt_at if account and account.last_attempt_at else max(attempts) if attempts else None
-    measurements = [feed.latest_measurement_at for feed in sources if feed.latest_measurement_at]
+    measurements = [
+        metric_measurements.get(feed.feed) if metric_measurements is not None and feed.feed in METRICS
+        else feed.latest_measurement_at
+        for feed in sources
+    ]
+    measurements = [value for value in measurements if value is not None]
     if measured_at:
         measurements.append(measured_at)
     latest_measurement = max(measurements) if measurements else None
@@ -254,19 +267,42 @@ async def sync_health(
         )
     ).all()
 
+    # FeedState is an operational checkpoint, written as payloads arrive. The
+    # current non-null observations are the authoritative measurement inventory
+    # used by coverage too. Reconcile on read so previously imported backfills
+    # and later provider corrections are fixed without refetching health data.
+    measurements = (await session.execute(
+        select(Observation.origin, Observation.metric, func.max(Observation.measured_at))
+        .where(
+            Observation.user_id == user_id,
+            Observation.current.is_(True),
+            Observation.availability == "available",
+            Observation.value["value"].astext.is_not(None),
+        )
+        .group_by(Observation.origin, Observation.metric)
+    )).all()
+    metric_measurements = {(provider, metric): measured for provider, metric, measured in measurements}
+
     feeds: list[dict] = []
     providers_with_feed_rows: set[str] = set()
     for feed in feed_rows:
         providers_with_feed_rows.add(feed.provider)
-        feeds.append(
-            _base_feed(
+        health = _base_feed(
                 provider=feed.provider,
                 feed_name=feed.feed,
                 feed=feed,
                 integration=integration_by_provider.get(feed.provider),
                 now=now,
             )
-        )
+        if feed.feed in METRICS:
+            measured = metric_measurements.get((feed.provider, feed.feed))
+            health["latest_measurement_at"] = measured
+            if feed.availability in {"available", "not_measured", "stale", "complete"}:
+                health["state"] = (
+                    "not_measured" if measured is None else
+                    "stale" if measured < now - _STALE_AFTER else "available"
+                )
+        feeds.append(health)
 
     # Integration-level sync is still useful when no metric feed has ever
     # emitted a FeedState (for example, activity-only providers). Use a stable
@@ -291,6 +327,8 @@ async def sync_health(
     for provider in sorted(set(integration_by_provider) | providers_with_feed_rows):
         measured_at = await _latest_measurement(session, user_id, provider)
         accounts.append(_account_summary(provider, integration_by_provider.get(provider),
-            [feed for feed in feed_rows if feed.provider == provider], measured_at, now))
+            [feed for feed in feed_rows if feed.provider == provider], measured_at, now,
+            metric_measurements={metric: measured for (origin, metric), measured in metric_measurements.items()
+                                 if origin == provider}))
     feeds.sort(key=lambda row: (row["provider"], row["feed"]))
     return {"feeds": feeds, "accounts": accounts}

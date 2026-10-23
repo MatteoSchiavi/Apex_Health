@@ -172,6 +172,7 @@ async def test_challenge_api_flow(client: AsyncClient, db_session):
         headers=csrf_headers(client),
     )
     assert created.status_code == 201
+    assert created.json()["is_member"] is True
     challenge_id = created.json()["id"]
 
     # owner auto-joins
@@ -179,7 +180,7 @@ async def test_challenge_api_flow(client: AsyncClient, db_session):
     assert len(members) == 1
 
     listed = (await client.get("/challenges")).json()
-    assert any(c["id"] == challenge_id for c in listed)
+    assert next(c for c in listed if c["id"] == challenge_id)["is_member"] is True
 
     detail = await client.get(f"/challenges/{challenge_id}")
     assert detail.status_code == 200
@@ -187,8 +188,34 @@ async def test_challenge_api_flow(client: AsyncClient, db_session):
 
     left = await client.post(f"/challenges/{challenge_id}/leave", headers=csrf_headers(client))
     assert left.status_code == 200
+    listed = (await client.get("/challenges")).json()
+    assert next(c for c in listed if c["id"] == challenge_id)["is_member"] is False
     joined = await client.post(f"/challenges/{challenge_id}/join", headers=csrf_headers(client))
     assert joined.status_code == 200
+    listed = (await client.get("/challenges")).json()
+    assert next(c for c in listed if c["id"] == challenge_id)["is_member"] is True
+
+
+async def test_membership_reflects_current_user_not_creator_or_other_members(client: AsyncClient, db_session):
+    friend = await _make_user(db_session, "challenge-friend", seed=False)
+    challenge = Challenge(name="Friend's challenge", metric="steps", period="all_time", created_by=friend.id)
+    db_session.add(challenge)
+    await db_session.flush()
+    db_session.add(ChallengeMember(challenge_id=challenge.id, user_id=friend.id))
+    await db_session.commit()
+    await _login(client)
+    listed = (await client.get("/challenges")).json()
+    row = next(c for c in listed if c["id"] == challenge.id)
+    assert row["is_member"] is False
+    assert row["member_count"] == 1
+    assert row["created_by"] == friend.id
+
+    response = await client.post(f"/challenges/{challenge.id}/join", headers=csrf_headers(client))
+    assert response.status_code == 200
+    listed = (await client.get("/challenges")).json()
+    row = next(c for c in listed if c["id"] == challenge.id)
+    assert row["is_member"] is True
+    assert row["member_count"] == 2
 
 
 async def test_challenge_api_rejects_unknown_metric(client: AsyncClient):

@@ -176,7 +176,7 @@ export default function ActivitiesPage() {
                           </span>
                           <span>
                             <span className="text-[14px] font-medium">
-                              {friendlyDiscipline(a.discipline, t)}
+                              {friendlyDiscipline(a.discipline ?? a.source_activity_type, t)}
                             </span>
                             <span className="mt-1 block text-[12px] text-muted">
                               {new Date(a.start_time).toLocaleDateString(
@@ -231,7 +231,7 @@ export default function ActivitiesPage() {
                         <Link
                           to={"/app/activities/" + a.id}
                           aria-label={t("design.open_session", {
-                            name: friendlyDiscipline(a.discipline, t),
+                            name: friendlyDiscipline(a.discipline ?? a.source_activity_type, t),
                           })}
                         >
                           <ArrowUpRight size={17} />

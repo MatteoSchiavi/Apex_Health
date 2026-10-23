@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 import { installApi, today } from './fixtures';
 
 for (const [state, message, href] of [
-  ['profile_ready', 'Your athlete profile is ready. You do not have an active training plan yet.', '/app/lab?tab=documents'],
+  ['profile_ready', 'Your athlete profile is ready. You do not have an active training plan yet.', '/app/training?tab=planning'],
   ['profile_incomplete', 'Your athlete profile is saved. Add any details that would help you plan.', '/app/settings?tab=profile'],
-  ['plan_draft', 'Your training plan draft is ready to review. It has not been activated.', '/app/lab?tab=documents#document-7'],
+  ['plan_draft', 'Your training plan draft is ready to review. It has not been activated.', '/app/training?tab=planning#document-7'],
   ['active_rest_day', 'You have an active plan. No workout is scheduled for this day.', null],
 ] as const) {
   test(`Today distinguishes ${state} without a workout`, async ({page}) => {

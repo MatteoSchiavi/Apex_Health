@@ -46,7 +46,8 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
   if (!data.data || data.isError) return <ErrorNote />;
   const day = data.data;
   const context = day.planning_context;
-  const contextLink = context?.state === "plan_draft" ? `/app/lab?tab=documents#${context.draft_template_id ? "template-"+context.draft_template_id : "document-"+context.draft_document_id}` : context?.state === "template_ready" ? `/app/lab?tab=documents#template-${context.template_id}` : context?.state === "profile_ready" ? "/app/lab?tab=documents" : "/app/settings?tab=profile";
+  const contextLink = context?.state === "plan_draft" ? `/app/training?tab=planning#${context.draft_template_id ? "template-"+context.draft_template_id : "document-"+context.draft_document_id}` : context?.state === "template_ready" ? `/app/training?tab=planning#template-${context.template_id}` : context?.state === "profile_ready" ? "/app/training?tab=planning" : "/app/settings?tab=profile";
+  const gymLink = `/app/training?date=${day.date}#gym-session`;
   const recorded = activityId ? day.activities.filter(a => a.id === activityId) : day.activities;
   const sessions = activityId ? day.sessions.filter(s => s.activity_id === activityId) : day.sessions;
   const remaining = sessions.filter(s => ["planned", "modified", "partial"].includes(s.status));
@@ -54,7 +55,7 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
   const remainingGym = day.legacy_gym_sessions.filter(g => g.status !== "completed");
   const remainingCount = remaining.length + remainingGym.length;
   const hasCompleted = recorded.length > 0 || reportedCompleted.length > 0 || day.legacy_gym_sessions.some(g => g.status === "completed");
-  const hasPartial = remaining.some(s => s.status === "partial") || recorded.some(a => a.checkin?.status === "partial");
+  const hasPartial = remainingGym.some(g => g.status === "active") || remaining.some(s => s.status === "partial") || recorded.some(a => a.checkin?.status === "partial");
   const rest = context?.state === "active_rest_day" && !sessions.length && !recorded.length && !day.legacy_gym_sessions.length;
   const state = hasPartial || (hasCompleted && remainingCount > 0) ? "in_progress"
     : hasCompleted ? "completed"
@@ -70,10 +71,10 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
   const distance = recorded.length ? day.totals.distance_m?.value ?? (recorded.length === 1 ? recorded[0].distance_m : null) : next?.distance_m;
   const emptyDay = !sessions.length && !recorded.length && !day.legacy_gym_sessions.length;
   const cta = remaining[0] ? { to: `/app/workouts/${remaining[0].id}`, label: t("betaDaily.view_workout") }
-    : remainingGym.length ? { to: "/app/training", label: t("betaDaily.view_workout") }
+    : remainingGym.length ? { to: gymLink, label: t("betaDaily.view_workout") }
     : recorded.length ? { to: recorded.length === 1 ? `/app/activities/${recorded[0].id}` : "/app/activities", label: t(recorded.length === 1 ? "athlete.view_activity" : "betaDaily.view_activities") }
     : next ? { to: `/app/workouts/${next.id}`, label: t("betaDaily.view_workout") }
-    : day.legacy_gym_sessions.length ? { to: "/app/training", label: t("betaDaily.view_workout") }
+    : day.legacy_gym_sessions.length ? { to: gymLink, label: t("betaDaily.view_workout") }
     : !day.is_historical && !rest ? { to: contextLink, label: t(context?.state === "plan_draft" ? "athlete.review_draft" : context?.state === "profile_ready" || context?.state === "template_ready" ? "athlete.create_review_plan" : "athlete.build_context") }
     : null;
   return <Card className="!p-5 sm:!p-6">
@@ -109,7 +110,7 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
         <button className="text-link mt-3 text-[12px]" disabled={protect.isPending} onClick={() => protect.mutate({ id: s.plan_protected ? s.plan_id : s.id, revision: s.plan_revision, value: s.plan_protected ? false : !s.workout_protected, wholePlan: s.plan_protected })}>{t(s.plan_protected ? "athlete.unprotect_plan" : s.workout_protected ? "athlete.unprotect_workout" : "athlete.protect_workout")}</button>
       </li>)}
     </ul></section>}
-    {!activityId && day.legacy_gym_sessions.map(g => <div className="border-t border-hairline py-4 text-[13px]" key={g.gym_day_plan_id}><Link className="text-link" to="/app/training">{g.title} ↗</Link><p className="mt-1 text-muted">{t("athlete.legacy_gym_context")}</p></div>)}
+    {!activityId && day.legacy_gym_sessions.map(g => <div className="border-t border-hairline py-4 text-[13px]" key={g.gym_day_plan_id}><Link className="text-link" to={gymLink}>{g.title} ↗</Link><p className="mt-1 text-muted">{t("athlete.legacy_gym_context")}</p></div>)}
     {protect.isError && <ErrorNote />}
     {!activityId && !!day.activities.length && <div className="mt-4 border-t border-hairline pt-4"><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {Object.entries(day.totals).map(([key, total]) => <div key={key} className="text-[12px]"><p className="text-muted">{t("athlete.total_"+key)}</p><p className="num mt-1 text-[18px]">{key === "duration_s" ? fmtDuration(total.value) : key === "distance_m" ? `${fmtNum(units.distance(total.value), 1)} ${units.distanceUnit}` : key === "elevation_gain_m" ? `${fmtNum(units.elevation(total.value))} ${units.elevationUnit}` : `${fmtNum(total.value, 1)} ${total.unit}`}</p><p className="mt-1 text-muted">{t("athlete.coverage_sessions", { known: total.available_sessions, total: total.total_sessions })}</p></div>)}

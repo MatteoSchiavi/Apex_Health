@@ -71,13 +71,6 @@ export function Logo() {
     </div>
   );
 }
-function Mark() {
-  return (
-    <svg width="26" height="28" viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M16 2L31 29H23L16 15L9 29H1Z" fill="currentColor" />
-    </svg>
-  );
-}
 function SearchDialog({
   onClose,
   returnFocus,
@@ -195,9 +188,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const notificationRoot = useRef<HTMLDivElement>(null);
   const notificationButton = useRef<HTMLButtonElement>(null);
-  const [sidebarHover, setSidebarHover] = useState(false);
-  const [sidebarFocus, setSidebarFocus] = useState(false);
-  const sidebarCollapsed = !sidebarHover && !sidebarFocus;
   const notifications = useLab<NotificationsData>("/lab/notifications");
   const unread = notifications.data?.items.filter((n) => n.state === "created").length ?? 0;
   const syncHealth = useSyncHealth();
@@ -258,8 +248,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const inSharing = location.pathname.startsWith("/app/sharing");
   const isSectionActive = (to: string, end?: boolean) => (to === "/app/training" && inTraining) || (to === "/app/settings" && inSharing) || (end ? location.pathname === to : location.pathname === to || location.pathname.startsWith(to+"/"));
   const current = NAV.find(n=>isSectionActive(n.to,n.end)) ?? (location.pathname === "/admin" ? { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true } : NAV[0]);
-  const visibleNav = me?.role === "owner" ? [...NAV, { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true }] : NAV;
-  const mobilePrimary = visibleNav.filter((n) => ["/app", "/app/biometrics", "/app/activities", "/app/sleep"].includes(n.to));
+  const dailyPaths = ["/app", "/app/training", "/app/coach", "/app/activities"];
+  const allNav = me?.role === "owner" ? [...NAV, { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true }] : NAV;
+  const mobilePrimary = dailyPaths.map(path => allNav.find(item => item.to === path)!);
+  const visibleNav = [...mobilePrimary, ...allNav.filter(item => !dailyPaths.includes(item.to))];
   const mobileMore = visibleNav.filter((n) => !mobilePrimary.includes(n));
   const mobileMoreActive = mobileMore.some(n=>isSectionActive(n.to,n.end));
   async function logout() {
@@ -289,34 +281,32 @@ export function AppShell({ children }: { children: ReactNode }) {
           returnFocus={searchOpener.current}
         />
       )}
-      <aside onMouseEnter={() => setSidebarHover(true)} onMouseMove={() => setSidebarHover(true)} onMouseLeave={() => setSidebarHover(false)}
-        onFocus={e => setSidebarFocus((e.target as HTMLElement).matches(":focus-visible"))} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSidebarFocus(false); }}
-        className={(sidebarCollapsed ? "w-[76px] px-3 " : "w-[224px] px-6 ") + "sticky top-0 hidden h-dvh min-h-0 shrink-0 flex-col overflow-hidden border-r border-hairline py-8 lg:flex transition-[width,padding] duration-150 motion-reduce:transition-none"}>
+      <aside
+        className="sticky top-0 hidden h-dvh w-[224px] min-h-0 shrink-0 flex-col overflow-hidden border-r border-hairline px-6 py-8 lg:flex">
         <div className="mb-8 flex h-8 shrink-0 items-center justify-between gap-2">
-          <NavLink to="/app" aria-label="Apex Health" className={sidebarCollapsed ? "mx-auto" : "min-w-0 overflow-hidden"}>
-            {sidebarCollapsed ? <Mark /> : <Logo />}
+          <NavLink to="/app" aria-label="Apex Health" className="min-w-0 overflow-hidden">
+            <Logo />
           </NavLink>
         </div>
-        <div aria-hidden={sidebarCollapsed} className="mb-4 h-[18px] text-[12px] text-muted" style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}>{t("design.workspace")}</div>
+        <div className="mb-4 text-[12px] text-muted">{t("design.workspace")}</div>
         <nav
           aria-label={t("design.navigation")}
           className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-y-auto"
         >
-          {visibleNav.map(({ to, icon: Icon, key, end }) => (
-            <Link key={to} to={to} title={sidebarCollapsed ? t(key) : undefined} aria-label={sidebarCollapsed ? t(key) : undefined} aria-current={isSectionActive(to,end) ? "page" : undefined}
-              className={"flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + (sidebarCollapsed ? "justify-center px-2 " : "px-3 ") + (isSectionActive(to,end) ? "bg-ink font-medium text-canvas" : "text-muted hover:bg-surface2 hover:text-ink")}>
+          {visibleNav.map(({ to, icon: Icon, key, end }, index) => (
+            <div key={to} className="shrink-0">
+            {index === mobilePrimary.length && <p className="px-3 pb-2 pt-5 text-[11px] uppercase tracking-wide text-muted">{t("v01Navigation.explore")}</p>}
+            <Link to={to} aria-current={isSectionActive(to,end) ? "page" : undefined}
+              className={"flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + "px-3 " + (isSectionActive(to,end) ? "bg-ink font-medium text-canvas" : "text-muted hover:bg-surface2 hover:text-ink")}>
               <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
-              <span className={sidebarCollapsed ? "sr-only" : "truncate"}>{t(key)}</span>
-            </Link>
+              <span className="truncate">{t(key)}</span>
+            </Link></div>
           ))}
         </nav>
         <div className="shrink-0 pt-6">
           <NavLink
             to="/app/settings?tab=devices"
-            tabIndex={sidebarCollapsed ? -1 : undefined}
-            aria-hidden={sidebarCollapsed}
-            className="block h-[78px] border-b border-hairline pb-5 overflow-hidden"
-            style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}
+            className="block min-h-[78px] border-b border-hairline pb-5"
           >
             <span className="status text-muted">
               {devices.isError
@@ -333,7 +323,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <div className="mt-5 flex h-9 items-center gap-3">
             <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="flex h-9 shrink-0 items-center justify-center px-3 text-muted hover:text-ink"><LogOut size={16} /></button>
-            <div className="min-w-0 overflow-hidden" style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}><p className="truncate text-[13px] font-medium">{me?.name}</p><span className="text-[12px] text-muted">{t("auth.logout")}</span></div>
+            <div className="min-w-0 overflow-hidden"><p className="truncate text-[13px] font-medium">{me?.name}</p><span className="text-[12px] text-muted">{t("auth.logout")}</span></div>
           </div>
           {logoutError && <ErrorNote />}
         </div>

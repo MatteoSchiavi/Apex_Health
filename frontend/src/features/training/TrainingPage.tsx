@@ -14,6 +14,7 @@ import { TrainingSections } from "./TrainingSections";
 
 import { YourDay } from "../athlete/YourDay";
 import { LifeEvents } from "../athlete/LifeEvents";
+import { TrainingPlanWorkspace } from "../athlete/TrainingPlanWorkspace";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -322,11 +323,14 @@ interface GymExerciseRow {
   movement_pattern: string;
   position: number;
   sets: number;
-  reps_min: number;
+  reps_min: number | null;
+  duration_min_s?: number | null;
+  duration_max_s?: number | null;
   reps_max: number | null;
   rest_seconds: number | null;
   notes: string | null;
   sets_done: number;
+  next_set_number?: number | null;
   complete: boolean;
 }
 
@@ -349,13 +353,20 @@ interface GymPlanResp {
   hint?: string;
 }
 
-function GymPlan() {
+function GymPlan({ day }: { day: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const day = todayIso();
-  const [rest, setRest] = useState<number | null>(null);
-  const [reps, setReps] = useState("");
-  const [weight, setWeight] = useState("");
+  const editable = day === todayIso();
+  const [restUntil, setRestUntil] = useState<number | null>(null);
+  const [clock, setClock] = useState(Date.now());
+  const [entry, setEntry] = useState({ exerciseId: 0, reps: "", weight: "" });
+  const rest = restUntil === null ? 0 : Math.max(0, Math.ceil((restUntil - clock) / 1000));
+  const refresh = () => Promise.all([
+    qc.invalidateQueries({ queryKey: ["gym-plan", day] }),
+    qc.invalidateQueries({ queryKey: ["athlete-day"] }),
+    qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }),
+    qc.invalidateQueries({ queryKey: ["lab"] }),
+  ]);
 
   const plan = useQuery({
     queryKey: ["gym-plan", day],
@@ -366,12 +377,12 @@ function GymPlan() {
     mutationFn: () => api.post<PlanView>(`/gym/plan/${day}/generate`),
     onSuccess: () => {
       confirm.reset();
-      return qc.invalidateQueries({ queryKey: ["gym-plan", day] });
+      return refresh();
     },
   });
   const confirm = useMutation({
     mutationFn: () => api.post(`/gym/plan/${day}/confirm`, {expected_revision: plan.data?.plan?.revision}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["gym-plan", day] }),
+    onSuccess: refresh,
   });
 
   const logOne = useMutation({
@@ -379,68 +390,87 @@ function GymPlan() {
       plan_id: number;
       gym_day_exercise_id: number;
       set_number: number;
-      reps_done: number;
+      reps_done: number | null;
+      duration_s: number | null;
       weight_kg: number | null;
     }) =>
-      api.post<{ rest_seconds: number | null }>(
+      api.post<{ rest_seconds: number | null; next?: { done?: boolean } }>(
         `/gym/session/${payload.plan_id}/log`,
         {
           gym_day_exercise_id: payload.gym_day_exercise_id,
           set_number: payload.set_number,
-          reps_done: payload.reps_done,
+          ...(payload.duration_s != null ? { duration_s: payload.duration_s } : { reps_done: payload.reps_done }),
           weight_kg: payload.weight_kg,
         },
       ),
     onSuccess: (resp) => {
-      setRest(resp?.rest_seconds ?? 90);
-      setReps("");
-      qc.invalidateQueries({ queryKey: ["gym-plan", day] });
-      qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] });
-      qc.invalidateQueries({ queryKey: ["lab"] });
+      const now = Date.now();
+      setClock(now);
+      setRestUntil(!resp.next?.done && resp.rest_seconds != null && resp.rest_seconds > 0
+        ? now + resp.rest_seconds * 1000 : null);
+      return refresh();
     },
   });
 
   useEffect(() => {
-    if (rest === null || rest <= 0) return undefined;
-    const timer = setInterval(
-      () => setRest((r) => (r !== null && r > 0 ? r - 1 : 0)),
-      1000,
-    );
-    return () => clearInterval(timer);
-  }, [rest]);
+    if (restUntil === null) return;
+    const update = () => {
+      const now = Date.now();
+      setClock(now);
+      if (now >= restUntil) setRestUntil(null);
+    };
+    const timer = setInterval(update, 250);
+    document.addEventListener("visibilitychange", update);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", update); };
+  }, [restUntil]);
 
   if (plan.isLoading) return <Loading />;
   if (plan.isError) return <ErrorNote />;
   const data = plan.data;
   const p = data?.plan ?? null;
   const exercises = p?.exercises ?? [];
-  const nextEx = exercises.find((e) => !e.complete) ?? null;
+  const complete = p?.progress.complete || p?.status === "done" || p?.status === "completed";
+  const nextEx = complete ? null : exercises.find((e) => !e.complete) ?? null;
+  const currentEntry = entry.exerciseId === nextEx?.gym_day_exercise_id
+    ? entry : { exerciseId: nextEx?.gym_day_exercise_id ?? 0, reps: String(nextEx?.duration_min_s ?? nextEx?.reps_min ?? ""), weight: "" };
+  const { reps, weight } = currentEntry;
+  const timed = nextEx?.duration_min_s != null;
+  const target = (ex: GymExerciseRow) => {
+    const min = ex.duration_min_s ?? ex.reps_min;
+    const max = ex.duration_min_s != null ? ex.duration_max_s : ex.reps_max;
+    return `${min ?? "—"}${max != null && max !== min ? `–${max}` : ""}${ex.duration_min_s != null ? " s" : ""}`;
+  };
+  const validEntry = reps !== "" && Number.isInteger(Number(reps)) && Number(reps) >= 1 && Number(reps) <= (timed ? 86400 : 500)
+    && (weight === "" || (Number.isFinite(Number(weight)) && Number(weight) >= 0 && Number(weight) <= 500));
 
   function logSet(ex: GymExerciseRow) {
-    if (!p) return;
+    if (!p || !editable || !validEntry || logOne.isPending || complete || !["confirmed", "active"].includes(p.status)) return;
+    const setNumber = ex.next_set_number === undefined ? ex.sets_done + 1 : ex.next_set_number;
+    if (setNumber === null) return;
     logOne.mutate({
       plan_id: p.plan_id,
       gym_day_exercise_id: ex.gym_day_exercise_id,
-      set_number: ex.sets_done + 1,
-      reps_done: Number(reps),
+      set_number: setNumber,
+      reps_done: timed ? null : Number(reps),
+      duration_s: timed ? Number(reps) : null,
       weight_kg: weight ? Number(weight) : null,
     });
   }
 
   return (
-    <Card>
+    <div id="gym-session"><Card>
       {(generate.isError || confirm.isError || logOne.isError) && <ErrorNote message={t(confirm.error instanceof ApiError && confirm.error.status === 409 ? "betaNavigation.gym_context_changed" : "betaNavigation.gym_action_failed")} />}
       <CardHeader
         eyebrow={t("training.gym_plan")}
         title={p ? p.title : (data?.template?.title ?? undefined)}
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {p && (
-              <Badge tone={p.status === "done" ? "positive" : "primary"}>
-                {t("betaNavigation.gym_status_"+p.status,{defaultValue:p.status})}
+              <Badge tone={complete ? "positive" : "primary"}>
+                {t(complete ? "betaNavigation.gym_status_done" : p.status === "active" ? "v01Training.in_progress" : "betaNavigation.gym_status_"+p.status,{defaultValue:p.status})}
               </Badge>
             )}
-            {!p && (
+            {editable && !p && (
               <Button
                 variant="ghost"
                 onClick={() => generate.mutate()}
@@ -450,8 +480,8 @@ function GymPlan() {
                 {t("training.gym_generate")}
               </Button>
             )}
-            {p?.status === "draft" && <Button variant="ghost" disabled={generate.isPending || confirm.isPending} onClick={()=>generate.mutate()}>{t("betaNavigation.refresh_gym")}</Button>}
-            {p?.status === "draft" && (
+            {editable && p?.status === "draft" && <Button variant="ghost" disabled={generate.isPending || confirm.isPending} onClick={()=>generate.mutate()}>{t("betaNavigation.refresh_gym")}</Button>}
+            {editable && p?.status === "draft" && (
               <Button
                 onClick={() => confirm.mutate()}
                 disabled={confirm.isPending || generate.isPending || exercises.length === 0}
@@ -463,6 +493,9 @@ function GymPlan() {
           </div>
         }
       />
+
+      {!editable && <p className="mb-4 text-[13px] text-muted">{t("v01Training.read_only")}</p>}
+      {complete && <p role="status" className="mb-4 rounded-control bg-primarySoft p-4 text-[14px]">{t("v01Training.completed")}</p>}
 
       {(generate.data?.adjustment_note ?? p?.adjustment_note) && (
         <div className="mb-3 rounded-card bg-primarySoft px-3 py-2 text-[12px] text-ink2">
@@ -482,7 +515,7 @@ function GymPlan() {
       ) : (
         <>
           {/* live session card — the gym-tracker companion to the Connect IQ app */}
-          {nextEx && p?.status !== "draft" && (
+          {editable && nextEx && p && ["confirmed", "active"].includes(p.status) && (
             <div className="mb-6 bg-surface2 p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -501,30 +534,32 @@ function GymPlan() {
                       done: nextEx.sets_done,
                       total: nextEx.sets,
                     })}{" "}
-                    × {nextEx.reps_min}
-                    {nextEx.reps_max && nextEx.reps_max !== nextEx.reps_min ? `-${nextEx.reps_max}` : ""}
+                    × {target(nextEx)}
                   </div>
                   {nextEx.notes && <p className="mt-2 max-w-lg text-[12px] text-muted">{nextEx.notes}</p>}
                 </div>
-                {rest !== null && rest > 0 && (
+                {rest > 0 && (
                   <div className="text-right">
                     <div className="eyebrow">{t("training.rest_timer")}</div>
-                    <div className="num text-[28px] font-medium text-ink">
+                    <div role="timer" aria-label={t("training.rest_timer")} className="num text-[28px] font-medium text-ink">
                       {Math.floor(rest / 60)}:
                       {String(rest % 60).padStart(2, "0")}
                     </div>
+                    <Button variant="ghost" onClick={() => setRestUntil(null)}>{t("v01Training.skip_rest")}</Button>
                   </div>
                 )}
               </div>
-              <div className="mt-5 flex flex-wrap items-end gap-4">
+              <form className="mt-5" onSubmit={event => { event.preventDefault(); logSet(nextEx); }}>
+                <fieldset disabled={logOne.isPending} className="flex flex-wrap items-end gap-4">
                 <Input
-                  label={t("training.reps")}
+                  label={t(timed ? "v01Training.duration_seconds" : "training.reps")}
                   type="number"
                   min={1}
-                  max={100}
+                  max={timed ? 86400 : 500}
+                  step={1}
                   value={reps}
-                  onChange={setReps}
-                  placeholder={String(nextEx.reps_min)}
+                  onChange={reps => setEntry({ ...currentEntry, reps })}
+                  placeholder={String(nextEx.duration_min_s ?? nextEx.reps_min ?? "")}
                   className="w-24"
                 />
                 <Input
@@ -534,30 +569,34 @@ function GymPlan() {
                   max={500}
                   step={0.5}
                   value={weight}
-                  onChange={setWeight}
+                  onChange={weight => setEntry({ ...currentEntry, weight })}
                   className="w-28"
                 />
                 <Button
-                  onClick={() => logSet(nextEx)}
-                  disabled={
-                    logOne.isPending ||
-                    !reps ||
-                    (reps !== "" &&
-                      (!Number.isInteger(Number(reps)) ||
-                        Number(reps) < 1 ||
-                        Number(reps) > 100)) ||
-                    (weight !== "" &&
-                      (Number(weight) < 0 || Number(weight) > 500))
-                  }
-                  className="!h-8 text-[12px]"
+                  type="submit"
+                  disabled={logOne.isPending || !validEntry}
+                  className="min-h-11"
                 >
-                  {t("training.log_set")}
+                  {t(logOne.isPending ? "v01Training.saving" : "training.log_set")}
                 </Button>
-              </div>
+                </fieldset>
+              </form>
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <ol className="space-y-3 sm:hidden" data-testid="gym-exercise-list">
+            {exercises.map((ex, i) => <li key={ex.gym_day_exercise_id} className={`border border-hairline p-3 ${ex.gym_day_exercise_id === nextEx?.gym_day_exercise_id ? "bg-primarySoft/40" : ""}`}>
+              <div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 text-[14px] font-medium">{i + 1}. {ex.name}</p>{ex.complete && <Badge tone="positive">{t("training.done")}</Badge>}</div>
+              {ex.notes && <p className="mt-2 break-words text-[12px] text-muted">{ex.notes}</p>}
+              <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+                <div><dt className="text-muted">{t("betaNavigation.sets_label")}</dt><dd className="num mt-1">{ex.sets}</dd></div>
+                <div><dt className="text-muted">{t("v01Training.target")}</dt><dd className="num mt-1">{target(ex)}</dd></div>
+                <div><dt className="text-muted">{t("training.rest_timer")}</dt><dd className="num mt-1">{ex.rest_seconds == null ? "—" : `${ex.rest_seconds}s`}</dd></div>
+              </dl>
+              {p?.status !== "draft" && <p className="mt-3 text-[12px] text-muted">{t("betaNavigation.sets_completed", {count: ex.sets_done ?? 0})}</p>}
+            </li>)}
+          </ol>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="data-table">
               <thead>
                 <tr className="border-b border-hairline text-left">
@@ -566,7 +605,7 @@ function GymPlan() {
                     {t("training.exercise")}
                   </th>
                   <th className="eyebrow py-2 pr-3">{t("betaNavigation.sets_label")}</th>
-                  <th className="eyebrow py-2 pr-3">{t("training.reps")}</th>
+                  <th className="eyebrow py-2 pr-3">{t("v01Training.target")}</th>
                   <th className="eyebrow py-2">{t("training.rest_timer")}</th>
                 </tr>
               </thead>
@@ -596,8 +635,7 @@ function GymPlan() {
                       {p?.status !== "draft" && <span className="mt-1 block text-[12px] text-muted">{t("betaNavigation.sets_completed", {count: ex.sets_done ?? 0})}</span>}
                     </td>
                     <td className="py-2 pr-3">
-                      {ex.reps_min}
-                      {ex.reps_max && ex.reps_max !== ex.reps_min ? `-${ex.reps_max}` : ""}
+                      {target(ex)}
                     </td>
                     <td className="py-2">{ex.rest_seconds == null ? "—" : `${ex.rest_seconds}s`}</td>
                   </tr>
@@ -606,27 +644,28 @@ function GymPlan() {
             </table>
           </div>
 
-          <Feedback />
+          {editable && p?.status !== "draft" && <Feedback day={day} />}
         </>
       )}
-    </Card>
+    </Card></div>
   );
 }
 
-function Feedback() {
+function Feedback({ day }: { day: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const submit = useMutation({
     mutationFn: () =>
       api.post("/gym/feedback", {
-        date: todayIso(),
+        date: day,
         activity_kind: "gym",
-        notes: text,
+        notes: text.trim(),
       }),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: ["gym-plan"] });
+      qc.invalidateQueries({ queryKey: ["athlete-day"] });
     },
   });
   return (
@@ -636,6 +675,7 @@ function Feedback() {
       <div className="eyebrow mb-2">{t("training.feedback")}</div>
       <div className="flex gap-2">
         <input
+          aria-label={t("training.feedback")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={t("training.feedback_placeholder")}
@@ -643,7 +683,7 @@ function Feedback() {
         />
         <Button
           onClick={() => submit.mutate()}
-          disabled={!text || submit.isPending}
+          disabled={!text.trim() || submit.isPending}
           className="!h-9"
         >
           {t("training.submit")}
@@ -656,7 +696,14 @@ function Feedback() {
 export default function TrainingPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
-  const tab = ["plan", "calendar", "load"].includes(params.get("tab") ?? "") ? params.get("tab")! : "plan";
+  const today = localDay(useUi(s => s.me?.timezone));
+  const requestedDay = params.get("date") ?? today;
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(requestedDay) && !Number.isNaN(Date.parse(requestedDay))
+    && new Date(requestedDay).toISOString().slice(0, 10) === requestedDay ? requestedDay : today;
+  const changeParam = (key: string, value: string) => setParams(current => {
+    const next = new URLSearchParams(current); next.set(key, value); return next;
+  });
+  const tab = ["plan", "planning", "calendar", "load"].includes(params.get("tab") ?? "") ? params.get("tab")! : "plan";
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -666,15 +713,23 @@ export default function TrainingPage() {
       <TrainingSections />
       <Tabs
         value={tab}
-        onChange={tab => setParams({ tab })}
+        onChange={tab => changeParam("tab", tab)}
         label={t("training.title")}
         options={[
-          { value: "plan", label: t("design.today_plan") },
+          { value: "plan", label: t(day === today ? "design.today_plan" : "v01Training.selected_day") },
+          { value: "planning", label: t("v01Training.planning") },
           { value: "calendar", label: t("training.calendar") },
           { value: "load", label: t("design.training_load") },
         ]}
       />
-      {tab === "plan" && <><YourDay /><LifeEvents /><GymPlan /></>}
+      {tab === "plan" && <>
+        <div className="flex flex-wrap items-end gap-3">
+          <Input label={t("v01Training.date")} type="date" value={day} onChange={date => { if (date) changeParam("date", date); }} />
+          {day !== today && <Button variant="ghost" onClick={() => changeParam("date", today)}>{t("v01Training.return_today")}</Button>}
+        </div>
+        <YourDay key={day} date={day} /><GymPlan key={day} day={day} />{day === today && <LifeEvents />}
+      </>}
+      {tab === "planning" && <TrainingPlanWorkspace />}
       {tab === "calendar" && <EventCalendar />}
       {tab === "load" && <LoadChart />}
     </div>

@@ -787,13 +787,13 @@ function Reports() {
         error={q.isError}
         empty={q.data?.length === 0}
       />
-      {q.data?.map((r) => (
+      {q.data?.map((r, index) => (
         <Card key={r.id}>
-          <CardHeader
-            title={`${t("lab.report_types." + r.type)} · ${r.start} — ${r.end}`}
-            right={<Badge>{r.source_policy}</Badge>}
-          />
-          <SafeMarkdown source={r.content} />
+          <details open={index === 0}>
+            <summary className="cursor-pointer text-[14px] font-medium">{t("lab.report_types." + r.type)} · {r.start} — {r.end}</summary>
+            {r.source_policy === "legacy_unverified" && <p className="mt-3 text-[12px] text-muted">{t("v01Navigation.archived_report")}</p>}
+            <div className="mt-4"><SafeMarkdown source={r.content} /></div>
+          </details>
         </Card>
       ))}
     </div>

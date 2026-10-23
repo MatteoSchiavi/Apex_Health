@@ -289,7 +289,7 @@ test("Your day requires confirmation, shares session identity and keeps other sp
       { id:43,discipline:"sailing",start_time:today+"T15:00:00Z",duration_s:1800,planned_session_id:null,association:"independent",candidate_session_ids:[],comparison:null,checkin:null }],
     } });
     if (path.endsWith("/association")) { writes.push({ path,body:route.request().postDataJSON() }); linked = true; return route.fulfill({ json: { state:"confirmed" } }); }
-    if (path.endsWith("/checkins")) { const body=route.request().postDataJSON(); writes.push({path,body}); checkin={...body,id:1,revision:1};return route.fulfill({json:checkin}); }
+    if (path.endsWith("/checkins")) { const body=route.request().postDataJSON(); writes.push({path,body}); checkin={...body,id:1,revision:1,activity_id:42,planned_session_id:linked?10:null};return route.fulfill({json:checkin}); }
     return route.fallback();
   });
   await page.goto("/app");
@@ -306,7 +306,10 @@ test("Your day requires confirmation, shares session identity and keeps other sp
   await recorded.getByLabel("Perceived effort (RPE 0–10, optional)",{exact:true}).fill("6");
   await recorded.getByRole("button",{name:"Save check-in",exact:true}).click();
   expect(writes.find(w=>w.path.endsWith("/association"))?.body).toEqual({planned_session_id:10});
-  await expect.poll(()=>writes.find(w=>w.path.endsWith("/checkins"))?.body.planned_session_id).toBe(10);
+  await expect.poll(()=>writes.find(w=>w.path.endsWith("/checkins"))?.body.activity_id).toBe(42);
+  expect(writes.find(w=>w.path.endsWith("/checkins"))?.body).not.toHaveProperty("planned_session_id");
+  await expect(recorded.getByRole("button",{name:"Save check-in",exact:true})).toBeDisabled();
+  expect(checkin).toMatchObject({activity_id:42,planned_session_id:10,rpe:6});
 });
 
 test("reviewed document creates a draft before explicit activation, with ambiguity acknowledgement", async ({ page }) => {

@@ -1,3 +1,5 @@
+import { PlanReadiness } from "./PlanReadiness";
+import { planReadiness } from "./planReadiness";
 import {StepSummary} from "./StructuredWorkoutSteps";
 import { useTranslation } from "react-i18next";
 import { Button, Input, Select, friendlyDiscipline } from "../../components/kit";
@@ -40,6 +42,7 @@ export function ImportPlanReview({ proposal, onChange }: { proposal: ImportPropo
     </section>
     <details open={!!proposal.dated}><summary className="cursor-pointer text-[16px] font-medium">{t("athleteImport.dated_workouts")}</summary><div className="mt-4 space-y-4">
       {!proposal.dated ? <Button variant="ghost" onClick={() => onChange({ ...proposal, dated: { title: "", starts_on: null, ends_on: null, weekly_structure: "", sessions: [], ambiguities: [], protected: false } })}>{t("athleteImport.add_dated")}</Button> : <>
+        <PlanReadiness structure={proposal.dated} />
         <Input label={t("athlete.plan_title")} value={proposal.dated.title} onChange={title => onChange({ ...proposal, dated: { ...proposal.dated!, title } })} />
         <div className="grid gap-3 sm:grid-cols-2"><Input label={t("athlete.event_start")} type="date" value={proposal.dated.starts_on ?? ""} onChange={v => onChange({ ...proposal, dated: { ...proposal.dated!, starts_on: v || null } })} /><Input label={t("athlete.event_end")} type="date" value={proposal.dated.ends_on ?? ""} onChange={v => onChange({ ...proposal, dated: { ...proposal.dated!, ends_on: v || null } })} /></div>
         {proposal.dated.sessions.map((row, index) => <fieldset key={index} className="space-y-3 border border-hairline p-4"><legend className="px-1 text-[14px]">{t("athleteImport.workout_number", { count: index + 1 })}</legend><Input label={t("athlete.event_date")} type="date" value={row.date ?? ""} onChange={date => onChange({ ...proposal, dated: { ...proposal.dated!, sessions: proposal.dated!.sessions.map((old, i) => i === index ? { ...old, date: date || null } : old) } })} />
@@ -59,11 +62,11 @@ export function ImportPlanReview({ proposal, onChange }: { proposal: ImportPropo
 export function CalendarPreview({ draft, pending, error, onActivate }: { draft: PlanDraft; pending: boolean; error: string | null; onActivate: () => void }) {
   const { t, i18n } = useTranslation();
   const sessions = [...draft.structure.sessions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || (a.start_time ?? "").localeCompare(b.start_time ?? ""));
-  const complete = !!draft.structure.starts_on && !!draft.structure.ends_on && sessions.length > 0 && sessions.every(session => !!session.date && !!session.discipline) && !draft.structure.ambiguities.length;
+  const complete = planReadiness(draft.structure).ready && !draft.structure.ambiguities.length;
   const dateLabel = (day: string) => new Intl.DateTimeFormat(i18n.language, { dateStyle: "full", timeZone: "UTC" }).format(new Date(day + "T12:00:00Z"));
   return <section aria-label={t("athleteImport.calendar_preview")} className="space-y-4 border border-hairline p-4"><h3 className="text-[16px] font-medium">{t("athleteImport.calendar_preview")}</h3><p className="text-[13px]">{draft.structure.title} · {draft.structure.starts_on} – {draft.structure.ends_on}</p><p className="text-[12px] text-muted">{t("athleteImport.preview_note", { count: sessions.length })}</p>
     <ol className="space-y-3">{sessions.map((session, index) => <li key={index} className="border-t border-hairline pt-3 text-[13px]"><p className="font-medium">{session.date ? dateLabel(session.date) : t("athlete.event_date")} · {friendlyDiscipline(session.discipline, t)} {session.start_time?.slice(0, 5)}</p><p>{session.session_type} · {session.duration_min == null ? t("athlete.duration_unknown") : t("athlete.duration_minutes", { count: session.duration_min })} · {session.distance_m == null ? t("athlete.distance_unknown") : t("athlete.distance_metres", { count: session.distance_m })}</p><p>{session.description}</p>{!!session.steps?.length && <ol className="mt-3 space-y-3">{session.steps.map((step,i)=><StepSummary key={step.id} step={step} number={String(i+1)}/>)}</ol>}<p>{Object.entries(session.intensity_targets).map(([key, value]) => `${t("athlete.intensity_" + key)}: ${value}`).join(" · ")}</p>{(session.protected || draft.structure.protected) && <p>{t("athlete.protected")}</p>}</li>)}</ol>
-    {!complete && <p role="alert" className="text-[13px]">{t("athleteImport.complete_dates")}</p>}
+    <PlanReadiness structure={draft.structure} showReady={false} />
     {!!draft.structure.ambiguities.length && <ul className="text-[13px]">{draft.structure.ambiguities.map((question, index) => <li key={index}>{question}</li>)}</ul>}
     {draft.status === "confirmed" ? <p role="status" className="text-[14px] font-medium">{t("athleteImport.plan_activated")}</p> : <><p className="text-[13px] text-muted">{t("athleteImport.activation_scope")}</p><Button disabled={!complete || pending} onClick={onActivate}>{t(pending ? "athleteImport.activating" : "athleteImport.activate")}</Button></>}
     {error && <p role="alert" className="text-[13px] text-alertText">{error}</p>}

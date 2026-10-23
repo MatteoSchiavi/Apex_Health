@@ -503,7 +503,7 @@ function DevicesSection() {
     const imported = account?.has_successful_sync || feeds.some(feed => feed.has_checkpoint || feed.last_success_at || feed.latest_measurement_at);
     const status = account ? t("lab.syncHealth.accountStates." + account.state) : null;
     const lastSuccess = successful ? `${t("lab.syncHealth.accountLastSuccess")}: ${new Date(successful).toLocaleString(i18n.language, { timeZone: timezone })}` : imported ? t("lab.syncHealth.successTimeUnknown") : health.isLoading ? t("lab.syncHealth.checking") : health.isError ? t("lab.syncHealth.unavailable") : t("lab.syncHealth.noRecordedSync");
-    return <><p>{status}</p><p>{lastSuccess}</p>{account?.state === "partial" && <p className="mt-1">{t("lab.syncHealth.partialCounts", { streams: account.streams_failed, records: account.unprocessed })}</p>}{account && <p className="mt-1">{t("lab.syncHealth.dataFreshness")}: {t("lab.syncHealth.freshness." + account.data_freshness)}</p>}</>;
+    return <><p>{status}</p><p>{lastSuccess}</p>{account?.state === "partial" && <p className="mt-1">{t(account.streams_failed || account.unprocessed ? "lab.syncHealth.partialCounts" : "v01Navigation.partial_sync_note", { streams: account.streams_failed, records: account.unprocessed })}</p>}{account && <p className="mt-1">{t("lab.syncHealth.dataFreshness")}: {t("lab.syncHealth.freshness." + account.data_freshness)}</p>}</>;
   }
 
   return (

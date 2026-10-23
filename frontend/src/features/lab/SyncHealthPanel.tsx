@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Badge, Card, CardHeader, ErrorNote, Loading } from "../../components/kit";
 import { useUi } from "../../app/stores/ui";
@@ -44,12 +45,15 @@ export default function SyncHealthPanel() {
             <div><dt className="text-muted">{t("lab.syncHealth.failedAttempts")}</dt><dd className="num">{account.failed_attempts}</dd></div>
             {account.error_class && <div><dt className="text-muted">{t("lab.syncHealth.error")}</dt><dd>{issue(account.error_class)}</dd></div>}
           </dl>
-          {account.state === "partial" && <p className="mt-3 text-[13px] text-muted">{t("lab.syncHealth.partialCounts", { streams: account.streams_failed, records: account.unprocessed })}</p>}
+          {account.state === "partial" && <p className="mt-3 text-[13px] text-muted">{t(account.streams_failed || account.unprocessed ? "lab.syncHealth.partialCounts" : "v01Navigation.partial_sync_note", { streams: account.streams_failed, records: account.unprocessed })}</p>}
+          {["partial", "delayed", "auth_required", "failed"].includes(account.state) && <Link className="text-link mt-3 inline-flex min-h-11 items-center text-[13px]" to="/app/settings?tab=devices">{t(account.state === "auth_required" || account.credentials_state === "reconnect_required" ? "v01Navigation.reconnect_source" : "v01Navigation.retry_source")} →</Link>}
           {account.data_freshness === "stale" && <p className="mt-3 text-[12px] text-muted">{t("lab.syncHealth.oldMeasurementsNote", { hours: account.stale_after_hours })}</p>}
         </section>;
       })}</div>}
       {!!feeds.length && (
-        <div className="grid gap-3">
+        <details open={accounts.length === 0} className="border-t border-hairline pt-4">
+          <summary className="cursor-pointer text-[13px] font-medium">{t("v01Navigation.feed_details", { count: feeds.length })}</summary>
+        <div className="mt-4 grid gap-3">
           {feeds.map((feed) => (
             <section
               key={`${feed.provider}:${feed.feed}`}
@@ -133,7 +137,7 @@ export default function SyncHealthPanel() {
               </dl>
             </section>
           ))}
-        </div>
+        </div></details>
       )}
     </Card>
   );

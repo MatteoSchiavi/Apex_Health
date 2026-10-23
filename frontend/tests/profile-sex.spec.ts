@@ -30,3 +30,19 @@ test("settings preserves and saves female profile selection", async ({ page }) =
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Sex", exact: true })).toHaveValue("male");
 });
+
+test("an existing signup email offers login recovery and preserves the invite form", async ({ page }) => {
+  await installApi(page);
+  await page.route(url => url.pathname === "/auth/invite/redeem", route =>
+    route.fulfill({ status: 409, json: { detail: "That email is already registered — log in instead" } }));
+  await page.goto("/join");
+  await page.getByLabel("Invite code", { exact: true }).fill("a-valid-invite-code");
+  await page.getByLabel("Name", { exact: true }).fill("Alex");
+  await page.getByLabel("Email", { exact: true }).fill("alex@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("a-strong-password-9");
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole("alert")).toContainText("This email is already registered. Log in to your existing account; your invite is still available.");
+  await expect(page.getByLabel("Invite code", { exact: true })).toHaveValue("a-valid-invite-code");
+  await expect(page.getByLabel("Email", { exact: true })).toHaveValue("alex@example.com");
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/login");
+});

@@ -157,7 +157,7 @@ for (const [status, expected] of [['completed', 'Completed'], ['active', 'In pro
     await expect(summary).toContainText(expected);
     if (status === 'active') {
       await expect(summary).toContainText('1 planned session remaining');
-      await expect(summary.getByRole('link')).toHaveAttribute('href', '/app/training');
+      await expect(summary.getByRole('link')).toHaveAttribute('href', `/app/training?date=${today}#gym-session`);
     } else await expect(summary).toContainText('Upper body');
   });
 }

@@ -62,6 +62,14 @@ For recovery/trend questions call data_get_recovery_summary once before individu
 queries. It batches recent sleep, overnight RMSSD, resting HR and recorded provider
 load with evidence handles. Missing metrics remain missing. Reuse returned results;
 do not re-query the same arguments. Answer from available evidence instead of looping.
+When today's training question combines recovery and a plan, request the recovery
+summary and planning_get_constraints together, then use the results to decide the
+next step. Do not repeat the recovery query with a different period just to restate it.
+For a requested concrete session or plan change, place proposed dates, durations,
+sets and repetitions in changes_propose's typed change fields. These are prescriptions,
+not measured claims. Explain the rationale qualitatively and direct the athlete to
+the Changes tab to review the draft. Never say a draft is active or approved. If the
+available tools cannot create a draft, explain the specific limitation and a next step.
 """
 
 
@@ -214,9 +222,14 @@ async def run_agent_turn(
         full = credential is not None and credential.ai_access_tier == "full"
         chat_id = chat.id
         await session.commit()
+    medical_intent = is_medical_intent(text) or tier == "medical"
     if tier is None:
         async with sessionmaker() as session:
-            tier = (await resolve_tier(session, user_id, text, llm)).tier
+            routing = await resolve_tier(session, user_id, text, llm)
+            tier = routing.tier
+            # A medical classification can use the powerful fallback when no
+            # specialist endpoint is configured. Preserve its disclosure.
+            medical_intent = medical_intent or routing.classification == "medical"
             await session.commit()
     elif not full:
         tier = "cheap"
@@ -251,7 +264,7 @@ async def run_agent_turn(
             )
             await session.commit()
         raise
-    if is_medical_intent(text) or tier == "medical":
+    if medical_intent:
         prefix = (
             MEDICAL_DISCLAIMER_IT
             if snapshot["profile"]["locale"] == "it"

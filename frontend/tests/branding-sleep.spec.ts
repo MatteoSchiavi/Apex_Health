@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { installApi, today } from "./fixtures";
 
-test("collapsed sidebar keeps the Apex mark as the brand", async ({ page }) => {
+test("labelled sidebar keeps the Apex mark as the brand", async ({ page }) => {
   await installApi(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app");
   await page.mouse.move(600, 400);
-  await expect(page.locator("aside")).toHaveCSS("width", "76px");
+  await expect(page.locator("aside")).toHaveCSS("width", "224px");
 
   const brand = page.locator("aside").getByRole("link", { name: "Apex Health" });
   await expect(brand).toBeVisible();

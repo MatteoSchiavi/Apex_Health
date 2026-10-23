@@ -679,11 +679,19 @@ async def update_feed(session, user_id, provider, metric, state, now, measuremen
             user_id=user_id, provider=provider, feed=metric, availability=state
         )
         session.add(row)
-    row.last_attempt_at = now
-    row.availability = state
+    previous_attempt = row.last_attempt_at
+    row.last_attempt_at = max(previous_attempt, now) if previous_attempt else now
+    if previous_attempt is None or now >= previous_attempt:
+        # Backfills walk backwards and multiple payloads can describe a metric
+        # (for example sleep and daily stats both contain SpO2). An empty
+        # payload does not erase a measurement already imported from another.
+        row.availability = (
+            "available" if state == "not_measured" and row.latest_measurement_at else state
+        )
     if state in ("available", "not_measured"):
-        row.last_success_at = now
-        if measurement:
+        row.last_success_at = max(row.last_success_at, now) if row.last_success_at else now
+        # A successful request with a null value has no measurement timestamp.
+        if state == "available" and measurement:
             row.latest_measurement_at = (
                 max(row.latest_measurement_at, measurement)
                 if row.latest_measurement_at

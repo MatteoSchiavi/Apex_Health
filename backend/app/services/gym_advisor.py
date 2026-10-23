@@ -84,7 +84,6 @@ _REP_TARGETS = {
     "plyo": (5, 8),
     "hinge_explosive": (8, 12),
     "full_body_explosive": (8, 12),
-    "core_anti": (30, 60),  # seconds-as-reps convention for holds
     "core_flex": (12, 20),
     "carry": (40, 60),
     "isolation": (12, 15),
@@ -360,7 +359,7 @@ def adjust(
             if row.get("impact_level") == "high" or pattern == "plyo":
                 row["_drop"] = True
                 continue
-            if pattern in {"squat", "hinge", "lunge"}:
+            if pattern in {"squat", "hinge", "lunge"} and row.get("reps_min") is not None:
                 row["sets"] = max(2, row["sets"] // 2)
                 row["reps_min"] = max(6, int(row["reps_min"] * 0.7))
                 row["reps_max"] = max(row["reps_min"] + 2, int((row["reps_max"] or row["reps_min"]) * 0.7))
@@ -406,7 +405,7 @@ def adjust(
 
 # ------------------------------------------------------------- day plan gen
 
-ENGINE_VERSION = "recorded-history-v1"
+ENGINE_VERSION = "recorded-history-v2-duration"
 _HISTORY_DAYS = 7  # scheduling observation window, not a recovery deadline
 _GROUPS = {"legs", "push", "pull", "core", "full_body"}
 
@@ -534,14 +533,16 @@ def _programmed_rows(entry: dict, catalog: list) -> list[dict]:
         if step.get("kind") != "strength":
             continue
         exercise = next((e for e in catalog if e.name.casefold() == (step.get("exercise") or "").casefold()), None)
-        if exercise is None or step.get("sets") is None or step.get("reps") is None:
+        timed = step.get("duration_s") is not None and step.get("reps") is None
+        if exercise is None or step.get("sets") is None or (step.get("reps") is None and not timed):
             return []
         note = step.get("description") or None
         if step.get("load_kg") is not None:
             note = " | ".join(filter(None, [note, f"{step['load_kg']} kg prescribed"]))
         result.append({"exercise_id": exercise.id, "name": exercise.name, "muscle_group": exercise.muscle_group,
             "movement_pattern": exercise.movement_pattern, "impact_level": exercise.impact_level,
-            "sets": step["sets"], "reps_min": step["reps"], "reps_max": step["reps"],
+            "sets": step["sets"], "reps_min": step.get("reps"), "reps_max": step.get("reps"),
+            "duration_min_s": step["duration_s"] if timed else None, "duration_max_s": step["duration_s"] if timed else None,
             "rest_seconds": 90, "notes": note})
     return result
 
@@ -596,7 +597,7 @@ async def planning_inputs(session: AsyncSession, user, day: date) -> dict:
                 "workout_revision": version.revision, "workout_hash": version.payload_hash}
     history, buckets = [], {}
     for log, ex in logs[:5000]:
-        if log.reps_done <= 0:
+        if (log.reps_done or 0) <= 0 and (log.duration_s or 0) <= 0:
             continue
         observed_day = log.done_at.astimezone(tz).date()
         bucket = buckets.setdefault(observed_day, {"date": observed_day, "groups": {}, "patterns": [], "exercise_ids": [],
@@ -605,7 +606,7 @@ async def planning_inputs(session: AsyncSession, user, day: date) -> dict:
         bucket["patterns"].append(ex.movement_pattern)
         bucket["exercise_ids"].append(ex.id)
         bucket["set_ids"].append(log.id)
-        if log.weight_kg is not None:
+        if log.weight_kg is not None and log.reps_done is not None:
             bucket["volume_kg"] += float(log.weight_kg) * log.reps_done
             bucket["weight_known_sets"] += 1
     history.extend(buckets.values())
@@ -615,7 +616,7 @@ async def planning_inputs(session: AsyncSession, user, day: date) -> dict:
         details = imported_strength(activity.source_metrics) if kind == "strength" else []
         # Actual set timestamps, not a same-date plan, establish overlap.
         overlapping = any(activity.start_time <= log.done_at < activity.start_time + timedelta(seconds=activity.duration_s)
-                          and log.reps_done > 0 for log, _ in logs[:5000])
+                          and ((log.reps_done or 0) > 0 or (log.duration_s or 0) > 0) for log, _ in logs[:5000])
         groups = {}
         if not overlapping:
             for ex in details:
@@ -668,16 +669,18 @@ def _catalog_rows(catalog: list, groups: list[str], history: list[dict], day: da
         0 if e.id in observed_ids or e.name.lower() in observed_names or e.name.lower() in preferred.lower() else 1,
         (e.id + day.toordinal() // 7) % max(len(catalog), 1), e.id))
     for ex in pool:
-        reps_min, reps_max = _REP_TARGETS.get(ex.movement_pattern, _DEFAULT_REPS)
+        timed = ex.movement_pattern == "core_anti"
+        reps_min, reps_max = (None, None) if timed else _REP_TARGETS.get(ex.movement_pattern, _DEFAULT_REPS)
         rows.append({"exercise_id": ex.id, "name": ex.name, "muscle_group": ex.muscle_group,
             "movement_pattern": ex.movement_pattern, "impact_level": ex.impact_level,
             "sets": 3, "reps_min": reps_min, "reps_max": reps_max,
+            "duration_min_s": 30 if timed else None, "duration_max_s": 60 if timed else None,
             "rest_seconds": 120 if ex.impact_level != "low" else 90, "notes": None})
     return rows if prescribed else _select_diverse_exercises(rows)
 
 
 def _snapshot(title: str, rows: list[dict], note: str, *, source: str = "template") -> dict:
-    return {"title": title, "status": "draft", "source": source, "exercises": [{k: r.get(k) for k in ("exercise_id", "sets", "reps_min", "reps_max", "rest_seconds", "notes")} for r in rows],
+    return {"title": title, "status": "draft", "source": source, "exercises": [{k: r.get(k) for k in ("exercise_id", "sets", "reps_min", "reps_max", "duration_min_s", "duration_max_s", "rest_seconds", "notes")} for r in rows],
             "adjustment_note": note}
 
 
@@ -824,6 +827,7 @@ async def generate_day_plan(session: AsyncSession, user, day: date) -> tuple[Gym
     for pos, row in enumerate(adjusted, start=1):
         session.add(GymDayExercise(gym_day_plan_id=plan.id, exercise_id=row["exercise_id"], position=pos,
             sets=row["sets"], reps_min=row["reps_min"], reps_max=row.get("reps_max"),
+            duration_min_s=row.get("duration_min_s"), duration_max_s=row.get("duration_max_s"),
             rest_seconds=row.get("rest_seconds", 90), notes=row.get("notes")))
     session.add(ChangeAudit(user_id=user.id, action="gym_draft_refreshed" if existing else "gym_draft_generated",
         payload={"plan_id": plan.id, "revision": revision, "engine_version": ENGINE_VERSION,
@@ -843,4 +847,5 @@ async def _exercise_row(session: AsyncSession, row: GymDayExercise) -> dict:
     return {"gym_day_exercise_id": row.id, "exercise_id": row.exercise_id, "name": ex.name if ex else "?",
         "muscle_group": ex.muscle_group if ex else "", "movement_pattern": ex.movement_pattern if ex else "",
         "impact_level": ex.impact_level if ex else "low", "position": row.position, "sets": row.sets,
-        "reps_min": row.reps_min, "reps_max": row.reps_max, "rest_seconds": row.rest_seconds, "notes": row.notes}
+        "reps_min": row.reps_min, "reps_max": row.reps_max,
+        "duration_min_s": row.duration_min_s, "duration_max_s": row.duration_max_s, "rest_seconds": row.rest_seconds, "notes": row.notes}

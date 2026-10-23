@@ -103,6 +103,7 @@ class ActivityOut(BaseModel):
     start_time: datetime
     local_date: date
     discipline: str | None
+    source_activity_type: str | None = None
     duration_s: int
     distance_m: float | None
     elevation_gain_m: float | None

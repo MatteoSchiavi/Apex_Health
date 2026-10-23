@@ -18,6 +18,7 @@ surprises must cost less, never more.
 
 import logging
 import asyncio
+import re
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,32 +41,20 @@ CLASSIFY_SYSTEM_PROMPT = (
     "reports, symptoms, medications, or clinical interpretation of vitals."
 )
 
-MEDICAL_INTENT_MARKERS = (
-    "blood work",
-    "blood test",
-    "blood panel",
-    "lab result",
-    "ferritin",
-    "hemoglobin",
-    "ferritina",
-    "esame del sangue",
-    "analisi",
-    "cholesterol",
-    "colesterolo",
-    "thyroid",
-    "tiroide",
-    "vitamin d",
-    "vitamina d",
-    "testosterone",
-    "symptom",
-    "sintomo",
-    "medication",
-    "medicinale",
-    "farmaco",
-    "injury diagnosis",
-    "doctor",
-    "medico",
-    "medicale",
+# A generic request for an "analisi" of training or sleep is not medical.
+# Match explicit clinical terms and laboratory phrases at word boundaries,
+# including their common English/Italian plurals, rather than substrings.
+_MEDICAL_INTENT = re.compile(
+    r"\b(?:"
+    r"blood[\s-]+(?:work|tests?|panels?)|lab(?:oratory)?\s+results?|"
+    r"ferritin[ae]?|h[ae]?emoglobin|emoglobina|"
+    r"esam[ei]\s+(?:(?:del\s+)?sangue|ematic[oi]|clinic[oi])|"
+    r"analisi\s+(?:(?:del\s+)?sangue|ematic(?:a|he)|clinic(?:a|he)|medic(?:a|he)|di\s+laboratorio)|"
+    r"cholesterol|colesterolo|thyroid|tiroide|vitamin[ae]?\s+d|testosterone|"
+    r"symptoms?|sintom[io]|medications?|medicinal[ei]|farmac[oi]|"
+    r"injury\s+diagnosis|doctors?|medic[oaie]|medicale"
+    r")\b",
+    re.IGNORECASE,
 )
 
 MEDICAL_DISCLAIMER_EN = (
@@ -81,10 +70,9 @@ MEDICAL_DISCLAIMER_IT = (
 def is_medical_intent(text: str) -> bool:
     """Deterministic pre-filter so medical questions are recognizable even
     when the free classifier (which sees the same categories) mislabels a
-    short question. Case-insensitive marker match; the classifier's
+    short question. Case-insensitive clinical phrase match; the classifier's
     'medical' category also routes here."""
-    lowered = text.lower()
-    return any(marker in lowered for marker in MEDICAL_INTENT_MARKERS)
+    return _MEDICAL_INTENT.search(text) is not None
 
 
 MEDICAL_DISCLAIMER = MEDICAL_DISCLAIMER_EN

@@ -1,5 +1,5 @@
 import { AiConsentPanel, useAiState } from "../athlete/AiConsentPanel";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ChangesPanel from "../lab/ChangesPanel";
 import { Segmented } from "../../components/kit";
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +14,6 @@ import {
 } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import {
-  Badge,
   Button,
   Card,
   ErrorNote,
@@ -27,6 +26,24 @@ function stored(key: string) {
   } catch {
     return "";
   }
+}
+
+function PendingReply({ startedAt }: { startedAt: number }) {
+  const { t } = useTranslation();
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  return <div className="mt-6 space-y-2 text-[13px] text-muted">
+    <p role="status">{t(elapsed >= 30 ? "v01Coach.waiting_long" : "v01Coach.waiting")}</p>
+    <p className="tabular-nums" aria-live="off">{t("v01Coach.elapsed", {
+      time: `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`,
+    })}</p>
+    <p className="text-[12px]">{t("v01Coach.waiting_note")}</p>
+  </div>;
 }
 
 function CheckedEvidence({ grounding }: { grounding: unknown }) {
@@ -55,7 +72,7 @@ export default function CoachPage() {
   const aiState = useAiState();
   const aiAllowed = aiState.data?.effective_access !== "disabled" && !!aiState.data && !aiState.data.budget.exhausted;
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") ?? "analysis";
+  const tab = params.get("tab") === "changes" ? "changes" : "analysis";
   const qc = useQueryClient();
   const uid = useUi((s) => s.me!.user_id);
   const activeKey = "apex.chat." + uid + ".active";
@@ -108,7 +125,8 @@ export default function CoachPage() {
         text,
         ...(sessionId != null ? { session_id: sessionId } : {}),
       }),
-    onMutate: () => setDraft(""),
+    // Retrying an earlier question must not clear a follow-up being composed.
+    onMutate: ({ text }) => setDraft(current => current.trim() === text ? "" : current),
     onSuccess: (data) => {
       setActiveId(data.id);
       qc.setQueryData(["chat", uid, data.id], data);
@@ -116,17 +134,22 @@ export default function CoachPage() {
       qc.invalidateQueries({ queryKey: ["lab"] });
     },
     onError: (_err, variables) => {
-      setDraft(variables.text);
+      // The composer remains editable while waiting. Never overwrite newer text.
+      setDraft(current => current || variables.text);
       qc.invalidateQueries({ queryKey: ["chat", uid, variables.sessionId] });
       qc.invalidateQueries({ queryKey: ["chats", uid] });
     },
+    onSettled: () => { void qc.invalidateQueries({ queryKey: ["athlete-ai", uid] }); },
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.delete("/coach/chats/" + id),
     onSuccess: async (_data, id) => {
       // A detail request already in flight must not restore a deleted transcript.
       await qc.cancelQueries({ queryKey: ["chat", uid, id], exact: true });
-      if (id === activeId) setActiveId(null);
+      if (id === activeId) {
+        setActiveId(null);
+        send.reset();
+      }
       qc.removeQueries({ queryKey: ["chat", uid, id], exact: true });
       qc.setQueryData<ChatSessionOut[]>(["chats", uid], (rows) =>
         rows?.filter((row) => row.id !== id),
@@ -149,10 +172,10 @@ export default function CoachPage() {
     }
   }, [conversationUnavailable, activeId, qc, uid]);
   useEffect(() => {
-    if ((active.data?.messages.length ?? 0) > 0 || send.isPending) {
+    if ((active.data?.messages.length ?? 0) > 0 || send.isPending || send.isError) {
       bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  }, [active.data?.messages.length, send.isPending]);
+  }, [active.data?.messages.length, send.isPending, send.isError]);
   function submit() {
     if (aiAllowed && draft.trim() && !send.isPending && !remove.isPending && !active.isLoading && !active.isError)
       send.mutate({ text: draft.trim(), sessionId: activeId });
@@ -169,6 +192,7 @@ export default function CoachPage() {
             disabled={send.isPending || remove.isPending}
             onClick={() => {
               setActiveId(null);
+              setParams({ tab: "analysis" });
               send.reset();
             }}
           >
@@ -221,16 +245,21 @@ export default function CoachPage() {
           </Button>
         </div>
       </dialog>
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented
           value={tab}
           onChange={(v) => setParams({ tab: v })}
           options={[
-            { value: "analysis", label: t("lab.analysis") },
-            { value: "changes", label: t("lab.changes") },
+            { value: "analysis", label: t("v01Coach.conversation") },
+            { value: "changes", label: t("v01Coach.proposals") },
           ]}
         />
+        <Link to="/app/training?tab=planning" className="text-link inline-flex min-h-11 items-center gap-2 text-[12px]">
+          {t("v01Coach.training")} <ArrowUpRight size={15} aria-hidden="true" />
+        </Link>
       </div>
+      {tab === "changes" && <p className="-mt-3 max-w-2xl text-[12px] leading-relaxed text-muted">{t("v01Coach.proposal_note")}</p>}
+      {tab === "changes" && send.isPending && <PendingReply startedAt={send.submittedAt} />}
       {tab === "changes" ? (
         <ChangesPanel />
       ) : (
@@ -321,12 +350,15 @@ export default function CoachPage() {
             </div>
           </aside>
           <Card className="flex h-[min(75dvh,850px)] min-h-[480px] flex-col !p-0">
-            <div className="flex items-center justify-between border-b border-hairline px-6 py-4">
-              <span className="text-[13px] font-medium">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-6 py-4">
+              <span className="min-w-0 break-words text-[13px] font-medium">
                 {active.data?.title ?? t("coach.conversation")}
               </span>
               {typeof active.data?.messages.at(-1)?.referenced_data?.model === "string" && (
-                <Badge>{String(active.data.messages.at(-1)!.referenced_data!.model)}</Badge>
+                <details className="min-w-0 text-[12px] text-muted">
+                  <summary className="cursor-pointer">{t("v01Coach.reply_details")}</summary>
+                  <p className="mt-2 break-all">{t("v01Coach.model", { name: String(active.data.messages.at(-1)!.referenced_data!.model) })}</p>
+                </details>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
@@ -339,7 +371,7 @@ export default function CoachPage() {
                     {t("betaCoach.retry")}
                   </Button>}
                 </div>
-              ) : !active.data?.messages.length && !send.isPending ? (
+              ) : !active.data?.messages.length && !send.isPending && !send.isError ? (
                 <div className="flex h-full flex-col items-start justify-center">
                   <span className="mb-6 text-[12px] text-muted">
                     APEX / {t("nav.coach")}
@@ -399,6 +431,11 @@ export default function CoachPage() {
                           </p>
                         )}
                       {m.role === "assistant" && <CheckedEvidence grounding={m.referenced_data?.grounding} />}
+                      {m.role === "assistant" && Array.isArray(m.referenced_data?.drafts) && m.referenced_data.drafts.length > 0 && (
+                        <Link to="/app/coach?tab=changes" className="text-link mt-3 inline-flex min-h-11 items-center gap-2 text-[13px]">
+                          {t("v01Coach.proposals")} <ArrowUpRight size={15} aria-hidden="true" />
+                        </Link>
+                      )}
                       {m.model_tier === "medical" && m.role === "assistant" && (
                         <p className="mt-4 text-[12px] text-warningText">
                           {t("coach.medical_disclaimer")}
@@ -418,19 +455,34 @@ export default function CoachPage() {
                   </p>
                 </div>
               )}
-              {send.isPending && (
-                <div role="status" className="mt-6 text-[13px] text-muted">
-                  {t("coach.thinking")}
+              {send.isPending && <PendingReply startedAt={send.submittedAt} />}
+              {send.isError && send.variables && (
+                <div className="mt-6 space-y-3">
+                  <ErrorNote message={send.error.message} />
+                  <p className="text-[13px] leading-relaxed text-muted">{t("v01Coach.failed_note")}</p>
+                  <details className="text-[13px]">
+                    <summary className="cursor-pointer text-muted">{t("v01Coach.failed_question")}</summary>
+                    <p className="mt-3 whitespace-pre-wrap break-words leading-relaxed">{send.variables.text}</p>
+                  </details>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="ghost" disabled={!aiAllowed || remove.isPending || active.isLoading || active.isError}
+                      onClick={() => { if (send.variables) send.mutate(send.variables); }}>
+                      {t("v01Coach.retry_question")}
+                    </Button>
+                    <Button variant="ghost" disabled={sessions.isFetching || active.isFetching}
+                      onClick={() => {
+                        setHistoryOpen(true);
+                        void sessions.refetch();
+                        if (activeId != null) void active.refetch();
+                      }}>
+                      {t("v01Coach.refresh_history")}
+                    </Button>
+                  </div>
                 </div>
               )}
               <div ref={bottom} />
             </div>
             <div className="border-t border-hairline p-5">
-              {send.isError && (
-                <div className="mb-4">
-                  <ErrorNote message={send.error.message} />
-                </div>
-              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
