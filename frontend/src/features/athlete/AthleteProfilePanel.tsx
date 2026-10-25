@@ -1,6 +1,6 @@
 import { MeasurableGoalEditor, goalInvalid } from "./MeasurableGoalEditor";
 import { FocusAllocationEditor } from "./FocusAllocationEditor";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -41,6 +41,8 @@ export function AthleteProfilePanel() {
   const [ftpWatts, setFtpWatts] = useState("");
   const [ftpDate, setFtpDate] = useState("");
   const [ftpConfirmed, setFtpConfirmed] = useState(false);
+  const [reviewDelete, setReviewDelete] = useState(false);
+  const deleteTitleId = useId();
   const root = useRef<HTMLDivElement>(null);
   const draft = { focuses, context, step, ftpWatts, ftpDate, ftpConfirmed };
   const snapshot = JSON.stringify(draft);
@@ -105,7 +107,7 @@ export function AthleteProfilePanel() {
       void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); },
   });
   const remove = useMutation({ mutationFn: () => api.delete("/athlete/profile"), onSuccess: () => {
-    save.reset(); if (uid != null) retainedDrafts.delete(uid); hydrate({ training_focus: [], context: {}, revision: revision + 1 }, undefined); qc.invalidateQueries({ queryKey: ["athlete-profile", uid] });
+    setReviewDelete(false); save.reset(); if (uid != null) retainedDrafts.delete(uid); hydrate({ training_focus: [], context: {}, revision: revision + 1 }, undefined); qc.invalidateQueries({ queryKey: ["athlete-profile", uid] });
     void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); qc.invalidateQueries({ queryKey: ["athlete-day"] }); qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }); qc.invalidateQueries({ queryKey: ["endurance"] });
   } });
   if (profile.isLoading) return <Loading />;
@@ -173,8 +175,16 @@ export function AthleteProfilePanel() {
       </fieldset>
       {seasonsInvalid && <p role="alert" className="mt-3 text-[13px] text-alertText">{t("athlete.season_invalid")}</p>}
       <p role={save.isError ? "alert" : "status"} className="mt-4 text-[13px] text-muted">{t(status)}</p>
-      {remove.isError && <ErrorNote />}
-      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || invalidProfile} onClick={() => save.mutate(step < 5 ? step + 1 : step)}>{t(save.isPending ? "athlete.saving_profile" : step < 5 ? step === 4 ? "athlete.finish" : "athlete.save_continue" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a><Button variant="ghost" disabled={remove.isPending || save.isPending} onClick={() => remove.mutate()}>{t("athlete.delete_context")}</Button>{save.isError && <Button variant="ghost" onClick={async () => { if (unsaved && !window.confirm(t("athlete.leave_unsaved"))) return; const next = await profile.refetch(); if (next.data) { if (uid != null) retainedDrafts.delete(uid); hydrate(next.data, undefined); save.reset(); } }}>{t("athlete.reload")}</Button>}</div>
+      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || reviewDelete || invalidProfile} onClick={() => save.mutate(step < 5 ? step + 1 : step)}>{t(save.isPending ? "athlete.saving_profile" : step < 5 ? step === 4 ? "athlete.finish" : "athlete.save_continue" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a>{!reviewDelete && <Button variant="ghost" disabled={remove.isPending || save.isPending} onClick={() => { remove.reset(); setReviewDelete(true); }}>{t("athlete.delete_context")}</Button>}{save.isError && <Button variant="ghost" disabled={reviewDelete} onClick={async () => { if (unsaved && !window.confirm(t("athlete.leave_unsaved"))) return; const next = await profile.refetch(); if (next.data) { if (uid != null) retainedDrafts.delete(uid); hydrate(next.data, undefined); save.reset(); } }}>{t("athlete.reload")}</Button>}</div>
+      {reviewDelete && <section aria-labelledby={deleteTitleId} className="mt-4 border border-hairline p-4">
+        <h3 id={deleteTitleId} className="text-[15px] font-medium">{t("athlete.delete_context_title")}</h3>
+        <p className="mt-2 text-[13px] text-muted">{t("athlete.delete_context_body")}</p>
+        {remove.isError && <p role="alert" className="mt-3 text-[13px] text-alertText">{t("athlete.delete_context_error")}</p>}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" autoFocus className="inline-flex min-h-10 items-center justify-center rounded-control border border-hairline px-3 text-[13px] font-medium text-ink2 hover:bg-surface3 disabled:opacity-50" disabled={remove.isPending} onClick={() => { setReviewDelete(false); remove.reset(); }}>{t("common.cancel")}</button>
+          <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>{t(remove.isPending ? "athlete.deleting_context" : "athlete.confirm_delete_context")}</Button>
+        </div>
+      </section>}
     </Card>
     <AiConsentPanel />
   </div>;

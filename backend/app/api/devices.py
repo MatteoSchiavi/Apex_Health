@@ -14,10 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_credential, get_current_user
+from app.connectors.garmin.metadata import garmin_auth_method
 from app.core.db import get_session
 from app.models.integration import Integration
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.schemas.ui import DeviceOut, MainDeviceUpdate
 
 logger = logging.getLogger("api.devices")
@@ -25,12 +26,13 @@ logger = logging.getLogger("api.devices")
 router = APIRouter(prefix="/settings/devices", tags=["devices"])
 
 
-def _device_out(integration: Integration, user: User) -> DeviceOut:
+def _device_out(integration: Integration, user: User, *, is_owner: bool = False) -> DeviceOut:
     from app.connectors.support import support_for
     return DeviceOut(
         integration_id=integration.id,
         provider=integration.provider,
         support=support_for(integration.provider),
+        auth_method=garmin_auth_method(integration, is_owner=is_owner),
         status=integration.status,
         last_synced_at=integration.last_synced_at,
         is_main=(
@@ -48,6 +50,7 @@ def _device_out(integration: Integration, user: User) -> DeviceOut:
 async def list_devices(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    credential: AuthCredential = Depends(get_current_credential),
 ) -> list[DeviceOut]:
     rows = (
         await session.scalars(
@@ -56,7 +59,7 @@ async def list_devices(
             .order_by(Integration.created_at)
         )
     ).all()
-    return [_device_out(i, user) for i in rows]
+    return [_device_out(i, user, is_owner=credential.role == "owner") for i in rows]
 
 
 @router.get("/support")
@@ -77,6 +80,7 @@ async def set_main_device(
     payload: MainDeviceUpdate,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    credential: AuthCredential = Depends(get_current_credential),
 ) -> list[DeviceOut]:
     if payload.integration_id is not None:
         integration = await session.get(Integration, payload.integration_id)
@@ -111,4 +115,4 @@ async def set_main_device(
             select(Integration).where(Integration.user_id == user.id)
         )
     ).all()
-    return [_device_out(i, user) for i in rows]
+    return [_device_out(i, user, is_owner=credential.role == "owner") for i in rows]

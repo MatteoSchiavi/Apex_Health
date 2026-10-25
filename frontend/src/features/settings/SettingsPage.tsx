@@ -1,6 +1,7 @@
 import Sharing from "../athlete/Sharing";
 import { AthleteProfilePanel } from "../athlete/AthleteProfilePanel";
 import HealthKitPanel from "./HealthKitPanel";
+import { GarminPersonalConnectForm } from "./GarminPersonalConnectForm";
 /**
  * Settings — personalization + account management hub (owner spec: "a good
  * settings page where personalization and settings management are easy").
@@ -356,6 +357,7 @@ function CorosConnectForm({ onDone }: { onDone: () => void }) {
 
 function DevicesSection() {
   const { t, i18n } = useTranslation();
+  const owner = useUi(s => s.me?.role === "owner");
   const timezone = useUi(s => s.me?.timezone);
   const qc = useQueryClient();
   const health = useSyncHealth();
@@ -540,6 +542,7 @@ function DevicesSection() {
                         {name}
                       </span>
                       {support && <Badge tone="warning">{t("providerSupport." + support.status)}</Badge>}
+                      {key === "garmin" && d?.auth_method === "personal_api_key" && <Badge>{t("garminPersonal.method")}</Badge>}
                       {d?.is_main && (
                         <Badge tone="primary">
                           {t("settings.main_device")}
@@ -601,6 +604,7 @@ function DevicesSection() {
                         {garminOpen ? t("common.close") : t("settings.connect")}
                       </Button>
                     )}
+                    {key === "garmin" && connected && owner && <Button variant="ghost" disabled={accounts.get(key)?.state === "syncing"} onClick={() => setGarminOpen(value => !value)}>{t(garminOpen ? "common.close" : d?.auth_method === "personal_api_key" ? "garminPersonal.replace_key" : "garminPersonal.switch")}</Button>}
                     {key === "coros" && !connected && <Button variant="ghost" onClick={() => setCorosOpen((value) => !value)}>{corosOpen ? t("common.close") : t("settings.connect")}</Button>}
                     {key !== "garmin" && key !== "coros" && !connected && (
                       <Button
@@ -614,14 +618,17 @@ function DevicesSection() {
                     )}
                   </div>
                 </div>
-                {key === "garmin" && garminOpen && !garminConnected ? (
-                  <GarminConnectForm
-                    onDone={() => {
+                {key === "garmin" && garminOpen && owner && <GarminPersonalConnectForm onDone={enqueued => {
+                  setGarminOpen(false);
+                  setSyncMessage(t(enqueued ? "garminPersonal.connected_syncing" : "garminPersonal.connected_not_queued"));
+                  invalidateSyncedData(qc);
+                }} />}
+                {key === "garmin" && garminOpen && !garminConnected && (owner ? <details className="border-b border-hairline py-4 text-[13px]"><summary className="cursor-pointer">{t("garminPersonal.previous_connection")}</summary><GarminConnectForm onDone={() => { setGarminOpen(false); invalidateSyncedData(qc); }} /></details> : (
+                  <GarminConnectForm onDone={() => {
                       setGarminOpen(false);
                       qc.invalidateQueries({ queryKey: ["devices"] });
-                    }}
-                  />
-                ) : null}
+                    }} />
+                ))}
                 {key === "coros" && corosOpen && !connected && <CorosConnectForm onDone={() => { setCorosOpen(false); qc.invalidateQueries({ queryKey: ["devices"] }); }} />}
               </Fragment>
             );

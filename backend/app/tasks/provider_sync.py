@@ -129,6 +129,7 @@ async def _sync_account(provider: str, user_id: int) -> dict:
         if integration is None:
             return {"status": "skipped", "reason": "No active integration"}
         integration_id = integration.id
+        original_encrypted_credentials = integration.credentials_encrypted
         user = await session.get(User, user_id)
         if user is None:
             return {"status": "skipped", "reason": "Account no longer exists"}
@@ -175,7 +176,9 @@ async def _sync_account(provider: str, user_id: int) -> dict:
                     refreshed_credentials = client.dump_tokens()
                 if refreshed_credentials is not None:
                     await session.execute(update(Integration).where(
-                        Integration.id == integration_id, Integration.status == "active",
+                        Integration.id == integration_id, Integration.user_id == user_id,
+                        Integration.status == "active",
+                        Integration.credentials_encrypted == original_encrypted_credentials,
                     ).values(credentials_encrypted=encrypt_json(refreshed_credentials)))
                     await session.commit()
             finally:

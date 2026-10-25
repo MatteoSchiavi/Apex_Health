@@ -228,6 +228,7 @@ test("confirmed FTP survives context saves and deletion clears prior save feedba
   const latest = writes.filter(w => w.path === "/athlete/profile").at(-1)!;
   expect((latest.body.context as Record<string, unknown>).ftp).toEqual({ watts: 250, measured_on: today, confirmed: true });
   await page.getByRole("button", { name: "Delete athlete context", exact: true }).click();
+  await page.getByRole("button", { name: "Yes, delete athlete context", exact: true }).click();
   await expect(page.locator("textarea[maxlength='8000']")).toHaveValue("");
   await expect(page.getByText("Athlete context deleted.", { exact: false })).toBeVisible();
   await expect(page.getByText("Athlete context saved.", { exact: false })).toHaveCount(0);

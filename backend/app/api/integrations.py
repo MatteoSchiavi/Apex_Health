@@ -21,12 +21,14 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from redis.asyncio import Redis
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_credential, get_current_user, require_owner
+from app.connectors.garmin.metadata import garmin_auth_method
+from app.connectors.garmin.personal import GarminPersonalClient, GarminPersonalError
 from app.connectors.oura.flow import (
     OAuthFlowError as OuraFlowError,
     complete_authorization as oura_complete,
@@ -59,7 +61,7 @@ from app.core.encryption import decrypt_json, encrypt_json
 from app.core.db import get_session
 from app.core.redis import get_redis_dependency
 from app.models.integration import Integration
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.services.alpha_events import record_event
 
 logger = logging.getLogger("api.integrations")
@@ -104,7 +106,7 @@ async def _revoke_strava_access_token(credentials: dict) -> bool:
         return False
 
 
-def _to_dict(integration: Integration) -> dict:
+def _to_dict(integration: Integration, *, is_owner: bool = False) -> dict:
     from app.connectors.support import support_for
     return {
         "id": integration.id,
@@ -114,6 +116,7 @@ def _to_dict(integration: Integration) -> dict:
         "credentials_stored": integration.credentials_encrypted is not None,
         "last_synced_at": integration.last_synced_at,
         "consecutive_failures": integration.consecutive_failures,
+        "auth_method": garmin_auth_method(integration, is_owner=is_owner),
     }
 
 
@@ -161,13 +164,14 @@ async def _record_oauth_connection(session: AsyncSession, result: dict, provider
 async def list_integrations(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    credential: AuthCredential = Depends(get_current_credential),
 ) -> list[dict]:
     rows = (
         await session.scalars(
             select(Integration).where(Integration.user_id == user.id)
         )
     ).all()
-    return [_to_dict(r) for r in rows]
+    return [_to_dict(r, is_owner=credential.role == "owner") for r in rows]
 
 
 @router.delete("/settings/integrations/{provider}")
@@ -556,6 +560,116 @@ async def coros_oauth_callback() -> dict:
 # logged, and lives only for the duration of this request.
 
 
+async def _limit_garmin_connect(redis: Redis, user_id: int) -> None:
+    # Shared by both Garmin connection methods. INCR + EXPIRE must be atomic:
+    # interruption between them must not leave a permanent rate-limit key.
+    attempts = await redis.eval("""
+        local count = redis.call('INCR', KEYS[1])
+        if count == 1 then redis.call('EXPIRE', KEYS[1], 3600) end
+        return count
+    """, 1, f"garmin_connect:rl:user:{user_id}")
+    if int(attempts) > 3:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many Garmin connect attempts; wait an hour before retrying.",
+            headers={"Retry-After": "3600"},
+        )
+
+
+async def _lock_garmin_connection(session: AsyncSession, user_id: int) -> None:
+    # Same transaction lock as disconnect and the sync worker. Hold it through
+    # authentication + commit, so an in-flight sync cannot restore old tokens.
+    lock_id = int.from_bytes(
+        hashlib.sha256(f"sync:garmin:{user_id}".encode()).digest()[:8],
+        "big", signed=True,
+    )
+    if not await session.scalar(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": lock_id}
+    ):
+        raise HTTPException(409, "A Garmin sync or connection is running; try again when it finishes.")
+
+
+class GarminPersonalConnectIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    api_key: SecretStr = Field(min_length=1, max_length=4096)
+
+    @field_validator("api_key")
+    @classmethod
+    def nonempty_key(cls, value: SecretStr) -> SecretStr:
+        if not value.get_secret_value().strip():
+            raise ValueError("A Garmin Personal API key is required")
+        return value
+
+
+@router.post("/settings/integrations/garmin/personal/connect", dependencies=[Depends(require_owner)])
+async def connect_garmin_personal(
+    payload: GarminPersonalConnectIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis_dependency),
+) -> dict:
+    """Verify and save the owner's official Garmin Personal API key.
+
+    This is a personal-use pilot. Friend accounts need a separately approved
+    Garmin Business API integration; they cannot use this endpoint.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    await _limit_garmin_connect(redis, user.id)
+    await _lock_garmin_connection(session, user.id)
+    client = None
+    try:
+        client = GarminPersonalClient({
+            "auth_type": "personal_api_key",
+            "api_key": payload.api_key.get_secret_value(),
+        })
+        # Do not touch an existing working integration until the official
+        # Garmin exchange has accepted the new key.
+        await client.authenticate()
+        encrypted_credentials = encrypt_json(client.dump_tokens())
+    except GarminAuthError:
+        raise HTTPException(400, "Garmin Personal API key could not be verified; check or replace the key.") from None
+    except GarminPersonalError as exc:
+        if exc.status_code == 429:
+            raise HTTPException(429, "Garmin is limiting connection attempts; try again later.") from None
+        if exc.error_class == "permission":
+            raise HTTPException(400, "Garmin Personal API access is not permitted; review the key's access.") from None
+        raise HTTPException(503, "Garmin Personal API is temporarily unavailable; try again shortly.") from None
+    finally:
+        payload.api_key = SecretStr("")
+        if client is not None:
+            await client.aclose()
+
+    integration = await session.scalar(select(Integration).where(
+        Integration.user_id == user.id, Integration.provider == "garmin",
+    ))
+    if integration is None:
+        integration = Integration(user_id=user.id, provider="garmin")
+        session.add(integration)
+    integration.credentials_encrypted = encrypted_credentials
+    integration.status = "active"
+    integration.consecutive_failures = 0
+    # Keep the row, main device preference, imported history and sync watermark.
+    # Personal API coverage is bounded by the transport, not by resetting history.
+    record_event(session, user.id, "integration_connected", {"provider": "garmin"})
+    await session.commit()
+
+    backfill_enqueued = True
+    try:
+        from app.tasks.garmin_sync import sync_user_garmin
+        await run_in_threadpool(sync_user_garmin.delay, user.id)
+    except Exception:
+        backfill_enqueued = False
+        logger.warning("garmin personal connect: per-user sync enqueue unavailable")
+    return {
+        "connected": True,
+        "provider": "garmin",
+        "auth_method": "personal_api_key",
+        "backfill_enqueued": backfill_enqueued,
+    }
+
+
 class GarminConnectIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=1024)
@@ -584,9 +698,10 @@ async def connect_garmin(
     and no code was supplied — the client then shows the code field and
     re-posts. On success the session tokens replace any previous credential
     blob, the integration goes active, and the per-user backfill task is
-    enqueued (NULL last_synced_at = full walk, §6.3).
+    enqueued. Existing history and the sync watermark are preserved; a new
+    integration starts with NULL last_synced_at (§6.3).
 
-    F-11 audit: rate-limited to 3 connects/hour/IP (Redis sliding window) so
+    F-11 audit: rate-limited to 3 connects/hour/user (Redis fixed window) so
     the endpoint cannot be abused as a brute-force proxy against the user's
     real Garmin account. The password is zeroed from local scope immediately
     after the login thread returns. The backfill enqueue is scoped to THIS
@@ -596,15 +711,8 @@ async def connect_garmin(
     # F-11: rate limit — 3 connect attempts per hour per USER (the user is
     # already authenticated; keying on user_id is stronger than IP and
     # prevents one user from burning another's quota).
-    rl_key = f"garmin_connect:rl:user:{user.id}"
-    attempts = await redis.incr(rl_key)
-    if attempts == 1:
-        await redis.expire(rl_key, 3600)
-    if attempts > 3:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many Garmin connect attempts — wait an hour before retrying.",
-        )
+    await _limit_garmin_connect(redis, user.id)
+    await _lock_garmin_connection(session, user.id)
 
     def _mfa_prompt() -> str:
         if payload.mfa_code:
@@ -624,11 +732,11 @@ async def connect_garmin(
             "mfa_required": True,
             "note": "Account requires a one-time code — resubmit with mfa_code.",
         }
-    except GarminAuthError as exc:
+    except GarminAuthError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Garmin connect failed: {exc}",
-        ) from exc
+            detail="Garmin connect failed; check your credentials and try again.",
+        ) from None
     finally:
         # F-11: zero the password reference from request scope — Python's
         # GC will collect it on the next pass; the local binding is gone
@@ -647,7 +755,8 @@ async def connect_garmin(
     integration.credentials_encrypted = encrypt_json(tokens)
     integration.status = "active"
     integration.consecutive_failures = 0
-    integration.last_synced_at = None  # next sync = full history walk
+    from app.connectors.garmin.sync import clear_personal_api_coverage
+    await clear_personal_api_coverage(session, user.id)
     record_event(session, user.id, "integration_connected", {"provider": "garmin"})
     await session.commit()
     logger.info("garmin connect: integration %s activated for user %s", integration.id, user.id)

@@ -595,3 +595,61 @@ async def test_new_historical_stream_samples_invalidate_owned_scores_but_replay_
     await db_session.commit()
     assert result.activity_streams_upserted == 0
     assert float((await db_session.get(DailyFeature, (user.id, day))).strain_score) == 40
+
+
+async def test_switch_to_legacy_clears_personal_flags_without_losing_source_history(db_session):
+    from app.connectors.garmin.personal import GarminPersonalClient
+    from app.models.lab import FeedState
+
+    user, integration = await make_garmin_user(db_session)
+    other, _ = await make_garmin_user(db_session)
+    report = await run_user_sync_with_escalation(
+        db_session, user, integration, FixtureGarminClient(), now=SYNC_NOW, **sync_kwargs()
+    )
+    assert report is not None
+    activity_ids = set((await db_session.scalars(select(Activity.id).where(Activity.user_id == user.id))).all())
+    raw_ids = set((await db_session.scalars(select(RawIngest.id).where(RawIngest.user_id == user.id))).all())
+    for account in (user, other):
+        db_session.add(FeedState(user_id=account.id, provider="garmin", feed="personal_api_coverage",
+                                 availability="available", details={"window_days": 30}))
+        for capability in GarminPersonalClient.unsupported_capabilities:
+            existing = await db_session.scalar(select(FeedState).where(
+                FeedState.user_id == account.id, FeedState.provider == "garmin", FeedState.feed == capability,
+            ))
+            if existing is None:
+                existing = FeedState(user_id=account.id, provider="garmin", feed=capability)
+                db_session.add(existing)
+            existing.availability = "not_supported"
+            if capability == "training_status":
+                existing.latest_measurement_at = SYNC_NOW - timedelta(days=10)
+                existing.cursor = {"previous_page": 3}
+                existing.details = {"historical_provenance": "keep"}
+    db_session.add(FeedState(user_id=user.id, provider="whoop", feed="training_status", availability="not_supported"))
+    db_session.add(FeedState(user_id=user.id, provider="garmin", feed="unrelated_metric", availability="not_supported"))
+    await db_session.commit()
+
+    report = await run_user_sync_with_escalation(
+        db_session, user, integration, FixtureGarminClient(), now=SYNC_NOW + timedelta(hours=1), **sync_kwargs()
+    )
+    assert report is not None
+    states = {(row.provider, row.feed): row for row in (await db_session.scalars(
+        select(FeedState).where(FeedState.user_id == user.id)
+    )).all()}
+    assert ("garmin", "personal_api_coverage") not in states
+    assert states["garmin", "activity_streams"].availability == "available"
+    assert states["garmin", "exercise_sets"].availability == "not_exposed"
+    historical = states["garmin", "training_status"]
+    assert historical.availability == "stale"
+    assert historical.latest_measurement_at == SYNC_NOW - timedelta(days=10)
+    assert historical.cursor == {"previous_page": 3}
+    assert historical.details == {"historical_provenance": "keep"}
+    assert states["whoop", "training_status"].availability == "not_supported"
+    assert states["garmin", "unrelated_metric"].availability == "not_supported"
+    assert await db_session.scalar(select(FeedState.id).where(
+        FeedState.user_id == other.id, FeedState.feed == "personal_api_coverage",
+    )) is not None
+    assert await db_session.scalar(select(FeedState.availability).where(
+        FeedState.user_id == other.id, FeedState.feed == "training_status",
+    )) == "not_supported"
+    assert activity_ids == set((await db_session.scalars(select(Activity.id).where(Activity.user_id == user.id))).all())
+    assert raw_ids <= set((await db_session.scalars(select(RawIngest.id).where(RawIngest.user_id == user.id))).all())

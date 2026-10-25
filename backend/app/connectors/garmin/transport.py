@@ -2,9 +2,9 @@
 
 The sync pipeline consumes this narrow asynchronous surface. The existing
 Garmin Connect adapter implements it using the unofficial ``garminconnect``
-library. Garmin's official APIs are a separate, currently unsupported path:
-until approved credentials and provider schemas are available, the explicit
-placeholder below fails instead of returning guessed data.
+library. The official owner-only Personal API client in personal.py implements
+this surface with explicit unsupported capabilities. The placeholder below
+remains for the separate Business integration, which is not implemented.
 """
 
 from __future__ import annotations
@@ -38,11 +38,10 @@ class GarminTransport(Protocol):
 
 
 class OfficialGarminTransport:
-    """Unsupported placeholder for a future, approved official integration.
+    """Unsupported placeholder for a future approved Business integration.
 
-    No official credential contract or response schemas are verified in this
-    repository. Each operation fails explicitly rather than fabricating an
-    empty response that could be mistaken for a successful sync.
+    This is not the owner-only GarminPersonalClient. Each operation fails
+    explicitly rather than fabricating an empty successful response.
     """
 
     _MESSAGE = (

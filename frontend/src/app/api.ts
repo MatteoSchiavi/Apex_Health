@@ -353,6 +353,7 @@ export interface ChatSessionDetail extends ChatSessionOut {
 }
 
 export interface DeviceOut {
+  auth_method?: "personal_api_key" | "garmin_connect" | null;
   support?: { status: string; live_tested: boolean; production_supported: boolean; configured?: boolean };
   integration_id: number;
   provider: string;

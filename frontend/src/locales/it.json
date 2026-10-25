@@ -1429,7 +1429,7 @@
     "not_connected": "Nessuna fonte collegata",
     "profile": "Completa il profilo",
     "profile_ready": "Dati del profilo disponibili",
-    "profile_missing": "Aggiungi nome e fuso orario",
+    "profile_missing": "Aggiungi il tuo sport, obiettivo o contesto",
     "baseline": "Crea una baseline del sonno",
     "baseline_count": "{{count}}/14 notti registrate negli ultimi 28 giorni"
   },
@@ -2136,7 +2136,12 @@
     "add_season": "Aggiungi un periodo di priorità stagionale",
     "season_invalid": "Ogni stagione richiede date crescenti e almeno una disciplina. I periodi non possono sovrapporsi.",
     "supporting_disciplines": "Discipline di supporto",
-    "weekly_allocation": "Distribuzione settimanale"
+    "weekly_allocation": "Distribuzione settimanale",
+    "delete_context_title": "Eliminare il tuo contesto sportivo?",
+    "delete_context_body": "Verranno cancellati gli sport, gli obiettivi, la disponibilità, i dettagli facoltativi e le note salvati, insieme alle modifiche non salvate in questo modulo. Questa operazione è irreversibile.",
+    "confirm_delete_context": "Sì, elimina il contesto sportivo",
+    "deleting_context": "Eliminazione del contesto sportivo…",
+    "delete_context_error": "Impossibile eliminare il contesto sportivo. Il contesto salvato e le modifiche non salvate sono ancora disponibili. Riprova o annulla."
   },
   "athleteImport": {
     "title": "Importa informazioni sportive",
@@ -2827,5 +2832,29 @@
     "profile_details": "Dettagli del profilo atleta",
     "save_review_note": "Salva le correzioni come bozza oppure passa all’anteprima del calendario quando tutti i dettagli richiesti sono completi.",
     "review_import_separately": "Rivedi le informazioni atleta importate"
+  },
+  "garminPersonal": {
+    "title": "Collega Garmin Personal API",
+    "method": "Personal API",
+    "intro": "Collega i tuoi dati Garmin con una chiave Personal API. Lo storico importato resta disponibile quando cambi collegamento.",
+    "create_key": "Apri Garmin Connect e crea una chiave Personal API",
+    "copy_key": "Copia la chiave quando Garmin la mostra, poi incollala qui sotto. Potrai revocarla in Garmin Connect.",
+    "key": "Chiave Garmin Personal API",
+    "storage": "Apex verifica la chiave con Garmin e la conserva cifrata per il tuo account. Qui non verrà più mostrata.",
+    "verifying": "Verifica con Garmin…",
+    "verify_connect": "Verifica e collega",
+    "rate_limit": "Troppi tentativi di collegamento. Attendi un’ora prima di riprovare.",
+    "busy": "È in corso una sincronizzazione Garmin. Attendi che finisca, poi riprova.",
+    "owner_only": "La configurazione Personal API è disponibile al proprietario di questa istanza. Le integrazioni Garmin per più utenti usano il programma Business.",
+    "invalid_key": "Garmin non ha verificato questa chiave. Controlla di averla copiata per intero e che non sia scaduta o revocata.",
+    "unavailable": "Garmin non è raggiungibile o il collegamento non è stato verificato. Il collegamento esistente e i dati importati restano disponibili. Riprova più tardi.",
+    "coverage_title": "Quali dati sono disponibili?",
+    "coverage": "Importa le attività, i riepiloghi giornalieri, il sonno, la HRV e il peso disponibili. I campioni dettagliati delle attività, le singole serie palestra e l’invio di allenamenti all’orologio non sono disponibili tramite questo collegamento Personal API. I dati mancanti restano non disponibili.",
+    "replace_key": "Sostituisci la chiave Personal API",
+    "switch": "Usa Personal API",
+    "previous_connection": "Collegamento precedente con accesso Garmin",
+    "connected_syncing": "Garmin Personal API collegata. Sincronizzazione in coda: controlla la freschezza dei dati al termine.",
+    "connected_not_queued": "Garmin Personal API collegata. Non è stato possibile avviare la sincronizzazione. Scegli Sincronizza ora per riprovare.",
+    "coverage_window": "Il progetto pilota importa gli ultimi 30 giorni di calendario. I dati precedenti già importati in Apex restano disponibili."
   }
 }

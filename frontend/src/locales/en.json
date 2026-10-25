@@ -1429,7 +1429,7 @@
     "not_connected": "No connected source yet",
     "profile": "Complete your profile",
     "profile_ready": "Profile details available",
-    "profile_missing": "Add your name and time zone",
+    "profile_missing": "Add your training focus, goal, or context",
     "baseline": "Build a sleep baseline",
     "baseline_count": "{{count}}/14 recorded nights in the last 28 days"
   },
@@ -2136,7 +2136,12 @@
     "add_season": "Add a seasonal priority period",
     "season_invalid": "Each season needs increasing dates and at least one discipline. Seasonal periods cannot overlap.",
     "supporting_disciplines": "Supporting disciplines",
-    "weekly_allocation": "Weekly training allocation"
+    "weekly_allocation": "Weekly training allocation",
+    "delete_context_title": "Delete your athlete context?",
+    "delete_context_body": "This clears your saved training focus, goals, availability, optional details, and notes, and discards any unsaved edits in this form. This cannot be undone.",
+    "confirm_delete_context": "Yes, delete athlete context",
+    "deleting_context": "Deleting athlete context…",
+    "delete_context_error": "Could not delete your athlete context. Your saved context and unsaved edits are still available. Try again or cancel."
   },
   "athleteImport": {
     "title": "Import Athlete Information",
@@ -2827,5 +2832,29 @@
     "profile_details": "Athlete profile details",
     "save_review_note": "Save your corrections as a draft, or continue to a calendar preview when all required details are complete.",
     "review_import_separately": "Review imported athlete information"
+  },
+  "garminPersonal": {
+    "title": "Connect Garmin Personal API",
+    "method": "Personal API",
+    "intro": "Connect your own Garmin data using a Personal API key. Your imported history stays available when you change connection.",
+    "create_key": "Open Garmin Connect and create a Personal API key",
+    "copy_key": "Copy the key when Garmin shows it, then paste it below. You can revoke it later in Garmin Connect.",
+    "key": "Garmin Personal API key",
+    "storage": "Apex verifies the key with Garmin and stores it encrypted for your account. It is never shown again here.",
+    "verifying": "Verifying with Garmin…",
+    "verify_connect": "Verify and connect",
+    "rate_limit": "Too many connection attempts. Wait an hour before trying again.",
+    "busy": "A Garmin sync is running. Wait for it to finish, then reconnect.",
+    "owner_only": "Personal API setup is available to this instance’s owner. Multi-user Garmin integrations use the Business program.",
+    "invalid_key": "Garmin could not verify this key. Check that you copied the complete key and that it has not expired or been revoked.",
+    "unavailable": "Garmin could not be reached or the connection could not be verified. Your existing connection and imported data are still available. Try again later.",
+    "coverage_title": "Which data is available?",
+    "coverage": "Imports available activities, daily summaries, sleep, HRV and weight. Detailed activity samples, individual gym sets and sending workouts to a watch are not available through this Personal API connection. Missing data stays unavailable.",
+    "replace_key": "Replace Personal API key",
+    "switch": "Use Personal API",
+    "previous_connection": "Previous connection with Garmin login",
+    "connected_syncing": "Garmin Personal API connected. Synchronization is queued; check data freshness when it finishes.",
+    "connected_not_queued": "Garmin Personal API connected. Synchronization could not be queued. Choose Sync now to try again.",
+    "coverage_window": "The pilot imports the most recent 30 calendar days. Older data already imported into Apex stays available."
   }
 }

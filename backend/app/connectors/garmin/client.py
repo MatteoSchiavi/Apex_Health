@@ -1,4 +1,4 @@
-"""Garmin authentication facade and unofficial Connect transport.
+"""Garmin authentication facade with Personal API and legacy Connect selection.
 
 The sync pipeline depends on the `GarminTransport` protocol in `transport.py`.
 Automated tests inject fixture-backed clients and never call Garmin live.
@@ -6,8 +6,8 @@ Automated tests inject fixture-backed clients and never call Garmin live.
 `GarminConnectTransport` owns calls and response adaptation. The library is
 imported lazily, so this module remains importable when it is not installed.
 
-Real-account connection is performed manually by the owner (§23 Phase 1
-acceptance): see tools/garmin_sync.py.
+Personal API credentials select the asynchronous client in personal.py;
+legacy Connect sessions remain available through tools/garmin_sync.py.
 """
 
 import asyncio
@@ -237,9 +237,15 @@ class LiveGarminClient:
 GarminConnectClient = LiveGarminClient
 
 
-def build_live_client(credentials: dict[str, Any] | None) -> LiveGarminClient:
-    """Build the live client from stored credentials, falling back to env
-    GARMIN_EMAIL/GARMIN_PASSWORD (§5) when nothing is stored yet."""
+def build_live_client(credentials: dict[str, Any] | None) -> GarminTransport:
+    """Select Personal API without I/O, or resume a legacy Connect session.
+
+    The legacy CLI can still fall back to GARMIN_EMAIL/GARMIN_PASSWORD;
+    account workers require encrypted credentials before calling this factory.
+    """
+    if credentials and credentials.get("auth_type") == "personal_api_key":
+        from app.connectors.garmin.personal import GarminPersonalClient
+        return GarminPersonalClient(credentials)
     if credentials:
         return LiveGarminClient.from_tokens(credentials)
     settings = get_settings()

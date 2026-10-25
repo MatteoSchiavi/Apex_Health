@@ -1,4 +1,5 @@
 import { YourDay } from "../athlete/YourDay";
+import type { AthleteDay } from "../athlete/types";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -209,6 +210,11 @@ export default function OverviewPage() {
   });
   const [params, setParams] = useSearchParams();
   const date = params.get("date");
+  // Observe YourDay's response without initiating a second request on mount.
+  const setupProfile = useQuery<AthleteDay>({
+    queryKey: ["athlete-day", me?.user_id, date ?? localDay(me?.timezone)],
+    enabled: false,
+  });
   const [range, setRange] = useState("7");
   const overview = useQuery({
     queryKey: ["overview", date ?? "latest"],
@@ -241,7 +247,10 @@ export default function OverviewPage() {
   const recentActivities = o.recent_activities ?? o.activities;
   const connectedSources = setupDevices.data?.filter((device) => device.status === "active").length ?? 0;
   const recordedNights = setupSleep.data?.points.filter((p) => p.value != null).length ?? 0;
-  const setupComplete = [connectedSources > 0, !!(me?.name?.trim() && me.timezone), recordedNights >= 14];
+  const profileReady = setupProfile.data?.planning_context
+    ? setupProfile.data.planning_context.profile_state === "ready"
+    : !!setupProfile.data?.training_focus.length;
+  const setupComplete = [connectedSources > 0, profileReady, recordedNights >= 14];
   const stageParts = o.sleep ? [
     { key: "deep", value: o.sleep.stages.deep_s ?? 0, color: "var(--c-stage-deep)" },
     { key: "rem", value: o.sleep.stages.rem_s ?? 0, color: "var(--c-stage-rem)" },
@@ -269,7 +278,7 @@ export default function OverviewPage() {
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow text-primaryText">{t("setup.eyebrow")}</p><h2 className="mt-1 text-[18px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[13px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
       <ul className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">{[
         { done: setupComplete[0], label: t("setup.connect"), to: "/app/settings?tab=devices", state: setupDevices.isLoading ? t("setup.checking") : setupComplete[0] ? t("setup.connected", { count: connectedSources }) : t("setup.not_connected") },
-        { done: setupComplete[1], label: t("setup.profile"), to: "/app/settings?tab=profile", state: setupComplete[1] ? t("setup.profile_ready") : t("setup.profile_missing") },
+        { done: setupComplete[1], label: t("setup.profile"), to: "/app/settings?tab=profile", state: setupProfile.isPending ? t("setup.checking") : setupComplete[1] ? t("setup.profile_ready") : t("setup.profile_missing") },
         { done: setupComplete[2], label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
       ].map((item) => <li key={item.label}><Link to={item.to} className="flex min-h-11 items-center gap-3 border border-hairline px-3 py-2 hover:bg-surface2"><span aria-hidden="true" className={item.done ? "text-positiveText" : "text-faint"}>{item.done ? "✓" : "○"}</span><span className="min-w-0"><span className="block font-medium text-ink">{item.label}</span><span className="block text-[12px] text-muted">{item.state}</span></span><ArrowRight size={14} className="ml-auto shrink-0" /></Link></li>)}</ul>
     </Card>}

@@ -106,8 +106,10 @@ The platform is useful without third-party credentials. Add only the
 integration settings you intend to use to `.env`, then restart the affected
 service.
 
-- **Garmin:** connect through Settings in the web application. Tokens are
-  encrypted; the password is used only for the connection flow.
+- **Garmin:** the owner can connect an official Personal API key in Settings;
+  see [GARMIN_PERSONAL_API.md](GARMIN_PERSONAL_API.md) for the personal-use pilot
+  and coverage limits. The legacy Garmin Connect method remains available.
+  Credentials are encrypted; its password is used only for the connection flow.
 - **FIT files:** import original files from Data Health. Originals are stored
   encrypted and sample provenance is retained.
 - **AI coach:** configure an OpenAI-compatible provider using the LLM settings

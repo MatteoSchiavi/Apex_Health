@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from app.core.db import engine, sessionmaker
 from app.models.integration import Integration, RawIngest
 from app.models.lab import LabJob
@@ -133,6 +133,8 @@ async def _run(ident):
                     job.state = "queued"
                     await session.commit()
                 return {"state": "queued", "reason": "provider_sync_active"}
+            client = None
+            original_encrypted_credentials = None
             try:
                 async with sessionmaker() as session:
                     integration = await session.scalar(
@@ -148,7 +150,8 @@ async def _run(ident):
                         job.progress = {"error": "Reconnect Garmin"}
                         await session.commit()
                         return {"state": "auth_required"}
-                    credentials = decrypt_json(integration.credentials_encrypted)
+                    original_encrypted_credentials = integration.credentials_encrypted
+                    credentials = decrypt_json(original_encrypted_credentials)
                     integration_id = integration.id
                     index = dict(
                         (
@@ -202,9 +205,14 @@ async def _run(ident):
                         if hasattr(client, "dump_tokens"):
                             from app.core.encryption import encrypt_json
 
-                            integration.credentials_encrypted = encrypt_json(
-                                client.dump_tokens()
-                            )
+                            refreshed = encrypt_json(client.dump_tokens())
+                            persisted = await session.execute(update(Integration).where(
+                                Integration.id == integration_id, Integration.user_id == user_id,
+                                Integration.status == "active",
+                                Integration.credentials_encrypted == original_encrypted_credentials,
+                            ).values(credentials_encrypted=refreshed))
+                            if persisted.rowcount:
+                                original_encrypted_credentials = refreshed
                         job.updated_at = datetime.now(UTC)
                         job.progress = {
                             "cursor": offset + 1,
@@ -214,9 +222,29 @@ async def _run(ident):
                         }
                         await session.commit()
             finally:
-                await provider_lock.execute(
-                    text("SELECT pg_advisory_unlock(:key)"), {"key": lock}
-                )
+                try:
+                    if client is not None:
+                        try:
+                            # Persist renewal on failed/cancelled repairs too;
+                            # never overwrite a concurrent reconnect/disconnect.
+                            if hasattr(client, "dump_tokens"):
+                                from app.core.encryption import encrypt_json
+                                async with sessionmaker() as token_session:
+                                    await token_session.execute(update(Integration).where(
+                                        Integration.id == integration_id,
+                                        Integration.user_id == user_id,
+                                        Integration.status == "active",
+                                        Integration.credentials_encrypted == original_encrypted_credentials,
+                                    ).values(credentials_encrypted=encrypt_json(client.dump_tokens())))
+                                    await token_session.commit()
+                        finally:
+                            close = getattr(client, "aclose", None)
+                            if close is not None:
+                                await close()
+                finally:
+                    await provider_lock.execute(
+                        text("SELECT pg_advisory_unlock(:key)"), {"key": lock}
+                    )
     else:
         # Raw fetched dates are not measurement dates. Map observations first,
         # retain only the requested measured-date range, and preserve lineage.

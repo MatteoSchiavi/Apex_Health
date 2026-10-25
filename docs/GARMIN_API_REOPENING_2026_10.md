@@ -101,8 +101,10 @@ of the v0.1 acceptance work.
    connection. Keep this provider migration independently reviewable from the
    already tested UI/workout repairs.
 
-The next concrete prerequisite is a Personal key supplied through secure
-configuration for the owner's proof, plus Business enrollment for the hosted
-multi-user path. No live API key was created, supplied or exercised in this
-research. The reopening is verified; Apex's official integration is still
-unimplemented and unvalidated.
+This was the implementation state at the time of the original research.
+The owner Personal API pilot is now implemented in the follow-up branch; see
+[setup, coverage and limitations](GARMIN_PERSONAL_API.md). Live authentication
+and activity, sleep, HRV, daily-summary and weight-range reads have succeeded
+with an owner-supplied key. Full-pipeline acceptance, release checks and the
+installed production revision must be assessed separately. Business enrollment
+and workout delivery remain outside the Personal API pilot.

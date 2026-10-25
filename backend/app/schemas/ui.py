@@ -308,6 +308,7 @@ class DeviceOut(BaseModel):
     last_synced_at: datetime | None
     is_main: bool
     support: dict[str, Any] | None = None
+    auth_method: Literal["personal_api_key", "garmin_connect"] | None = None
     connected_at: datetime
 
 
