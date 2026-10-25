@@ -64,6 +64,17 @@ async def test_key_exchange_and_account_scoped_token_reuse():
     assert client._http.is_closed
 
 
+async def test_checkpoint_normalization_keeps_one_cumulative_sport_notice():
+    from app.connectors.garmin.sync import SyncReport, normalize_pending
+    from app.connectors.garmin.normalize import NormalizerStats
+    session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])))
+    report = SyncReport(user_id=7, mode="backfill", notes=["Personal API pilot window"])
+    report.stats = NormalizerStats(discipline_fallbacks=["synthetic:unknown_sport"])
+    for _ in range(30):
+        await normalize_pending(session, 7, ZoneInfo("UTC"), {}, report)
+    assert report.notes == ["Personal API pilot window", "discipline fallback used for: synthetic:unknown_sport"]
+
+
 async def test_expired_cache_is_renewed_and_24h_lifetime_is_capped():
     requests = []
     def respond(request):

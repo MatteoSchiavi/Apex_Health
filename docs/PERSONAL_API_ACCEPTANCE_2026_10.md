@@ -19,9 +19,12 @@ The production site still reported `5d516d4` during this assessment.
 - Local targeted backend checks passed 73 tests, covering encryption handoff,
   owner authorization, CSRF, isolation, token renewal, safe errors, unit mapping,
   bounded imports and preservation of history when changing connection.
-- A real 30-day local import and the complete browser/release suites are
-  additional acceptance gates. Consult the final PR checks and execution
-  results before treating the candidate as validated.
+- A real 30-day import completed successfully in a separate local database:
+  98 raw payloads normalized, zero pending normalization errors. The complete
+  browser/release suites remain additional gates; consult the final PR checks.
+- That import exposed repeated sport-fallback notices on every daily
+  checkpoint. Reports now retain one cumulative notice. Unrecognized provider
+  sports remain visibly unknown, rather than being reclassified as gym work.
 
 Private keys, account payloads and session files are outside Git. These checks
 do not establish a production installation or an exhaustive security audit.

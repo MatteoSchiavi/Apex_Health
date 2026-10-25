@@ -534,6 +534,9 @@ async def normalize_pending(
     report.stats = totals
     report.raw_rows_unprocessed = len(totals.unprocessed)
     if totals.discipline_fallbacks:
+        # Checkpoint normalization runs once per day. Keep one cumulative
+        # notice instead of repeating the same warning for every day fetched.
+        report.notes[:] = [note for note in report.notes if not note.startswith("discipline fallback used for: ")]
         report.notes.append(
             "discipline fallback used for: " + ", ".join(sorted(totals.discipline_fallbacks))
         )
