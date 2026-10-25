@@ -205,11 +205,11 @@ class GarminPersonalClient:
         return await self._get("/usersummary-service/usersummary/daily", params={"calendarDate": local_date})
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
-        # DateWeightDTO explicitly specifies kilograms; unlike the old Connect
-        # API. Use same-day measurements only, never adjacent range context.
+        # The live /range endpoint returns grams, despite the shared OpenAPI
+        # DateWeightDTO description saying kilograms. Keep its grams for the
+        # established normalizer, verified against an actual dated measurement.
         # Garmin's official SDK uses range + includeAll. The documented /all
-        # route returns 400 for a valid real account. Use DateWeightDTO entries
-        # whose units are explicit; adjacent graph-context weights are not
+        # route returns 400 for a valid real account. Adjacent graph-context weights are not
         # measurements for the requested day.
         original = await self._get(f"/weight-service/weight/range/{local_date}/{local_date}", params={"includeAll": "true"})
         summaries = original.get("dailyWeightSummaries")
@@ -228,11 +228,11 @@ class GarminPersonalClient:
                 raise GarminPersonalError("Garmin returned invalid weight measurements", error_class="normalization")
             rows.extend(row for row in measurements if row.get("calendarDate", local_date) == local_date)
         total = {}
-        for key, scale in (("weight", 1000), ("bodyFat", 1)):
+        for key in ("weight", "bodyFat"):
             values = [row[key] for row in rows if isinstance(row, dict) and isinstance(row.get(key), (int, float)) and not isinstance(row[key], bool) and math.isfinite(row[key])]
             if values:
-                total[key] = sum(values) / len(values) * scale
-        return {"totalAverage": total, "_personal_api_payload": original}
+                total[key] = sum(values) / len(values)
+        return {"totalAverage": total, "_personal_api_payload": original, "_personal_api_weight_unit": "g"}
 
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
         raise NotImplementedError("Personal API activity streams require a validated FIT mapping")

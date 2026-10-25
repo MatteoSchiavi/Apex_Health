@@ -181,7 +181,7 @@ async def test_schema_mapping_reaches_canonical_sleep_and_weight(monkeypatch):
             return httpx.Response(200, json=original_sleep)
         assert request.url.path == "/weight-service/weight/range/2026-10-24/2026-10-24"
         assert request.url.params["includeAll"] == "true"
-        return httpx.Response(200, json={"dailyWeightSummaries":[{"summaryDate":"2026-10-24", "allWeightMetrics":[{"calendarDate": "2026-10-24", "weight": 73.5, "bodyFat": 18.2}]}], "previousDateWeight":{"weight":90}})
+        return httpx.Response(200, json={"dailyWeightSummaries":[{"summaryDate":"2026-10-24", "allWeightMetrics":[{"calendarDate": "2026-10-24", "weight": 73500, "bodyFat": 18.2}]}], "previousDateWeight":{"weight":90000}})
     client = client_for(respond)
     saved = []
     session = SimpleNamespace(scalar=AsyncMock(return_value=None), add=saved.append)
@@ -197,6 +197,8 @@ async def test_schema_mapping_reaches_canonical_sleep_and_weight(monkeypatch):
         assert saved[0].origin == "garmin" and saved[0].user_id == 4
         assert sleep["_personal_api_payload"] == original_sleep
         weight = await client.get_body_composition("2026-10-24")
+        assert weight["totalAverage"]["weight"] == 73500
+        assert weight["_personal_api_weight_unit"] == "g"
         raw.payload_type = "body_composition:2026-10-24"
         await normalize._upsert_biometrics(session, raw, weight, "body_composition", counts)
         assert saved[-1].weight_kg == 73.5 and saved[-1].body_fat_pct == 18.2

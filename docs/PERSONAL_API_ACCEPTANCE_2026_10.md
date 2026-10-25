@@ -16,6 +16,16 @@ The production site still reported `5d516d4` during this assessment.
   `/range` endpoint used by Garmin's official SDK returned the expected shape.
   The connector now uses that route and only counts the requested day's
   measurements, excluding adjacent graph-context weights.
+- A dated live weight measurement also established that `/range` returns grams,
+  contradicting the shared schema's kilograms description. The connector keeps
+  grams for the existing canonical conversion. A realistic gram-valued fixture
+  verifies that normalization retains the measurement instead of dropping an
+  inflated value as physiologically invalid. Raw payloads retain the observed
+  unit marker and the original provider response.
+  Replaying that captured live measurement through the corrected mapper and
+  the separate acceptance database retained the expected canonical kg value,
+  with zero pending rows. Zero normalization errors alone had not established
+  that a weight was retained, because range validation can discard bad values.
 - Local targeted backend checks passed 73 tests, covering encryption handoff,
   owner authorization, CSRF, isolation, token renewal, safe errors, unit mapping,
   bounded imports and preservation of history when changing connection.
