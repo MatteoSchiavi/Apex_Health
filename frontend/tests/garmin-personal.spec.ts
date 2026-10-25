@@ -15,6 +15,7 @@ for (const locale of ["en", "it"] as const) {
   const en = locale === "en";
 
   test(`Garmin Personal API preserves a legacy connection through failed verification and queues cleanly: ${locale}`, async ({ page }) => {
+    await page.setViewportSize({width:390,height:844});
     const { writes } = await installApi(page, { locale });
     let device = legacyDevice;
     let attempts = 0;
@@ -51,6 +52,7 @@ for (const locale of ["en", "it"] as const) {
     await expect(garmin.getByRole("button", { name: en ? "Sync now" : "Sincronizza ora" })).toBeVisible();
     await expect(page.getByText(en ? "Personal API" : "Personal API", { exact: true })).toBeVisible();
     await expect(key).toHaveCount(0);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
     expect(writes.filter(write => write.path === "/settings/integrations/garmin/personal/connect")).toEqual([
       { path: "/settings/integrations/garmin/personal/connect", body: { api_key: "synthetic-private-key" } },
       { path: "/settings/integrations/garmin/personal/connect", body: { api_key: "synthetic-private-key" } },

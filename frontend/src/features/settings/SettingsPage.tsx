@@ -566,7 +566,7 @@ function DevicesSection() {
                           : t("settings.provider_setup")}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex max-w-full flex-wrap items-center gap-2">
                     {connected && !d?.is_main && (
                       <Button
                         variant="ghost"

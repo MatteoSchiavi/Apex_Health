@@ -47,6 +47,9 @@ switching back to the old transport. See [setup and coverage](GARMIN_PERSONAL_AP
 The initial checklist now uses saved athlete context instead of account name
 and timezone. Deleting athlete context requires an explicit confirmation;
 cancel and failure preserve saved context and unsaved edits.
+The new device actions wrap within the phone width; a full-route layout check
+caught and corrected overflow in the Italian 390px view. The six affected
+mobile/connection checks pass after that correction.
 
 ## Remaining work
 
