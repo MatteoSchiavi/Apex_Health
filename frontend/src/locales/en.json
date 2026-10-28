@@ -2858,6 +2858,7 @@
     "coverage_window": "The pilot imports the most recent 30 calendar days. Older data already imported into Apex stays available."
   },
   "dailyFlow": {
+    "day_actions": "Day actions",
     "ask_day": "Ask Coach about this day",
     "ask_workout": "Ask Coach about this workout",
     "session_feedback": "Session feedback",

@@ -15,7 +15,7 @@ async function openDay(page: Page, url = '/app') {
 const daily = (page: Page) => page.locator('.panel').filter({ has: page.getByRole('heading', { name: 'Your day', exact: true }) });
 
 for (const width of [1440, 390]) {
-  test(`four scores precede compact Your Day, correct load scope and respiration survive at ${width}px`, async ({ page }) => {
+  test(`compact Your Day precedes four scores; load scope and respiration survive at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await installApi(page, { theme: 'dark' });
     await page.route('**/dashboard/overview*', route => route.fulfill({ json: { ...overview, load_metadata: { unit: 'Garmin load', source: 'garmin', acute_window_days: 7, chronic_window_days: 28 } } }));
@@ -31,8 +31,10 @@ for (const width of [1440, 390]) {
       await expect(card.getByTestId('score-value')).toHaveText(`${value}/100`);
     }
     expect((await scores.boundingBox())!.height).toBeLessThan(width === 390 ? 270 : 160);
-    expect((await scores.boundingBox())!.y + (await scores.boundingBox())!.height).toBeLessThan((await daily(page).boundingBox())!.y);
-    expect((await daily(page).boundingBox())!.height).toBeLessThan(330);
+    expect((await daily(page).boundingBox())!.y + (await daily(page).boundingBox())!.height).toBeLessThan((await scores.boundingBox())!.y);
+    // Phone actions retain two separate 44px touch rows below the primary task.
+    expect((await daily(page).boundingBox())!.height).toBeLessThan(width === 390 ? 400 : 330);
+    expect((await page.getByTestId('daily-summary').boundingBox())!.height).toBeLessThan(230);
     await expect(page.locator('a[href="#training-load"]')).toContainText('7-day daily average');
     await expect(page.locator('a[href="#training-load"]')).toContainText('62.0 Garmin load');
     await expect(page.getByText(/Recorded load over the past 7 days/)).toHaveCount(0);

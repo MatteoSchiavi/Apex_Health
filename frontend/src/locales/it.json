@@ -2858,6 +2858,7 @@
     "coverage_window": "Il progetto pilota importa gli ultimi 30 giorni di calendario. I dati precedenti già importati in Apex restano disponibili."
   },
   "dailyFlow": {
+    "day_actions": "Azioni del giorno",
     "ask_day": "Chiedi al Coach di questa giornata",
     "ask_workout": "Chiedi al Coach di questo allenamento",
     "session_feedback": "Riscontro sulle sessioni",

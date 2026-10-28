@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { api, ApiError } from "../../app/api";
+import { useUi } from "../../app/stores/ui";
 import {
   Badge,
   Button,
@@ -21,13 +24,29 @@ export default function ChangesPanel() {
   const match = /^#change-([1-9]\d*)$/.exec(location.hash);
   const parsedId = match ? Number(match[1]) : null;
   const targetId = parsedId !== null && Number.isSafeInteger(parsedId) ? parsedId : null;
-  const targetExists = targetId !== null && !!q.data?.some((d) => d.id === targetId);
+  const uid = useUi((state) => state.me?.user_id);
+  const targetInList = targetId !== null && !!q.data?.some((d) => d.id === targetId);
+  // The list contains only the newest 50 proposals. Resolve older links through
+  // an account-scoped read without replacing the rest of the review list.
+  const needsTarget = targetId !== null && q.isSuccess && !targetInList;
+  const selected = useQuery({
+    queryKey: ["lab", uid, `/lab/changes/${targetId}`],
+    queryFn: () => api.get<Draft>(`/lab/changes/${targetId}`),
+    enabled: needsTarget,
+    retry: false,
+  });
+  const selectedDraft = needsTarget && !selected.isError && selected.data?.id === targetId ? selected.data : null;
+  const drafts = selectedDraft ? [selectedDraft, ...(q.data ?? [])] : (q.data ?? []);
+  const targetExists = targetInList || selectedDraft !== null;
+  const targetMissing = needsTarget && (selected.error instanceof ApiError && selected.error.status === 404 || selected.isSuccess && !selectedDraft);
+  const targetFailed = q.isError || needsTarget && selected.isError && !targetMissing;
+  const loading = q.isLoading || needsTarget && selected.isLoading;
   useEffect(() => {
-    if (!targetExists || q.isLoading || q.isError) return;
+    if (!targetExists || loading || targetFailed) return;
     const card = document.getElementById(`change-${targetId}`);
     card?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "start" });
-  }, [targetId, targetExists, q.isLoading, q.isError]);
+  }, [targetId, targetExists, loading, targetFailed]);
   const showAll = () => navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true, state: location.state });
   return (
     <div className="flex flex-col gap-5">
@@ -38,26 +57,26 @@ export default function ChangesPanel() {
         </p>
       </Card>
       {location.hash && (
-        <div role={targetId === null || q.isError || (q.isSuccess && !targetExists) ? "alert" : "status"} className="flex flex-wrap items-center gap-3 text-[13px]">
+        <div role={targetId === null || targetFailed || targetMissing ? "alert" : "status"} className="flex flex-wrap items-center gap-3 text-[13px]">
           {targetId === null ? <p>{t("dailyFlow.proposalInvalid")}</p>
-            : q.isError ? <p>{t("dailyFlow.proposalLoadFailed")}</p>
-            : q.isSuccess && !targetExists ? <p>{t("dailyFlow.proposalUnavailable")}</p>
+            : targetFailed ? <p>{t("dailyFlow.proposalLoadFailed")}</p>
+            : targetMissing ? <p>{t("dailyFlow.proposalUnavailable")}</p>
             : targetExists ? <p>{t("dailyFlow.proposalSelected")}</p> : null}
-          {q.isError && <Button variant="ghost" onClick={() => { void q.refetch(); }}>{t("betaCoach.retry")}</Button>}
+          {targetFailed && <Button variant="ghost" onClick={() => { void (q.isError ? q.refetch() : selected.refetch()); }}>{t("betaCoach.retry")}</Button>}
           <Button variant="ghost" onClick={showAll}>{t("dailyFlow.showAllProposals")}</Button>
         </div>
       )}
       <QueryState
-        loading={q.isLoading}
+        loading={loading}
         error={q.isError}
-        empty={q.data?.length === 0}
+        empty={q.isSuccess && !loading && drafts.length === 0}
       />
-      {q.data?.some((d) => d.id === replacementId && d.status === "draft") && (
+      {drafts.some((d) => d.id === replacementId && d.status === "draft") && (
         <p role="status" className="text-[13px] text-muted">
           {t("decisionLearning.newApprovalRequired")}
         </p>
       )}
-      {q.data?.map((d) => (
+      {drafts.map((d) => (
         <section key={d.id} id={`change-${d.id}`} tabIndex={-1} data-selected={targetId === d.id && !q.isError ? "true" : undefined} className={`scroll-mt-24 outline-none ${targetId === d.id && !q.isError ? "ring-2 ring-ink ring-offset-2" : ""}`}>
         <Card>
           <CardHeader

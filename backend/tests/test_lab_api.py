@@ -7,9 +7,9 @@ import pytest
 from sqlalchemy import delete, select, text
 from app.core.encryption import decrypt_bytes, encrypt_json
 from app.models.integration import Integration
-from app.models.lab import LabDocument, Observation, LabNotification
+from app.models.lab import ChangeDraft, LabDocument, Observation, LabNotification
 from app.models.activity import Activity, ActivitySourceLink
-from app.models.user import User
+from app.models.user import AuthCredential, User
 from app.services.evidence import record_observation
 from tests.conftest import csrf_headers
 
@@ -115,6 +115,56 @@ async def test_http_draft_preview_apply_receipt_and_undo(client):
         await client.post(f"/lab/changes/{d['id']}/undo", headers=headers)
     ).status_code == 200
     assert (await client.get("/context-docs")).json() == []
+
+
+async def test_exact_draft_read_reaches_older_owned_proposals_without_mutation(client, db_session):
+    await auth(client)
+    owner_id = await db_session.scalar(
+        select(AuthCredential.user_id).where(AuthCredential.email == os.environ["OWNER_EMAIL"])
+    )
+    assert owner_id is not None
+    rows = [ChangeDraft(
+        user_id=owner_id, kind="context_patch", payload={}, before={},
+        after={"content": f"Synthetic proposal {index}"},
+        payload_hash="a" * 64, snapshot_revision="b" * 64,
+        reason="Synthetic read-only review", expires_at=datetime.now(UTC) + timedelta(days=1),
+    ) for index in range(51)]
+    db_session.add_all(rows)
+    await db_session.commit()
+    oldest = min(rows, key=lambda row: row.id)
+    latest = (await client.get("/lab/changes")).json()
+    assert len(latest) == 50
+    assert oldest.id not in [row["id"] for row in latest]
+    audit_before = (await client.get("/lab/audit")).json()
+    response = await client.get(f"/lab/changes/{oldest.id}")
+    assert response.status_code == 200
+    assert response.json()["id"] == oldest.id
+    assert response.json()["after"] == oldest.after
+    assert response.json()["status"] == "draft"
+    assert response.json()["receipt"] is None
+    assert (await client.get("/lab/audit")).json() == audit_before
+    assert (await client.get("/context-docs")).json() == []
+
+
+async def test_exact_draft_read_hides_foreign_and_missing_ids(client, db_session):
+    assert (await client.get("/lab/changes/1")).status_code == 401
+    await auth(client)
+    other = User(name="Exact proposal foreign owner")
+    db_session.add(other)
+    await db_session.flush()
+    private = ChangeDraft(
+        user_id=other.id, kind="context_patch", payload={}, before={},
+        after={"content": "Private proposal"}, payload_hash="a" * 64,
+        snapshot_revision="b" * 64, reason="Private reason",
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+    )
+    db_session.add(private)
+    await db_session.commit()
+    foreign = await client.get(f"/lab/changes/{private.id}")
+    missing = await client.get(f"/lab/changes/{private.id + 1000}")
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.json() == missing.json() == {"detail": "Draft not found"}
+    assert (await client.get("/lab/changes")).json() == []
 
 
 async def test_foreign_draft_document_job_and_notification_ids_are_private(

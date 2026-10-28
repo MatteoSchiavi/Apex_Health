@@ -280,6 +280,19 @@ async def drafts(
     return [changes.draft_dict(r) for r in rows]
 
 
+@router.get("/changes/{ident}")
+async def get_draft(
+    ident: int,
+    session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)
+):
+    row = await session.scalar(
+        select(ChangeDraft).where(ChangeDraft.id == ident, ChangeDraft.user_id == user.id)
+    )
+    if row is None:
+        raise HTTPException(404, "Draft not found")
+    return changes.draft_dict(row)
+
+
 @router.post("/changes/{ident}/approve")
 async def approve(
     ident: int,

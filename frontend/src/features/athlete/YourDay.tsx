@@ -108,14 +108,16 @@ export function YourDay({ date, activityId, openFeedback=false }: { date?: strin
       {recorded.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{recorded.slice(0,4).map(a => <li key={a.id}>{friendlyDiscipline(a.discipline, t)} · {fmtDuration(a.duration_s)}</li>)}{recorded.length > 4 && <li>{t("betaDaily.more_count", { count: recorded.length - 4 })}</li>}</ul>}
       {!recorded.length && sessions.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{sessions.slice(0,4).map(s => <li key={s.id}>{friendlyDiscipline(s.discipline, t)} · {t("athlete.state_"+s.status)}{s.start_time ? ` · ${s.start_time.slice(0,5)}` : ""}</li>)}{sessions.length > 4 && <li>{t("betaDaily.more_count", { count: sessions.length - 4 })}</li>}</ul>}
       {emptyDay && <p className="mt-2 text-[13px] text-muted">{t(day.is_historical ? "athlete.context_historical_empty" : context ? "athlete.context_" + context.state : "athlete.no_prescription")}</p>}
-      {!!recorded.length && <ul className="mt-3 space-y-1" aria-label={t("dailyFlow.session_feedback")}>{recorded.map(activity => {
+    </div>}
+    {!activityId && <nav aria-label={t("dailyFlow.day_actions")} className="mt-2 flex flex-wrap items-start gap-x-5">
+      {!!recorded.length && <ul className="flex flex-wrap gap-x-5" aria-label={t("dailyFlow.session_feedback")}>{recorded.map(activity => {
         const saved = activity.checkin?.activity_id === activity.id;
         return <li key={activity.id}><Link className="text-link inline-flex min-h-11 items-center gap-2 text-[13px]" to={`/app/activities/${activity.id}?feedback=1#session-feedback`}>
           {t(saved ? "dailyFlow.review_feedback" : "dailyFlow.add_feedback")} · {friendlyDiscipline(activity.discipline, t)} · {new Date(activity.start_time).toLocaleTimeString(i18n.language, {timeZone:day.timezone,hour:"2-digit",minute:"2-digit"})}
         </Link></li>;
       })}</ul>}
-      {uid != null && <Link className="text-link mt-2 inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:day.date}}}>{t("dailyFlow.ask_day")} ↗</Link>}
-    </div>}
+      {uid != null && <Link className="text-link inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:day.date}}}>{t("dailyFlow.ask_day")} ↗</Link>}
+    </nav>}
     <details open={activityId ? true : undefined} className="mt-3 border-t border-hairline pt-3" data-testid="daily-details">
       <summary className="cursor-pointer text-[13px] text-ink2">{t("betaDaily.details")}</summary>
       <div className="mt-4">

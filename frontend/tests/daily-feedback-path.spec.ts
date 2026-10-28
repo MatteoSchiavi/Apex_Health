@@ -50,8 +50,9 @@ for (const locale of ['en', 'it'] as const) {
     await page.goto(`/app?date=${selectedDate}`);
     const summary = page.getByTestId('daily-summary');
     await expect(summary).toBeVisible();
-    const reviewLink = summary.locator('a[href="/app/activities/31?feedback=1#session-feedback"]');
-    const addLink = summary.locator('a[href="/app/activities/32?feedback=1#session-feedback"]');
+    const dayActions = page.getByRole('navigation', { name: locale === 'en' ? 'Day actions' : 'Azioni del giorno', exact: true });
+    const reviewLink = dayActions.locator('a[href="/app/activities/31?feedback=1#session-feedback"]');
+    const addLink = dayActions.locator('a[href="/app/activities/32?feedback=1#session-feedback"]');
     await expect(reviewLink).toBeVisible();
     await expect(addLink).toBeVisible();
     const scores = page.getByRole('region', { name: locale === 'en' ? 'Daily readiness, recovery, strain and sleep' : 'Prontezza, recupero, sforzo e sonno giornalieri' });

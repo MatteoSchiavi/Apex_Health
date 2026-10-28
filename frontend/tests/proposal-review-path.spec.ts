@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { referencedProposalLinks } from "../src/features/coach/proposalLinks";
-import { installApi } from "./fixtures";
+import { account, installApi } from "./fixtures";
 
 function proposal(id: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -19,7 +19,10 @@ async function reviewFixture(page: Page, drafts: ReturnType<typeof proposal>[], 
   const changesWrites: string[] = [];
   await page.route("**/lab/changes**", async route => {
     if (route.request().method() !== "GET") changesWrites.push(route.request().url());
-    await route.fulfill({ status, json: status === 200 ? drafts : { detail: "Synthetic unavailable changes" } });
+    const id = /^\/lab\/changes\/(\d+)$/.exec(new URL(route.request().url()).pathname)?.[1];
+    const selected = id ? drafts.find(draft => draft.id === Number(id)) : null;
+    await route.fulfill({ status: status === 200 && id && !selected ? 404 : status,
+      json: status !== 200 ? { detail: "Synthetic unavailable changes" } : id ? selected ?? { detail: "Draft not found" } : drafts });
   });
   return () => [...writes, ...changesWrites];
 }
@@ -38,6 +41,59 @@ test("typed proposal references produce only unique positive safe integer anchor
     { id: 41, href: "/app/coach?tab=changes#change-41" },
   ]);
   for (const invalid of [null, {}, "drafts", 12]) expect(referencedProposalLinks(invalid)).toEqual([]);
+});
+
+test("an older selected proposal loads beyond the newest 50 without hiding the other drafts", async ({ page }) => {
+  const writes = await reviewFixture(page, Array.from({ length: 50 }, (_, index) => proposal(100 + index)));
+  let release: (() => Promise<void>) | undefined;
+  await page.route("**/lab/changes/41", route => { release = () => route.fulfill({ json: proposal(41) }); });
+  await page.goto("/app/coach?tab=changes#change-41");
+  await expect.poll(() => !!release).toBe(true);
+  await expect(page.getByText("This proposal is unavailable.", { exact: false })).toHaveCount(0);
+  await expect(page.locator("#change-100")).toBeVisible();
+  await release!();
+  await expect(page.locator("#change-41")).toBeFocused();
+  await expect(page.locator("#change-41")).toHaveAttribute("data-selected", "true");
+  await expect(page.locator('section[id^="change-"]')).toHaveCount(51);
+  expect(writes()).toEqual([]);
+});
+
+test("a failed older-proposal read retries the exact ID and keeps unrelated drafts available", async ({ page }) => {
+  const writes = await reviewFixture(page, [proposal(100)]);
+  let failed = true;
+  await page.route("**/lab/changes/41", route => route.fulfill({ status: failed ? 503 : 200, json: failed ? { detail: "Temporary failure" } : proposal(41) }));
+  await page.goto("/app/coach?tab=changes#change-41");
+  await expect(page.getByRole("alert")).toContainText("The proposal could not be loaded");
+  await expect(page.locator("#change-100")).toBeVisible();
+  await expect(page.locator('[data-selected="true"]')).toHaveCount(0);
+  failed = false;
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.locator("#change-41")).toBeFocused();
+  expect(writes()).toEqual([]);
+});
+
+test("an older proposal cached for one account is unavailable after another account signs in", async ({ page }) => {
+  await reviewFixture(page, [proposal(100)]);
+  let owner = true;
+  await page.route("**/lab/changes/41", route => route.fulfill({ status: owner ? 200 : 404,
+    json: owner ? proposal(41, { reason: "First account private proposal" }) : { detail: "Draft not found" } }));
+  await page.goto("/app/coach?tab=changes#change-41");
+  await expect(page.getByText("First account private proposal", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/login$/);
+  owner = false;
+  await page.route("**/me", route => route.fulfill({ json: { ...account, user_id: 2, email: "second@example.com", name: "Second athlete" } }));
+  await page.getByRole("textbox", { name: "Email", exact: true }).fill("second@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("synthetic-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/app$/);
+  await page.evaluate(() => {
+    history.pushState({ key: crypto.randomUUID() }, "", "/app/coach?tab=changes#change-41");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByRole("alert")).toContainText("This proposal is unavailable");
+  await expect(page.getByText("First account private proposal", { exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-selected="true"]')).toHaveCount(0);
 });
 
 test("a Coach reference opens and focuses its exact owned proposal while other drafts remain visible", async ({ page }) => {
