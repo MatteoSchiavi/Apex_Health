@@ -148,7 +148,9 @@ test("editing a session proposal requires review and approval of its replacement
   await page.getByLabel("Session description").fill("Easy recovery ride");
   await page.getByLabel("Reason for the edit").fill("Fit the available time");
   await page.getByRole("button", { name: "Save replacement proposal", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("needs a new review and approval");
+  await expect(page.getByRole("status").filter({hasText:"needs a new review and approval"})).toBeVisible();
+  await expect(page).toHaveURL(/tab=changes#change-42$/);
+  await expect(page.locator("#change-42")).toBeFocused();
   await expect(page.getByText("Replaced by an edited proposal", { exact: true })).toBeVisible();
   await expect(page.getByText("24", { exact: true })).toBeVisible();
   await expect(page.getByText("Easy recovery ride", { exact: true })).toBeVisible();

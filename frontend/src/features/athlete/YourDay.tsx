@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -15,10 +15,16 @@ export function useAthleteDay(date?: string) {
   return useQuery({ queryKey: ["athlete-day", me?.user_id, day], queryFn: () => api.get<AthleteDay>("/athlete/day?date="+day), refetchInterval: 300000 });
 }
 
-function RecordedActivity({ activity, day }: { activity: DayActivity; day: AthleteDay }) {
+function RecordedActivity({ activity, day, openFeedback=false }: { activity: DayActivity; day: AthleteDay; openFeedback?: boolean }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [selected, setSelected] = useState("");
+  const feedback = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!openFeedback) return;
+    feedback.current?.scrollIntoView({block:"start"});
+    feedback.current?.querySelector("select")?.focus({preventScroll:true});
+  }, [openFeedback, activity.id]);
   const association = useMutation({ mutationFn: (id: number | null) => api.put(`/athlete/activities/${activity.id}/association`, { planned_session_id: id }), onSuccess: () => { ["athlete-day", "athlete-sport-overview", "structured-workout"].forEach(key => qc.invalidateQueries({queryKey:[key]})); } });
   return <li className="border-t border-hairline py-4">
     <div className="flex items-start gap-3"><SportIcon discipline={activity.discipline} size={22} /><div className="min-w-0 flex-1">
@@ -32,19 +38,24 @@ function RecordedActivity({ activity, day }: { activity: DayActivity; day: Athle
       <div className="flex flex-wrap gap-3"><Button variant="ghost" disabled={association.isPending} onClick={() => association.mutate(null)}>{t("athlete.keep_independent")}</Button><Link className="text-link self-center" to="/app/coach?tab=changes">{t("athlete.review_plan")}</Link></div>
     </div>}
     {association.isError && <ErrorNote />}
-    <SessionCheckin activityId={activity.id} plannedSessionId={activity.planned_session_id ?? undefined} checkin={activity.checkin} />
+    <div ref={feedback}><SessionCheckin defaultOpen={openFeedback} activityId={activity.id} plannedSessionId={activity.planned_session_id ?? undefined} checkin={activity.checkin} /></div>
   </li>;
 }
 
-export function YourDay({ date, activityId }: { date?: string; activityId?: number }) {
+export function YourDay({ date, activityId, openFeedback=false }: { date?: string; activityId?: number; openFeedback?: boolean }) {
   const { t, i18n } = useTranslation();
   const data = useAthleteDay(date);
   const qc = useQueryClient();
   const units = useUnits();
+  const uid = useUi(state => state.me?.user_id);
   const protect = useMutation({ mutationFn: ({ id, revision, value, wholePlan }: { id: number; revision: number; value: boolean; wholePlan?: boolean }) => api.put(`/lab/${wholePlan ? "plans" : "planned-sessions"}/${id}/protection`, { protected: value, expected_plan_revision: revision }), onSuccess: () => { ["athlete-day", "athlete-sport-overview", "structured-workout"].forEach(key => qc.invalidateQueries({queryKey:[key]})); } });
   if (data.isLoading) return <Loading />;
-  if (!data.data || data.isError) return <ErrorNote />;
+  if (!data.data || data.isError || (date && data.data.date !== date)) return <ErrorNote />;
   const day = data.data;
+  if (openFeedback && activityId != null && !day.activities.some(activity => activity.id === activityId)) return <Card>
+    <p role="status" className="text-[13px] text-muted">{t("dailyFlow.feedback_unavailable")}</p>
+    <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]"><Button variant="ghost" disabled={data.isFetching} onClick={() => void data.refetch()}>{t("common.retry")}</Button><Link className="text-link" to={`/app?date=${day.date}`}>{t("dailyFlow.return_day")}</Link></div>
+  </Card>;
   const context = day.planning_context;
   const contextLink = context?.state === "plan_draft" ? `/app/training?tab=planning#${context.draft_template_id ? "template-"+context.draft_template_id : "document-"+context.draft_document_id}` : context?.state === "template_ready" ? `/app/training?tab=planning#template-${context.template_id}` : context?.state === "profile_ready" ? "/app/training?tab=planning" : "/app/settings?tab=profile";
   const gymLink = `/app/training?date=${day.date}#gym-session`;
@@ -97,12 +108,19 @@ export function YourDay({ date, activityId }: { date?: string; activityId?: numb
       {recorded.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{recorded.slice(0,4).map(a => <li key={a.id}>{friendlyDiscipline(a.discipline, t)} · {fmtDuration(a.duration_s)}</li>)}{recorded.length > 4 && <li>{t("betaDaily.more_count", { count: recorded.length - 4 })}</li>}</ul>}
       {!recorded.length && sessions.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{sessions.slice(0,4).map(s => <li key={s.id}>{friendlyDiscipline(s.discipline, t)} · {t("athlete.state_"+s.status)}{s.start_time ? ` · ${s.start_time.slice(0,5)}` : ""}</li>)}{sessions.length > 4 && <li>{t("betaDaily.more_count", { count: sessions.length - 4 })}</li>}</ul>}
       {emptyDay && <p className="mt-2 text-[13px] text-muted">{t(day.is_historical ? "athlete.context_historical_empty" : context ? "athlete.context_" + context.state : "athlete.no_prescription")}</p>}
+      {!!recorded.length && <ul className="mt-3 space-y-1" aria-label={t("dailyFlow.session_feedback")}>{recorded.map(activity => {
+        const saved = activity.checkin?.activity_id === activity.id;
+        return <li key={activity.id}><Link className="text-link inline-flex min-h-11 items-center gap-2 text-[13px]" to={`/app/activities/${activity.id}?feedback=1#session-feedback`}>
+          {t(saved ? "dailyFlow.review_feedback" : "dailyFlow.add_feedback")} · {friendlyDiscipline(activity.discipline, t)} · {new Date(activity.start_time).toLocaleTimeString(i18n.language, {timeZone:day.timezone,hour:"2-digit",minute:"2-digit"})}
+        </Link></li>;
+      })}</ul>}
+      {uid != null && <Link className="text-link mt-2 inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:day.date}}}>{t("dailyFlow.ask_day")} ↗</Link>}
     </div>}
     <details open={activityId ? true : undefined} className="mt-3 border-t border-hairline pt-3" data-testid="daily-details">
       <summary className="cursor-pointer text-[13px] text-ink2">{t("betaDaily.details")}</summary>
       <div className="mt-4">
       {!activityId && <div className="mb-4 flex flex-wrap gap-3">{(day.focus_configuration?.effective_priorities ?? day.training_focus).map((focus, i) => <Badge key={focus}>{day.focus_configuration?.focus_mode !== "balanced" && `${i+1} · `}{t("athlete.focus_"+focus)}</Badge>)}</div>}
-    {!!recorded.length && <section aria-label={t("athlete.recorded_sessions")} className="mt-4"><h3 className="mb-2 text-[13px] font-medium">{t("athlete.recorded_sessions")}</h3><ul>{recorded.map(a => <RecordedActivity key={a.id} activity={a} day={day} />)}</ul></section>}
+    {!!recorded.length && <section aria-label={t("athlete.recorded_sessions")} className="mt-4"><h3 className="mb-2 text-[13px] font-medium">{t("athlete.recorded_sessions")}</h3><ul>{recorded.map(a => <RecordedActivity key={a.id} activity={a} day={day} openFeedback={openFeedback && activityId === a.id} />)}</ul></section>}
     {!!sessions.length && <section aria-label={t("athlete.planned_sessions")}><h3 className="mb-3 text-[13px] font-medium">{t("athlete.planned_sessions")}</h3><ul>
       {sessions.map(s => <li key={s.id} className="border-t border-hairline py-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[15px] font-medium">{friendlyDiscipline(s.discipline, t)}{s.start_time ? ` · ${s.start_time.slice(0,5)}` : ""}</p><p className="mt-1 text-[12px] text-muted">{s.duration_min == null ? t("athlete.duration_unknown") : t("athlete.duration_minutes", { count: s.duration_min })}{s.description ? ` · ${s.description}` : ""}</p>{s.plan_title && <p className="mt-1 text-[12px] text-muted">{s.plan_title}</p>}</div><div className="flex shrink-0 flex-col items-end gap-2"><Badge tone={s.status === "completed" ? "positive" : "neutral"}>{t("athlete.state_"+s.status)}</Badge>{s.protected && <Badge>{t("athlete.protected")}</Badge>}</div></div>
         {s.activity_id ? <Link className="text-link mt-3 inline-block" to={`/app/activities/${s.activity_id}`}>{t("athlete.view_activity")} ↗</Link> : <SessionCheckin plannedSessionId={s.id} checkin={s.checkin} />}

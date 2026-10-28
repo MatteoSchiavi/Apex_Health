@@ -1,5 +1,8 @@
 import { AiConsentPanel, useAiState } from "../athlete/AiConsentPanel";
-import { Link, useSearchParams } from "react-router-dom";
+import { referencedProposalLinks } from "./proposalLinks";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import type { AthleteDay } from "../athlete/types";
+import { validatedCoachContext } from "./coachContext";
 import ChangesPanel from "../lab/ChangesPanel";
 import { Segmented } from "../../components/kit";
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +22,7 @@ import {
   ErrorNote,
   Loading,
   PageHeader,
+  friendlyDiscipline,
 } from "../../components/kit";
 function stored(key: string) {
   try {
@@ -68,13 +72,32 @@ function CheckedEvidence({ grounding }: { grounding: unknown }) {
 }
 
 export default function CoachPage() {
+  const uid = useUi((s) => s.me?.user_id);
+  // A changed account must never inherit a mounted account's composer or chat.
+  return uid == null ? null : <CoachWorkspace key={uid} uid={uid} />;
+}
+
+function CoachWorkspace({ uid }: { uid: number }) {
   const { t } = useTranslation();
   const aiState = useAiState();
   const aiAllowed = aiState.data?.effective_access !== "disabled" && !!aiState.data && !aiState.data.budget.exhausted;
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const context = validatedCoachContext(location.state, uid);
+  const contextKey = context ? `${uid}:${context.date}:${context.plannedSessionId ?? "day"}` : null;
+  const contextState = context ? { coachContext: context } : null;
+  const day = useQuery({
+    queryKey: ["athlete-day", uid, context?.date],
+    queryFn: () => api.get<AthleteDay>("/athlete/day?date=" + context!.date),
+    enabled: context != null,
+    retry: false,
+  });
+  const contextReady = context != null && !day.isError && !day.isFetching && day.data?.date === context.date &&
+    (context.plannedSessionId === undefined || (Array.isArray(day.data.sessions) && day.data.sessions.some(session => session.id === context.plannedSessionId)));
+  const [replaceContextKey, setReplaceContextKey] = useState<string | null>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const tab = params.get("tab") === "changes" ? "changes" : "analysis";
   const qc = useQueryClient();
-  const uid = useUi((s) => s.me!.user_id);
   const activeKey = "apex.chat." + uid + ".active";
   const draftKey = "apex.chat." + uid + ".draft";
   const [activeId, setActiveId] = useState<number | null>(() =>
@@ -180,6 +203,17 @@ export default function CoachPage() {
     if (aiAllowed && draft.trim() && !send.isPending && !remove.isPending && !active.isLoading && !active.isError)
       send.mutate({ text: draft.trim(), sessionId: activeId });
   }
+  function prepareQuestion() {
+    if (!context || !contextReady || send.isPending || remove.isPending) return;
+    setDraft(t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_prompt" : "dailyFlow.coach_workout_prompt", {
+      date: context.date, id: context.plannedSessionId,
+    }));
+    setActiveId(null);
+    send.reset();
+    setReplaceContextKey(null);
+    setParams({ tab: "analysis" }, { state: contextState });
+    requestAnimationFrame(() => composer.current?.focus());
+  }
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -192,7 +226,7 @@ export default function CoachPage() {
             disabled={send.isPending || remove.isPending}
             onClick={() => {
               setActiveId(null);
-              setParams({ tab: "analysis" });
+              setParams({ tab: "analysis" }, { state: contextState });
               send.reset();
             }}
           >
@@ -200,6 +234,32 @@ export default function CoachPage() {
           </Button></div>
         }
       />
+      {context && <Card className="space-y-3 border-l-2 border-l-ink">
+        <h2 className="text-[15px] font-medium">{t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_title" : "dailyFlow.coach_workout_title", { date: context.date, id: context.plannedSessionId })}</h2>
+        {contextReady && context.plannedSessionId !== undefined && (() => {
+          const workout = day.data!.sessions.find(session => session.id === context.plannedSessionId)!;
+          return <p className="break-words text-[14px]">{workout.session_type || friendlyDiscipline(workout.discipline, t)}</p>;
+        })()}
+        <p className="max-w-2xl text-[13px] leading-relaxed text-muted">{t("dailyFlow.coach_context_note")}</p>
+        {day.isFetching ? <p role="status" className="text-[13px] text-muted">{t("dailyFlow.coach_context_loading")}</p> : !contextReady && <div className="space-y-2">
+          <p role="status" className="text-[13px] text-muted">{t("dailyFlow.coach_context_unavailable")}</p>
+          <Button variant="ghost" onClick={() => void day.refetch()}>{t("dailyFlow.coach_context_retry")}</Button>
+        </div>}
+        {replaceContextKey === contextKey ? <div className="space-y-3">
+          <p className="text-[13px]">{t("dailyFlow.replace_question_note")}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="ghost" onClick={() => setReplaceContextKey(null)}>{t("dailyFlow.keep_question")}</Button>
+            <Button disabled={!contextReady || send.isPending || remove.isPending} onClick={prepareQuestion}>{t("dailyFlow.replace_question")}</Button>
+          </div>
+        </div> : <Button disabled={!contextReady || send.isPending || remove.isPending} onClick={() => {
+          if (draft.trim()) setReplaceContextKey(contextKey);
+          else prepareQuestion();
+        }}>{t("dailyFlow.review_question")}</Button>}
+        <div className="flex flex-wrap gap-4 text-[13px]">
+          <Link className="text-link inline-flex min-h-11 items-center" to={`/app?date=${context.date}`}>{t("dailyFlow.return_day")}</Link>
+          {context.plannedSessionId !== undefined && <Link className="text-link inline-flex min-h-11 items-center" to={`/app/workouts/${context.plannedSessionId}`}>{t("dailyFlow.return_workout")}</Link>}
+        </div>
+      </Card>}
       {deletedTitle && <p role="status" className="text-[13px] text-muted">
         {t("betaCoach.deleted", { title: deletedTitle })}
       </p>}
@@ -248,7 +308,7 @@ export default function CoachPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented
           value={tab}
-          onChange={(v) => setParams({ tab: v })}
+          onChange={(v) => setParams({ tab: v }, { state: contextState })}
           options={[
             { value: "analysis", label: t("v01Coach.conversation") },
             { value: "changes", label: t("v01Coach.proposals") },
@@ -431,11 +491,10 @@ export default function CoachPage() {
                           </p>
                         )}
                       {m.role === "assistant" && <CheckedEvidence grounding={m.referenced_data?.grounding} />}
-                      {m.role === "assistant" && Array.isArray(m.referenced_data?.drafts) && m.referenced_data.drafts.length > 0 && (
-                        <Link to="/app/coach?tab=changes" className="text-link mt-3 inline-flex min-h-11 items-center gap-2 text-[13px]">
-                          {t("v01Coach.proposals")} <ArrowUpRight size={15} aria-hidden="true" />
-                        </Link>
-                      )}
+                      {m.role === "assistant" && Array.isArray(m.referenced_data?.drafts) && m.referenced_data.drafts.length > 0 && (() => {
+                        const proposals = referencedProposalLinks(m.referenced_data.drafts);
+                        return proposals.length ? <div className="mt-3 flex flex-wrap gap-x-4">{proposals.map((proposal, index) => <Link key={proposal.id} to={proposal.href} state={contextState} className="text-link inline-flex min-h-11 items-center gap-2 text-[13px]">{t("dailyFlow.review_proposal", {number:index+1})}<ArrowUpRight size={15} aria-hidden="true" /></Link>)}</div> : <Link to="/app/coach?tab=changes" state={contextState} className="text-link mt-3 inline-flex min-h-11 items-center gap-2 text-[13px]">{t("v01Coach.proposals")} <ArrowUpRight size={15} aria-hidden="true" /></Link>;
+                      })()}
                       {m.model_tier === "medical" && m.role === "assistant" && (
                         <p className="mt-4 text-[12px] text-warningText">
                           {t("coach.medical_disclaimer")}
@@ -491,6 +550,7 @@ export default function CoachPage() {
                 className="flex items-end gap-3"
               >
                 <textarea
+                  ref={composer}
                   value={draft}
                   disabled={remove.isPending}
                   onChange={(e) => setDraft(e.target.value)}

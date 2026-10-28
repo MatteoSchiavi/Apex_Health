@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -15,6 +16,19 @@ export default function ChangesPanel() {
   const action = useAction();
   const [editing, setEditing] = useState<number | null>(null);
   const [replacementId, setReplacementId] = useState<number | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const match = /^#change-([1-9]\d*)$/.exec(location.hash);
+  const parsedId = match ? Number(match[1]) : null;
+  const targetId = parsedId !== null && Number.isSafeInteger(parsedId) ? parsedId : null;
+  const targetExists = targetId !== null && !!q.data?.some((d) => d.id === targetId);
+  useEffect(() => {
+    if (!targetExists || q.isLoading || q.isError) return;
+    const card = document.getElementById(`change-${targetId}`);
+    card?.focus({ preventScroll: true });
+    card?.scrollIntoView({ block: "start" });
+  }, [targetId, targetExists, q.isLoading, q.isError]);
+  const showAll = () => navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true, state: location.state });
   return (
     <div className="flex flex-col gap-5">
       <Card>
@@ -23,6 +37,16 @@ export default function ChangesPanel() {
           {t("lab.approval_note")}
         </p>
       </Card>
+      {location.hash && (
+        <div role={targetId === null || q.isError || (q.isSuccess && !targetExists) ? "alert" : "status"} className="flex flex-wrap items-center gap-3 text-[13px]">
+          {targetId === null ? <p>{t("dailyFlow.proposalInvalid")}</p>
+            : q.isError ? <p>{t("dailyFlow.proposalLoadFailed")}</p>
+            : q.isSuccess && !targetExists ? <p>{t("dailyFlow.proposalUnavailable")}</p>
+            : targetExists ? <p>{t("dailyFlow.proposalSelected")}</p> : null}
+          {q.isError && <Button variant="ghost" onClick={() => { void q.refetch(); }}>{t("betaCoach.retry")}</Button>}
+          <Button variant="ghost" onClick={showAll}>{t("dailyFlow.showAllProposals")}</Button>
+        </div>
+      )}
       <QueryState
         loading={q.isLoading}
         error={q.isError}
@@ -34,7 +58,8 @@ export default function ChangesPanel() {
         </p>
       )}
       {q.data?.map((d) => (
-        <Card key={d.id}>
+        <section key={d.id} id={`change-${d.id}`} tabIndex={-1} data-selected={targetId === d.id && !q.isError ? "true" : undefined} className={`scroll-mt-24 outline-none ${targetId === d.id && !q.isError ? "ring-2 ring-ink ring-offset-2" : ""}`}>
+        <Card>
           <CardHeader
             title={t("lab.change_kinds." + d.kind, {
               defaultValue: human(d.kind),
@@ -91,6 +116,9 @@ export default function ChangesPanel() {
               {t("lab.delivery." + d.receipt.external_delivery)}
             </p>
           )}
+          {d.kind === "session_patch" && d.status === "applied_locally" && d.receipt?.state === "applied_locally" && typeof d.after.target_id === "number" && Number.isSafeInteger(d.after.target_id) && d.after.target_id > 0 && (
+            <Link className="text-link mb-4 inline-block text-[13px]" to={`/app/workouts/${d.after.target_id}`}>{t("dailyFlow.viewUpdatedWorkout")}</Link>
+          )}
           {editing === d.id && d.kind === "session_patch" && d.status === "draft" && (
             <div className="mb-5 border border-hairline p-4">
               <p className="mb-4 text-[13px] text-muted">{t("decisionLearning.editCaption")}</p>
@@ -106,7 +134,9 @@ export default function ChangesPanel() {
                 action.mutate({ path: `/lab/changes/${d.id}/edit`, body }, {
                   onSuccess: (result) => {
                     setEditing(null);
-                    setReplacementId((result as Draft).id);
+                    const replacement = (result as Draft).id;
+                    setReplacementId(replacement);
+                    if (Number.isSafeInteger(replacement) && replacement > 0) navigate({pathname:location.pathname,search:location.search,hash:`#change-${replacement}`},{replace:true,state:location.state});
                   },
                 });
               }}>
@@ -171,6 +201,7 @@ export default function ChangesPanel() {
             )}
           </div>
         </Card>
+        </section>
       ))}
       {action.isError && <ErrorNote message={action.error.message} />}
     </div>

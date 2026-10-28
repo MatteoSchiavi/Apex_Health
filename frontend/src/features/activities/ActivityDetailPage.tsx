@@ -5,7 +5,7 @@ import { ComparisonContextEditor } from "./ComparisonContextEditor";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import {
   MapContainer,
@@ -288,6 +288,10 @@ export default function ActivityDetailPage() {
   const { id } = useParams();
   const timezone = useUi((s) => s.me?.timezone);
   const [tab, setTab] = useState("session");
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const feedbackRequested = searchParams.get("feedback") === "1";
+  useEffect(() => { if (feedbackRequested) setTab("session"); }, [feedbackRequested, id, location.key]);
   const detail = useQuery({
     queryKey: ["activity", id],
     queryFn: () => api.get<Detail>("/activities/" + id),
@@ -365,7 +369,7 @@ export default function ActivityDetailPage() {
       />
       {tab === "session" && (
         <>
-          <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} /></div>
+          <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} openFeedback={feedbackRequested} /></div>
           {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
           {["running", "cycling"].includes(kind) && <ComparisonContextEditor activityId={a.id} />}
           {kind === "strength" && <StrengthBodyMap activity={a} />}
