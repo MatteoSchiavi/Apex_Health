@@ -9,7 +9,7 @@ import { useUi } from "../../app/stores/ui";
 type Form = {status:string;rpe:string;pain:string;unwell:string;note:string;fatigue:string;soreness:string;workout_quality:string;modification_reason:string;terrain_notes:string};
 type Target = { activityId?: number; plannedSessionId?: number };
 const formOf=(c?:Checkin|null):Form=>({status:c?.status??"completed",rpe:String(c?.rpe??""),pain:c?.pain==null?"":c.pain?"yes":"no",unwell:c?.felt_unwell==null?"":c.felt_unwell?"yes":"no",note:c?.note??"",fatigue:String(c?.fatigue??""),soreness:String(c?.soreness??""),workout_quality:String(c?.workout_quality??""),modification_reason:c?.modification_reason??"",terrain_notes:c?.terrain_notes??""});
-export function SessionCheckin({ activityId, plannedSessionId, checkin, defaultOpen=false, anchor=activityId?"activity":"planned" }: { activityId?: number; plannedSessionId?: number; checkin?: Checkin | null; defaultOpen?: boolean; anchor?: "activity"|"planned" }) {
+export function SessionCheckin({ activityId, plannedSessionId, checkin, defaultOpen=false, anchor=activityId?"activity":"planned", onDraftActiveChange }: { activityId?: number; plannedSessionId?: number; checkin?: Checkin | null; defaultOpen?: boolean; anchor?: "activity"|"planned"; onDraftActiveChange?: (active: boolean) => void }) {
   const { t } = useTranslation();
   const qc=useQueryClient();
   const uid=useUi(state=>state.me?.user_id);
@@ -51,6 +51,8 @@ export function SessionCheckin({ activityId, plannedSessionId, checkin, defaultO
   },onSuccess:setReview});
   const conflict=save.error instanceof ApiError&&(save.error.status===409
     ||(save.error.status===422&&(save.error.body as {detail?:string})?.detail==="Recorded associated activity cannot be skipped"));
+  const draftActive=dirty||save.isPending||conflict||refresh.isPending||!!review;
+  useEffect(()=>{onDraftActiveChange?.(draftActive);},[draftActive,onDraftActiveChange]);
   useEffect(()=>{if(!dirtyRef.current&&!conflict&&!refresh.isPending&&!review){const next=formOf(checkin);setForm(next);setSaved(JSON.stringify(next));setRevision(checkin?.revision??0);setTarget({activityId,plannedSessionId});}},[checkin?.revision,activityId,plannedSessionId,conflict,refresh.isPending,review]);
   function acceptReview(keepEdits:boolean){
     if(!review)return;

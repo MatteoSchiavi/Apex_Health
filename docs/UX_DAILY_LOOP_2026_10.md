@@ -62,6 +62,15 @@ specific proposal selection and the explicit approval boundary. Existing Coach
 failure/deletion/evidence and decision-review regressions remain release gates.
 Consult the PR checks for the final tested revision and counts.
 
+The 29 October pre-merge review found that a background day refresh could
+unmount an unfinished feedback form after a recording was associated, or after
+a temporary fetch failure. The view now retains its current day while feedback
+is dirty, saving or being reconciled. The query cache still receives updates
+for explicit conflict review. Retention is scoped to the account, day and
+workout/activity; navigation and account changes cannot transfer the draft.
+Timer-driven regressions cover reassociation and failed refreshes in both daily
+and workout views, plus date navigation and account isolation.
+
 After deployment, ask a few athletes to perform these tasks without guidance:
 
 1. Explain today's planned activity and find the reason to keep or review it.

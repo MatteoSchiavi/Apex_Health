@@ -182,8 +182,11 @@ workout-detail forms, both review choices and reassociation to another workout.
 Garmin's reopened Personal and Business APIs change the integration roadmap.
 The [verified research and migration plan](GARMIN_API_REOPENING_2026_10.md)
 separates owner-only ingestion from multi-user authorization and workout
-delivery. No official Garmin API integration or live API-key validation has
-been completed; the news does not remove this acceptance gap.
+delivery. The owner-only Personal API pilot and authorized live key validation
+were completed in the 25 October follow-up; see the
+[implementation and acceptance evidence](PERSONAL_API_ACCEPTANCE_2026_10.md).
+That local validation does not establish installation on the production host.
+Business authorization for multiple athletes and watch delivery remain separate.
 
 The next step is deployment preflight and installed-version acceptance after
 the candidate passes those checks. Production still returned `5d516d4` on

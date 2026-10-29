@@ -8,6 +8,7 @@ import { useUi } from "../../app/stores/ui";
 import { Badge, Button, Card, CardHeader, ErrorNote, Input, Loading, PageHeader, fmtDuration, friendlyDiscipline } from "../../components/kit";
 import { SessionCheckin } from "./SessionCheckin";
 import { useAthleteDay } from "./YourDay";
+import { useFeedbackSnapshot } from "./useFeedbackSnapshot";
 
 interface WorkoutReceipt { id: number; planned_session_id: number; revision: number; payload_hash: string; source: string; structure: StructuredWorkout; duration_total_s: number | null }
 interface WorkoutDraft { id: number; planned_session_id: number; plan_revision: number; workout_revision: number; payload_hash: string; status: string; structure: StructuredWorkout; duration_total_s: number | null }
@@ -15,8 +16,10 @@ interface WorkoutDetailResponse { pending_draft?: WorkoutDraft | null; history?:
 
 function WorkoutCompletion({ sessionId, date }: { sessionId: number; date: string }) {
   const { t } = useTranslation();
+  const uid = useUi(s => s.me?.user_id);
   const day = useAthleteDay(date);
-  const context = !day.isError && day.data?.date === date ? day.data : null;
+  const snapshot = useFeedbackSnapshot(!day.isError && day.data?.date === date ? day.data : null, `${uid}:${date}:${sessionId}`);
+  const context = snapshot.day;
   const session = context?.sessions.find(item => item.id === sessionId);
   const activity = session?.activity_id == null ? null : context?.activities.find(item =>
     item.id === session.activity_id && item.planned_session_id === sessionId);
@@ -30,7 +33,7 @@ function WorkoutCompletion({ sessionId, date }: { sessionId: number; date: strin
     {day.isLoading ? <Loading /> : available ? <>
       <p className="text-[13px] text-muted">{t("structuredWorkout.completion_note")}</p>
       {activity && <Link className="text-link mt-3 inline-block text-[13px]" to={`/app/activities/${activity.id}`}>{t("athlete.view_activity")} ↗</Link>}
-      <SessionCheckin key={`${sessionId}:${activity?.id ?? "unrecorded"}`} defaultOpen anchor="planned"
+      <SessionCheckin key={sessionId} defaultOpen anchor="planned" onDraftActiveChange={active => snapshot.setDraftActive(`planned:${sessionId}`, active)}
         plannedSessionId={sessionId} activityId={activity?.id} checkin={checkin} />
     </> : <>
       <p role="status" className="text-[13px] text-muted">{t("structuredWorkout.completion_unavailable")}</p>

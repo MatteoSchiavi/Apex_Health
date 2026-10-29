@@ -7,6 +7,7 @@ import { useUi } from "../../app/stores/ui";
 import { localDay, useUnits } from "../../components/data";
 import { Badge, Button, Card, ErrorNote, Loading, Select, SportIcon, fmtDuration, fmtNum, friendlyDiscipline } from "../../components/kit";
 import { SessionCheckin } from "./SessionCheckin";
+import { useFeedbackSnapshot } from "./useFeedbackSnapshot";
 import type { AthleteDay, DayActivity } from "./types";
 
 export function useAthleteDay(date?: string) {
@@ -15,7 +16,7 @@ export function useAthleteDay(date?: string) {
   return useQuery({ queryKey: ["athlete-day", me?.user_id, day], queryFn: () => api.get<AthleteDay>("/athlete/day?date="+day), refetchInterval: 300000 });
 }
 
-function RecordedActivity({ activity, day, openFeedback=false }: { activity: DayActivity; day: AthleteDay; openFeedback?: boolean }) {
+function RecordedActivity({ activity, day, openFeedback=false, onDraftActiveChange }: { activity: DayActivity; day: AthleteDay; openFeedback?: boolean; onDraftActiveChange: (active: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [selected, setSelected] = useState("");
@@ -38,20 +39,27 @@ function RecordedActivity({ activity, day, openFeedback=false }: { activity: Day
       <div className="flex flex-wrap gap-3"><Button variant="ghost" disabled={association.isPending} onClick={() => association.mutate(null)}>{t("athlete.keep_independent")}</Button><Link className="text-link self-center" to="/app/coach?tab=changes">{t("athlete.review_plan")}</Link></div>
     </div>}
     {association.isError && <ErrorNote />}
-    <div ref={feedback}><SessionCheckin defaultOpen={openFeedback} activityId={activity.id} plannedSessionId={activity.planned_session_id ?? undefined} checkin={activity.checkin} /></div>
+    <div ref={feedback}><SessionCheckin defaultOpen={openFeedback} activityId={activity.id} plannedSessionId={activity.planned_session_id ?? undefined} checkin={activity.checkin} onDraftActiveChange={onDraftActiveChange} /></div>
   </li>;
 }
 
-export function YourDay({ date, activityId, openFeedback=false }: { date?: string; activityId?: number; openFeedback?: boolean }) {
+type YourDayProps = { date?: string; activityId?: number; openFeedback?: boolean };
+export function YourDay(props: YourDayProps) {
+  const me = useUi(state => state.me);
+  return <YourDayView key={`${me?.user_id}:${props.date ?? localDay(me?.timezone)}:${props.activityId ?? "day"}`} {...props} />;
+}
+
+function YourDayView({ date, activityId, openFeedback=false }: YourDayProps) {
   const { t, i18n } = useTranslation();
   const data = useAthleteDay(date);
   const qc = useQueryClient();
   const units = useUnits();
   const uid = useUi(state => state.me?.user_id);
+  const snapshot = useFeedbackSnapshot(!data.isError && data.data && (!date || data.data.date === date) ? data.data : null, `${uid}:${date ?? "today"}:${activityId ?? "day"}`);
   const protect = useMutation({ mutationFn: ({ id, revision, value, wholePlan }: { id: number; revision: number; value: boolean; wholePlan?: boolean }) => api.put(`/lab/${wholePlan ? "plans" : "planned-sessions"}/${id}/protection`, { protected: value, expected_plan_revision: revision }), onSuccess: () => { ["athlete-day", "athlete-sport-overview", "structured-workout"].forEach(key => qc.invalidateQueries({queryKey:[key]})); } });
   if (data.isLoading) return <Loading />;
-  if (!data.data || data.isError || (date && data.data.date !== date)) return <ErrorNote />;
-  const day = data.data;
+  if (!snapshot.day) return <ErrorNote />;
+  const day = snapshot.day;
   if (openFeedback && activityId != null && !day.activities.some(activity => activity.id === activityId)) return <Card>
     <p role="status" className="text-[13px] text-muted">{t("dailyFlow.feedback_unavailable")}</p>
     <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]"><Button variant="ghost" disabled={data.isFetching} onClick={() => void data.refetch()}>{t("common.retry")}</Button><Link className="text-link" to={`/app?date=${day.date}`}>{t("dailyFlow.return_day")}</Link></div>
@@ -122,10 +130,10 @@ export function YourDay({ date, activityId, openFeedback=false }: { date?: strin
       <summary className="cursor-pointer text-[13px] text-ink2">{t("betaDaily.details")}</summary>
       <div className="mt-4">
       {!activityId && <div className="mb-4 flex flex-wrap gap-3">{(day.focus_configuration?.effective_priorities ?? day.training_focus).map((focus, i) => <Badge key={focus}>{day.focus_configuration?.focus_mode !== "balanced" && `${i+1} · `}{t("athlete.focus_"+focus)}</Badge>)}</div>}
-    {!!recorded.length && <section aria-label={t("athlete.recorded_sessions")} className="mt-4"><h3 className="mb-2 text-[13px] font-medium">{t("athlete.recorded_sessions")}</h3><ul>{recorded.map(a => <RecordedActivity key={a.id} activity={a} day={day} openFeedback={openFeedback && activityId === a.id} />)}</ul></section>}
+    {!!recorded.length && <section aria-label={t("athlete.recorded_sessions")} className="mt-4"><h3 className="mb-2 text-[13px] font-medium">{t("athlete.recorded_sessions")}</h3><ul>{recorded.map(a => <RecordedActivity key={a.id} activity={a} day={day} openFeedback={openFeedback && activityId === a.id} onDraftActiveChange={active => snapshot.setDraftActive(`activity:${a.id}`, active)} />)}</ul></section>}
     {!!sessions.length && <section aria-label={t("athlete.planned_sessions")}><h3 className="mb-3 text-[13px] font-medium">{t("athlete.planned_sessions")}</h3><ul>
       {sessions.map(s => <li key={s.id} className="border-t border-hairline py-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[15px] font-medium">{friendlyDiscipline(s.discipline, t)}{s.start_time ? ` · ${s.start_time.slice(0,5)}` : ""}</p><p className="mt-1 text-[12px] text-muted">{s.duration_min == null ? t("athlete.duration_unknown") : t("athlete.duration_minutes", { count: s.duration_min })}{s.description ? ` · ${s.description}` : ""}</p>{s.plan_title && <p className="mt-1 text-[12px] text-muted">{s.plan_title}</p>}</div><div className="flex shrink-0 flex-col items-end gap-2"><Badge tone={s.status === "completed" ? "positive" : "neutral"}>{t("athlete.state_"+s.status)}</Badge>{s.protected && <Badge>{t("athlete.protected")}</Badge>}</div></div>
-        {s.activity_id ? <Link className="text-link mt-3 inline-block" to={`/app/activities/${s.activity_id}`}>{t("athlete.view_activity")} ↗</Link> : <SessionCheckin plannedSessionId={s.id} checkin={s.checkin} />}
+        {s.activity_id ? <Link className="text-link mt-3 inline-block" to={`/app/activities/${s.activity_id}`}>{t("athlete.view_activity")} ↗</Link> : <SessionCheckin plannedSessionId={s.id} checkin={s.checkin} onDraftActiveChange={active => snapshot.setDraftActive(`planned:${s.id}`, active)} />}
         <Link className="text-link mt-3 mr-4 inline-block text-[12px]" to={`/app/workouts/${s.id}`}>{t("athlete.workout_detail")} ↗</Link>
         <button className="text-link mt-3 text-[12px]" disabled={protect.isPending} onClick={() => protect.mutate({ id: s.plan_protected ? s.plan_id : s.id, revision: s.plan_revision, value: s.plan_protected ? false : !s.workout_protected, wholePlan: s.plan_protected })}>{t(s.plan_protected ? "athlete.unprotect_plan" : s.workout_protected ? "athlete.unprotect_workout" : "athlete.protect_workout")}</button>
       </li>)}

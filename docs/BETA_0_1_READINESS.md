@@ -1,7 +1,11 @@
 # Apex Health web beta 0.1 — release and owner checklist
 
-8 October 2026. This is the current checklist. Earlier alpha/completion reports
-are historical evidence, not proof that the live deployment works. Release
+8 October 2026 baseline. For the later candidate, see the
+[daily-use audit](V01_DAILY_USE_AUDIT.md),
+[Personal API acceptance](PERSONAL_API_ACCEPTANCE_2026_10.md) and
+[daily workflow review](UX_DAILY_LOOP_2026_10.md). The checks and deployment
+observations below are historical evidence for this baseline, not proof that
+the later candidate is installed or accepted. Release
 identity is available at `GET /version`; the image embeds its Git commit.
 The beta covers the web application and tested ingestion contracts. It does
 not certify health predictions, every wearable, or a signed native application.
