@@ -57,7 +57,7 @@ test("sidebar labels and layout stay stable for pointer and keyboard navigation"
   await installApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/app");
-  const aside = page.locator("aside");
+  const aside = page.locator("aside.shell-sidebar");
   await expect(aside).toHaveCSS("width", "224px");
   await aside.hover();
   await expect(aside).toHaveCSS("width", "224px");
@@ -82,7 +82,7 @@ test("search finds a training tab and specific metrics", async ({ page }) => {
   await dialog.getByRole("textbox").fill("training load");
   await dialog.getByRole("button", { name: "Training · Training load", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/training\?tab=load$/);
-  await expect(page.getByRole("tab", { name: "Training load" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Progress", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Go to a page…" }).click();
   await page.getByRole("dialog").getByRole("textbox").fill("resting_hr");
   await page.getByRole("dialog").getByRole("button", { name: "Resting Heart Rate", exact: true }).click();
@@ -94,6 +94,8 @@ test("overview has one warning, a full activity grid and visible daily scores", 
   await page.route("**/dashboard/overview*", route => route.fulfill({ json: { ...overview, alerts: Array.from({ length: 8 }, (_, i) => ({ severity: "warning", type: "sync_failure", message: `Garmin warning ${i}` })) } }));
   await page.goto("/app");
   await expect(page.getByRole("link", { name: "Review sync status →", exact: true })).toHaveCount(1);
+  await page.getByTestId("overview-history").locator("summary").click();
+  await expect(page.getByTestId("overview-history")).toHaveAttribute("open", "");
   const grid = page.getByRole("group", { name: "Activity · last 52 weeks" });
   await expect(grid.locator(":scope > *")).toHaveCount(364);
   await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();
@@ -104,6 +106,8 @@ test("overview load chart resizes across desktop and mobile widths", async ({ pa
   await installApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/app");
+  await page.getByTestId("overview-history").locator("summary").click();
+  await expect(page.getByTestId("overview-history")).toHaveAttribute("open", "");
   const plot = page.getByRole("img", { name: /^Training load ·/ });
   await expect(plot.locator("canvas")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });

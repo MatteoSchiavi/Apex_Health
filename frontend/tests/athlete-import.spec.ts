@@ -258,7 +258,11 @@ test("changing approved field selection after a receipt creates an explicit new 
 });
 
 test("unsaved import corrections guard Lab navigation and browser unload", async ({ page }) => {
-  await importApi(page); await page.goto("/app"); await page.locator('a[href="/app/lab"]').first().click();
+  await importApi(page); await page.goto("/app");
+  const tools = page.getByRole("button", { name: "Tools & more", exact: true });
+  await expect(tools).toHaveAttribute("aria-expanded", "false");
+  await tools.click(); await expect(tools).toHaveAttribute("aria-expanded", "true");
+  await page.locator('#workspace-tools a[href="/app/lab"]').click();
   await page.getByRole("button", { name: "Documents", exact: true }).click(); await page.getByLabel("Read or paste the text to analyze", { exact: true }).fill(sourceText); await page.getByRole("button", { name: "Analyze document", exact: true }).click();
   const review = reviewCard(page); const notes = review.getByLabel("Tell Apex anything else that may help it understand your training, goals, schedule, preferences, or constraints.", { exact: true }); await notes.fill("Keep these unsaved facts.");
   page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Baselines", exact: true }).click(); await expect(notes).toHaveValue("Keep these unsaved facts.");

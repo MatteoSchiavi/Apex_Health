@@ -10,6 +10,7 @@ for (const locale of ["en", "it"] as const) {
       planning_context: { state: "no_profile", profile_state: "none", profile_revision: 0, active_plan_id: null, draft_id: null, draft_document_id: null },
     } }));
     await page.goto("/app");
+    await page.getByTestId("overview-setup").locator("summary").click();
     const profile = page.locator('a[href="/app/settings?tab=profile"]').filter({ hasText: en ? "Complete your profile" : "Completa il profilo" });
     await expect(profile).toContainText(en ? "Add your training focus, goal, or context" : "Aggiungi il tuo sport, obiettivo o contesto");
     await expect(profile).not.toContainText("✓");
@@ -60,6 +61,7 @@ for (const profileState of ["incomplete", "ready"] as const) {
       } });
     });
     await page.goto("/app");
+    await page.getByTestId("overview-setup").locator("summary").click();
     const profile = page.locator('a[href="/app/settings?tab=profile"]').filter({ hasText: "Complete your profile" });
     await expect(profile).toContainText(profileState === "ready" ? "Profile details available" : "Add your training focus, goal, or context");
     if (profileState === "ready") await expect(profile).toContainText("✓");

@@ -430,3 +430,50 @@ select:focus-visible {
 [data-density="compact"] main > .flex.flex-col {
   gap: 1rem;
 }
+
+/* Workflow layout helpers preserve Apex's existing visual language. */
+.focus-workspace { min-width: 0; }
+.focus-card { min-width: 0; background: var(--c-surface); }
+.focus-kicker { color: var(--c-text-muted); font-size: 13px; line-height: 1.5; font-weight: 500; letter-spacing: 0; }
+.focus-primary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  padding: 10px 16px;
+  background: var(--c-text);
+  color: var(--c-bg-accent);
+  font-size: 13px;
+  font-weight: 500;
+}
+.focus-primary:hover { opacity: .85; }
+.focus-primary:disabled { cursor: not-allowed; opacity: .5; }
+.shell-sidebar, .shell-header { background: var(--c-bg-accent); }
+.shell-nav-link {
+  display: flex;
+  min-height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  color: var(--c-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.shell-nav-link:hover { background: var(--c-surface-2); color: var(--c-text); }
+.shell-nav-link.is-active { background: var(--c-text); color: var(--c-bg-accent); font-weight: 500; }
+.shell-icon {
+  display: inline-flex;
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-control);
+  color: var(--c-text-muted);
+}
+.shell-icon:hover { background: var(--c-surface-2); color: var(--c-text); }

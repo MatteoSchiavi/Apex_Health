@@ -2886,5 +2886,113 @@
     "viewUpdatedWorkout": "View updated workout",
     "feedback_unavailable": "Feedback is unavailable for this recording on its day. Retry or return to the day to check its activity.",
     "review_proposal": "Review proposal {{number}}"
+  },
+  "redesign": {
+    "shell": {
+      "today": "Today",
+      "health": "Health",
+      "challenges": "Challenges",
+      "daily": "Your workspace",
+      "tools": "Tools & more"
+    },
+    "training": {
+      "eyebrow": "Make time for training",
+      "title": "Training",
+      "intro_today": "Your next session, ready when you are.",
+      "intro_planning": "Review your plan, choose dates and activate when ready.",
+      "intro_progress": "See how your training adds up over time.",
+      "workspaces": "Training workspace",
+      "today": "Train today",
+      "plan": "Your plan",
+      "progress": "Progress",
+      "selected_day": "Selected training day",
+      "previous_day": "Previous training day",
+      "next_day": "Next training day",
+      "day_context": "Adjust for your day",
+      "day_context_note": "Add a life event when work, travel or another commitment affects your training.",
+      "plan_tools": "Plan tools",
+      "review_plan": "Review your plan",
+      "sport_progress": "Explore your sports",
+      "sport_progress_note": "Open a sport for recent sessions and trends.",
+      "delete_event": "Delete event: {{title}}",
+      "gym_title": "Strength session",
+      "gym_review_note": "Review the exercises below, then confirm this draft before logging sets.",
+      "gym_empty": "No strength session is ready for this day. Generate a draft here if you want to prepare one, then review and confirm it.",
+      "exercise_list": "Exercise list ({{count}})"
+    },
+    "overview": {
+      "today": "Today",
+      "day_review": "Day review",
+      "date_navigation": "Review a day",
+      "daily_evidence": "Daily evidence",
+      "setup_support": "Finish your setup",
+      "setup_count": "{{count}} of 3 complete",
+      "health_history": "Health trends and history",
+      "sleep_stages": "Sleep stages",
+      "health_unavailable": "Health data is unavailable. Your day is still available.",
+      "health_stale": "Health data could not be refreshed. Showing the last loaded values.",
+      "health_empty": "Connect a data source for ongoing health updates.",
+      "health_empty_connected": "The health summary for this day is incomplete. A source is already connected.",
+      "health_empty_day": "The health summary for {{date}} is incomplete."
+    },
+    "coach": {
+      "subtitle": "A question, the evidence, then your decision.",
+      "workflow": "How Coach works",
+      "steps": {
+        "ask": "Ask a question",
+        "inspect": "Inspect the evidence",
+        "review": "Review any change"
+      },
+      "empty_title": "What would help you today?",
+      "empty_body": "Choose a starting point or write your own question. You can edit it before sending.",
+      "tasks": {
+        "today": {
+          "label": "Understand today",
+          "prompt": "Help me understand today's recovery and training data. What evidence is available, what is missing, and what should I consider?"
+        },
+        "workout": {
+          "label": "Adapt a workout",
+          "prompt": "I'd like to discuss adapting a planned workout. Ask me which workout and what has changed, then explain the evidence and any proposed change for me to review."
+        },
+        "week": {
+          "label": "Review my week",
+          "prompt": "Help me review this training week. Compare the available planned and completed training, explain any data gaps, and help me decide what to consider next."
+        }
+      },
+      "starter_replace_note": "Use “{{task}}” instead? This replaces your unfinished question. Nothing will be sent.",
+      "starter_replace": "Replace with starter question"
+    },
+    "proposals": {
+      "title": "Review a proposed change",
+      "intro": "Compare the current and proposed values. Approve applies this change; editing creates a new proposal for review.",
+      "selected": "Selected proposal · review this change",
+      "not_provided": "Not provided",
+      "not_set": "Not set",
+      "empty_text": "Empty text",
+      "yes": "Yes",
+      "no": "No",
+      "empty_list": "Empty list",
+      "no_fields": "No values",
+      "fields": {
+        "date": "Date",
+        "target_duration_min": "Duration",
+        "duration_min": "Duration",
+        "target_distance_m": "Distance",
+        "distance_m": "Distance",
+        "description": "Workout instructions",
+        "session_type": "Workout type",
+        "discipline": "Sport",
+        "content": "Context text",
+        "doc_kind": "Context category",
+        "exists": "Context exists",
+        "notes": "Notes",
+        "tags": "Tags",
+        "week_start": "Week starting",
+        "sessions": "Workouts",
+        "start_time": "Start time",
+        "protected": "Protected",
+        "title": "Title"
+      }
+    }
   }
 }

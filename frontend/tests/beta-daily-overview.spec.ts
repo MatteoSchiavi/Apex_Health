@@ -15,7 +15,7 @@ async function openDay(page: Page, url = '/app') {
 const daily = (page: Page) => page.locator('.panel').filter({ has: page.getByRole('heading', { name: 'Your day', exact: true }) });
 
 for (const width of [1440, 390]) {
-  test(`compact Your Day precedes four scores; load scope and respiration survive at ${width}px`, async ({ page }) => {
+  test(`daily focus and supporting evidence retain load scope and respiration at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await installApi(page, { theme: 'dark' });
     await page.route('**/dashboard/overview*', route => route.fulfill({ json: { ...overview, load_metadata: { unit: 'Garmin load', source: 'garmin', acute_window_days: 7, chronic_window_days: 28 } } }));
@@ -30,14 +30,23 @@ for (const width of [1440, 390]) {
       await expect(card).toBeVisible();
       await expect(card.getByTestId('score-value')).toHaveText(`${value}/100`);
     }
-    expect((await scores.boundingBox())!.height).toBeLessThan(width === 390 ? 270 : 160);
-    expect((await daily(page).boundingBox())!.y + (await daily(page).boundingBox())!.height).toBeLessThan((await scores.boundingBox())!.y);
-    // Phone actions retain two separate 44px touch rows below the primary task.
-    expect((await daily(page).boundingBox())!.height).toBeLessThan(width === 390 ? 400 : 330);
-    expect((await page.getByTestId('daily-summary').boundingBox())!.height).toBeLessThan(230);
+    expect((await scores.boundingBox())!.height).toBeLessThan(330);
+    const heroBox = (await page.getByTestId('today-hero').boundingBox())!;
+    const evidenceBox = (await page.getByRole('complementary', { name: 'Daily evidence' }).boundingBox())!;
+    if (width === 390) expect(heroBox.y + heroBox.height).toBeLessThan(evidenceBox.y);
+    else {
+      expect(heroBox.x + heroBox.width).toBeLessThan(evidenceBox.x);
+      expect(heroBox.width / evidenceBox.width).toBeGreaterThan(1.8);
+      expect(Math.abs(heroBox.y - evidenceBox.y)).toBeLessThan(2);
+    }
+    const primary = daily(page).getByTestId('daily-summary').getByRole('link');
+    expect((await primary.boundingBox())!.y + (await primary.boundingBox())!.height).toBeLessThan(1000);
     await expect(page.locator('a[href="#training-load"]')).toContainText('7-day daily average');
     await expect(page.locator('a[href="#training-load"]')).toContainText('62.0 Garmin load');
     await expect(page.getByText(/Recorded load over the past 7 days/)).toHaveCount(0);
+    await expect(page.getByTestId('overview-history')).not.toHaveAttribute('open', '');
+    await page.locator('a[href="#training-load"]').click();
+    await expect(page.getByTestId('overview-history')).toHaveAttribute('open', '');
     const load = page.locator('#training-load');
     await expect(load).toContainText('28-day daily average');
     await expect(load).toContainText('Garmin load');
@@ -62,6 +71,8 @@ test('missing scores remain visible with no fabricated zero even when all overvi
   await expect(scores.locator('a')).toHaveCount(4);
   await expect(scores.getByText('No score for this day', { exact: true })).toHaveCount(4);
   await expect(scores.getByTestId('score-value')).toHaveText(['—', '—', '—', '—']);
+  await expect(page.getByTestId('overview-history')).not.toHaveAttribute('open', '');
+  await page.locator('a[href="#training-load"]').click();
   await expect(page.locator('#training-load')).toBeVisible();
 });
 

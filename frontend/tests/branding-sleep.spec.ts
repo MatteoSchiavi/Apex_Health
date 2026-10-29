@@ -6,9 +6,9 @@ test("labelled sidebar keeps the Apex mark as the brand", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app");
   await page.mouse.move(600, 400);
-  await expect(page.locator("aside")).toHaveCSS("width", "224px");
+  await expect(page.locator("aside.shell-sidebar")).toHaveCSS("width", "224px");
 
-  const brand = page.locator("aside").getByRole("link", { name: "Apex Health" });
+  const brand = page.locator("aside.shell-sidebar").getByRole("link", { name: "Apex Health" });
   await expect(brand).toBeVisible();
   await expect(brand.locator("svg path")).toHaveAttribute(
     "d",

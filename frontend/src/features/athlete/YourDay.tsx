@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { ArrowRight, MessageCircle } from "lucide-react";
 import { api } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { localDay, useUnits } from "../../components/data";
@@ -43,13 +44,13 @@ function RecordedActivity({ activity, day, openFeedback=false, onDraftActiveChan
   </li>;
 }
 
-type YourDayProps = { date?: string; activityId?: number; openFeedback?: boolean };
+type YourDayProps = { date?: string; activityId?: number; openFeedback?: boolean; variant?: "focus" | "compact" };
 export function YourDay(props: YourDayProps) {
   const me = useUi(state => state.me);
   return <YourDayView key={`${me?.user_id}:${props.date ?? localDay(me?.timezone)}:${props.activityId ?? "day"}`} {...props} />;
 }
 
-function YourDayView({ date, activityId, openFeedback=false }: YourDayProps) {
+function YourDayView({ date, activityId, openFeedback=false, variant="compact" }: YourDayProps) {
   const { t, i18n } = useTranslation();
   const data = useAthleteDay(date);
   const qc = useQueryClient();
@@ -89,42 +90,49 @@ function YourDayView({ date, activityId, openFeedback=false }: YourDayProps) {
   // Cross-sport distances cannot be combined into a meaningful headline total.
   const distance = recorded.length ? day.totals.distance_m?.value ?? (recorded.length === 1 ? recorded[0].distance_m : null) : next?.distance_m;
   const emptyDay = !sessions.length && !recorded.length && !day.legacy_gym_sessions.length;
+  const focus = variant === "focus" && !activityId;
+  const upcoming = focus && remainingCount > 0;
+  const headline = upcoming ? remaining[0]?.session_type || (remaining[0] ? friendlyDiscipline(remaining[0].discipline, t) : remainingGym[0]?.title) : title;
+  const shownDuration = upcoming ? remaining[0]?.duration_min == null ? null : remaining[0].duration_min * 60 : duration;
+  const shownDistance = upcoming ? remaining[0]?.distance_m : distance;
+  const recordedSummary = !upcoming && recorded.length > 0;
+  const feedbackPrimary = focus && !remainingCount && recorded.length === 1 && recorded[0].checkin?.activity_id !== recorded[0].id;
   const cta = remaining[0] ? { to: `/app/workouts/${remaining[0].id}`, label: t("betaDaily.view_workout") }
     : remainingGym.length ? { to: gymLink, label: t("betaDaily.view_workout") }
-    : recorded.length ? { to: recorded.length === 1 ? `/app/activities/${recorded[0].id}` : "/app/activities", label: t(recorded.length === 1 ? "athlete.view_activity" : "betaDaily.view_activities") }
+    : recorded.length ? { to: recorded.length === 1 ? `/app/activities/${recorded[0].id}${feedbackPrimary ? "?feedback=1#session-feedback" : ""}` : "/app/activities", label: t(feedbackPrimary ? "dailyFlow.add_feedback" : recorded.length === 1 ? "athlete.view_activity" : "betaDaily.view_activities") }
     : next ? { to: `/app/workouts/${next.id}`, label: t("betaDaily.view_workout") }
     : day.legacy_gym_sessions.length ? { to: gymLink, label: t("betaDaily.view_workout") }
     : !day.is_historical && !rest ? { to: contextLink, label: t(context?.state === "plan_draft" ? "athlete.review_draft" : context?.state === "profile_ready" || context?.state === "template_ready" ? "athlete.create_review_plan" : "athlete.build_context") }
     : null;
-  return <Card className="!p-5 sm:!p-6">
+  return <Card className={focus ? "focus-workspace h-full !p-5 sm:!p-7" : "!p-5 sm:!p-6"}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="text-[15px] font-medium">{t(activityId ? "athlete.session_context" : "athlete.your_day")}</h2>
+      <h2 className={focus ? "focus-kicker" : "text-[15px] font-medium"}>{t(activityId ? "athlete.session_context" : "athlete.your_day")}</h2>
       <span className="text-[12px] text-muted">{new Date(day.date+"T12:00:00Z").toLocaleDateString(i18n.language, { timeZone: "UTC", dateStyle: "medium" })}</span>
     </div>
-    {!activityId && <div data-testid="daily-summary" className="mt-3">
+    {!activityId && <div data-testid="daily-summary" className={focus ? "mt-5" : "mt-3"}>
       <div className="flex flex-wrap items-center gap-2"><Badge tone={state === "completed" ? "positive" : "neutral"}>{t(state === "skipped" ? "athlete.state_skipped" : "betaDaily.state_"+state)}</Badge>{day.is_historical && <span className="text-[12px] text-muted">{t("design.history")}</span>}</div>
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0"><p className="text-[20px] font-medium leading-snug">{title}</p>
+      <div className={focus ? "mt-4 flex flex-col items-start gap-5" : "mt-2 flex flex-wrap items-end justify-between gap-3"}>
+        <div className="min-w-0"><p className={focus ? "max-w-[22ch] text-[32px] font-medium leading-[1.12] tracking-[-.04em] sm:text-[38px]" : "text-[20px] font-medium leading-snug"}>{headline}</p>
           {remainingCount > 0 && recorded.length > 0 && <p className="mt-1 text-[12px] text-muted">{t("betaDaily.remaining_count", { count: remainingCount })} · {friendlyDiscipline(remaining[0]?.discipline ?? "strength", t)}{remaining[0]?.start_time ? ` · ${remaining[0].start_time.slice(0,5)}` : ""}</p>}
-          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-ink2">
-            {duration != null && <span>{t(recorded.length ? "athlete.total_duration_s" : "betaDaily.planned_duration")}: <span className="num font-medium text-ink">{fmtDuration(duration)}</span></span>}
-            {distance != null && <span>{t(recorded.length ? "athlete.total_distance_m" : "betaDaily.planned_distance")}: <span className="num font-medium text-ink">{fmtNum(units.distance(distance), 1)} {units.distanceUnit}</span></span>}
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-ink2">
+            {shownDuration != null && <span>{t(recordedSummary ? "athlete.total_duration_s" : "betaDaily.planned_duration")}: <span className="num font-medium text-ink">{fmtDuration(shownDuration)}</span></span>}
+            {shownDistance != null && <span>{t(recordedSummary ? "athlete.total_distance_m" : "betaDaily.planned_distance")}: <span className="num font-medium text-ink">{fmtNum(units.distance(shownDistance), 1)} {units.distanceUnit}</span></span>}
           </div>
         </div>
-        {cta && <Link className="text-link min-h-11 inline-flex items-center font-medium" to={cta.to}>{cta.label} ↗</Link>}
+        {cta && <Link className={focus ? "focus-primary w-full justify-center sm:w-auto" : "text-link min-h-11 inline-flex items-center font-medium"} to={cta.to}>{cta.label} {focus ? <ArrowRight size={17} aria-hidden="true" /> : "↗"}</Link>}
       </div>
       {recorded.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{recorded.slice(0,4).map(a => <li key={a.id}>{friendlyDiscipline(a.discipline, t)} · {fmtDuration(a.duration_s)}</li>)}{recorded.length > 4 && <li>{t("betaDaily.more_count", { count: recorded.length - 4 })}</li>}</ul>}
       {!recorded.length && sessions.length > 1 && <ul aria-label={t("betaDaily.session_summary")} className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">{sessions.slice(0,4).map(s => <li key={s.id}>{friendlyDiscipline(s.discipline, t)} · {t("athlete.state_"+s.status)}{s.start_time ? ` · ${s.start_time.slice(0,5)}` : ""}</li>)}{sessions.length > 4 && <li>{t("betaDaily.more_count", { count: sessions.length - 4 })}</li>}</ul>}
       {emptyDay && <p className="mt-2 text-[13px] text-muted">{t(day.is_historical ? "athlete.context_historical_empty" : context ? "athlete.context_" + context.state : "athlete.no_prescription")}</p>}
     </div>}
     {!activityId && <nav aria-label={t("dailyFlow.day_actions")} className="mt-2 flex flex-wrap items-start gap-x-5">
-      {!!recorded.length && <ul className="flex flex-wrap gap-x-5" aria-label={t("dailyFlow.session_feedback")}>{recorded.map(activity => {
+      {!!recorded.length && !feedbackPrimary && <ul className="flex flex-wrap gap-x-5" aria-label={t("dailyFlow.session_feedback")}>{recorded.map(activity => {
         const saved = activity.checkin?.activity_id === activity.id;
         return <li key={activity.id}><Link className="text-link inline-flex min-h-11 items-center gap-2 text-[13px]" to={`/app/activities/${activity.id}?feedback=1#session-feedback`}>
           {t(saved ? "dailyFlow.review_feedback" : "dailyFlow.add_feedback")} · {friendlyDiscipline(activity.discipline, t)} · {new Date(activity.start_time).toLocaleTimeString(i18n.language, {timeZone:day.timezone,hour:"2-digit",minute:"2-digit"})}
         </Link></li>;
       })}</ul>}
-      {uid != null && <Link className="text-link inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:day.date}}}>{t("dailyFlow.ask_day")} ↗</Link>}
+      {uid != null && <Link className={focus ? "text-link mt-2 min-h-11 rounded-control border border-hairline px-4 py-2 text-[13px] hover:bg-surface2" : "text-link inline-flex min-h-11 items-center text-[13px]"} to="/app/coach" state={{coachContext:{userId:uid,date:day.date}}}>{focus && <MessageCircle size={16} aria-hidden="true" />}{t("dailyFlow.ask_day")}{!focus && " ↗"}</Link>}
     </nav>}
     <details open={activityId ? true : undefined} className="mt-3 border-t border-hairline pt-3" data-testid="daily-details">
       <summary className="cursor-pointer text-[13px] text-ink2">{t("betaDaily.details")}</summary>

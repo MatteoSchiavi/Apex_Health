@@ -2886,5 +2886,113 @@
     "viewUpdatedWorkout": "Visualizza allenamento aggiornato",
     "feedback_unavailable": "Il riscontro non è disponibile per questa attività nella sua giornata. Riprova o torna alla giornata per verificare l’attività.",
     "review_proposal": "Rivedi proposta {{number}}"
+  },
+  "redesign": {
+    "shell": {
+      "today": "Oggi",
+      "health": "Salute",
+      "challenges": "Sfide",
+      "daily": "Il tuo spazio",
+      "tools": "Strumenti e altro"
+    },
+    "training": {
+      "eyebrow": "Spazio all’allenamento",
+      "title": "Allenamento",
+      "intro_today": "La tua prossima sessione, pronta quando vuoi.",
+      "intro_planning": "Rivedi il piano, scegli le date e attivalo quando vuoi.",
+      "intro_progress": "Scopri come evolve il tuo allenamento nel tempo.",
+      "workspaces": "Area allenamento",
+      "today": "Allenati oggi",
+      "plan": "Il tuo piano",
+      "progress": "Progressi",
+      "selected_day": "Giorno di allenamento selezionato",
+      "previous_day": "Giorno di allenamento precedente",
+      "next_day": "Giorno di allenamento successivo",
+      "day_context": "Adatta la giornata",
+      "day_context_note": "Aggiungi un impegno quando lavoro, viaggi o altri eventi influiscono sull’allenamento.",
+      "plan_tools": "Strumenti del piano",
+      "review_plan": "Rivedi il tuo piano",
+      "sport_progress": "Esplora i tuoi sport",
+      "sport_progress_note": "Apri uno sport per vedere sessioni recenti e tendenze.",
+      "delete_event": "Elimina evento: {{title}}",
+      "gym_title": "Sessione di forza",
+      "gym_review_note": "Rivedi gli esercizi qui sotto, poi conferma la bozza prima di registrare le serie.",
+      "gym_empty": "Non è pronta una sessione di forza per questo giorno. Se vuoi prepararne una, genera una bozza qui, poi rivedila e confermala.",
+      "exercise_list": "Elenco esercizi ({{count}})"
+    },
+    "overview": {
+      "today": "Oggi",
+      "day_review": "Riepilogo del giorno",
+      "date_navigation": "Esplora i giorni",
+      "daily_evidence": "Dati del giorno",
+      "setup_support": "Completa la configurazione",
+      "setup_count": "{{count}} di 3 completati",
+      "health_history": "Andamenti e cronologia della salute",
+      "sleep_stages": "Fasi del sonno",
+      "health_unavailable": "I dati sulla salute non sono disponibili. Il tuo giorno resta disponibile.",
+      "health_stale": "Impossibile aggiornare i dati sulla salute. Sono mostrati gli ultimi valori caricati.",
+      "health_empty": "Collega una fonte dati per aggiornare i tuoi dati di salute.",
+      "health_empty_connected": "Il riepilogo della salute per questo giorno è incompleto. Una fonte è già collegata.",
+      "health_empty_day": "Il riepilogo della salute del {{date}} è incompleto."
+    },
+    "coach": {
+      "subtitle": "Una domanda, le evidenze, poi la tua decisione.",
+      "workflow": "Come funziona il Coach",
+      "steps": {
+        "ask": "Fai una domanda",
+        "inspect": "Esamina le evidenze",
+        "review": "Rivedi le modifiche"
+      },
+      "empty_title": "Cosa ti aiuterebbe oggi?",
+      "empty_body": "Scegli un punto di partenza o scrivi una domanda. Puoi modificarla prima di inviarla.",
+      "tasks": {
+        "today": {
+          "label": "Capire la giornata",
+          "prompt": "Aiutami a capire i dati di recupero e allenamento di oggi. Quali evidenze sono disponibili, cosa manca e cosa dovrei considerare?"
+        },
+        "workout": {
+          "label": "Adattare un allenamento",
+          "prompt": "Vorrei valutare un adattamento a un allenamento pianificato. Chiedimi quale allenamento e cosa è cambiato, poi spiega le evidenze e le eventuali modifiche da rivedere."
+        },
+        "week": {
+          "label": "Rivedere la settimana",
+          "prompt": "Aiutami a rivedere questa settimana di allenamento. Confronta i dati disponibili su allenamenti pianificati e completati, spiega le lacune e aiutami a decidere cosa considerare in seguito."
+        }
+      },
+      "starter_replace_note": "Usare “{{task}}” al suo posto? La domanda non inviata verrà sostituita. Non verrà inviato nulla.",
+      "starter_replace": "Sostituisci con la domanda iniziale"
+    },
+    "proposals": {
+      "title": "Rivedi una modifica proposta",
+      "intro": "Confronta i valori attuali e proposti. Approva applica questa modifica; modificare crea una nuova proposta da rivedere.",
+      "selected": "Proposta selezionata · rivedi questa modifica",
+      "not_provided": "Non fornito",
+      "not_set": "Non impostato",
+      "empty_text": "Testo vuoto",
+      "yes": "Sì",
+      "no": "No",
+      "empty_list": "Elenco vuoto",
+      "no_fields": "Nessun valore",
+      "fields": {
+        "date": "Data",
+        "target_duration_min": "Durata",
+        "duration_min": "Durata",
+        "target_distance_m": "Distanza",
+        "distance_m": "Distanza",
+        "description": "Istruzioni dell’allenamento",
+        "session_type": "Tipo di allenamento",
+        "discipline": "Sport",
+        "content": "Testo del contesto",
+        "doc_kind": "Categoria del contesto",
+        "exists": "Contesto presente",
+        "notes": "Note",
+        "tags": "Etichette",
+        "week_start": "Inizio settimana",
+        "sessions": "Allenamenti",
+        "start_time": "Ora di inizio",
+        "protected": "Protetto",
+        "title": "Titolo"
+      }
+    }
   }
 }

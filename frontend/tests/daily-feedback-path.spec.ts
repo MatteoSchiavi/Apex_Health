@@ -57,7 +57,11 @@ for (const locale of ['en', 'it'] as const) {
     await expect(addLink).toBeVisible();
     const scores = page.getByRole('region', { name: locale === 'en' ? 'Daily readiness, recovery, strain and sleep' : 'Prontezza, recupero, sforzo e sonno giornalieri' });
     await expect(scores).toBeVisible();
-    expect(await summary.evaluate((element, label) => !!(element.compareDocumentPosition(document.querySelector(`section[aria-label="${label}"]`)!) & Node.DOCUMENT_POSITION_FOLLOWING), await scores.getAttribute('aria-label'))).toBe(true);
+    const heroBox = (await page.getByTestId('today-hero').boundingBox())!;
+    const scoresBox = (await scores.boundingBox())!;
+    expect(heroBox.y + heroBox.height).toBeLessThan(scoresBox.y);
+    const primaryBox = (await summary.getByRole('link').boundingBox())!;
+    expect(primaryBox.y + primaryBox.height).toBeLessThan(844);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
     await addLink.click();

@@ -141,6 +141,7 @@ test('deleting an active failed conversation clears its retry target and keeps t
   await expect.poll(() => fixture.posts.length).toBe(2);
   await fixture.fail(1);
   await expect(page.getByRole('button', { name: 'Retry this question', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Past conversations/ }).click();
   await page.getByRole('button', { name: 'Conversation actions for Training question', exact: true }).click();
   await page.getByRole('button', { name: 'Delete conversation', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete conversation', exact: true }).click();

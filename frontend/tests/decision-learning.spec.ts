@@ -39,16 +39,23 @@ async function decisionApi(page: Page, options: { empty?: boolean; locale?: "en"
   return { decision, writes };
 }
 
-test("daily interpretation leads the overview and evidence stays progressive", async ({ page }) => {
+test("daily focus keeps recovery guidance and recorded evidence progressive", async ({ page }) => {
   await decisionApi(page);
   await page.goto("/app");
-  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   const daily = page.getByText("Today's training decision", { exact: true });
+  const history = page.getByTestId("overview-history");
   const signals = page.getByRole("heading", { name: "Recorded signals", exact: true });
+  await expect(page.getByTestId("daily-summary")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" }).locator('a[href="/app/biometrics/readiness"]').getByTestId("score-value")).toHaveText("82/100");
+  await expect(daily).not.toBeVisible();
+  await expect(history).not.toHaveAttribute("open", "");
+  await page.locator("summary").filter({ hasText: /Recovery context and daily guidance|Contesto di recupero/ }).click();
   await expect(daily).toBeVisible();
   await expect(page.getByRole("heading", { name: "Keep the focus, reduce the volume" })).toBeVisible();
-  expect(await daily.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('section[aria-label="Recorded signals"]')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  await expect(signals).toHaveCount(0);
+  await history.locator("summary").click();
   await expect(signals).toBeVisible();
+  expect(await daily.evaluate((node) => !!(node.compareDocumentPosition(document.querySelector('section[aria-label="Recorded signals"]')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(page.getByRole("link", { name: "Ask Apex about this decision" })).toHaveAttribute("href", "/app/coach");
   await expect(page.getByText("Comparable baseline unavailable")).not.toBeVisible();
   await page.getByText("Evidence and alternatives", { exact: true }).click();
@@ -152,7 +159,7 @@ test("editing a session proposal requires review and approval of its replacement
   await expect(page).toHaveURL(/tab=changes#change-42$/);
   await expect(page.locator("#change-42")).toBeFocused();
   await expect(page.getByText("Replaced by an edited proposal", { exact: true })).toBeVisible();
-  await expect(page.getByText("24", { exact: true })).toBeVisible();
+  await expect(page.getByText("24 min", { exact: true })).toBeVisible();
   await expect(page.getByText("Easy recovery ride", { exact: true })).toBeVisible();
   expect(writes).toEqual([{ path: "/lab/changes/41/edit", body: { target_duration_min: 24, description: "Easy recovery ride", reason: "Fit the available time" } }]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

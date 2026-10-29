@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
-import { installApi, today, keys } from "./fixtures";
-test("overview prioritizes recorded signals and keeps estimates distinct", async ({
+import { installApi, overview, today, keys } from "./fixtures";
+test("overview keeps recorded signals reachable and estimates distinct", async ({
   page,
 }) => {
   await installApi(page);
   await page.goto("/app");
   await expect(
-    page.getByRole("heading", { name: "Your daily overview" }),
+    page.getByRole("heading", { name: "Today" }),
   ).toBeVisible();
+  await expect(page.getByTestId("overview-history")).not.toHaveAttribute("open", "");
+  await page.getByTestId("overview-history").locator("summary").click();
   await expect(page.getByRole("region", { name: "Recorded signals" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Readiness.*82/ })).toBeVisible();
@@ -239,16 +241,31 @@ test("profile can clear optional fields and preferences persist across navigatio
   await expect(page.locator("html")).toHaveClass("dark");
   await page
     .locator("aside nav")
-    .getByRole("link", { name: "Overview", exact:true })
+    .getByRole("link", { name: "Today", exact:true })
     .click();
   await expect(page.locator("html")).toHaveClass("dark");
 });
 test("empty and unavailable states are explicit", async ({ page }) => {
   await installApi(page, { empty: true });
+  // The shared empty fixture retains chronic load; exercise a genuinely empty health snapshot here.
+  await page.route("**/dashboard/overview*", route => route.fulfill({ json: {
+    ...overview,
+    readiness: { value: null, delta_7d: null }, recovery: { value: null, delta_7d: null },
+    strain: { value: null, delta_7d: null }, sleep_score: { value: null, delta_7d: null },
+    sleep_hours: null, hrv_ms: null, resting_hr: null, spo2_avg: null, respiration_avg: null,
+    vo2max: null, steps: null, weight_kg: null, acute_load: null, chronic_load: null, acwr: null,
+    training_load_7d: null, activities: [], sleep: null,
+  } }));
+  await page.addInitScript(() => localStorage.setItem("apex.setup-checklist.dismissed", "1"));
   await page.goto("/app");
-  await expect(
-    page.getByText("Your overview will appear", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByTestId("overview-setup")).toHaveCount(0);
+  const healthEmpty = page.getByTestId("overview-health-empty");
+  await expect(healthEmpty).toContainText("Connect a data source for ongoing health updates.");
+  const scores = page.getByRole("region", { name: "Daily readiness, recovery, strain and sleep" });
+  await expect(scores.getByTestId("score-value")).toHaveText(["—", "—", "—", "—"]);
+  await expect(scores.getByText("No score for this day", { exact: true })).toHaveCount(4);
+  await healthEmpty.getByRole("link", { name: "Connect a data source", exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/settings\?tab=devices$/);
   await page.goto("/app/activities");
   await expect(
     page.getByText("No activities in this period yet."),

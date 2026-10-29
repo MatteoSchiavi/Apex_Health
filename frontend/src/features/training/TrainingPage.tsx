@@ -18,7 +18,8 @@ import { TrainingPlanWorkspace } from "../athlete/TrainingPlanWorkspace";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft, ArrowRight, ChevronRight, Dumbbell } from "lucide-react";
 import { api, ApiError, type Overview } from "../../app/api";
 import {
   Badge,
@@ -29,7 +30,6 @@ import {
   ErrorNote,
   Input,
   Loading,
-  PageHeader,
   Select,
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
@@ -116,7 +116,7 @@ function AddEvent({ onDone }: { onDone: () => void }) {
         onChange={setTitle}
         required
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Select
           label={t("training.event_type")}
           value={kind}
@@ -147,7 +147,7 @@ function EventCalendar() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["events"],
     queryFn: () => api.get<EventOut[]>("/events"),
   });
@@ -174,7 +174,7 @@ function EventCalendar() {
           <Button
             variant="ghost"
             onClick={() => setAdding((v) => !v)}
-            className="!h-9 !px-2.5 text-[12px]"
+            className="min-h-11 !px-3 text-[13px]"
           >
             {adding ? t("common.cancel") : `+ ${t("training.add_event")}`}
           </Button>
@@ -188,7 +188,7 @@ function EventCalendar() {
       {isLoading ? (
         <Loading />
       ) : isError ? (
-        <ErrorNote />
+        <div className="space-y-3"><ErrorNote /><Button variant="ghost" disabled={isFetching} onClick={() => void refetch()}>{t("common.retry")}</Button></div>
       ) : upcoming.length === 0 ? (
         <Empty>{t("design.no_events")}</Empty>
       ) : (
@@ -211,8 +211,8 @@ function EventCalendar() {
                   <span className="text-[12px]">{e.day.slice(5, 7)}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-semibold text-ink">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="break-words text-[13px] font-medium text-ink">
                       {e.title}
                     </span>
                     {e.priority === 1 && (
@@ -228,7 +228,9 @@ function EventCalendar() {
                 <button
                   type="button"
                   onClick={() => del.mutate(e.id)}
-                  className="text-[12px] text-muted hover:text-alertText"
+                  disabled={del.isPending}
+                  aria-label={t("redesign.training.delete_event", { title: e.title })}
+                  className="inline-flex min-h-11 shrink-0 items-center rounded-control px-2 text-[12px] text-muted hover:text-alertText disabled:opacity-50"
                 >
                   {t("training.delete")}
                 </button>
@@ -287,7 +289,7 @@ function LoadChart() {
       {query.isLoading ? (
         <Loading />
       ) : query.isError ? (
-        <ErrorNote />
+        <div className="space-y-3"><ErrorNote /><Button variant="ghost" disabled={query.isFetching} onClick={() => void query.refetch()}>{t("common.retry")}</Button></div>
       ) : (
         <TrendChart
           points={query.data?.points ?? []}
@@ -353,7 +355,15 @@ interface GymPlanResp {
   hint?: string;
 }
 
-function GymPlan({ day }: { day: string }) {
+function useGymPlan(day: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["gym-plan", day],
+    queryFn: () => api.get<GymPlanResp>(`/gym/plan/${day}`),
+    enabled,
+  });
+}
+
+function GymPlan({ day, plan }: { day: string; plan: ReturnType<typeof useGymPlan> }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const editable = day === todayIso();
@@ -367,11 +377,6 @@ function GymPlan({ day }: { day: string }) {
     qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }),
     qc.invalidateQueries({ queryKey: ["lab"] }),
   ]);
-
-  const plan = useQuery({
-    queryKey: ["gym-plan", day],
-    queryFn: () => api.get<GymPlanResp>(`/gym/plan/${day}`),
-  });
 
   const generate = useMutation({
     mutationFn: () => api.post<PlanView>(`/gym/plan/${day}/generate`),
@@ -424,8 +429,8 @@ function GymPlan({ day }: { day: string }) {
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", update); };
   }, [restUntil]);
 
-  if (plan.isLoading) return <Loading />;
-  if (plan.isError) return <ErrorNote />;
+  if (plan.isLoading) return <div id="gym-session"><Card><Loading /></Card></div>;
+  if (plan.isError) return <div id="gym-session"><Card><ErrorNote /><Button variant="ghost" className="mt-3 min-h-11" disabled={plan.isFetching} onClick={() => void plan.refetch()}>{t("common.retry")}</Button></Card></div>;
   const data = plan.data;
   const p = data?.plan ?? null;
   const exercises = p?.exercises ?? [];
@@ -458,24 +463,23 @@ function GymPlan({ day }: { day: string }) {
   }
 
   return (
-    <div id="gym-session"><Card>
+    <div id="gym-session"><Card className="!p-4 sm:!p-6">
       {(generate.isError || confirm.isError || logOne.isError) && <ErrorNote message={t(confirm.error instanceof ApiError && confirm.error.status === 409 ? "betaNavigation.gym_context_changed" : "betaNavigation.gym_action_failed")} />}
-      <CardHeader
-        eyebrow={t("training.gym_plan")}
-        title={p ? p.title : (data?.template?.title ?? undefined)}
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            {p && (
-              <Badge tone={complete ? "positive" : "primary"}>
-                {t(complete ? "betaNavigation.gym_status_done" : p.status === "active" ? "v01Training.in_progress" : "betaNavigation.gym_status_"+p.status,{defaultValue:p.status})}
-              </Badge>
-            )}
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">{t("training.gym_plan")}</p>
+          <h2 className="mt-1 flex min-w-0 items-start gap-2 text-[16px] font-medium leading-snug text-ink sm:text-[18px]"><Dumbbell size={18} className="mt-0.5 shrink-0 text-primaryText" aria-hidden="true" /><span className="break-words">{p?.title ?? data?.template?.title ?? t("redesign.training.gym_title")}</span></h2>
+        </div>
+        {p && <Badge tone={complete ? "positive" : "primary"}>{t(complete ? "betaNavigation.gym_status_done" : p.status === "active" ? "v01Training.in_progress" : "betaNavigation.gym_status_"+p.status,{defaultValue:p.status})}</Badge>}
+      </header>
+
+      {editable && (!p || p.status === "draft") && <div className="mb-4 flex flex-wrap items-center gap-2">
             {editable && !p && (
               <Button
                 variant="ghost"
                 onClick={() => generate.mutate()}
                 disabled={generate.isPending}
-                className="!h-9 !px-2.5 text-[12px]"
+                className="min-h-11 !px-3 text-[13px]"
               >
                 {t("training.gym_generate")}
               </Button>
@@ -485,15 +489,14 @@ function GymPlan({ day }: { day: string }) {
               <Button
                 onClick={() => confirm.mutate()}
                 disabled={confirm.isPending || generate.isPending || exercises.length === 0}
-                className="!h-9 !px-2.5 text-[12px]"
+                className="min-h-11 !px-3 text-[13px]"
               >
                 {t("training.gym_confirm")}
               </Button>
             )}
-          </div>
-        }
-      />
+      </div>}
 
+      {editable && p?.status === "draft" && <p className="mb-4 max-w-xl rounded-control bg-primarySoft p-4 text-[13px] text-ink2">{t("redesign.training.gym_review_note")}</p>}
       {!editable && <p className="mb-4 text-[13px] text-muted">{t("v01Training.read_only")}</p>}
       {complete && <p role="status" className="mb-4 rounded-control bg-primarySoft p-4 text-[14px]">{t("v01Training.completed")}</p>}
 
@@ -507,18 +510,14 @@ function GymPlan({ day }: { day: string }) {
       )}
 
       {exercises.length === 0 ? (
-        <Empty>
-          {data?.template
-            ? `${t("training.gym_no_plan")} — ${data.template.title ?? ""}`
-            : t("training.gym_no_plan")}
-        </Empty>
+        <p className="max-w-xl text-[13px] text-muted">{t(editable ? "redesign.training.gym_empty" : "training.gym_no_plan")}</p>
       ) : (
         <>
           {/* live session card — the gym-tracker companion to the Connect IQ app */}
           {editable && nextEx && p && ["confirmed", "active"].includes(p.status) && (
-            <div className="mb-6 bg-surface2 p-6">
-              <div className="flex items-center justify-between">
-                <div>
+            <div className="mb-4 rounded-card border border-primary/20 bg-primarySoft/50 p-3 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
                   <div className="eyebrow">
                     {t("training.next_exercise")} ·{" "}
                     {t("training.set_progress", {
@@ -526,7 +525,7 @@ function GymPlan({ day }: { day: string }) {
                       total: p?.progress.sets_total ?? 0,
                     })}
                   </div>
-                  <div className="mt-0.5 text-[16px] font-semibold text-ink">
+                  <div className="mt-0.5 break-words text-[20px] font-medium leading-snug text-ink">
                     {nextEx.name}
                   </div>
                   <div className="num mt-0.5 text-[12px] text-muted">
@@ -549,8 +548,8 @@ function GymPlan({ day }: { day: string }) {
                   </div>
                 )}
               </div>
-              <form className="mt-5" onSubmit={event => { event.preventDefault(); logSet(nextEx); }}>
-                <fieldset disabled={logOne.isPending} className="flex flex-wrap items-end gap-4">
+              <form className="mt-4" onSubmit={event => { event.preventDefault(); logSet(nextEx); }}>
+                <fieldset disabled={logOne.isPending} className="flex flex-wrap items-end gap-3">
                 <Input
                   label={t(timed ? "v01Training.duration_seconds" : "training.reps")}
                   type="number"
@@ -584,6 +583,9 @@ function GymPlan({ day }: { day: string }) {
             </div>
           )}
 
+          <details open={p?.status === "draft" || !editable || complete} className="rounded-control border border-hairline px-4">
+          <summary className="min-h-11 cursor-pointer py-3 text-[13px] font-medium text-ink2">{t("redesign.training.exercise_list", { count: exercises.length })}</summary>
+          <div className="pb-4">
           <ol className="space-y-3 sm:hidden" data-testid="gym-exercise-list">
             {exercises.map((ex, i) => <li key={ex.gym_day_exercise_id} className={`border border-hairline p-3 ${ex.gym_day_exercise_id === nextEx?.gym_day_exercise_id ? "bg-primarySoft/40" : ""}`}>
               <div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 text-[14px] font-medium">{i + 1}. {ex.name}</p>{ex.complete && <Badge tone="positive">{t("training.done")}</Badge>}</div>
@@ -644,7 +646,9 @@ function GymPlan({ day }: { day: string }) {
             </table>
           </div>
 
-          {editable && p?.status !== "draft" && <Feedback day={day} />}
+          </div>
+          </details>
+          {editable && p?.status !== "draft" && <details className="mt-4 border-t border-hairline"><summary className="min-h-11 cursor-pointer py-3 text-[13px] text-ink2">{t("training.feedback")}</summary><Feedback day={day} /></details>}
         </>
       )}
     </Card></div>
@@ -669,22 +673,21 @@ function Feedback({ day }: { day: string }) {
     },
   });
   return (
-    <div className="mt-4 border-t border-hairline pt-3">
+    <div className="pb-1">
       {submit.isError && <ErrorNote />}
       {submit.isSuccess && <Badge tone="positive">{t("settings.saved")}</Badge>}
-      <div className="eyebrow mb-2">{t("training.feedback")}</div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <input
           aria-label={t("training.feedback")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={t("training.feedback_placeholder")}
-          className="h-9 flex-1 rounded-control border border-hairline bg-surface2 px-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
+          className="h-11 min-w-0 flex-1 rounded-control border border-hairline bg-surface2 px-2.5 text-[13px] text-ink placeholder:text-faint focus:border-primary focus:outline-none"
         />
         <Button
           onClick={() => submit.mutate()}
           disabled={!text.trim() || submit.isPending}
-          className="!h-9"
+          className="min-h-11"
         >
           {t("training.submit")}
         </Button>
@@ -693,45 +696,104 @@ function Feedback({ day }: { day: string }) {
   );
 }
 
+type TrainingWorkspace = "today" | "planning" | "progress";
+
+function shiftedDay(day: string, offset: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function TrainingPage() {
-  const { t } = useTranslation();
-  const [params, setParams] = useSearchParams();
+  const { t, i18n } = useTranslation();
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const today = localDay(useUi(s => s.me?.timezone));
   const requestedDay = params.get("date") ?? today;
   const day = /^\d{4}-\d{2}-\d{2}$/.test(requestedDay) && !Number.isNaN(Date.parse(requestedDay))
     && new Date(requestedDay).toISOString().slice(0, 10) === requestedDay ? requestedDay : today;
-  const changeParam = (key: string, value: string) => setParams(current => {
-    const next = new URLSearchParams(current); next.set(key, value); return next;
+  const requestedTab = params.get("tab");
+  // Keep established plan, planning, calendar and load links working.
+  const workspace: TrainingWorkspace = requestedTab === "planning" || requestedTab === "calendar"
+    ? "planning" : requestedTab === "load" || requestedTab === "progress" ? "progress" : "today";
+  const [hasOpenedToday, setHasOpenedToday] = useState(workspace === "today");
+  useEffect(() => { if (workspace === "today") setHasOpenedToday(true); }, [workspace]);
+  const gymPlan = useGymPlan(day, workspace === "today" || hasOpenedToday);
+  const hasGymPlan = !!gymPlan.data?.plan;
+  // Stable keys preserve the mounted day, check-in drafts and timer when a real
+  // strength plan becomes available and moves ahead of supporting day context.
+  const dayContext = <YourDay key={`day:${day}`} date={day} />;
+  const gymExecution = <GymPlan key={`gym:${day}`} day={day} plan={gymPlan} />;
+  const changeParam = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    // Date navigation and workspace switches retain the selected day and anchor.
+    const hash = key === "tab" && value === "planning" && location.hash === "#gym-session" ? "" : location.hash;
+    navigate({ pathname: location.pathname, search: `?${next}`, hash });
+  };
+  const dateLabel = new Date(`${day}T12:00:00Z`).toLocaleDateString(i18n.language, {
+    timeZone: "UTC", weekday: "short", month: "short", day: "numeric",
   });
-  const tab = ["plan", "planning", "calendar", "load"].includes(params.get("tab") ?? "") ? params.get("tab")! : "plan";
+
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={t("training.title")}
-        subtitle={t("training.subtitle")}
-      />
-      <TrainingSections />
+    <div className="flex min-w-0 flex-col gap-3 sm:gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="eyebrow hidden text-primaryText sm:block">{t("redesign.training.eyebrow")}</p>
+          <h1 className="text-[24px] font-medium tracking-tight text-ink sm:mt-2 sm:text-[32px]">{t("redesign.training.title")}</h1>
+          <p className={`${workspace === "today" ? "hidden sm:block" : ""} mt-2 max-w-xl text-[14px] text-muted`}>{t(`redesign.training.intro_${workspace}`)}</p>
+        </div>
+      </header>
+
       <Tabs
-        value={tab}
-        onChange={tab => changeParam("tab", tab)}
-        label={t("training.title")}
+        value={workspace}
+        onChange={tab => changeParam("tab", tab === "today" ? "plan" : tab)}
+        label={t("redesign.training.workspaces")}
         options={[
-          { value: "plan", label: t(day === today ? "design.today_plan" : "v01Training.selected_day") },
-          { value: "planning", label: t("v01Training.planning") },
-          { value: "calendar", label: t("training.calendar") },
-          { value: "load", label: t("design.training_load") },
+          { value: "today", label: t("redesign.training.today") },
+          { value: "planning", label: t("redesign.training.plan") },
+          { value: "progress", label: t("redesign.training.progress") },
         ]}
       />
-      {tab === "plan" && <>
-        <div className="flex flex-wrap items-end gap-3">
-          <Input label={t("v01Training.date")} type="date" value={day} onChange={date => { if (date) changeParam("date", date); }} />
-          {day !== today && <Button variant="ghost" onClick={() => changeParam("date", today)}>{t("v01Training.return_today")}</Button>}
+
+      {/* Keep an opened session mounted across workspaces so its rest timer survives. */}
+      {(workspace === "today" || hasOpenedToday) && <section hidden={workspace !== "today"} aria-label={t("redesign.training.today")}>
+        <div className="flex flex-col gap-3 sm:gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="hidden text-[14px] font-medium text-ink sm:block">{day === today ? `${t("common.today")} · ${dateLabel}` : dateLabel}</p>
+            <div className="flex max-w-full flex-wrap items-center gap-2">
+              <button type="button" aria-label={t("redesign.training.previous_day")} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-hairline text-ink2 hover:bg-surface2" onClick={() => changeParam("date", shiftedDay(day, -1))}><ArrowLeft size={17} aria-hidden="true" /></button>
+              <label className="min-w-0"><span className="sr-only">{t("v01Training.date")}</span><input type="date" value={day} onChange={event => { if (event.target.value) changeParam("date", event.target.value); }} className="h-11 min-w-0 max-w-full rounded-control border border-hairline bg-transparent px-2 text-[13px] text-ink" /></label>
+              <button type="button" aria-label={t("redesign.training.next_day")} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-hairline text-ink2 hover:bg-surface2" onClick={() => changeParam("date", shiftedDay(day, 1))}><ArrowRight size={17} aria-hidden="true" /></button>
+              {day !== today && <Button variant="ghost" className="min-h-11" onClick={() => changeParam("date", today)}>{t("v01Training.return_today")}</Button>}
+            </div>
+          </div>
+          {hasGymPlan ? [gymExecution, dayContext] : [dayContext, gymExecution]}
+          {day === today && <details className="rounded-card border border-hairline bg-surface px-4 sm:px-5">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 text-[14px] font-medium text-ink2">{t("redesign.training.day_context")}<ChevronRight size={17} className="shrink-0" aria-hidden="true" /></summary>
+            <p className="mb-4 max-w-xl text-[13px] text-muted">{t("redesign.training.day_context_note")}</p>
+            <div className="pb-4"><LifeEvents /></div>
+          </details>}
         </div>
-        <YourDay key={day} date={day} /><GymPlan key={day} day={day} />{day === today && <LifeEvents />}
-      </>}
-      {tab === "planning" && <TrainingPlanWorkspace />}
-      {tab === "calendar" && <EventCalendar />}
-      {tab === "load" && <LoadChart />}
+      </section>}
+
+      {workspace === "planning" && <section aria-label={t("redesign.training.plan")} className="min-w-0 space-y-5">
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t("redesign.training.plan_tools")}>
+          <Button variant={requestedTab === "calendar" ? "ghost" : "subtle"} className="min-h-11" onClick={() => changeParam("tab", "planning")}>{t("redesign.training.review_plan")}</Button>
+          <Button variant={requestedTab === "calendar" ? "subtle" : "ghost"} className="min-h-11" onClick={() => changeParam("tab", "calendar")}>{t("training.calendar")}</Button>
+        </div>
+        {requestedTab === "calendar" ? <EventCalendar /> : <TrainingPlanWorkspace />}
+      </section>}
+
+      {workspace === "progress" && <section aria-label={t("redesign.training.progress")} className="min-w-0 space-y-5">
+        <div className="rounded-card border border-hairline bg-surface p-5">
+          <h2 className="text-[16px] font-medium text-ink">{t("redesign.training.sport_progress")}</h2>
+          <p className="mb-4 mt-1 text-[13px] text-muted">{t("redesign.training.sport_progress_note")}</p>
+          <TrainingSections />
+        </div>
+        <LoadChart />
+      </section>}
     </div>
   );
 }

@@ -98,7 +98,8 @@ test("template deep links retain explicit date choice and a separate preview bef
     const body = route.request().postDataJSON(); writes.push(body);
     return route.fulfill({ json: { id: 51, document_id: null, template_id: 31, template_revision: 1, version: 1, structure: { ...structure(1), starts_on: body.starts_on, ends_on: body.ends_on, sessions: [session(body.starts_on)], ambiguities: [] }, payload_hash: "d".repeat(64), status: "draft", confirmed_at: null } });
   });
-  await page.goto("/app/training?tab=planning#template-31");
+  await page.goto("/app/training?tab=planning&date=2024-03-05#template-31");
+  await expect(page).toHaveURL(/date=2024-03-05#template-31$/);
   await expect(page.getByLabel("Start date", { exact: true })).toHaveValue("");
   await expect(page.getByRole("button", { name: "Preview calendar", exact: true })).toBeDisabled();
   expect(writes).toEqual([]);
@@ -117,4 +118,26 @@ test("Italian planning remains readable and accessible on a phone", async ({ pag
   await expect(page.getByText("Scegli date reali per 2 allenamenti:")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+});
+
+
+test("a saved plan auto-selection and planning links retain the selected day without inferring workout dates", async ({ page }) => {
+  await legacyPlanApi(page, { count: 1 });
+  const writes: string[] = [];
+  page.on("request", request => { if (!["GET", "HEAD"].includes(request.method())) writes.push(request.url()); });
+  await page.goto("/app/training?tab=planning&date=2024-03-05");
+  await expect(page).toHaveURL(/\/app\/training\?tab=planning&date=2024-03-05#document-4$/);
+  const review = page.getByRole("link", { name: "Continue plan review", exact: true });
+  await expect(review).toHaveAttribute("href", "/app/training?tab=planning&date=2024-03-05#document-4");
+  const importPlan = page.getByRole("link", { name: "Import a plan", exact: true });
+  await expect(importPlan).toHaveAttribute("href", "/app/training?tab=planning&date=2024-03-05#import");
+  await importPlan.click();
+  await expect(page).toHaveURL(/date=2024-03-05#import$/);
+  await review.click();
+  await expect(page).toHaveURL(/date=2024-03-05#document-4$/);
+  await page.getByRole("button", { name: "Edit workouts and dates", exact: true }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("End date", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Date (optional for a draft)", { exact: true })).toHaveValue("");
+  expect(writes).toEqual([]);
 });

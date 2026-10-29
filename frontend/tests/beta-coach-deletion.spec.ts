@@ -40,7 +40,7 @@ async function fixture(page: Page, options: { locale?: 'en' | 'it'; failDelete?:
 }
 async function openDelete(page: Page, title: string, locale: 'en' | 'it' = 'en') {
   const history = page.getByRole('button', { name: locale === 'it' ? /Conversazioni passate/ : /Past conversations/ });
-  if (await history.isVisible()) await history.click();
+  if (await history.getAttribute('aria-expanded') !== 'true') await history.click();
   await page.getByRole('button', { name: locale === 'it' ? `Azioni della conversazione ${title}` : `Conversation actions for ${title}`, exact: true }).click();
   await page.getByRole('button', { name: locale === 'it' ? 'Elimina conversazione' : 'Delete conversation', exact: true }).click();
   return page.getByRole('dialog');
@@ -90,6 +90,7 @@ test('keyboard disclosure, focus trap, cancel and Escape send no delete request'
   await page.setViewportSize({ width: 1440, height: 1000 });
   const requests = await fixture(page);
   await page.goto('/app/coach');
+  await page.getByRole('button', { name: /Past conversations/ }).click();
   const actions = page.getByRole('button', { name: 'Conversation actions for Previous training', exact: true });
   await actions.focus();
   await page.keyboard.press('Enter');

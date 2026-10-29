@@ -16,7 +16,7 @@ const dayFor = (date: string, gymStatus?: string) => ({ date, timezone: 'UTC', t
 });
 const gym = (page: Page) => page.locator('#gym-session');
 
-test('generate, confirm and finish refresh Your day; saved sets wait for refreshed progress and reset weight for a new exercise', async ({ page }) => {
+test('generate, confirm and finish refresh Your day; saved sets wait for refreshed progress and reset weight for a new exercise', async ({ page }, testInfo) => {
   await installApi(page, { empty: true });
   let plan: ReturnType<typeof planFor> | null = null;
   let dayReads = 0;
@@ -52,10 +52,12 @@ test('generate, confirm and finish refresh Your day; saved sets wait for refresh
   });
   await page.goto('/app/training');
   await expect(page.getByTestId('daily-summary')).toBeVisible();
+  const mountedDaySummary = await page.getByTestId('daily-summary').elementHandle();
   const initialReads = dayReads;
   await gym(page).getByRole('button', { name: 'Generate plan', exact: true }).click();
   await expect(gym(page).getByRole('button', { name: 'Confirm plan', exact: true })).toBeEnabled();
   await expect.poll(() => dayReads).toBeGreaterThan(initialReads);
+  expect(await mountedDaySummary!.evaluate(element => element.isConnected)).toBe(true);
   const generatedReads = dayReads;
   await gym(page).getByRole('button', { name: 'Confirm plan', exact: true }).click();
   await expect(page.getByTestId('daily-summary')).toContainText('Planned');
@@ -74,6 +76,7 @@ test('generate, confirm and finish refresh Your day; saved sets wait for refresh
   await expect(gym(page).getByRole('timer')).toHaveCount(0);
   await expect(reps).toHaveValue('8');
   await expect(weight).toHaveValue('40');
+  await page.screenshot({ path: testInfo.outputPath('training-active-en.png'), fullPage: true });
   await gym(page).getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(reps).toHaveValue('12');
   await expect(weight).toHaveValue('');
@@ -110,9 +113,10 @@ test('historical gym links retain the selected date and offer no generate, confi
   await expect(gym(page).getByRole('button')).toHaveCount(0);
   await expect(gym(page).getByRole('spinbutton')).toHaveCount(0);
   await expect(gym(page).getByRole('textbox')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Upcoming events', exact: true }).click();
+  await page.getByRole('tab', { name: 'Your plan', exact: true }).click();
+  await page.getByRole('button', { name: 'Upcoming events', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`date=${past}.*tab=calendar`));
-  await page.getByRole('tab', { name: 'Selected day', exact: true }).click();
+  await page.getByRole('tab', { name: 'Train today', exact: true }).click();
   await expect(page.getByLabel('Training date', { exact: true })).toHaveValue(past);
   expect(reads.every(date => date === past)).toBe(true);
   expect(writes).toHaveLength(0);
@@ -120,7 +124,7 @@ test('historical gym links retain the selected date and offer no generate, confi
 
 test('rest countdown uses elapsed time and does not restart after a suspended browser resumes', async ({ page }) => {
   await installApi(page);
-  await page.clock.install();
+  await page.clock.install({ time: new Date(`${today}T12:00:00Z`) });
   const plan = planFor(today);
   await page.route(url => url.pathname === `/gym/plan/${today}`, route => route.fulfill({ json: { date: today, plan, template: null } }));
   await page.route('**/gym/session/15/log', route => {
@@ -128,9 +132,21 @@ test('rest countdown uses elapsed time and does not restart after a suspended br
     return route.fulfill({ json: { rest_seconds: 60, next: { done: false } } });
   });
   await page.goto('/app/training');
-  await gym(page).getByRole('button', { name: 'Log set', exact: true }).click();
+  const logSet = gym(page).getByRole('button', { name: 'Log set', exact: true });
+  await expect(logSet).toBeEnabled();
+  // Let authentication and initial query notifications finish before freezing
+  // timers; then drive pending mutation notifications explicitly.
+  await page.clock.pauseAt(new Date(`${today}T12:01:00Z`));
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/gym/session/15/log') && response.request().method() === 'POST'),
+    logSet.click(),
+  ]);
+  await page.clock.runFor(50);
   await expect(gym(page).getByRole('timer')).toHaveText('1:00');
+  await page.getByRole('tab', { name: 'Progress', exact: true }).click();
+  await expect(gym(page).getByRole('timer')).toBeHidden();
   await page.clock.fastForward(45_000);
+  await page.getByRole('tab', { name: 'Train today', exact: true }).click();
   await expect(gym(page).getByRole('timer')).toHaveText('0:15');
   await page.clock.fastForward(20_000);
   await expect(gym(page).getByRole('timer')).toHaveCount(0);
@@ -153,6 +169,7 @@ test('a timed hold uses seconds through logging and completion without inventing
   const seconds = gym(page).getByRole('spinbutton', { name: 'Duration (seconds)', exact: true });
   await expect(seconds).toHaveValue('30');
   await expect(gym(page)).toContainText('30–60 s');
+  await gym(page).locator('summary').filter({ hasText: 'Exercise list' }).click();
   await expect(page.getByTestId('gym-exercise-list')).toContainText('30–60 s');
   await expect(page.getByTestId('gym-exercise-list')).toContainText('60s');
   expect(await page.getByTestId('gym-exercise-list').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -180,4 +197,67 @@ test('a resumed legacy workout fills the missing set instead of submitting an al
   await expect(gym(page).getByRole('status')).toContainText('Workout complete');
   await expect(gym(page).getByRole('button', { name: 'Log set', exact: true })).toHaveCount(0);
   expect(logs).toEqual([{ gym_day_exercise_id: 7, set_number: 1, reps_done: 8, weight_kg: null }]);
+});
+
+
+test('workspace navigation preserves the selected date and gym anchor without writing or opening unrelated tools', async ({ page }) => {
+  const { writes } = await installApi(page, { empty: true });
+  const selected = '2024-03-05';
+  await page.route(url => url.pathname === '/athlete/day', route => route.fulfill({ json: dayFor(selected) }));
+  await page.route(url => /^\/gym\/plan\/\d{4}-\d{2}-\d{2}$/.test(url.pathname), route => {
+    const date = new URL(route.request().url()).pathname.split('/').pop()!;
+    return route.fulfill({ json: { date, plan: null, template: null } });
+  });
+  await page.goto(`/app/training?tab=plan&date=${selected}#gym-session`);
+  await expect(page.getByRole('tab', { name: 'Train today', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'Strength session', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add event', exact: false })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Previous training day', exact: true }).click();
+  await expect(page).toHaveURL(/date=2024-03-04#gym-session$/);
+  await page.getByRole('tab', { name: 'Progress', exact: true }).click();
+  await expect(page).toHaveURL(/date=2024-03-04#gym-session$/);
+  await expect(page.getByRole('heading', { name: 'Explore your sports', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Your plan', exact: true }).click();
+  await expect(page).toHaveURL(/tab=planning&date=2024-03-04$/);
+  await expect(page.getByRole('heading', { name: 'Your training plan', exact: true })).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
+
+test('Italian daily controls and a long exercise name fit a narrow phone', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  const { writes } = await installApi(page, { empty: true, locale: 'it' });
+  const plan = planFor(today);
+  plan.title = 'Sessione di forza per la preparazione della prossima competizione';
+  plan.exercises[0].name = 'Distensioni su panca con manubri e controllo della fase eccentrica';
+  let gymReads = 0;
+  await page.route(url => url.pathname === `/gym/plan/${today}`, route => {
+    gymReads++;
+    return route.fulfill({ json: { date: today, plan, template: null } });
+  });
+  await page.goto('/app/training');
+  await expect(page.getByRole('tab', { name: 'Allenati oggi', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(gym(page).getByText(plan.exercises[0].name, { exact: true }).first()).toBeVisible();
+  for (const name of ['Giorno di allenamento precedente', 'Giorno di allenamento successivo']) {
+    const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(writes).toHaveLength(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const navigation = await page.getByRole('navigation', { name: 'Navigazione principale', exact: true }).boundingBox();
+  expect(navigation).not.toBeNull();
+  for (const control of [
+    gym(page).locator('.eyebrow').filter({ hasText: 'Prossimo' }),
+    gym(page).locator('form'),
+    gym(page).getByRole('button', { name: 'Registra serie', exact: true }),
+  ]) {
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(navigation!.y);
+  }
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(gymReads).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('training-active-it-phone.png'), fullPage: false });
 });

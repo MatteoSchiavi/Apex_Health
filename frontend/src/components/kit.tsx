@@ -412,7 +412,7 @@ export function Button({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-3 text-[13px] font-medium transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-3 text-[13px] font-medium transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
     >
       {icon}
       {children}

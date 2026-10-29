@@ -1,3 +1,4 @@
+import { proposalFields, ProposalValues } from "../coach/ProposalValues";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -12,7 +13,7 @@ import {
   ErrorNote,
 } from "../../components/kit";
 import type { Draft } from "./types";
-import { Form, human, inputClass, num, QueryState, str, useAction, useLab, Value } from "./shared";
+import { Form, human, inputClass, num, QueryState, str, useAction, useLab } from "./shared";
 export default function ChangesPanel() {
   const { t } = useTranslation();
   const q = useLab<Draft[]>("/lab/changes");
@@ -50,12 +51,10 @@ export default function ChangesPanel() {
   const showAll = () => navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true, state: location.state });
   return (
     <div className="flex flex-col gap-5">
-      <Card>
-        <CardHeader title={t("lab.changes")} />
-        <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
-          {t("lab.approval_note")}
-        </p>
-      </Card>
+      <div className="space-y-1">
+        <h2 className="text-[17px] font-medium">{t("redesign.proposals.title")}</h2>
+        <p className="max-w-2xl text-[12px] leading-relaxed text-muted">{t("v01Coach.proposal_note")}</p>
+      </div>
       {location.hash && (
         <div role={targetId === null || targetFailed || targetMissing ? "alert" : "status"} className="flex flex-wrap items-center gap-3 text-[13px]">
           {targetId === null ? <p>{t("dailyFlow.proposalInvalid")}</p>
@@ -77,7 +76,7 @@ export default function ChangesPanel() {
         </p>
       )}
       {drafts.map((d) => (
-        <section key={d.id} id={`change-${d.id}`} tabIndex={-1} data-selected={targetId === d.id && !q.isError ? "true" : undefined} className={`scroll-mt-24 outline-none ${targetId === d.id && !q.isError ? "ring-2 ring-ink ring-offset-2" : ""}`}>
+        <section key={d.id} id={`change-${d.id}`} tabIndex={-1} data-selected={targetId === d.id && !q.isError ? "true" : undefined} aria-label={t("lab.change_kinds." + d.kind, { defaultValue: human(d.kind) })} className={`scroll-mt-24 rounded-card outline-none ${targetId === d.id && !q.isError ? "ring-2 ring-ink ring-offset-2" : ""}`}>
         <Card>
           <CardHeader
             title={t("lab.change_kinds." + d.kind, {
@@ -100,34 +99,30 @@ export default function ChangesPanel() {
             }
           />
           <p className="mb-5 text-[14px]">{d.reason}</p>
-          {d.adaptation && <div className="mb-4 text-[13px] text-muted"><p>{t("athlete.objective_"+d.adaptation.objective_status)}</p><p className="mt-2">{d.adaptation.data_gaps.length ? t("athlete.adaptation_gaps") : t("athlete.adaptation_evidence")}</p><p>{d.adaptation.evidence_ids.join(" · ") || t("lab.no_evidence")}</p></div>}
+          {d.adaptation && <div className="mb-4 text-[13px] text-muted"><p>{t("athlete.objective_"+d.adaptation.objective_status)}</p><p className="mt-2">{d.adaptation.data_gaps.length ? t("athlete.adaptation_gaps") : t("athlete.adaptation_evidence")}</p></div>}
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="border border-hairline p-4 text-[13px]">
+            <div className="min-w-0 rounded-control border border-hairline p-4 text-[13px]">
               <h3 className="eyebrow mb-3">{t("lab.before")}</h3>
-              <Value
-                value={
-                  d.kind === "context_patch"
-                    ? (d.before.content ?? "")
-                    : d.before
-                }
-              />
+              <ProposalValues value={proposalFields(d.before)} />
             </div>
-            <div className="border-l-2 border-ink bg-surface2 p-4 text-[13px]">
+            <div className="min-w-0 rounded-control border border-hairline bg-surface2 p-4 text-[13px]">
               <h3 className="eyebrow mb-3">{t("lab.after")}</h3>
-              <Value
-                value={
-                  d.kind === "context_patch" ? (d.after.content ?? "") : d.after
-                }
-              />
+              <ProposalValues value={proposalFields(d.after)} />
             </div>
           </div>
           <details className="my-4 text-[12px] text-muted">
-            <summary>{t("lab.approval_details")}</summary>
+            <summary className="min-h-6 cursor-pointer">{t("lab.approval_details")}</summary>
+            <p className="mt-3 leading-relaxed">{t("lab.approval_note")}</p>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div><h3 className="mb-2 font-medium">{t("lab.before")}</h3><ProposalValues value={proposalFields(d.before, true)} /></div>
+              <div><h3 className="mb-2 font-medium">{t("lab.after")}</h3><ProposalValues value={proposalFields(d.after, true)} /></div>
+            </div>
             <p className="mt-3 break-all">SHA-256 · {d.payload_hash}</p>
             <p>
               {t("lab.expires")} {new Date(d.expires_at).toLocaleString()}
             </p>
-            <p>{d.evidence_ids.join(", ") || t("lab.no_evidence")}</p>
+            <p className="break-words">{d.evidence_ids.join(", ") || t("lab.no_evidence")}</p>
+            {d.adaptation && <p className="mt-2 break-words">{d.adaptation.evidence_ids.join(" · ") || t("lab.no_evidence")}</p>}
           </details>
           {d.receipt && (
             <p className="mb-4 text-[13px] text-muted">
@@ -191,6 +186,11 @@ export default function ChangesPanel() {
                 >
                   {t("lab.approve")}
                 </Button>
+                {d.kind === "session_patch" && (
+                  <Button variant="ghost" disabled={action.isPending || Date.parse(d.expires_at) < Date.now()} onClick={() => setEditing(d.id)}>
+                    {t("decisionLearning.editProposal")}
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   disabled={action.isPending}
@@ -200,11 +200,6 @@ export default function ChangesPanel() {
                 >
                   {t("lab.reject")}
                 </Button>
-                {d.kind === "session_patch" && (
-                  <Button variant="ghost" disabled={action.isPending || Date.parse(d.expires_at) < Date.now()} onClick={() => setEditing(d.id)}>
-                    {t("decisionLearning.editProposal")}
-                  </Button>
-                )}
               </>
             )}
             {d.status === "applied_locally" && d.receipt?.undo_available && (

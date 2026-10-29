@@ -29,6 +29,7 @@ import {
   X,
   ShieldCheck,
   MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { api, type DeviceOut } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
@@ -42,23 +43,19 @@ import { METRIC_LABELS } from "../data";
 import { friendlyDiscipline } from "../kit";
 
 const NAV = [
-  { to: "/app", icon: Activity, key: "nav.overview", end: true },
-  {
-    to: "/app/biometrics",
-    icon: HeartPulse,
-    key: "nav.biometrics",
-    end: false,
-  },
-  { to: "/app/activities", icon: BarChart3, key: "nav.activities", end: false },
-  { to: "/app/sleep", icon: Moon, key: "nav.sleep", end: false },
+  { to: "/app", icon: Activity, key: "redesign.shell.today", end: true },
   { to: "/app/training", icon: Trophy, key: "nav.training", end: false },
   { to: "/app/coach", icon: Bot, key: "nav.coach", end: false },
+  { to: "/app/activities", icon: BarChart3, key: "nav.activities", end: false },
+  { to: "/app/biometrics", icon: HeartPulse, key: "redesign.shell.health", end: false },
+  { to: "/app/sleep", icon: Moon, key: "nav.sleep", end: false },
   { to: "/app/lab", icon: FlaskConical, key: "lab.nav", end: false },
   { to: "/app/calendar", icon: CalendarDays, key: "lab.calendar", end: false },
   { to: "/app/gear", icon: Wrench, key: "lab.gear", end: false },
-  { to: "/app/social", icon: Users, key: "nav.social", end: false },
+  { to: "/app/social", icon: Users, key: "redesign.shell.challenges", end: false },
   { to: "/app/settings", icon: Settings, key: "nav.settings", end: false },
 ];
+const TOOL_PATHS = ["/app/sleep", "/app/lab", "/app/calendar", "/app/gear", "/app/social"];
 export function Logo() {
   return (
     <div className="flex items-center gap-3">
@@ -86,7 +83,7 @@ function SearchDialog({
   const catalog = useQuery({ queryKey: ["metrics-catalog"], queryFn: () => api.get<Record<string, unknown>>("/metrics") });
   const recent = useQuery({ queryKey: ["search-activities", uid], queryFn: () => api.get<{ items: { id: number; local_date: string; discipline: string | null }[] }>("/activities?limit=50"), enabled: q.trim().length >= 2 });
   const destinations = [
-    ...NAV.map(n => ({ to: n.to, label: t(n.key), terms: n.key, icon: n.icon })),
+    ...NAV.map(n => ({ to: n.to, label: t(n.key), terms: `${n.key} ${n.to}`, icon: n.icon })),
     ...(owner ? [{ to: "/admin", label: t("admin.title"), terms: "admin", icon: ShieldCheck }] : []),
     ...SEARCH_TABS.map(n => ({ to: n.to, label: `${t(n.parent)} · ${t(n.key)}`, terms: n.to, icon: Search })),
     ...Object.keys(catalog.data ?? {}).map(key => ({ to: `/app/biometrics/${key}`, label: METRIC_LABELS[key] ? t(METRIC_LABELS[key]) : key.replaceAll("_", " "), terms: key, icon: HeartPulse })),
@@ -127,7 +124,7 @@ function SearchDialog({
         role="dialog"
         aria-modal="true"
         aria-label={t("search.placeholder")}
-        className="w-full max-w-lg bg-surface p-6"
+        className="w-full max-w-lg rounded-card border border-hairline bg-surface p-6"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-hairline pb-4">
@@ -143,7 +140,7 @@ function SearchDialog({
           <button
             aria-label={t("common.close")}
             onClick={onClose}
-            className="p-2"
+            className="shell-icon"
           >
             <X size={18} />
           </button>
@@ -156,7 +153,7 @@ function SearchDialog({
                 navigate(n.to);
                 onClose();
               }}
-              className="flex w-full items-center gap-3 px-2 py-3 text-left hover:bg-surface2"
+              className="flex min-h-11 w-full items-center gap-3 rounded-control px-3 py-3 text-left hover:bg-surface2"
             >
               <n.icon size={16} className="text-muted" />
               {n.label}
@@ -170,7 +167,7 @@ function SearchDialog({
   );
 }
 export function AppShell({ children }: { children: ReactNode }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const me = useUi((s) => s.me);
   const preferences = useLab<{ payload: { density: string } }[]>(
     "/lab/entries?kind=privacy_preferences",
@@ -186,6 +183,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [logoutError, setLogoutError] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(() => TOOL_PATHS.some(path => location.pathname === path || location.pathname.startsWith(path + "/")));
+  const mobileMoreRoot = useRef<HTMLDivElement>(null);
   const notificationRoot = useRef<HTMLDivElement>(null);
   const notificationButton = useRef<HTMLButtonElement>(null);
   const notifications = useLab<NotificationsData>("/lab/notifications");
@@ -241,19 +240,58 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotificationsOpen(false);
     setMobileMoreOpen(false);
+    if (TOOL_PATHS.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) setToolsOpen(true);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   const closeSearch = useCallback(() => setSearch(false), []);
   const inTraining = location.pathname.startsWith("/app/sports/");
   const inSharing = location.pathname.startsWith("/app/sharing");
   const isSectionActive = (to: string, end?: boolean) => (to === "/app/training" && inTraining) || (to === "/app/settings" && inSharing) || (end ? location.pathname === to : location.pathname === to || location.pathname.startsWith(to+"/"));
-  const current = NAV.find(n=>isSectionActive(n.to,n.end)) ?? (location.pathname === "/admin" ? { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true } : NAV[0]);
   const dailyPaths = ["/app", "/app/training", "/app/coach", "/app/activities"];
   const allNav = me?.role === "owner" ? [...NAV, { to: "/admin", icon: ShieldCheck, key: "admin.title", end: true }] : NAV;
   const mobilePrimary = dailyPaths.map(path => allNav.find(item => item.to === path)!);
-  const visibleNav = [...mobilePrimary, ...allNav.filter(item => !dailyPaths.includes(item.to))];
-  const mobileMore = visibleNav.filter((n) => !mobilePrimary.includes(n));
-  const mobileMoreActive = mobileMore.some(n=>isSectionActive(n.to,n.end));
+  const dailyNav = NAV.filter(item => dailyPaths.includes(item.to) || item.to === "/app/biometrics");
+  const toolsNav = NAV.filter(item => TOOL_PATHS.includes(item.to));
+  const accountNav = allNav.filter(item => item.to === "/app/settings" || item.to === "/admin");
+  const mobileMore = allNav.filter(item => !dailyPaths.includes(item.to));
+  const mobileMoreActive = mobileMore.some(n => isSectionActive(n.to, n.end));
+  const toolActive = toolsNav.some(n => isSectionActive(n.to, n.end));
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const panel = mobileMoreRoot.current;
+    panel?.querySelector<HTMLElement>("a,button")?.focus();
+    const onPointer = (e: PointerEvent) => {
+      if (!panel?.contains(e.target as Node) && !mobileMoreButton.current?.contains(e.target as Node)) {
+        setMobileMoreOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMoreOpen(false);
+        mobileMoreButton.current?.focus();
+      }
+      if (e.key !== "Tab") return;
+      const nodes = Array.from(panel?.querySelectorAll<HTMLElement>("a,button") ?? []);
+      if (e.shiftKey && document.activeElement === nodes[0]) {
+        e.preventDefault(); nodes.at(-1)?.focus();
+      } else if (!e.shiftKey && document.activeElement === nodes.at(-1)) {
+        e.preventDefault(); nodes[0]?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mobileMoreOpen]);
+  const navItem = ({ to, icon: Icon, key, end }: typeof NAV[number]) => (
+    <Link key={to} to={to} aria-current={isSectionActive(to, end) ? "page" : undefined}
+      className={`shell-nav-link ${isSectionActive(to, end) ? "is-active" : ""}`}>
+      <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
+      <span className="truncate">{t(key)}</span>
+    </Link>
+  );
   async function logout() {
     try {
       await api.post("/auth/logout");
@@ -266,7 +304,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
   return (
     <div
-      className="flex min-h-dvh bg-canvas"
+      className="focus-workspace flex min-h-dvh bg-canvas"
       data-density={preferences.data?.[0]?.payload.density ?? "comfortable"}
     >
       <a
@@ -281,82 +319,55 @@ export function AppShell({ children }: { children: ReactNode }) {
           returnFocus={searchOpener.current}
         />
       )}
-      <aside
-        className="sticky top-0 hidden h-dvh w-[224px] min-h-0 shrink-0 flex-col overflow-hidden border-r border-hairline px-6 py-8 lg:flex">
-        <div className="mb-8 flex h-8 shrink-0 items-center justify-between gap-2">
-          <NavLink to="/app" aria-label="Apex Health" className="min-w-0 overflow-hidden">
-            <Logo />
-          </NavLink>
-        </div>
-        <div className="mb-4 text-[12px] text-muted">{t("design.workspace")}</div>
-        <nav
-          aria-label={t("design.navigation")}
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-y-auto"
-        >
-          {visibleNav.map(({ to, icon: Icon, key, end }, index) => (
-            <div key={to} className="shrink-0">
-            {index === mobilePrimary.length && <p className="px-3 pb-2 pt-5 text-[11px] uppercase tracking-wide text-muted">{t("v01Navigation.explore")}</p>}
-            <Link to={to} aria-current={isSectionActive(to,end) ? "page" : undefined}
-              className={"flex h-11 shrink-0 items-center gap-3 whitespace-nowrap py-2.5 text-[14px] transition-colors " + "px-3 " + (isSectionActive(to,end) ? "bg-ink font-medium text-canvas" : "text-muted hover:bg-surface2 hover:text-ink")}>
-              <Icon size={17} strokeWidth={1.6} aria-hidden="true" />
-              <span className="truncate">{t(key)}</span>
-            </Link></div>
-          ))}
+      <aside className="shell-sidebar sticky top-0 hidden h-dvh w-[224px] min-h-0 shrink-0 flex-col overflow-hidden border-r border-hairline px-4 py-6 lg:flex">
+        <NavLink to="/app" aria-label="Apex Health" className="mx-3 mb-9 flex min-h-8 shrink-0 items-center text-ink">
+          <Logo />
+        </NavLink>
+        <nav aria-label={t("design.navigation")} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <p className="focus-kicker mb-3 px-3">{t("redesign.shell.daily")}</p>
+          <div className="space-y-1">{dailyNav.map(navItem)}</div>
+          <button type="button" aria-expanded={toolsOpen} aria-controls="workspace-tools" onClick={() => setToolsOpen(open => !open)}
+            className={`shell-nav-link mt-5 w-full text-left ${toolActive ? "is-active" : ""}`}>
+            <MoreHorizontal size={18} aria-hidden="true" />
+            <span className="flex-1">{t("redesign.shell.tools")}</span>
+            <ChevronDown size={15} className={toolsOpen ? "rotate-180" : ""} aria-hidden="true" />
+          </button>
+          {toolsOpen && <div id="workspace-tools" className="mt-1 space-y-1 border-l border-hairline pl-2 ml-5">{toolsNav.map(navItem)}</div>}
+          <div className="mt-auto space-y-1 pt-6">{accountNav.map(navItem)}</div>
         </nav>
-        <div className="shrink-0 pt-6">
-          <NavLink
-            to="/app/settings?tab=devices"
-            className="block min-h-[78px] border-b border-hairline pb-5"
-          >
+        <div className="shrink-0 border-t border-hairline pt-4 mt-4">
+          <NavLink to="/app/settings?tab=devices" className="block rounded-control px-3 py-2 hover:bg-surface2">
             <span className="status text-muted">
-              {devices.isError
-                ? t("design.sync_unavailable")
-                : connected
-                  ? t("design.devices_count", { count: connected })
-                  : t("sync.no_devices")}
+              {devices.isError ? t("design.sync_unavailable") : connected ? t("design.devices_count", { count: connected }) : t("sync.no_devices")}
             </span>
-            <div className="mt-2 text-[12px] text-muted">
-              {latestSync
-                ? t("design.last_sync", { time: timeAgo(latestSync) })
-                : (syncHealth.data?.accounts?.some(a=>a.has_successful_sync) || syncHealth.data?.feeds?.some(f=>f.has_checkpoint||f.last_success_at||f.latest_measurement_at)) ? t("design.sync_time_missing") : t("design.sync_unavailable")}
+            <div className="mt-1 text-[11px] text-muted">
+              {latestSync ? t("design.last_sync", { time: timeAgo(latestSync) }) : (syncHealth.data?.accounts?.some(a => a.has_successful_sync) || syncHealth.data?.feeds?.some(f => f.has_checkpoint || f.last_success_at || f.latest_measurement_at)) ? t("design.sync_time_missing") : t("design.sync_unavailable")}
             </div>
           </NavLink>
-          <div className="mt-5 flex h-9 items-center gap-3">
-            <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="flex h-9 shrink-0 items-center justify-center px-3 text-muted hover:text-ink"><LogOut size={16} /></button>
-            <div className="min-w-0 overflow-hidden"><p className="truncate text-[13px] font-medium">{me?.name}</p><span className="text-[12px] text-muted">{t("auth.logout")}</span></div>
+          <div className="mt-2 flex items-center gap-3 px-3">
+            <button onClick={logout} aria-label={t("auth.logout")} title={t("auth.logout")} className="shell-icon"><LogOut size={17} /></button>
+            <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-medium">{me?.name}</p><span className="text-[12px] text-muted">{t("auth.logout")}</span></div>
           </div>
           {logoutError && <ErrorNote />}
         </div>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="flex h-[80px] items-center justify-between gap-4 border-b border-hairline px-5 lg:px-10">
-          <div className="lg:hidden">
-            <Logo />
+        <header className="shell-header flex min-h-16 items-center justify-between gap-3 border-b border-hairline px-4 lg:px-9">
+          <div className="lg:hidden"><Logo /></div>
+          <div className="hidden items-center gap-3 lg:flex">
+            <span className="text-[12px] text-muted">{new Date().toLocaleDateString(i18n.language, { weekday: "long", month: "short", day: "numeric", timeZone: me?.timezone })}</span>
           </div>
-          <div className="hidden items-center gap-3 text-[13px] lg:flex">
-            <span className="text-muted">Apex Health</span>
-            <span className="text-faint">/</span>
-            {t(current.key)}
-          </div>
-          <div className="flex items-center gap-4">
-            <FeedbackButton />
-            <span className="hidden text-[13px] text-muted md:inline">
-              {new Date().toLocaleDateString(undefined, {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                timeZone: me?.timezone,
-              })}
-            </span>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="hidden sm:block"><FeedbackButton /></div>
             <div className="relative" ref={notificationRoot}>
               <button ref={notificationButton} type="button" aria-label={t("lab.notifications")}
                 aria-expanded={notificationsOpen} aria-haspopup="dialog" onClick={() => setNotificationsOpen((v) => !v)}
-                className="relative p-2 text-muted hover:text-ink">
+                className="shell-icon relative">
                 <Bell size={18} />
                 {unread > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink px-1 text-[10px] text-canvas">{unread > 9 ? "9+" : unread}</span>}
               </button>
               {notificationsOpen && <div role="dialog" aria-label={t("lab.notifications")}
-                className="absolute right-0 top-full z-40 mt-2 w-[min(90vw,420px)] border border-hairline bg-surface shadow-xl">
+                className="fixed inset-x-4 top-20 z-40 rounded-card border border-hairline bg-surface shadow-xl md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-[420px]">
                 <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
                   <strong className="text-[14px]">{t("lab.notifications")}</strong>
                   <NavLink to="/app/settings?tab=notifications" onClick={() => setNotificationsOpen(false)} className="text-link text-[12px]">{t("lab.notification_preferences")}</NavLink>
@@ -368,32 +379,30 @@ export function AppShell({ children }: { children: ReactNode }) {
               disabled={preferenceSaving}
               aria-label={t("theme.toggle")}
               title={t("theme.toggle")}
-              className="p-2 text-muted hover:text-ink"
+              className="shell-icon"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
             >
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            <button
-              className="hidden items-center gap-3 p-2 text-muted hover:text-ink md:flex"
+            <div className="hidden md:block"><button
+              className="shell-icon gap-2 md:!w-auto md:px-3"
               aria-label={t("search.placeholder")}
               onClick={(e) => {
                 searchOpener.current = e.currentTarget;
                 setSearch(true);
               }}
             >
-              <Search size={18} />
-              <span className="hidden text-[12px] xl:inline">⌘ K</span>
-            </button>
+              <Search size={18} className="shrink-0" />
+              <span className="hidden whitespace-nowrap text-[12px] xl:inline">⌘ K</span>
+            </button></div>
           </div>
         </header>
-        <nav aria-label={t("design.navigation")} className="hidden gap-6 overflow-x-auto border-b border-hairline px-5 md:flex lg:hidden">
-          {visibleNav.map((n) => <Link to={n.to} key={n.to} aria-current={isSectionActive(n.to,n.end) ? "page" : undefined} className={ "shrink-0 border-b-2 py-4 text-[13px] " + (isSectionActive(n.to,n.end) ? "border-ink font-semibold text-ink" : "border-transparent text-muted")}>{t(n.key)}</Link>)}
-        </nav>
         <main
           id="main"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1600px] px-5 py-8 pb-24 focus:outline-none md:px-8 md:pb-8 lg:px-10 lg:py-10"
+          className="mx-auto w-full max-w-[1440px] px-4 py-6 pb-28 focus:outline-none sm:px-6 lg:px-9 lg:py-8 lg:pb-8"
         >
+          {logoutError && <div className="mb-5 lg:hidden"><ErrorNote /></div>}
           {preferenceError && (
             <div className="mb-5">
               <ErrorNote message={t("design.preference_failed")} />
@@ -401,21 +410,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           {children}
         </main>
-        <footer className="mx-5 flex flex-wrap items-center justify-between gap-4 border-t border-hairline py-6 text-[12px] text-muted lg:mx-10">
+        <footer className="mx-5 mb-20 lg:mb-0 flex flex-wrap items-center justify-between gap-4 border-t border-hairline py-6 text-[12px] text-muted lg:mx-10">
           <span>Apex Health · {t("design.footer")}</span>
-          <button onClick={logout} className="lg:hidden">
+          <div className="flex items-center gap-4 lg:hidden"><FeedbackButton /><button onClick={logout} className="min-h-11">
             {t("auth.logout")}
-          </button>
+          </button></div>
         </footer>
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-          {mobileMoreOpen && <nav aria-label={t("admin.more_navigation")} className="absolute bottom-full right-3 mb-2 flex max-h-[65dvh] w-64 flex-col overflow-y-auto border border-hairline bg-surface p-2 shadow-xl">
-            {mobileMore.map(({ to, icon: Icon, key, end }) => <Link key={to} to={to} aria-current={isSectionActive(to,end) ? "page" : undefined} className={ `flex items-center gap-3 px-3 py-3 text-sm ${isSectionActive(to,end) ? "bg-ink text-canvas" : "text-muted hover:bg-surface2"}`}><Icon size={17} aria-hidden="true" />{t(key)}</Link>)}
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+          {mobileMoreOpen && <div id="workspace-more" ref={mobileMoreRoot} role="dialog" aria-modal="true" aria-label={t("admin.more_navigation")} className="absolute bottom-full right-3 mb-3 max-h-[65dvh] w-72 overflow-y-auto rounded-card border border-hairline bg-surface p-2 shadow-xl"><nav aria-label={t("admin.more_navigation")}>
+            {mobileMore.map(({ to, icon: Icon, key, end }) => <Link key={to} to={to} aria-current={isSectionActive(to,end) ? "page" : undefined} className={`shell-nav-link ${isSectionActive(to,end) ? "is-active" : ""}`}><Icon size={17} aria-hidden="true" />{t(key)}</Link>)}
             <button type="button" onClick={() => { searchOpener.current = mobileMoreButton.current; setMobileMoreOpen(false); setSearch(true); }} className="flex items-center gap-3 px-3 py-3 text-left text-sm text-muted hover:bg-surface2"><Search size={17} aria-hidden="true" />{t("search.placeholder")}</button>
             <button type="button" onClick={logout} className="border-t border-hairline px-3 py-3 text-left text-sm text-muted">{t("auth.logout")}</button>
-          </nav>}
+          </nav></div>}
           <nav aria-label={t("design.navigation")} className="mx-auto grid max-w-xl grid-cols-5">
             {mobilePrimary.map(({ to, icon: Icon, key, end }) => <Link key={to} to={to} aria-current={isSectionActive(to,end) ? "page" : undefined} className={ `flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${isSectionActive(to,end) ? "text-ink" : "text-muted"}`}><Icon size={18} aria-hidden="true" /><span>{t(key)}</span></Link>)}
-            <button ref={mobileMoreButton} type="button" aria-label={t("admin.more_navigation")} aria-expanded={mobileMoreOpen} aria-haspopup="true" onClick={() => setMobileMoreOpen((open) => !open)} className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${mobileMoreActive || mobileMoreOpen ? "text-ink" : "text-muted"}`}><MoreHorizontal size={18} aria-hidden="true" /><span>{t("admin.more_navigation")}</span></button>
+            <button ref={mobileMoreButton} type="button" aria-label={t("admin.more_navigation")} aria-expanded={mobileMoreOpen} aria-controls="workspace-more" aria-haspopup="dialog" onClick={() => setMobileMoreOpen((open) => !open)} className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${mobileMoreActive || mobileMoreOpen ? "text-ink" : "text-muted"}`}><MoreHorizontal size={18} aria-hidden="true" /><span>{t("admin.more_navigation")}</span></button>
           </nav>
         </div>
       </div>

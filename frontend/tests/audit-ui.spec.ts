@@ -13,6 +13,11 @@ test("overview checklist reflects active integrations and real sleep history, an
   await installApi(page);
   await page.route((url) => url.pathname === "/settings/devices", (route) => route.fulfill({ json: [] }));
   await page.goto("/app");
+  const setup = page.getByTestId("overview-setup");
+  await expect(setup).not.toHaveAttribute("open", "");
+  await expect(setup.locator("summary")).toContainText("0 of 3 complete");
+  await expect(page.getByRole("heading", { name: "Make your workspace useful" })).not.toBeVisible();
+  await setup.locator("summary").click();
   await expect(page.getByRole("heading", { name: "Make your workspace useful" })).toBeVisible();
   await expect(page.getByText("No connected source yet")).toBeVisible();
   await expect(page.getByText(/\d+\/14 recorded nights in the last 28 days/)).toBeVisible();

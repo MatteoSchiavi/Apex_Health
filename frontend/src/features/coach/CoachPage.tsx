@@ -8,7 +8,7 @@ import { Segmented } from "../../components/kit";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowUpRight, MoreHorizontal, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowUpRight, ChevronDown, MoreHorizontal, Plus, Send, Trash2 } from "lucide-react";
 import {
   api,
   ApiError,
@@ -21,7 +21,6 @@ import {
   Card,
   ErrorNote,
   Loading,
-  PageHeader,
   friendlyDiscipline,
 } from "../../components/kit";
 function stored(key: string) {
@@ -96,6 +95,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
     (context.plannedSessionId === undefined || (Array.isArray(day.data.sessions) && day.data.sessions.some(session => session.id === context.plannedSessionId)));
   const [replaceContextKey, setReplaceContextKey] = useState<string | null>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const historyButton = useRef<HTMLButtonElement>(null);
   const tab = params.get("tab") === "changes" ? "changes" : "analysis";
   const qc = useQueryClient();
   const activeKey = "apex.chat." + uid + ".active";
@@ -104,7 +104,9 @@ function CoachWorkspace({ uid }: { uid: number }) {
     Number(stored(activeKey)) > 0 ? Number(stored(activeKey)) : null,
   );
   const [draft, setDraft] = useState(() => stored(draftKey));
+  const [pendingStarter, setPendingStarter] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChatSessionOut | null>(null);
   const [deletedTitle, setDeletedTitle] = useState<string | null>(null);
@@ -203,6 +205,12 @@ function CoachWorkspace({ uid }: { uid: number }) {
     if (aiAllowed && draft.trim() && !send.isPending && !remove.isPending && !active.isLoading && !active.isError)
       send.mutate({ text: draft.trim(), sessionId: activeId });
   }
+  function prepareStarter(task: string) {
+    if (send.isPending || remove.isPending) return;
+    setDraft(t("redesign.coach.tasks." + task + ".prompt"));
+    setPendingStarter(null);
+    requestAnimationFrame(() => composer.current?.focus());
+  }
   function prepareQuestion() {
     if (!context || !contextReady || send.isPending || remove.isPending) return;
     setDraft(t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_prompt" : "dailyFlow.coach_workout_prompt", {
@@ -211,16 +219,19 @@ function CoachWorkspace({ uid }: { uid: number }) {
     setActiveId(null);
     send.reset();
     setReplaceContextKey(null);
+    setPendingStarter(null);
     setParams({ tab: "analysis" }, { state: contextState });
     requestAnimationFrame(() => composer.current?.focus());
   }
+  // Keep the composer in the available viewport. Expanded history/consent and a
+  // context handoff deliberately use document flow so their content stays readable.
+  const fitWorkspace = tab === "analysis" && !context && !historyOpen && !consentOpen;
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={t("coach.title")}
-        subtitle={t("coach.subtitle")}
-        actions={
-          <div ref={newChatButton}><Button
+    <div className={"flex flex-col gap-3 " + (fitWorkspace ? "h-[calc(100dvh_-_11rem)] min-h-[420px] lg:h-[calc(100dvh_-_8rem)]" : "")}>
+      <header className="shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="shrink-0 text-[26px] font-medium leading-tight tracking-tight sm:text-[32px]">{t("coach.title")}</h1>
+          <div ref={newChatButton} className="shrink-0"><Button
             variant="ghost"
             icon={<Plus size={16} />}
             disabled={send.isPending || remove.isPending}
@@ -228,12 +239,16 @@ function CoachWorkspace({ uid }: { uid: number }) {
               setActiveId(null);
               setParams({ tab: "analysis" }, { state: contextState });
               send.reset();
+              setHistoryOpen(false);
+              setPendingStarter(null);
+              requestAnimationFrame(() => composer.current?.focus());
             }}
           >
             {t("coach.new_chat")}
           </Button></div>
-        }
-      />
+        </div>
+        <p className="mt-2 text-[12px] text-muted">{t("redesign.coach.subtitle")}</p>
+      </header>
       {context && <Card className="space-y-3 border-l-2 border-l-ink">
         <h2 className="text-[15px] font-medium">{t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_title" : "dailyFlow.coach_workout_title", { date: context.date, id: context.plannedSessionId })}</h2>
         {contextReady && context.plannedSessionId !== undefined && (() => {
@@ -252,6 +267,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
             <Button disabled={!contextReady || send.isPending || remove.isPending} onClick={prepareQuestion}>{t("dailyFlow.replace_question")}</Button>
           </div>
         </div> : <Button disabled={!contextReady || send.isPending || remove.isPending} onClick={() => {
+          setPendingStarter(null);
           if (draft.trim()) setReplaceContextKey(contextKey);
           else prepareQuestion();
         }}>{t("dailyFlow.review_question")}</Button>}
@@ -263,7 +279,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
       {deletedTitle && <p role="status" className="text-[13px] text-muted">
         {t("betaCoach.deleted", { title: deletedTitle })}
       </p>}
-      {!aiAllowed && <details className="border border-hairline p-4">
+      {!aiAllowed && <details className="shrink-0 rounded-card border border-hairline p-4" onToggle={event => setConsentOpen(event.currentTarget.open)}>
         <summary className="min-h-6 cursor-pointer text-[13px]">{t("athlete.ai_disabled")} · {t("betaCoach.consent_details")}</summary>
         <div className="mt-4"><AiConsentPanel /></div>
       </details>}
@@ -305,7 +321,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
           </Button>
         </div>
       </dialog>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <Segmented
           value={tab}
           onChange={(v) => setParams({ tab: v }, { state: contextState })}
@@ -318,24 +334,30 @@ function CoachWorkspace({ uid }: { uid: number }) {
           {t("v01Coach.training")} <ArrowUpRight size={15} aria-hidden="true" />
         </Link>
       </div>
-      {tab === "changes" && <p className="-mt-3 max-w-2xl text-[12px] leading-relaxed text-muted">{t("v01Coach.proposal_note")}</p>}
       {tab === "changes" && send.isPending && <PendingReply startedAt={send.submittedAt} />}
       {tab === "changes" ? (
         <ChangesPanel />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[240px_1fr]">
-          <aside className="min-w-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          <aside className="min-w-0 shrink-0 rounded-card border border-hairline bg-surface"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && historyOpen && !deleteTarget) {
+                event.preventDefault();
+                setHistoryOpen(false);
+                historyButton.current?.focus();
+              }
+            }}>
             <button
+              ref={historyButton}
               onClick={() => setHistoryOpen((v) => !v)}
               aria-expanded={historyOpen}
-              className="mb-4 text-[14px] font-medium xl:hidden"
+              aria-controls="coach-history"
+              className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-[13px] font-medium"
             >
-              {t("coach.past_chats")} ↓
+              <span>{t("coach.past_chats")}{sessions.data?.length ? <span className="ml-2 text-muted">({sessions.data.length})</span> : null}</span>
+              <ChevronDown size={16} aria-hidden="true" className={historyOpen ? "rotate-180" : ""} />
             </button>
-            <div className={(historyOpen ? "" : "hidden ") + "xl:block"}>
-              <h2 className="section-label mb-5 hidden xl:block">
-                {t("coach.past_chats")}
-              </h2>
+            <div id="coach-history" hidden={!historyOpen} className="border-t border-hairline px-3 pb-4 pt-2">
               {sessions.isLoading ? (
                 <Loading />
               ) : sessions.isError ? (
@@ -359,6 +381,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
                           setActiveId(s.id);
                           setHistoryOpen(false);
                           send.reset();
+                          requestAnimationFrame(() => composer.current?.focus());
                         }}
                       >
                         <span className="block truncate text-[13px] font-medium">
@@ -409,8 +432,8 @@ function CoachWorkspace({ uid }: { uid: number }) {
               </p>
             </div>
           </aside>
-          <Card className="flex h-[min(75dvh,850px)] min-h-[480px] flex-col !p-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-6 py-4">
+          <Card className={"flex flex-col !p-0 " + (fitWorkspace ? "min-h-0 flex-1" : "h-[min(65dvh,600px)] min-h-[360px] lg:h-[min(72dvh,820px)] lg:min-h-[480px]")}>
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-hairline px-4 py-3 sm:px-6">
               <span className="min-w-0 break-words text-[13px] font-medium">
                 {active.data?.title ?? t("coach.conversation")}
               </span>
@@ -421,7 +444,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
                 </details>
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
               {active.isLoading ? (
                 <Loading />
               ) : active.isError ? (
@@ -432,32 +455,40 @@ function CoachWorkspace({ uid }: { uid: number }) {
                   </Button>}
                 </div>
               ) : !active.data?.messages.length && !send.isPending && !send.isError ? (
-                <div className="flex h-full flex-col items-start justify-center">
-                  <span className="mb-6 text-[12px] text-muted">
-                    APEX / {t("nav.coach")}
-                  </span>
-                  <h2 className="max-w-lg text-[28px] font-medium leading-tight tracking-[-.04em]">
-                    {t("coach.empty_title")}
+                <div className="flex min-h-full flex-col items-start justify-center">
+                  <h2 className="max-w-lg text-[24px] font-medium leading-tight tracking-tight">
+                    {t("redesign.coach.empty_title")}
                   </h2>
-                  <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">
-                    {t("coach.empty_body")}
+                  <p className="mt-3 max-w-md text-[13px] leading-relaxed text-muted">
+                    {t("redesign.coach.empty_body")}
                   </p>
-                  <div className="mt-8 flex w-full flex-col border-t border-hairline">
-                    {[
-                      "prompt_recovery",
-                      "prompt_training",
-                      "prompt_trends",
-                    ].map((k) => (
+                  <div className="mt-5 flex w-full flex-col gap-2">
+                    {["today", "workout", "week"].map((task) => (
                       <button
-                        key={k}
-                        onClick={() => setDraft(t("design." + k))}
-                        className="flex items-center justify-between border-b border-hairline py-4 text-left text-[13px]"
+                        key={task}
+                        disabled={send.isPending || remove.isPending}
+                        onClick={() => {
+                          setReplaceContextKey(null);
+                          if (draft.trim()) setPendingStarter(task);
+                          else prepareStarter(task);
+                        }}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-control border border-hairline bg-surface px-4 py-3 text-left text-[13px] font-medium hover:bg-surface2 focus-visible:outline focus-visible:outline-2"
                       >
-                        {t("design." + k)}
-                        <ArrowUpRight size={16} />
+                        {t("redesign.coach.tasks." + task + ".label")}
+                        <ArrowUpRight size={16} aria-hidden="true" />
                       </button>
                     ))}
                   </div>
+                  {pendingStarter && <div className="mt-4 w-full rounded-control border border-hairline bg-surface2 p-4">
+                    <p className="text-[13px] leading-relaxed">{t("redesign.coach.starter_replace_note", { task: t("redesign.coach.tasks." + pendingStarter + ".label") })}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button variant="ghost" disabled={send.isPending || remove.isPending} onClick={() => {
+                        setPendingStarter(null);
+                        requestAnimationFrame(() => composer.current?.focus());
+                      }}>{t("dailyFlow.keep_question")}</Button>
+                      <Button disabled={send.isPending || remove.isPending} onClick={() => prepareStarter(pendingStarter)}>{t("redesign.coach.starter_replace")}</Button>
+                    </div>
+                  </div>}
                 </div>
               ) : (
                 <div className="flex flex-col gap-6">
@@ -465,7 +496,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
                     <div
                       key={m.id}
                       className={
-                        m.role === "user" ? "ml-8 bg-surface2 p-5" : "pr-6"
+                        m.role === "user" ? "ml-4 rounded-card bg-surface2 p-4 sm:ml-8" : "pr-2"
                       }
                     >
                       <span className="mb-2 block text-[12px] font-medium text-muted">
@@ -505,7 +536,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
                 </div>
               )}
               {send.isPending && send.variables && (
-                <div className="ml-8 mt-6 bg-surface2 p-5">
+                <div className="ml-4 mt-6 rounded-card bg-surface2 p-4 sm:ml-8">
                   <span className="mb-2 block text-[12px] font-medium text-muted">
                     {t("social.you")}
                   </span>
@@ -541,7 +572,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
               )}
               <div ref={bottom} />
             </div>
-            <div className="border-t border-hairline p-5">
+            <div className="shrink-0 border-t border-hairline p-3 sm:p-5">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -564,7 +595,7 @@ function CoachWorkspace({ uid }: { uid: number }) {
                       submit();
                     }
                   }}
-                  className="min-w-0 flex-1 resize-none border border-hairline bg-transparent px-4 py-3 text-[14px] outline-none"
+                  className="min-w-0 flex-1 resize-none rounded-control border border-hairline bg-surface px-4 py-3 text-[14px] outline-none focus:border-ink"
                 />
                 <Button
                   type="submit"
