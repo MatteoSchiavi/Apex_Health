@@ -14,11 +14,17 @@ import {
 } from "../../components/kit";
 import type { Draft } from "./types";
 import { Form, human, inputClass, num, QueryState, str, useAction, useLab } from "./shared";
+const proposalEditValues = (draft: Draft) => ({
+  duration: typeof draft.after.target_duration_min === "number" ? String(draft.after.target_duration_min) : "",
+  description: typeof draft.after.description === "string" ? draft.after.description : "",
+  reason: draft.reason,
+});
 export default function ChangesPanel() {
   const { t } = useTranslation();
   const q = useLab<Draft[]>("/lab/changes");
   const action = useAction();
   const [editing, setEditing] = useState<number | null>(null);
+  const [editValues, setEditValues] = useState<ReturnType<typeof proposalEditValues> | null>(null);
   const [replacementId, setReplacementId] = useState<number | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,6 +44,16 @@ export default function ChangesPanel() {
   });
   const selectedDraft = needsTarget && !selected.isError && selected.data?.id === targetId ? selected.data : null;
   const drafts = selectedDraft ? [selectedDraft, ...(q.data ?? [])] : (q.data ?? []);
+  const editingDraft = drafts.find(draft => draft.id === editing);
+  const editDirty = !!editingDraft && !!editValues && JSON.stringify(editValues) !== JSON.stringify(proposalEditValues(editingDraft));
+  function changeEditor(id: number | null) {
+    if (action.isPending) return false;
+    if (id === editing) return true;
+    if (editDirty && !window.confirm(t("workflowReview.review.discardProposalEdits"))) return false;
+    const next = drafts.find(draft => draft.id === id);
+    setEditing(id); setEditValues(next ? proposalEditValues(next) : null);
+    return true;
+  }
   const targetExists = targetInList || selectedDraft !== null;
   const targetMissing = needsTarget && (selected.error instanceof ApiError && selected.error.status === 404 || selected.isSuccess && !selectedDraft);
   const targetFailed = q.isError || needsTarget && selected.isError && !targetMissing;
@@ -48,7 +64,10 @@ export default function ChangesPanel() {
     card?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: "start" });
   }, [targetId, targetExists, loading, targetFailed]);
-  const showAll = () => navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true, state: location.state });
+  const showAll = () => {
+    if (editing !== null && !changeEditor(null)) return;
+    navigate({ pathname: location.pathname, search: location.search, hash: "" }, { replace: true, state: location.state });
+  };
   return (
     <div className="flex flex-col gap-5">
       <div className="space-y-1">
@@ -62,7 +81,7 @@ export default function ChangesPanel() {
             : targetMissing ? <p>{t("dailyFlow.proposalUnavailable")}</p>
             : targetExists ? <p>{t("dailyFlow.proposalSelected")}</p> : null}
           {targetFailed && <Button variant="ghost" onClick={() => { void (q.isError ? q.refetch() : selected.refetch()); }}>{t("betaCoach.retry")}</Button>}
-          <Button variant="ghost" onClick={showAll}>{t("dailyFlow.showAllProposals")}</Button>
+          <Button variant="ghost" disabled={action.isPending} onClick={showAll}>{t("dailyFlow.showAllProposals")}</Button>
         </div>
       )}
       <QueryState
@@ -133,10 +152,11 @@ export default function ChangesPanel() {
           {d.kind === "session_patch" && d.status === "applied_locally" && d.receipt?.state === "applied_locally" && typeof d.after.target_id === "number" && Number.isSafeInteger(d.after.target_id) && d.after.target_id > 0 && (
             <Link className="text-link mb-4 inline-block text-[13px]" to={`/app/workouts/${d.after.target_id}`}>{t("dailyFlow.viewUpdatedWorkout")}</Link>
           )}
-          {editing === d.id && d.kind === "session_patch" && d.status === "draft" && (
+          {editing === d.id && editValues && d.kind === "session_patch" && d.status === "draft" && (
             <div className="mb-5 border border-hairline p-4">
               <p className="mb-4 text-[13px] text-muted">{t("decisionLearning.editCaption")}</p>
               <Form label={t("decisionLearning.saveEdit")} pending={action.isPending} onSave={(f) => {
+                if (action.isPending) return;
                 const body: Record<string, unknown> = {
                   reason: str(f, "reason"),
                 };
@@ -148,25 +168,28 @@ export default function ChangesPanel() {
                 action.mutate({ path: `/lab/changes/${d.id}/edit`, body }, {
                   onSuccess: (result) => {
                     setEditing(null);
+                    setEditValues(null);
                     const replacement = (result as Draft).id;
                     setReplacementId(replacement);
                     if (Number.isSafeInteger(replacement) && replacement > 0) navigate({pathname:location.pathname,search:location.search,hash:`#change-${replacement}`},{replace:true,state:location.state});
                   },
                 });
               }}>
+                <fieldset disabled={action.isPending} className="flex min-w-0 flex-col gap-4">
                 <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
                   <span>{t("lab.duration")}</span>
-                  <input name="target_duration_min" className={inputClass} type="number" min={0} max={1440} step={1} defaultValue={typeof d.after.target_duration_min === "number" ? d.after.target_duration_min : ""} />
+                  <input name="target_duration_min" className={inputClass} type="number" min={0} max={1440} step={1} value={editValues.duration} onChange={event => setEditValues({ ...editValues, duration: event.target.value })} />
                 </label>
                 <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
                   <span>{t("decisionLearning.sessionDescription")}</span>
-                  <textarea name="description" className={inputClass} maxLength={2000} rows={3} defaultValue={typeof d.after.description === "string" ? d.after.description : ""} />
+                  <textarea name="description" className={inputClass} maxLength={2000} rows={3} value={editValues.description} onChange={event => setEditValues({ ...editValues, description: event.target.value })} />
                 </label>
                 <label className="flex min-w-0 flex-col gap-2 text-[12px] text-muted">
                   <span>{t("decisionLearning.editReason")}</span>
-                  <textarea name="reason" className={inputClass} maxLength={2000} rows={2} required defaultValue={d.reason} />
+                  <textarea name="reason" className={inputClass} maxLength={2000} rows={2} required value={editValues.reason} onChange={event => setEditValues({ ...editValues, reason: event.target.value })} />
                 </label>
-                <Button variant="ghost" type="button" disabled={action.isPending} onClick={() => setEditing(null)}>{t("lab.cancel")}</Button>
+                <Button variant="ghost" type="button" disabled={action.isPending} onClick={() => changeEditor(null)}>{t("lab.cancel")}</Button>
+                </fieldset>
               </Form>
             </div>
           )}
@@ -187,7 +210,7 @@ export default function ChangesPanel() {
                   {t("lab.approve")}
                 </Button>
                 {d.kind === "session_patch" && (
-                  <Button variant="ghost" disabled={action.isPending || Date.parse(d.expires_at) < Date.now()} onClick={() => setEditing(d.id)}>
+                  <Button variant="ghost" disabled={action.isPending || Date.parse(d.expires_at) < Date.now()} onClick={() => changeEditor(d.id)}>
                     {t("decisionLearning.editProposal")}
                   </Button>
                 )}

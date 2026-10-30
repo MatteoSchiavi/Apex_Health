@@ -2994,5 +2994,30 @@
         "title": "Title"
       }
     }
+  },
+  "workflowReview": {
+    "activity": {
+      "load_error": "This activity could not be loaded. Retry or return to your activity log.",
+      "refresh_error": "This activity could not be refreshed. Showing the last loaded record; your unfinished edits are preserved.",
+      "stream_unavailable": "Activity samples are unavailable. Retry to load the map and timeline.",
+      "stream_stale": "Activity samples could not be refreshed. Showing the last loaded samples.",
+      "retry_streams": "Retry activity samples"
+    },
+    "workout": {
+      "back_to_calendar": "Back to calendar",
+      "refresh_error": "Could not refresh this workout. Your instructions and unsaved changes are still here. Try again before continuing your review.",
+      "retry_refresh": "Retry workout refresh",
+      "reloading": "Reloading current workout…"
+    },
+    "plan": {
+      "unsaved_review": "You have unsaved changes to this plan review.",
+      "data_error": "Some plan details could not be loaded. Your edits are kept. Retry to load the missing details.",
+      "retry_data": "Retry plan details",
+      "refresh_error": "Saved plans could not be refreshed. The last loaded plans and your current edits are still available. Retry to check for updates.",
+      "review_changed": "This plan changed since you reviewed it. Review the updated workouts and dates, then confirm your agreement again."
+    },
+    "review": {
+      "discardProposalEdits": "Discard your unsaved proposal edits?"
+    }
   }
 }

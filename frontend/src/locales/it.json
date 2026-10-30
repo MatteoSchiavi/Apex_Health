@@ -2994,5 +2994,30 @@
         "title": "Titolo"
       }
     }
+  },
+  "workflowReview": {
+    "activity": {
+      "load_error": "Impossibile caricare questa attività. Riprova o torna al registro delle attività.",
+      "refresh_error": "Impossibile aggiornare questa attività. Sono mostrati gli ultimi dati caricati e le modifiche non salvate sono conservate.",
+      "stream_unavailable": "I campioni dell’attività non sono disponibili. Riprova per caricare mappa e andamento.",
+      "stream_stale": "Impossibile aggiornare i campioni dell’attività. Sono mostrati gli ultimi campioni caricati.",
+      "retry_streams": "Riprova a caricare i campioni"
+    },
+    "workout": {
+      "back_to_calendar": "Torna al calendario",
+      "refresh_error": "Impossibile aggiornare questo allenamento. Le istruzioni e le modifiche non salvate sono ancora qui. Riprova prima di continuare la revisione.",
+      "retry_refresh": "Riprova ad aggiornare l’allenamento",
+      "reloading": "Ricaricamento dell’allenamento corrente…"
+    },
+    "plan": {
+      "unsaved_review": "Hai modifiche non salvate alla revisione di questo piano.",
+      "data_error": "Non è stato possibile caricare alcuni dettagli del piano. Le tue modifiche sono conservate. Riprova a caricare i dettagli mancanti.",
+      "retry_data": "Riprova a caricare i dettagli del piano",
+      "refresh_error": "Non è stato possibile aggiornare i piani salvati. Gli ultimi piani caricati e le modifiche in corso sono ancora disponibili. Riprova per verificare gli aggiornamenti.",
+      "review_changed": "Il piano è cambiato dopo la tua revisione. Controlla gli allenamenti e le date aggiornati, poi conferma di nuovo il tuo consenso."
+    },
+    "review": {
+      "discardProposalEdits": "Scartare le modifiche non salvate alla proposta?"
+    }
   }
 }

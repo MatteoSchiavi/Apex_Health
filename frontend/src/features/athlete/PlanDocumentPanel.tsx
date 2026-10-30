@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
-import { Badge, Button, ErrorNote, Input, Loading, friendlyDiscipline } from "../../components/kit";
+import { Badge, Button, Input, Loading, friendlyDiscipline } from "../../components/kit";
 import { useAiState } from "./AiConsentPanel";
 import type { Doc } from "../lab/types";
 import type { DatedWorkout, PlanDraft, PlanStructure } from "./importTypes";
@@ -16,6 +16,11 @@ import { planReadiness } from "./planReadiness";
 const emptyStructure = (): PlanStructure => ({ title: "", starts_on: null, ends_on: null, weekly_structure: "", sessions: [], ambiguities: [], protected: false });
 
 export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
+  const uid = useUi(s => s.me?.user_id);
+  return <PlanDocumentReview key={`${uid}:${doc.id}`} document={doc} />;
+}
+
+function PlanDocumentReview({ document: doc }: { document: Doc }) {
   const { t } = useTranslation();
   const uid = useUi(s => s.me?.user_id);
   const qc = useQueryClient();
@@ -23,17 +28,19 @@ export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
   const drafts = useQuery({ queryKey: ["plan-drafts", uid], queryFn: () => api.get<PlanDraft[]>("/lab/plan-drafts") });
   const disciplines = useQuery({ queryKey: ["athlete-disciplines"], queryFn: () => api.get<{ name: string }[]>("/athlete/disciplines") });
   const [editing, setEditing] = useState<PlanStructure | null>(null);
+  const [editBaseline, setEditBaseline] = useState<string | null>(null);
   const [shownDraft, setShownDraft] = useState<PlanDraft | null>(null);
-  const [ambiguitiesReviewed, setAmbiguitiesReviewed] = useState(false);
+  const [reviewedHash, setReviewedHash] = useState<string | null>(null);
   const saved = drafts.data?.find(d => d.document_id === doc.id);
   const latest = shownDraft && (!saved || shownDraft.version >= saved.version) ? shownDraft : saved;
+  const ambiguitiesReviewed = !!latest && reviewedHash === latest.payload_hash;
   const extract = useMutation({ mutationFn: (useAi: boolean) => api.post<PlanDraft>(`/lab/documents/${doc.id}/plan-drafts`, {
     expected_document_revision: doc.revision, use_ai: useAi, ...(useAi ? {} : { structure: editing }),
-  }), onSuccess: next => { setShownDraft(next); setEditing(null); setAmbiguitiesReviewed(false); void qc.invalidateQueries({ queryKey: ["plan-drafts"] }); void qc.invalidateQueries({ queryKey: ["athlete-ai"] }); } });
-  const confirm = useMutation({ mutationFn: () => api.post<{ draft: PlanDraft }>(`/lab/plan-drafts/${latest!.id}/confirm`, { payload_hash: latest!.payload_hash, ambiguities_reviewed: ambiguitiesReviewed }), onSuccess: next => {
+  }), onSuccess: next => { setShownDraft(next); setEditing(null); setReviewedHash(null); void qc.invalidateQueries({ queryKey: ["plan-drafts"] }); void qc.invalidateQueries({ queryKey: ["athlete-ai"] }); } });
+  const confirm = useMutation({ mutationFn: (draft: PlanDraft) => api.post<{ draft: PlanDraft }>(`/lab/plan-drafts/${draft.id}/confirm`, { payload_hash: draft.payload_hash, ambiguities_reviewed: reviewedHash === draft.payload_hash }), onSuccess: next => {
     setShownDraft(next.draft); ["plan-drafts", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "lab", "athlete-profile", "athlete-templates", "me"].forEach(key => void qc.invalidateQueries({ queryKey: [key] }));
   } });
-  const dirty = !!editing && JSON.stringify(editing) !== JSON.stringify(latest?.structure ?? { ...emptyStructure(), title: doc.filename });
+  const dirty = !!editing && JSON.stringify(editing) !== editBaseline;
   useEffect(() => {
     if (!dirty) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -47,7 +54,10 @@ export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
     window.addEventListener("beforeunload", guard); document.addEventListener("click", click, true);
     return () => { window.removeEventListener("beforeunload", guard); document.removeEventListener("click", click, true); };
   }, [dirty, t]);
-  function begin() { setEditing(structuredClone(latest?.structure ?? { ...emptyStructure(), title: doc.filename })); setAmbiguitiesReviewed(false); confirm.reset(); extract.reset(); }
+  function begin() {
+    const structure = structuredClone(latest?.structure ?? { ...emptyStructure(), title: doc.filename });
+    setEditing(structure); setEditBaseline(JSON.stringify(structure)); setReviewedHash(null); confirm.reset(); extract.reset();
+  }
   function update<K extends keyof PlanStructure>(key: K, value: PlanStructure[K]) { setEditing(old => ({ ...old!, [key]: value })); }
   function workoutUpdate<K extends keyof DatedWorkout>(index: number, key: K, value: DatedWorkout[K]) {
     setEditing(old => ({ ...old!, sessions: old!.sessions.map((w, i) => i === index ? { ...w, [key]: value } : w) }));
@@ -64,7 +74,8 @@ export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
     <fieldset disabled={pending} className="space-y-5">
       <div><h3 className="text-[16px] font-medium">{t("athlete.plan_document_title")}</h3><p className="mt-2 text-[13px] text-muted">{t("v01Plan.review_steps")}</p></div>
       {drafts.isLoading && <Loading />}
-      {!editing && !drafts.isLoading && <div className="flex flex-wrap gap-3"><Button onClick={begin}>{t(latest ? "athlete.revise_structure" : "athlete.review_structure")}</Button>
+      {(drafts.isError || disciplines.isError) && <div className="space-y-3"><p role="alert" className="text-[13px] text-alertText">{t("workflowReview.plan.data_error")}</p><Button variant="ghost" disabled={drafts.isFetching || disciplines.isFetching} onClick={() => { if (drafts.isError) void drafts.refetch(); if (disciplines.isError) void disciplines.refetch(); }}>{t("workflowReview.plan.retry_data")}</Button></div>}
+      {!editing && drafts.data !== undefined && <div className="flex flex-wrap gap-3"><Button onClick={begin}>{t(latest ? "athlete.revise_structure" : "athlete.review_structure")}</Button>
         {!!ai.data && ai.data.effective_access !== "disabled" && !ai.data.budget.exhausted && <Button variant="ghost" onClick={() => extract.mutate(true)}>{t("athlete.extract_with_ai")}</Button>}</div>}
       {show && <>
         {!editing && <div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="font-medium">{show.title || t("athlete.untitled_plan")}</h4><p className="mt-1 text-[12px] text-muted">{show.starts_on ?? "—"} – {show.ends_on ?? "—"} · {t("v01Plan.workout_count", { count: show.sessions.length })}</p>{show.weekly_structure && <p className="mt-2 text-[13px] text-muted whitespace-pre-wrap">{show.weekly_structure}</p>}</div><Badge tone={latest?.status === "confirmed" ? "positive" : "warning"}>{t(latest?.status === "confirmed" ? "athlete.structure_confirmed" : "v01Plan.draft_not_active")}</Badge></div>}
@@ -80,10 +91,9 @@ export function PlanDocumentPanel({ document: doc }: { document: Doc }) {
         </li>)}</ol>
         {editing && <Button variant="ghost" onClick={() => update("sessions", [...editing.sessions, { ...emptyWorkout(), date: null }])}>{t("athlete.add_workout")}</Button>}
         {!!show.ambiguities.length && <details className="border-l-2 border-warning pl-3 text-[13px]" open={editing || show.ambiguities.length <= 3 ? true : undefined}><summary className="cursor-pointer font-medium">{t("v01Plan.review_questions", { count: show.ambiguities.length })}</summary><p className="mt-2 text-muted">{t("v01Plan.questions_note")}</p><ul className="mt-3 space-y-3">{show.ambiguities.map((item, i) => <li key={i}>{editing ? <div className="space-y-2"><Input label={t("athleteImport.question_number", { count: i + 1 })} value={item} onChange={value => update("ambiguities", editing.ambiguities.map((old, index) => index === i ? value : old))} /><p className="text-[12px] text-muted">{t("athleteImport.legacy_question_note")}</p><Button variant="ghost" onClick={() => update("ambiguities", editing.ambiguities.filter((_, index) => index !== i))}>{t("athleteImport.use_correction")}</Button></div> : <p>{item}</p>}</li>)}</ul></details>}
-        {editing ? <div className="flex flex-wrap gap-3"><Button disabled={pending || !readiness?.saveable || !sports} onClick={() => extract.mutate(false)}>{t("athlete.save_structure_draft")}</Button><Button variant="ghost" onClick={() => { if (!dirty || window.confirm(t("athlete.leave_unsaved"))) setEditing(null); }}>{t("common.cancel")}</Button></div> : latest?.status === "draft" && <div className="space-y-3 border-t border-hairline pt-4"><p className="text-[13px] text-muted">{t("athleteImport.activation_scope")}</p><label className="flex min-h-11 items-start gap-2 text-[13px]"><input type="checkbox" checked={ambiguitiesReviewed} onChange={e => setAmbiguitiesReviewed(e.target.checked)} /><span>{t("athlete.confirm_structure_agreement")}</span></label>{!ambiguitiesReviewed && <p className="text-[12px] text-muted">{t("v01Plan.acknowledge_required")}</p>}<Button disabled={!ambiguitiesReviewed || pending || !readiness?.ready || !sports || staleSource} onClick={() => confirm.mutate()}>{t("athlete.confirm_active_plan")}</Button></div>}
+        {editing ? <div className="space-y-3">{dirty && <p role="status" className="text-[13px] text-muted">{t("workflowReview.plan.unsaved_review")}</p>}<div className="flex flex-wrap gap-3"><Button disabled={pending || !readiness?.saveable || !sports} onClick={() => extract.mutate(false)}>{t("athlete.save_structure_draft")}</Button><Button variant="ghost" onClick={() => { if (!dirty || window.confirm(t("athlete.leave_unsaved"))) setEditing(null); }}>{t("common.cancel")}</Button></div></div> : latest?.status === "draft" && <div className="space-y-3 border-t border-hairline pt-4"><p className="text-[13px] text-muted">{t("athleteImport.activation_scope")}</p>{reviewedHash && !ambiguitiesReviewed && <p role="status" className="text-[13px] text-muted">{t("workflowReview.plan.review_changed")}</p>}<label className="flex min-h-11 items-start gap-2 text-[13px]"><input type="checkbox" checked={ambiguitiesReviewed} onChange={e => setReviewedHash(e.target.checked ? latest.payload_hash : null)} /><span>{t("athlete.confirm_structure_agreement")}</span></label>{!ambiguitiesReviewed && <p className="text-[12px] text-muted">{t("v01Plan.acknowledge_required")}</p>}<Button disabled={!ambiguitiesReviewed || pending || !readiness?.ready || !sports || staleSource} onClick={() => confirm.mutate(latest)}>{t("athlete.confirm_active_plan")}</Button></div>}
         {latest?.status === "confirmed" && !editing && <p role="status" className="text-[13px]">{t("athleteImport.plan_activated")} <Link to="/app/training?tab=plan" className="text-link">{t("v01Plan.view_today")}</Link></p>}
       </>}
-      {(drafts.isError || disciplines.isError) && <ErrorNote />}
       {error && <p role="alert" className="text-[13px] text-alertText">{t(protectedConflict ? "v01Plan.protected_conflict" : error instanceof ApiError && error.status === 409 ? "athlete.conflict" : "athlete.structure_error")}</p>}
     </fieldset>
   </section>;

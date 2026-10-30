@@ -47,16 +47,23 @@ function WorkoutCompletion({ sessionId, date }: { sessionId: number; date: strin
 }
 
 export default function WorkoutDetail() {
-  const { t } = useTranslation();
   const { id = "" } = useParams();
   const uid = useUi(s => s.me?.user_id);
+  return <ScopedWorkoutDetail key={`${uid}:${id}`} id={id} uid={uid} />;
+}
+
+// A workout editor and its review belong to one account and one route. Remount
+// them together so even a late mutation response cannot populate another session.
+function ScopedWorkoutDetail({ id, uid }: { id: string; uid: number | undefined }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: ["structured-workout", uid, id], queryFn: () => api.get<WorkoutDetailResponse>(`/athlete/planned-sessions/${id}/workout`), enabled: /^\d+$/.test(id) });
+  const validId = /^\d+$/.test(id);
+  const query = useQuery({ queryKey: ["structured-workout", uid, id], queryFn: () => api.get<WorkoutDetailResponse>(`/athlete/planned-sessions/${id}/workout`), enabled: validId && uid != null });
   const [editing, setEditing] = useState<StructuredWorkout | null>(null);
   const [baseline, setBaseline] = useState("");
   const [draft, setDraft] = useState<WorkoutDraft | null>(null);
-  useEffect(() => { if (query.data) setDraft(query.data.pending_draft ?? null); }, [query.dataUpdatedAt]);
   const [saved, setSaved] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [expectedPlanRevision, setExpectedPlanRevision] = useState(0);
   const [expectedWorkoutRevision, setExpectedWorkoutRevision] = useState(0);
   const dirty = !!editing && JSON.stringify(editing) !== baseline;
@@ -69,10 +76,22 @@ export default function WorkoutDetail() {
     };
     window.addEventListener("beforeunload", guard); document.addEventListener('click',click,true);
     return () => {window.removeEventListener("beforeunload", guard);document.removeEventListener('click',click,true);};
-  }, [dirty]);
+  }, [dirty, t]);
   const create = useMutation({ mutationFn: () => api.post<WorkoutDraft>(`/athlete/planned-sessions/${id}/workout-drafts`, { expected_plan_revision: expectedPlanRevision, expected_workout_revision: expectedWorkoutRevision, structure: editing }), onSuccess: next => { setDraft(next); setEditing(null); setSaved(false); } });
   const confirm = useMutation({ mutationFn: () => api.post<WorkoutReceipt>(`/athlete/workout-drafts/${draft!.id}/confirm`, { payload_hash: draft!.payload_hash }), onSuccess: () => { setDraft(null); setEditing(null); setSaved(true); ["structured-workout", "athlete-day", "plan-drafts", "athlete-sport-overview", "lab"].forEach(key => qc.invalidateQueries({ queryKey: [key] })); } });
-  const pending = create.isPending || confirm.isPending;
+  const pending = create.isPending || confirm.isPending || reloading;
+  useEffect(() => { if (query.data && !pending) setDraft(query.data.pending_draft ?? null); }, [query.dataUpdatedAt]);
+  async function reloadCurrent() {
+    if (editing && dirty && !window.confirm(t("athlete.leave_unsaved"))) return;
+    setReloading(true);
+    try {
+      const next = await query.refetch();
+      // React Query retains cached data on a failed refetch. Only a successful,
+      // matching receipt can replace local work and the review being displayed.
+      if (next.isError || !next.data || next.data.planned_session_id !== Number(id)) return;
+      setEditing(null); setDraft(next.data.pending_draft ?? null); create.reset(); confirm.reset(); setSaved(false);
+    } finally { setReloading(false); }
+  }
   function begin() {
     if (!query.data) return;
     const structure = draft?.structure ?? query.data.workout?.structure ?? { title: query.data.session.session_type ?? "", objective: query.data.session.description ?? "", steps: [] };
@@ -80,21 +99,29 @@ export default function WorkoutDetail() {
   }
   function edit(next: StructuredWorkout) { setEditing(next); setSaved(false); }
   if (query.isLoading) return <Loading />;
-  if (!query.data || query.isError || query.data.planned_session_id !== Number(id)) return <ErrorNote message={t("structuredWorkout.load_error")} />;
+  if (!query.data || query.data.planned_session_id !== Number(id)) return <div className="space-y-4">
+    <ErrorNote message={t("structuredWorkout.load_error")} />
+    <div className="flex flex-wrap items-center gap-4 text-[13px]">
+      {validId && <Button disabled={query.isFetching} onClick={() => void query.refetch()}>{t("structuredWorkout.reload")}</Button>}
+      <Link className="text-link" to="/app/calendar">{t("workflowReview.workout.back_to_calendar")}</Link>
+    </div>
+  </div>;
   const data = query.data;
   const show = editing ?? draft?.structure ?? data.workout?.structure;
   const error = create.error ?? confirm.error;
-  const errorMessage = error instanceof ApiError && error.status === 409 ? t("structuredWorkout.conflict") : error ? t("structuredWorkout.save_error") : null;
-  return <div className="space-y-6"><PageHeader title={show?.title || data.session.session_type || t("structuredWorkout.title")} subtitle={`${data.session.date} · ${friendlyDiscipline(data.session.discipline, t)}`} actions={<Link className="text-link inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:data.session.date,plannedSessionId:data.planned_session_id}}}>{t("dailyFlow.ask_workout")} ↗</Link>} />
+  const conflict = error instanceof ApiError && error.status === 409;
+  const errorMessage = conflict ? t("structuredWorkout.conflict") : error ? t("structuredWorkout.save_error") : null;
+  return <div className="space-y-6"><PageHeader title={show?.title || data.session.session_type || t("structuredWorkout.title")} subtitle={`${data.session.date} · ${friendlyDiscipline(data.session.discipline, t)}`} actions={<div className="flex flex-wrap items-center gap-4"><Link className="text-link inline-flex min-h-11 items-center text-[13px]" to={`/app?date=${data.session.date}`}>{t("athlete.your_day")}</Link><Link className="text-link inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:data.session.date,plannedSessionId:data.planned_session_id}}}>{t("dailyFlow.ask_workout")} ↗</Link></div>} />
+    {query.isError && <Card><p role="alert" className="text-[13px] text-alertText">{t("workflowReview.workout.refresh_error")}</p><Button className="mt-3" variant="ghost" disabled={query.isFetching} onClick={() => void query.refetch()}>{t("workflowReview.workout.retry_refresh")}</Button></Card>}
     <Card><CardHeader title={<h2>{t("structuredWorkout.instructions_title")}</h2>} right={data.protected && <Badge>{t("athlete.protected")}</Badge>} />{(show || editing) && <p className="mb-4 text-[13px] text-muted">{t("structuredWorkout.scope")}</p>}
       {!data.editable && <p role="status" className="mb-4 text-[13px]">{t("structuredWorkout.blocked_" + (data.edit_block_reason ?? "history"))}</p>}
       <fieldset disabled={pending}>{editing ? <div className="space-y-4"><Input label={t("athlete.plan_title")} value={editing.title} onChange={title => edit({ ...editing, title })} /><Input label={t("structuredWorkout.objective")} value={editing.objective} onChange={objective => edit({ ...editing, objective })} />{editing.steps.map((step, index) => <StepEditor key={step.id} step={step} index={index} onChange={value => edit({ ...editing, steps: editing.steps.map(old => old.id === step.id ? value : old) })} onRemove={() => edit({ ...editing, steps: editing.steps.filter(old => old.id !== step.id) })} />)}<Button variant="ghost" onClick={() => edit({ ...editing, steps: [...editing.steps, freshStep()] })}>{t("structuredWorkout.add_block")}</Button><p className="text-[12px] text-muted">{t("structuredWorkout.target_note")}</p></div> : show ? <><p className="mb-4 text-[14px]">{show.objective}</p><ol className="space-y-4">{show.steps.map((step, index) => <StepSummary key={step.id} step={step} number={String(index + 1)} />)}</ol></> : <div className="space-y-3"><p className="whitespace-pre-wrap text-[14px]">{data.session.description || t("structuredWorkout.no_structure")}</p>{data.session.duration_min != null && <p className="text-[13px] text-muted">{t("athlete.duration_minutes", { count: data.session.duration_min })}</p>}</div>}
       </fieldset>
-      {draft && <p className="mt-4 text-[13px]">{t("structuredWorkout.duration_review",{seconds:draft.duration_total_s??t("design.not_specified")})}</p>}
-      <p role="status" className="mt-5 text-[13px] font-medium">{t(pending ? "structuredWorkout.saving" : saved ? "structuredWorkout.saved" : editing && dirty ? "structuredWorkout.unsaved" : draft ? "structuredWorkout.review_scope" : "structuredWorkout.read_scope")}</p>
-      <div className="mt-4 flex flex-wrap gap-3">{editing ? <><Button disabled={pending || !data.editable || !editing.steps.length || editing.steps.some(stepError)} onClick={() => create.mutate()}>{t("structuredWorkout.prepare_review")}</Button><Button variant="ghost" disabled={pending} onClick={() => { if (dirty && !window.confirm(t("athlete.leave_unsaved"))) return; setEditing(null); }}>{t("common.cancel")}</Button></> : <>{data.editable && <Button variant={draft ? "ghost" : "primary"} disabled={pending} onClick={begin}>{t(draft ? "structuredWorkout.revise" : "structuredWorkout.edit")}</Button>}{draft && <Button disabled={pending || !data.editable} onClick={() => confirm.mutate()}>{t("structuredWorkout.confirm")}</Button>}</>}</div>
+      {draft && !editing && <p className="mt-4 text-[13px]">{t("structuredWorkout.duration_review",{seconds:draft.duration_total_s??t("design.not_specified")})}</p>}
+      <p role="status" className="mt-5 text-[13px] font-medium">{t(reloading ? "workflowReview.workout.reloading" : pending ? "structuredWorkout.saving" : saved ? "structuredWorkout.saved" : editing && dirty ? "structuredWorkout.unsaved" : draft ? "structuredWorkout.review_scope" : "structuredWorkout.read_scope")}</p>
+      <div className="mt-4 flex flex-wrap gap-3">{editing ? <><Button disabled={pending || conflict || !data.editable || !editing.steps.length || editing.steps.some(stepError)} onClick={() => create.mutate()}>{t("structuredWorkout.prepare_review")}</Button><Button variant="ghost" disabled={pending} onClick={() => { if (dirty && !window.confirm(t("athlete.leave_unsaved"))) return; setEditing(null); }}>{t("common.cancel")}</Button></> : <>{data.editable && <Button variant={draft ? "ghost" : "primary"} disabled={pending || conflict} onClick={begin}>{t(draft ? "structuredWorkout.revise" : "structuredWorkout.edit")}</Button>}{draft && <Button disabled={pending || conflict || !data.editable} onClick={() => confirm.mutate()}>{t("structuredWorkout.confirm")}</Button>}</>}</div>
       {errorMessage && <p role="alert" className="mt-4 text-[13px] text-alertText">{errorMessage}</p>}
-      {error && <Button className="mt-3" variant="ghost" disabled={pending} onClick={async () => { if (editing && dirty && !window.confirm(t("athlete.leave_unsaved"))) return; const next = await query.refetch(); if (next.data) { setEditing(null); setDraft(null); create.reset(); confirm.reset(); setSaved(false); } }}>{t("structuredWorkout.reload")}</Button>}
+      {error && <Button className="mt-3" variant="ghost" disabled={pending || query.isFetching} onClick={() => void reloadCurrent()}>{t("structuredWorkout.reload")}</Button>}
     </Card>
     <WorkoutCompletion key={`${uid}:${id}:${data.session.date}`} sessionId={data.planned_session_id} date={data.session.date} />
     {!!data.education.length && !editing && !draft && <Card><CardHeader title={<h2>{t("structuredWorkout.education")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("structuredWorkout.education_note")}</p><div className="space-y-5">{data.education.map((item,index) => <section key={item.id} className={`border-t border-hairline pt-4 ${item.parent_id ? "ml-4 border-l pl-4" : ""}`}><h3 className="text-[15px] font-medium">{item.number ?? index+1}. {t("structuredWorkout.kind_" + item.kind)} · {item.objective}</h3>{item.description && <p className="mt-2 text-[13px]">{item.description}</p>}{item.kind === "repeat" ? <p className="mt-2 text-[13px]">{t("structuredWorkout.repeat_count")}: {item.repetitions}</p> : <div className="mt-2 space-y-1 text-[13px]"><p>{item.duration_s != null ? fmtDuration(item.duration_s) : item.distance_m != null ? `${item.distance_m} m` : t("structuredWorkout.unspecified_stop")}</p><p>{item.target ? `${t("structuredWorkout.target_"+item.target.kind)}: ${item.target.lower}–${item.target.upper}` : t("structuredWorkout.no_target")}</p>{item.kind === "strength" && <p>{item.exercise} · {t("structuredWorkout.strength_summary",{sets:item.sets??"—",reps:item.reps??"—",load:item.load_kg??"—"})}</p>}</div>}<p className="mt-2 text-[14px]">{item.execution}</p><p className="mt-2 text-[12px] text-muted">{item.limitation}</p><details className="mt-3"><summary className="cursor-pointer text-[13px]">{t("structuredWorkout.mistakes_alternatives")}</summary>{item.common_mistake && <p className="mt-3 text-[13px]">{item.common_mistake}</p>}{item.conservative_alternative && <p className="mt-3 text-[13px]">{item.conservative_alternative}</p>}{!item.common_mistake && !item.conservative_alternative && <p className="mt-3 text-[13px]">{t("structuredWorkout.conservative_note")}</p>}</details></section>)}</div></Card>}

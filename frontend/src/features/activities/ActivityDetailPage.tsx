@@ -24,6 +24,7 @@ import {
 import { useUi } from "../../app/stores/ui";
 import {
   Badge,
+  Button,
   Card,
   CardHeader,
   Empty,
@@ -39,14 +40,16 @@ import { Tabs } from "../../components/Tabs";
 import { RecordedZones, SportMetrics, paceText, sportKind, useSportUnits } from "./SportActivityView";
 import { StrengthBodyMap } from "./StrengthBodyMap";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
-function FitBounds({ points }: { points: [number, number][] }) {
+function FitBounds({ points, visible }: { points: [number, number][]; visible: boolean }) {
   const map = useMap();
   useEffect(() => {
+    if (!visible) return;
+    map.invalidateSize();
     map.fitBounds(points as LatLngBoundsExpression, { padding: [24, 24] });
-  }, [map, points]);
+  }, [map, points, visible]);
   return null;
 }
-function GpsTrace({ stream }: { stream: StreamOut }) {
+function GpsTrace({ stream, visible }: { stream: StreamOut; visible: boolean }) {
   const { t } = useTranslation();
   const c = useChartTheme();
   const points = useMemo(() => {
@@ -103,7 +106,7 @@ function GpsTrace({ stream }: { stream: StreamOut }) {
             weight: 2,
           }}
         />
-        <FitBounds points={points} />
+        <FitBounds points={points} visible={visible} />
       </MapContainer>
     </div>
   );
@@ -284,28 +287,40 @@ const WEATHER_CODES: Record<number, string> = {
   99: "storm",
 };
 export default function ActivityDetailPage() {
-  const { t } = useTranslation();
   const { id } = useParams();
+  const uid = useUi((s) => s.me?.user_id);
+  return <ActivityDetailWorkspace key={`${uid}:${id}`} id={id ?? ""} uid={uid} />;
+}
+
+function ActivityDetailWorkspace({ id, uid }: { id: string; uid: number | undefined }) {
+  const { t, i18n } = useTranslation();
   const timezone = useUi((s) => s.me?.timezone);
   const [tab, setTab] = useState("session");
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const feedbackRequested = searchParams.get("feedback") === "1";
+  const validId = /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0;
   useEffect(() => { if (feedbackRequested) setTab("session"); }, [feedbackRequested, id, location.key]);
   const detail = useQuery({
-    queryKey: ["activity", id],
+    queryKey: ["activity", uid, id],
     queryFn: () => api.get<Detail>("/activities/" + id),
-    enabled: !!id,
+    enabled: validId,
   });
   const streams = useQuery({
-    queryKey: ["streams", id],
+    queryKey: ["streams", uid, id],
     queryFn: () => api.get<StreamOut>("/activities/" + id + "/streams"),
-    enabled: !!detail.data?.has_streams,
+    enabled: detail.data?.id === Number(id) && !!detail.data?.has_streams,
   });
   const kind = detail.data ? sportKind(detail.data) : "other";
   const units = useSportUnits(kind);
   if (detail.isLoading) return <Loading />;
-  if (detail.isError || !detail.data) return <ErrorNote />;
+  if (!detail.data || detail.data.id !== Number(id)) return <Card>
+    <ErrorNote message={t("workflowReview.activity.load_error")} />
+    <div className="mt-4 flex flex-wrap items-center gap-4 text-[13px]">
+      {validId && <Button variant="ghost" disabled={detail.isFetching} onClick={() => void detail.refetch()}>{t("common.retry")}</Button>}
+      <Link className="text-link inline-flex min-h-11 items-center" to="/app/activities">{t("activities.all")}</Link>
+    </div>
+  </Card>;
   const a = detail.data;
   const indoor = ["strength", "hiit"].includes(kind);
   const hasGps = streams.data?.columns.lat?.some((lat, i) => {
@@ -324,7 +339,7 @@ export default function ActivityDetailPage() {
       </Link>
       <PageHeader
         title={friendlyDiscipline(a.discipline ?? a.source_activity_type, t)}
-        subtitle={new Date(a.start_time).toLocaleString(undefined, {
+        subtitle={new Date(a.start_time).toLocaleString(i18n.language, {
           weekday: "long",
           day: "numeric",
           month: "long",
@@ -335,6 +350,10 @@ export default function ActivityDetailPage() {
         })}
         actions={<div className="flex flex-wrap items-center gap-3"><Badge>{a.data_completeness}</Badge>{["running","cycling","strength"].includes(kind) && <Link className="text-link text-[13px]" to={`/app/sports/${kind}`}>{t("betaNavigation.sport_progress")}</Link>}</div>}
       />
+      {detail.isError && <div key="activity-refresh-error" className="flex flex-wrap items-center gap-3 border-l-2 border-warning bg-surface px-4 py-3 text-[13px]" data-testid="activity-refresh-error">
+        <p role="status" className="min-w-0 flex-1">{t("workflowReview.activity.refresh_error")}</p>
+        <Button variant="ghost" disabled={detail.isFetching} onClick={() => void detail.refetch()}>{t("common.retry")}</Button>
+      </div>}
       {!a.discipline && a.source_activity_type && <p className="text-sm text-muted">{t("v01Data.recorded_sport")}</p>}
       <div className="stat-row">
         <StatPod
@@ -367,8 +386,11 @@ export default function ActivityDetailPage() {
           { value: "sources", label: t("activities.sources") },
         ]}
       />
-      {tab === "session" && (
-        <>
+      <div key="activity-session" hidden={tab !== "session"} className="space-y-6" data-testid="activity-session-panel">
+          {streams.isError && <div className="flex flex-wrap items-center gap-3 border-l-2 border-warning bg-surface px-4 py-3 text-[13px]" data-testid="activity-stream-error">
+            <p role="status" className="min-w-0 flex-1">{t(streams.data ? "workflowReview.activity.stream_stale" : "workflowReview.activity.stream_unavailable")}</p>
+            <Button variant="ghost" disabled={streams.isFetching} onClick={() => void streams.refetch()}>{t("workflowReview.activity.retry_streams")}</Button>
+          </div>}
           <div id="session-feedback"><YourDay date={localDay(timezone || "UTC", new Date(a.start_time))} activityId={a.id} openFeedback={feedbackRequested} /></div>
           {["running", "cycling"].includes(kind) && <EnduranceMetrics id={a.id} />}
           {["running", "cycling"].includes(kind) && <ComparisonContextEditor activityId={a.id} />}
@@ -376,18 +398,16 @@ export default function ActivityDetailPage() {
           <div className={(!indoor || hasGps) ? "grid gap-6 xl:grid-cols-[1.6fr_1fr]" : "grid gap-6"}>
             {(!indoor || hasGps) && <Card>
               <CardHeader title={t("activities.map")} />
-              {streams.isLoading ? <Loading /> : streams.isError ? <ErrorNote /> : streams.data ? <GpsTrace stream={streams.data} /> : <Empty>{t("activities.no_map")}</Empty>}
+              {streams.data ? <GpsTrace stream={streams.data} visible={tab === "session"} /> : streams.isLoading ? <Loading /> : <Empty>{t(streams.isError ? "workflowReview.activity.stream_unavailable" : "activities.no_map")}</Empty>}
             </Card>}
             <SportMetrics activity={a} />
           </div>
           <RecordedZones activity={a} />
-          {streams.isLoading ? (
-            <Loading />
-          ) : streams.isError ? (
-            <ErrorNote />
-          ) : streams.data ? (
+          {streams.data ? (
             <Timeline stream={streams.data} kind={kind} />
-          ) : (
+          ) : streams.isLoading ? (
+            <Loading />
+          ) : streams.isError ? null : (
             <Card>
               <Empty>{t("design.no_streams")}</Empty>
             </Card>
@@ -435,8 +455,7 @@ export default function ActivityDetailPage() {
               <details className="mt-3 text-[12px] text-muted"><summary className="cursor-pointer">{t("weather.source_context")}</summary><p className="mt-3">{typeof weather.source === "string" ? weather.source : t("design.not_specified")} · {typeof weather.date === "string" ? weather.date : t("design.not_specified")}</p><p>{t("weather.kind_"+(typeof weather.data_kind==="string"?weather.data_kind:"unknown"))}</p><p>{t("weather.location_"+(typeof weather.coordinate_source==="string"?weather.coordinate_source:"unknown"))}</p><p>{t("weather.fetched_at")}: {typeof weather.fetched_at==="string"?new Date(weather.fetched_at).toLocaleString():t("design.not_specified")}</p></details>
             </Card>
           )}
-        </>
-      )}
+      </div>
       {tab === "laps" && (
         <Card>
           {!a.laps.length ? (

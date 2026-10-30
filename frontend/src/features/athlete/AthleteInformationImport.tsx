@@ -159,7 +159,7 @@ export function AthleteInformationImport({ planning = false }: { planning?: bool
   }
   useEffect(() => {
     const hash = anchor;
-    if (!hash || hash === handledAnchor.current || !profile.data || !planDrafts.data || dirty || entry.start || entry.end) return;
+    if (!hash || hash === handledAnchor.current || !profile.data || !planDrafts.data || pending || dirty || entry.start || entry.end) return;
     const templateId = hash.match(/^#template-(\d+)$/)?.[1];
     const documentId = hash.match(/^#(?:import-)?document-(\d+)$/)?.[1];
     if (templateId) {
@@ -172,7 +172,7 @@ export function AthleteInformationImport({ planning = false }: { planning?: bool
       handledAnchor.current = hash; open(item);
     } else return;
     requestAnimationFrame(() => document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" }));
-  }, [anchor, templates.data, imports.data, planDrafts.data, profile.data]);
+  }, [anchor, templates.data, imports.data, planDrafts.data, profile.data, pending]);
   function selectFile(next: File | null) {
     if (pending) return;
     const sequence = ++fileReadSequence.current;
@@ -221,7 +221,7 @@ export function AthleteInformationImport({ planning = false }: { planning?: bool
       {action.isError && <p role="alert" className="mt-4 text-[13px] text-alertText">{errorText(action.error)}</p>}
     </div></Card>}
     {!planning && !!templates.data?.length && <Card><CardHeader title={<h2>{t("athleteImport.saved_templates")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.template_scope")}</p><div className="space-y-3">{templates.data.map(template => <div id={`template-${template.id}`} key={template.id} className="border-t border-hairline pt-3"><h3 className="text-[14px] font-medium">{template.structure.title || t("athlete.untitled_plan")}</h3><Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template)}>{t("athleteImport.choose_dates")}</Button>{planDrafts.data?.some(draft => draft.template_id === template.id && draft.template_revision === template.revision && draft.status === "draft") && <Button variant="ghost" disabled={pending} onClick={() => chooseTemplate(template, true)}>{t("athleteImport.resume_calendar")}</Button>}</div>)}</div></Card>}
-    {chosenTemplate && <Card><CardHeader title={chosenTemplate.structure.title || t("athleteImport.weekly_template")} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.explicit_dates_note")}</p><div className="grid gap-3 sm:grid-cols-2"><Input label={t("athlete.event_start")} type="date" value={startsOn} onChange={v => { setStartsOn(v); setPreview(null); }} /><Input label={t("athlete.event_end")} type="date" value={endsOn} onChange={v => { setEndsOn(v); setPreview(null); }} /></div><Button className="mt-4" disabled={pending || !startsOn || !endsOn || endsOn < startsOn || (Date.parse(endsOn) - Date.parse(startsOn)) / 86400000 > 366} onClick={() => previewTemplate.mutate()}>{t("athleteImport.preview_calendar")}</Button>{previewTemplate.isError && <p role="alert" className="mt-3 text-[13px] text-alertText">{errorText(previewTemplate.error)}</p>}</Card>}
+    {chosenTemplate && <Card><CardHeader title={chosenTemplate.structure.title || t("athleteImport.weekly_template")} /><p className="mb-4 text-[13px] text-muted">{t("athleteImport.explicit_dates_note")}</p><fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2"><Input label={t("athlete.event_start")} type="date" value={startsOn} onChange={v => { setStartsOn(v); setPreview(null); }} /><Input label={t("athlete.event_end")} type="date" value={endsOn} onChange={v => { setEndsOn(v); setPreview(null); }} /></fieldset><Button className="mt-4" disabled={pending || !startsOn || !endsOn || endsOn < startsOn || (Date.parse(endsOn) - Date.parse(startsOn)) / 86400000 > 366} onClick={() => previewTemplate.mutate()}>{t("athleteImport.preview_calendar")}</Button>{previewTemplate.isError && <p role="alert" className="mt-3 text-[13px] text-alertText">{errorText(previewTemplate.error)}</p>}</Card>}
     {preview && <Card><CalendarPreview draft={preview} pending={activate.isPending} error={errorText(activate.error)} onActivate={() => activate.mutate()} /></Card>}
   </div>;
 }

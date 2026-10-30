@@ -30,6 +30,13 @@ export function TrainingPlanWorkspace() {
   const templates = useQuery({ queryKey: ["athlete-templates", uid], queryFn: () => api.get<AthleteTemplate[]>("/athlete/templates") });
   const loading = documents.isLoading || drafts.isLoading || imports.isLoading || templates.isLoading;
   const failed = documents.isError || drafts.isError || imports.isError || templates.isError;
+  // A failed refresh still has usable account-scoped data. Keep the review
+  // mounted so retrying a read cannot discard corrections in its editor.
+  const available = documents.data !== undefined && drafts.data !== undefined && imports.data !== undefined && templates.data !== undefined;
+  const retrying = [documents, drafts, imports, templates].some(query => query.isError && query.isFetching);
+  function retryFailed() {
+    for (const query of [documents, drafts, imports, templates]) if (query.isError) void query.refetch();
+  }
   const latestImports = (imports.data ?? []).filter((item, index, all) => all.findIndex(other => other.document_id === item.document_id) === index);
   const planDocs = (documents.data ?? []).filter(doc => drafts.data?.some(draft => draft.document_id === doc.id) || latestImports.some(item => item.document_id === doc.id));
   const selectedDocument = location.hash.match(/^#(?:import-)?document-(\d+)$/)?.[1];
@@ -54,7 +61,9 @@ export function TrainingPlanWorkspace() {
       <p className="max-w-2xl text-[14px] text-muted">{t("v01Plan.intro")}</p>
       <ol className="mt-5 grid gap-3 text-[13px] sm:grid-cols-3">{["step_import", "step_dates", "step_activate"].map((key, index) => <li key={key} className="flex gap-2"><span className="font-medium text-ink">{index + 1}.</span><span>{t(`v01Plan.${key}`)}</span></li>)}</ol>
     </Card>
-    {loading ? <Loading /> : failed ? <Card><p role="alert" className="text-[13px]">{t("v01Plan.load_error")}</p><Button className="mt-4" variant="ghost" onClick={() => { void documents.refetch(); void drafts.refetch(); void imports.refetch(); void templates.refetch(); }}>{t("common.retry")}</Button></Card> : <>
+    {failed && <Card><p role="alert" className="text-[13px]">{t(available ? "workflowReview.plan.refresh_error" : "v01Plan.load_error")}</p><Button className="mt-4" variant="ghost" disabled={retrying} onClick={retryFailed}>{t("common.retry")}</Button></Card>}
+    {!available && loading && <Loading />}
+    {available && <>
       {hasPlans && <section aria-label={t("v01Plan.saved_plans")} className="space-y-3">
         <h3 className="text-[15px] font-medium">{t("v01Plan.saved_plans")}</h3>
         <div className="grid gap-3 lg:grid-cols-2">{planDocs.map(doc => {
@@ -76,10 +85,10 @@ export function TrainingPlanWorkspace() {
       {selectedDoc && (!selectedImport || reviewDocumentDraft) && <Card>
         <CardHeader title={<h3>{selectedDoc.filename}</h3>} />
         <details><summary className="cursor-pointer text-[13px]">{t("athleteImport.review_source")}</summary><blockquote className="mt-3 whitespace-pre-wrap break-words text-[13px] text-muted">{selectedDoc.excerpt}</blockquote></details>
-        <PlanDocumentPanel key={selectedDoc.id} document={selectedDoc} />
+        <PlanDocumentPanel key={`${uid}:${selectedDoc.id}`} document={selectedDoc} />
         {selectedImport && <Link to={planUrl(`import-document-${selectedDoc.id}`, selectedDate)} className="mt-5 inline-flex min-h-10 items-center text-link">{t("v01Plan.review_import_separately")}</Link>}
       </Card>}
-      {(importing || (selectedImport && !reviewDocumentDraft) || template) && <AthleteInformationImport key={location.hash || "new-import"} planning />}
+      {(importing || (selectedImport && !reviewDocumentDraft) || template) && <AthleteInformationImport key={`${uid}:${location.hash || "new-import"}`} planning />}
     </>}
   </div>;
 }
