@@ -89,6 +89,11 @@ export function localDay(timezone?: string, instant: Date = new Date()): string 
     .map((type) => parts.find((p) => p.type === type)?.value)
     .join("-");
 }
+export function isCalendarDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const date = new Date(day + "T12:00:00Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === day;
+}
 export function shiftDay(day: string, amount: number) {
   const date = new Date(day + "T12:00:00Z");
   date.setUTCDate(date.getUTCDate() + amount);

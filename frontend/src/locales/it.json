@@ -2530,7 +2530,11 @@
     "rules": {},
     "title_strength": "Panoramica forza",
     "strength_note": "Forza stimata dalle serie registrate, non un massimale testato. Confronta lo stesso esercizio e attrezzo; tecnica e condizioni possono influenzare la stima.",
-    "strength_estimate": "Massimale stimato"
+    "strength_estimate": "Massimale stimato",
+    "refresh_error": "Impossibile aggiornare queste analisi. Sono mostrati gli ultimi risultati caricati; riprova per aggiornarli.",
+    "showing_range": "Risultati mostrati dal {{start}} al {{end}}.",
+    "invalid_range_link": "Le date di questo collegamento non sono valide. Sono mostrate le ultime 12 settimane; scegli un intervallo valido per proseguire.",
+    "view_activity_number": "Vedi attività registrata {{id}}"
   },
   "sharing": {
     "title": "Condividi informazioni di allenamento selezionate",
@@ -2665,7 +2669,11 @@
     "reload": "Ricarica il contesto attuale",
     "no_provider": "Questa attività non ha una fonte di registrazione collegata supportata per l’annotazione di confronto.",
     "eligibility": "I confronti richiedono la stessa fonte, disciplina, percorso, terreno, ambiente, convenzione temporale e intento, oltre a registrazioni continue sufficienti di velocità e frequenza cardiaca. Il meteo all’aperto deve essere compatibile.",
-    "climbs": "I confronti in salita richiedono identità del segmento verificata e importata, dislivello e distanza misurati in metri, durata trascorsa in secondi e meteo del segmento registrato. Questo modulo non crea né verifica misure di salita."
+    "climbs": "I confronti in salita richiedono identità del segmento verificata e importata, dislivello e distanza misurati in metri, durata trascorsa in secondi e meteo del segmento registrato. Questo modulo non crea né verifica misure di salita.",
+    "newer_context": "È disponibile un contesto più recente. La revisione non completata è conservata. Ricarica il contesto attuale prima di preparare una nuova revisione.",
+    "reload_replaces": "Il ricaricamento sostituisce il testo e la revisione non salvati con il contesto attuale.",
+    "discard_provider": "Vuoi scartare la revisione del contesto non completata e cambiare fonte dati?",
+    "retry_context": "Riprova il contesto del confronto"
   },
   "betaCoach": {
     "actions": "Azioni della conversazione {{title}}",
@@ -3019,5 +3027,20 @@
     "review": {
       "discardProposalEdits": "Scartare le modifiche non salvate alla proposta?"
     }
+  },
+  "readRecovery": {
+    "load_error": "Impossibile caricare questi dati. Riprova o usa i controlli della pagina per proseguire.",
+    "refresh_error": "Impossibile aggiornare questi dati. Gli ultimi risultati caricati restano visibili; riprova per aggiornarli.",
+    "retry_analysis": "Riprova l’analisi dell’attività"
+  },
+  "activityHistory": {
+    "showing_day": "Attività registrate il {{date}}.",
+    "showing_range": "Attività registrate dal {{start}} al {{end}}.",
+    "invalid_date": "La data richiesta non è valida. È mostrato il periodo recente selezionato."
+  },
+  "sleepRecovery": {
+    "invalid_date": "Questa data non è valida. Torna alla cronologia del sonno per scegliere una notte registrata.",
+    "timeline_unavailable": "Andamento non disponibile",
+    "retry_stages": "Riprova le fasi del sonno"
   }
 }

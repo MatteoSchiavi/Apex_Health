@@ -18,9 +18,10 @@ import {
   fmtHours,
   fmtNum,
 } from "../../components/kit";
-import { assess, shiftDay, localDay } from "../../components/data";
+import { assess, isCalendarDay, shiftDay, localDay } from "../../components/data";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
 import { sleepDurations } from "./sleep-summary";
+import { ReadError } from "../../components/ReadError";
 function StageTimeline({ stages }: { stages: SleepStages }) {
   const { t } = useTranslation();
   const c = useChartTheme();
@@ -223,20 +224,72 @@ export default function SleepNightPage() {
   const { date = "" } = useParams();
   const navigate = useNavigate();
   const timezone = useUi((s) => s.me?.timezone);
+  const uid = useUi((s) => s.me?.user_id);
+  const validDate = isCalendarDay(date);
   const day = useQuery({
-    queryKey: ["sleep", date],
+    queryKey: ["sleep", uid, "night", date],
     queryFn: () => api.get<SleepDay>("/sleep/" + date),
-    enabled: !!date,
+    enabled: validDate,
   });
   const stages = useQuery({
-    queryKey: ["sleep-stages", date],
+    queryKey: ["sleep-stages", uid, date],
     queryFn: () => api.get<SleepStages>("/sleep/" + date + "/stages"),
-    enabled: !!day.data?.session,
+    enabled: validDate && !!day.data?.session,
   });
-  if (day.isLoading) return <Loading />;
-  if (day.isError || !day.data) return <ErrorNote />;
-  const d = day.data,
-    s = d.session;
+  const s = day.data?.session;
+  const header = <>
+    <Link to="/app/sleep" className="text-link text-muted">
+        <ArrowLeft size={16} />
+        {t("sleep.history")}
+      </Link>
+      <PageHeader
+        title={validDate ? new Date(date + "T12:00:00").toLocaleDateString(undefined, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }) : t("sleep.title")}
+        subtitle={
+          s
+            ? t("sleep.night_subtitle", {
+                start: new Date(s.start_time).toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: timezone,
+                }),
+                end: new Date(s.end_time).toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: timezone,
+                }),
+              })
+            : !day.data ? t(day.isLoading ? "common.loading" : "design.unavailable") : t("sleep.no_night")
+        }
+        actions={
+          <div className="flex gap-2">
+            <button
+              className="p-3 disabled:opacity-30"
+              disabled={!validDate}
+              aria-label={t("common.prev_day")}
+              onClick={() => navigate("/app/sleep/" + shiftDay(date, -1))}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              className="p-3 disabled:opacity-30"
+              disabled={!validDate || date >= localDay(timezone)}
+              aria-label={t("common.next_day")}
+              onClick={() => navigate("/app/sleep/" + shiftDay(date, 1))}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        }
+      />
+  </>;
+  if (!validDate) return <div className="flex flex-col gap-6">{header}<ErrorNote message={t("sleepRecovery.invalid_date")} /></div>;
+  if (!day.data) return <div className="flex flex-col gap-6">{header}{day.isLoading ? <Loading /> : <ReadError pending={day.isFetching} retry={() => void day.refetch()} />}</div>;
+  const d = day.data;
   const state = assess("provider_sleep_score", s?.sleep_score ?? null);
   const duration = s ? sleepDurations(s) : null;
   const hrv = d.hrv_readings.length
@@ -256,52 +309,8 @@ export default function SleepNightPage() {
   const total = parts.reduce((a, p) => a + (p.value ?? 0), 0);
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/app/sleep" className="text-link text-muted">
-        <ArrowLeft size={16} />
-        {t("sleep.history")}
-      </Link>
-      <PageHeader
-        title={new Date(date + "T12:00:00").toLocaleDateString(undefined, {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-        })}
-        subtitle={
-          s
-            ? t("sleep.night_subtitle", {
-                start: new Date(s.start_time).toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: timezone,
-                }),
-                end: new Date(s.end_time).toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: timezone,
-                }),
-              })
-            : t("sleep.no_night")
-        }
-        actions={
-          <div className="flex gap-2">
-            <button
-              className="p-3"
-              aria-label={t("common.prev_day")}
-              onClick={() => navigate("/app/sleep/" + shiftDay(date, -1))}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              className="p-3 disabled:opacity-30"
-              disabled={date >= localDay(timezone)}
-              aria-label={t("common.next_day")}
-              onClick={() => navigate("/app/sleep/" + shiftDay(date, 1))}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        }
-      />
+      {header}
+      {day.isError && <ReadError stale pending={day.isFetching} retry={() => void day.refetch()} />}
       {!s ? (
         <Card>
           <Empty>{t("sleep.no_night")}</Empty>
@@ -375,17 +384,16 @@ export default function SleepNightPage() {
               title={t("design.sleep_stages")}
               right={
                 <Badge>
-                  {stages.data?.segments?.length
+                  {stages.isError && !stages.data ? t("sleepRecovery.timeline_unavailable") : stages.data?.segments?.length
                     ? t("sleep.stage_epochs")
                     : t("sleep.proportional")}
                 </Badge>
               }
             />
+            {stages.isError && <ReadError label={t("sleepRecovery.retry_stages")} stale={!!stages.data} pending={stages.isFetching} retry={() => void stages.refetch()} />}
             {stages.isLoading ? (
               <Loading />
-            ) : stages.isError ? (
-              <ErrorNote />
-            ) : stages.data?.segments?.length ? (
+            ) : stages.isError && !stages.data ? null : stages.data?.segments?.length ? (
               <StageTimeline stages={stages.data} />
             ) : (
               <p className="py-8 text-[13px] text-muted">

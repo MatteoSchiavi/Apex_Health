@@ -79,7 +79,7 @@ function Protected({ children }: { children: ReactNode }) {
   }, [isError, error, me]);
   if (isLoading) return <Loading />;
   if (isError && error instanceof ApiError && error.status === 401)
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   if (isError)
     return (
       <div className="mx-auto max-w-lg p-10">

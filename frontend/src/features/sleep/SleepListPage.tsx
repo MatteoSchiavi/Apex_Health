@@ -7,7 +7,6 @@ import {
   Badge,
   Card,
   Empty,
-  ErrorNote,
   Loading,
   PageHeader,
   StatPod,
@@ -15,19 +14,21 @@ import {
   fmtHours,
   fmtNum,
 } from "../../components/kit";
-import { assess } from "../../components/data";
+import { assess, localDay, shiftDay } from "../../components/data";
+import { ReadError } from "../../components/ReadError";
 import { SleepTimingChart } from "./SleepTimingChart";
 import { useUi } from "../../app/stores/ui";
 import { sleepDurations } from "./sleep-summary";
 export default function SleepListPage() {
   const { t } = useTranslation();
   const timezone = useUi((s) => s.me?.timezone);
+  const uid = useUi((s) => s.me?.user_id);
+  const end = localDay(timezone);
+  const start = shiftDay(end, -41);
   const query = useQuery({
-    queryKey: ["sleep"],
-    queryFn: () => api.get<SleepList>("/sleep?limit=42"),
+    queryKey: ["sleep", uid, "history", start, end],
+    queryFn: () => api.get<SleepList>(`/sleep?limit=42&start=${start}&end=${end}`),
   });
-  if (query.isLoading) return <Loading />;
-  if (query.isError) return <ErrorNote />;
   const nights = query.data?.items ?? [],
     last7 = nights.slice(0, 7);
   function avg(pick: (n: SleepList["items"][number]) => number | null) {
@@ -45,7 +46,8 @@ export default function SleepListPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={t("sleep.title")} subtitle={t("design.sleep_sub")} />
-      {!nights.length ? (
+      {query.isError && <ReadError stale={!!query.data} pending={query.isFetching} retry={() => void query.refetch()} />}
+      {query.isLoading ? <Loading /> : !query.data ? null : !nights.length ? (
         <Card>
           <Empty>{t("sleep.no_night")}</Empty>
         </Card>

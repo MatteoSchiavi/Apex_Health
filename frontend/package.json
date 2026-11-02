@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check:i18n": "node scripts/check-i18n.mjs",
     "test:ui": "playwright test",
-    "test:pwa": "node --test tests/service-worker.cjs"
+    "test:pwa": "node --test tests/service-worker.cjs",
+    "test:proxy": "node --test tests/dev-proxy.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

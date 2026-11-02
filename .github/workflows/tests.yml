@@ -66,6 +66,7 @@ jobs:
         run: |
           npm run check:i18n
           npm run test:pwa
+          npm run test:proxy
           npm run build
       - name: Install Chromium
         working-directory: frontend

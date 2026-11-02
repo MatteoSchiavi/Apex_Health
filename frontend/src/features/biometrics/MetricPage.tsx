@@ -1,14 +1,13 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
+import { useUi } from "../../app/stores/ui";
 import {
   Badge,
   Card,
   Empty,
-  ErrorNote,
   Loading,
   PageHeader,
   Segmented,
@@ -17,6 +16,7 @@ import {
   fmtHours,
 } from "../../components/kit";
 import { TrendChart } from "../../components/charts/TrendChart";
+import { ReadError } from "../../components/ReadError";
 import {
   assess,
   LEGACY_HEURISTICS,
@@ -30,46 +30,51 @@ export default function MetricPage() {
   const { key = "" } = useParams();
   const { t } = useTranslation();
   const units = useUnits();
-  const [range, setRange] = useState("90");
+  const uid = useUi(state => state.me?.user_id);
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const requestedRange = params.get("days") ?? "";
+  const range = ["7", "28", "90", "180", "365"].includes(requestedRange) ? requestedRange : "90";
+  const setRange = (value: string) => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.set("days", value);
+    return next;
+  }, { state: location.state });
+  const previousSearch: unknown = location.state?.metricReturnSearch;
+  const returnTo = "/app/biometrics" + (typeof previousSearch === "string" && previousSearch.startsWith("?") ? previousSearch : "");
   const trend = useQuery({
-    queryKey: ["metric", key, range],
+    queryKey: ["metric", uid, key, range],
     queryFn: () =>
       api.get<MetricTrend>(
         "/metrics/" + encodeURIComponent(key) + "?days=" + range,
       ),
     enabled: !!key,
   });
-  if (trend.isLoading) return <Loading />;
-  if (trend.isError || !trend.data) return <ErrorNote />;
-  const data = trend.data;
-  const education = explainMetric(data);
-  const latest = [...data.points].reverse().find((p) => p.value != null);
   const label = METRIC_LABELS[key]
     ? t(METRIC_LABELS[key])
     : key.replaceAll("_", " ");
+  const header = <>
+    <Link className="text-link text-muted" to={returnTo}>
+      <ArrowLeft size={16} />{t("biometrics.title")}
+    </Link>
+    <PageHeader title={label} subtitle={t("design.metric_detail_sub")} actions={
+      <Segmented value={range} onChange={setRange} options={[7, 28, 90, 180, 365].map(r => ({
+        value: String(r), label: [7,28,180].includes(r) ? t("metricView.days" + r) : t("biometrics." + r + "d"),
+      }))} />
+    } />
+  </>;
+  const error = trend.isError && <ReadError stale={!!trend.data} pending={trend.isFetching} retry={() => void trend.refetch()} />;
+  if (!trend.data) return <div className="flex flex-col gap-6">{header}{trend.isLoading ? <Loading /> : error}</div>;
+  const data = trend.data;
+  const education = explainMetric(data);
+  const latest = [...data.points].reverse().find((p) => p.value != null);
   const status = assess(key, latest?.value ?? null);
   const unit = units.metricUnit(key, data.unit);
   const formatValue = (value: number | null) => data.unit === "h" ? fmtHours(value == null ? null : value * 3600) : fmtNum(units.metric(key, value), ["steps", "floors"].includes(key) ? 0 : 1);
   return (
     <div className="flex flex-col gap-6">
-      <Link className="text-link text-muted" to="/app/biometrics">
-        <ArrowLeft size={16} />
-        {t("biometrics.title")}
-      </Link>
-      <PageHeader
-        title={label}
-        subtitle={t("design.metric_detail_sub")}
-        actions={
-          <Segmented
-            value={range}
-            onChange={setRange}
-            options={[7, 28, 90, 180, 365].map((r) => ({
-              value: String(r),
-              label: [7,28,180].includes(r) ? t("metricView.days" + r) : t("biometrics." + r + "d"),
-            }))}
-          />
-        }
-      />
+      {header}
+      {error}
       {LEGACY_HEURISTICS.includes(key) && (
         <p className="text-[13px] text-muted">
           {t("lab.legacy_metric_note")}{" "}

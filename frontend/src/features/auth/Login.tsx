@@ -25,13 +25,15 @@ export default function Login() {
       qc.clear();
       useUi.getState().setMe(null);
       const from = location.state?.from;
-      navigate(
-        typeof from === "string" &&
-          (from === "/app" || from.startsWith("/app/"))
-          ? from
-          : "/app",
-        { replace: true },
-      );
+      let destination = "/app";
+      if (typeof from === "string") {
+        try {
+          const target = new URL(from, window.location.origin);
+          if (target.origin === window.location.origin && (target.pathname === "/app" || target.pathname.startsWith("/app/")))
+            destination = target.pathname + target.search + target.hash;
+        } catch { /* Fall back to Today for malformed return locations. */ }
+      }
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

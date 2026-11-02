@@ -6,9 +6,10 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, ApiError, type Me } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
-import { Badge, Button, Card, CardHeader, ErrorNote, Input, Loading, Select } from "../../components/kit";
+import { Badge, Button, Card, CardHeader, Input, Loading, Select } from "../../components/kit";
 import { ConfiguredZones } from "./ConfiguredZones";
 import { AiConsentPanel } from "./AiConsentPanel";
+import { ReadError } from "../../components/ReadError";
 import { AvailabilityEditor, availabilityError, type AvailabilityEntry } from "./AvailabilityEditor";
 import type { AthleteContext, AthleteProfile, Focus, SportContext } from "./types";
 
@@ -42,6 +43,7 @@ export function AthleteProfilePanel() {
   const [ftpDate, setFtpDate] = useState("");
   const [ftpConfirmed, setFtpConfirmed] = useState(false);
   const [reviewDelete, setReviewDelete] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const deleteTitleId = useId();
   const root = useRef<HTMLDivElement>(null);
   const draft = { focuses, context, step, ftpWatts, ftpDate, ftpConfirmed };
@@ -110,8 +112,23 @@ export function AthleteProfilePanel() {
     setReviewDelete(false); save.reset(); if (uid != null) retainedDrafts.delete(uid); hydrate({ training_focus: [], context: {}, revision: revision + 1 }, undefined); qc.invalidateQueries({ queryKey: ["athlete-profile", uid] });
     void api.get<Me>("/me").then(me => useUi.getState().setMe(me)).catch(() => {}); qc.invalidateQueries({ queryKey: ["athlete-day"] }); qc.invalidateQueries({ queryKey: ["athlete-sport-overview"] }); qc.invalidateQueries({ queryKey: ["endurance"] });
   } });
+  async function reloadProfile() {
+    if (reloading || save.isPending || remove.isPending || reviewDelete) return;
+    if (unsaved && !window.confirm(t("athlete.leave_unsaved"))) return;
+    setReloading(true);
+    try {
+      const next = await profile.refetch();
+      if (next.isSuccess && next.data && useUi.getState().me?.user_id === uid) {
+        if (uid != null) retainedDrafts.delete(uid);
+        hydrate(next.data, undefined);
+        save.reset();
+      }
+    } finally {
+      setReloading(false);
+    }
+  }
   if (profile.isLoading) return <Loading />;
-  if (profile.isError || !profile.data) return <ErrorNote />;
+  if (!profile.data) return <ReadError pending={profile.isFetching} retry={() => void profile.refetch()} />;
   const days = Array.from({ length: 7 }, (_, day) => ({ value: String(day), label: new Intl.DateTimeFormat(i18n.language, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 1+day))) }));
   const dayOptions = [{ value: "", label: t("design.not_specified") }, ...days];
   const windows = context.availability ?? [];
@@ -135,9 +152,10 @@ export function AthleteProfilePanel() {
   const planFields = <div className="space-y-4"><Select label={t("athlete.existing_plan")} value={context.existing_plan ?? ""} onChange={v => edit("existing_plan", v || undefined)} options={[{ value: "", label: t("design.not_specified") }, ...["yes", "no", "unsure"].map(value => ({ value, label: t("athlete."+value) }))]} />
     <Link className="text-link" to="/app/lab?tab=documents">{t("athlete.upload_existing_plan")}</Link></div>;
   return <div ref={root} className="flex flex-col gap-6">
+    {profile.isError && <ReadError stale pending={profile.isFetching} retry={() => void profile.refetch()} />}
     <Card><CardHeader title={t("athlete.profile_title")} right={save.isSuccess && !unsaved && <Badge tone="positive">{t("settings.saved")}</Badge>} />
       <p className="mb-5 text-[13px] text-muted">{t("athlete.progressive_note")}</p>
-      <fieldset disabled={save.isPending || remove.isPending}>
+      <fieldset disabled={save.isPending || remove.isPending || reloading}>
       {step < 5 ? <section aria-label={t("athlete.onboarding")}>
         <p className="eyebrow">{t("athlete.step", { count: step+1 })}</p><h3 className="my-4 text-[18px] font-medium">{t("athlete.question_" + step)}</h3>
         {[priorityFields, goalFields, timeFields, availabilityFields, planFields][step]}
@@ -175,7 +193,7 @@ export function AthleteProfilePanel() {
       </fieldset>
       {seasonsInvalid && <p role="alert" className="mt-3 text-[13px] text-alertText">{t("athlete.season_invalid")}</p>}
       <p role={save.isError ? "alert" : "status"} className="mt-4 text-[13px] text-muted">{t(status)}</p>
-      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || reviewDelete || invalidProfile} onClick={() => save.mutate(step < 5 ? step + 1 : step)}>{t(save.isPending ? "athlete.saving_profile" : step < 5 ? step === 4 ? "athlete.finish" : "athlete.save_continue" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a>{!reviewDelete && <Button variant="ghost" disabled={remove.isPending || save.isPending} onClick={() => { remove.reset(); setReviewDelete(true); }}>{t("athlete.delete_context")}</Button>}{save.isError && <Button variant="ghost" disabled={reviewDelete} onClick={async () => { if (unsaved && !window.confirm(t("athlete.leave_unsaved"))) return; const next = await profile.refetch(); if (next.data) { if (uid != null) retainedDrafts.delete(uid); hydrate(next.data, undefined); save.reset(); } }}>{t("athlete.reload")}</Button>}</div>
+      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || reloading || reviewDelete || invalidProfile} onClick={() => save.mutate(step < 5 ? step + 1 : step)}>{t(save.isPending ? "athlete.saving_profile" : step < 5 ? step === 4 ? "athlete.finish" : "athlete.save_continue" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a>{!reviewDelete && <Button variant="ghost" disabled={remove.isPending || save.isPending || reloading} onClick={() => { remove.reset(); setReviewDelete(true); }}>{t("athlete.delete_context")}</Button>}{save.isError && <Button variant="ghost" disabled={reviewDelete || reloading || save.isPending || remove.isPending} onClick={() => void reloadProfile()}>{t("athlete.reload")}</Button>}</div>
       {reviewDelete && <section aria-labelledby={deleteTitleId} className="mt-4 border border-hairline p-4">
         <h3 id={deleteTitleId} className="text-[15px] font-medium">{t("athlete.delete_context_title")}</h3>
         <p className="mt-2 text-[13px] text-muted">{t("athlete.delete_context_body")}</p>

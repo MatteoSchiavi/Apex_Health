@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../../app/api";
-import { Button, Card, CardHeader, ErrorNote, Input, Loading, Select } from "../../components/kit";
+import { Button, Card, CardHeader, Input, Loading, Select } from "../../components/kit";
+import { ReadError } from "../../components/ReadError";
+import { useUi } from "../../app/stores/ui";
 
 type Context = {
   route_id: string;
@@ -20,9 +22,15 @@ type ContextResponse = {
   outdoor_weather_available: boolean;
 };
 
-function ProviderEditor({ data, provider }: { data: ContextResponse; provider: string }) {
+function ProviderEditor({ data, provider, onDraftState, onSaved, stale }: {
+  data: ContextResponse; provider: string;
+  onDraftState: (active: boolean, pending: boolean, conflict: boolean) => void;
+  onSaved: () => void;
+  stale: boolean;
+}) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const uid = useUi(state => state.me?.user_id);
   const saved = data.assertions.find(row => row.provider === provider);
   const [route, setRoute] = useState(saved?.context.route_id ?? "");
   const [terrain, setTerrain] = useState(saved?.context.terrain ?? "");
@@ -36,12 +44,19 @@ function ProviderEditor({ data, provider }: { data: ContextResponse; provider: s
       provider, expected_revision: data.revision, context, reviewed: true,
     }),
     onSuccess: response => {
-      qc.setQueryData(["activity-comparison-context", data.activity_id], response);
+      qc.setQueryData(["activity-comparison-context", uid, data.activity_id], response);
       ["activity", "athlete-sport-overview", "endurance", "gear-comparison"].forEach(key => qc.invalidateQueries({ queryKey: [key] }));
       setReview(null);
       setAcknowledged(false);
+      onSaved();
     },
   });
+  const dirty = route !== (saved?.context.route_id ?? "") || terrain !== (saved?.context.terrain ?? "")
+    || setting !== (saved ? (saved.context.indoor ? "indoor" : "outdoor") : "")
+    || convention !== (saved?.context.time_convention ?? "") || effort !== (saved?.context.effort_type ?? "");
+  const active = dirty || !!review || mutation.isPending;
+  const conflict = mutation.error instanceof ApiError && mutation.error.status === 409;
+  useEffect(() => onDraftState(active, mutation.isPending, conflict), [active, mutation.isPending, conflict, onDraftState]);
   const options = (keys: string[]) => [{ value: "", label: t("activityComparison.choose") }, ...keys.map(value => ({ value, label: t("activityComparison." + value) }))];
   const valid = route.trim().length > 0 && route.trim().length <= 120 && terrain && setting && convention && effort;
   function beginReview(context: Context | null) {
@@ -60,9 +75,8 @@ function ProviderEditor({ data, provider }: { data: ContextResponse; provider: s
     </dl> : <p className="text-[13px]">{t("activityComparison.remove_review")}</p>}
     <p className="text-[12px] text-muted">{t("activityComparison.provenance")}</p>
     <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={acknowledged} disabled={mutation.isPending} onChange={event => setAcknowledged(event.target.checked)} />{t("activityComparison.acknowledge")}</label>
-    <div className="flex flex-wrap gap-3"><Button disabled={!acknowledged || mutation.isPending} onClick={() => mutation.mutate(review.context)}>{t("activityComparison.save")}</Button><Button variant="ghost" disabled={mutation.isPending} onClick={() => setReview(null)}>{t("activityComparison.back")}</Button></div>
+    <div className="flex flex-wrap gap-3"><Button disabled={!acknowledged || mutation.isPending || conflict || stale} onClick={() => mutation.mutate(review.context)}>{t("activityComparison.save")}</Button><Button variant="ghost" disabled={mutation.isPending} onClick={() => setReview(null)}>{t("activityComparison.back")}</Button></div>
     {mutation.isError && <p role="alert" className="text-[13px]">{t(mutation.error instanceof ApiError && mutation.error.status === 409 ? "activityComparison.conflict" : "activityComparison.error")}</p>}
-    {mutation.error instanceof ApiError && mutation.error.status === 409 && <Button variant="ghost" onClick={() => qc.invalidateQueries({ queryKey: ["activity-comparison-context", data.activity_id] })}>{t("activityComparison.reload")}</Button>}
   </div>;
   return <form className="space-y-4" onSubmit={event => {
     event.preventDefault();
@@ -87,15 +101,44 @@ function ProviderEditor({ data, provider }: { data: ContextResponse; provider: s
 
 export function ComparisonContextEditor({ activityId }: { activityId: number }) {
   const { t } = useTranslation();
+  const uid = useUi(state => state.me?.user_id);
   const [provider, setProvider] = useState("");
-  const query = useQuery({ queryKey: ["activity-comparison-context", activityId], queryFn: () => api.get<ContextResponse>(`/activities/${activityId}/comparison-context`), refetchOnWindowFocus: false });
-  const selected = query.data?.providers.includes(provider) ? provider : query.data?.providers[0] ?? "";
+  const scope = `${uid}:${activityId}`;
+  const [retained, setRetained] = useState<{ scope: string; data: ContextResponse } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const query = useQuery({ queryKey: ["activity-comparison-context", uid, activityId], queryFn: () => api.get<ContextResponse>(`/activities/${activityId}/comparison-context`), refetchOnWindowFocus: false });
+  const snapshot = retained?.scope === scope ? retained.data : null;
+  const data = snapshot ?? query.data;
+  const selected = data?.providers.includes(provider) ? provider : data?.providers[0] ?? "";
+  const draftState = useCallback((active: boolean, saving: boolean, conflicted: boolean) => {
+    setPending(saving);
+    setConflict(conflicted);
+    setRetained(previous => active && query.data
+      ? previous?.scope === scope ? previous : { scope, data: query.data }
+      : null);
+  }, [query.data, scope]);
+  const saved = useCallback(() => setRetained(null), []);
+  async function reload() {
+    const result = await query.refetch();
+    if (result.isSuccess && useUi.getState().me?.user_id === uid) {
+      setRetained(null);
+      setReloadVersion(value => value + 1);
+    }
+  }
   return <Card>
     <CardHeader title={t("activityComparison.title")} />
     <p className="mb-4 text-[13px] text-muted">{t("activityComparison.description")}</p>
-    {query.isLoading ? <Loading /> : query.isError || !query.data ? <ErrorNote /> : selected ? <>
-      <Select className="mb-4" label={t("activityComparison.provider")} value={selected} onChange={setProvider} options={query.data.providers.map(value => ({ value, label: value }))} />
-      <ProviderEditor key={`${activityId}:${selected}:${query.data.revision}`} data={query.data} provider={selected} />
+    {query.isError && <ReadError label={t("activityComparison.retry_context")} stale={!!data} pending={query.isFetching} retry={() => void query.refetch()} />}
+    {(conflict || (snapshot && query.data && snapshot.revision !== query.data.revision)) && <div className="mb-4 space-y-3"><p role="status" className="text-[13px] text-muted">{t("activityComparison.newer_context")}</p><p className="text-[12px] text-muted">{t("activityComparison.reload_replaces")}</p><Button variant="ghost" disabled={pending || query.isFetching} onClick={() => void reload()}>{t("activityComparison.reload")}</Button></div>}
+    {query.isLoading ? <Loading /> : !data ? null : selected ? <>
+      <fieldset disabled={pending}><Select className="mb-4" label={t("activityComparison.provider")} value={selected} onChange={value => {
+        if (value === selected || (snapshot && !window.confirm(t("activityComparison.discard_provider")))) return;
+        setRetained(null);
+        setProvider(value);
+      }} options={data.providers.map(value => ({ value, label: value }))} /></fieldset>
+      <ProviderEditor key={`${scope}:${selected}:${data.revision}:${reloadVersion}`} data={data} provider={selected} onDraftState={draftState} onSaved={saved} stale={!!query.data && data.revision !== query.data.revision} />
     </> : <p className="text-[13px] text-muted">{t("activityComparison.no_provider")}</p>}
     <p className="mt-4 text-[12px] text-muted">{t("activityComparison.eligibility")}</p>
     <p className="mt-2 text-[12px] text-muted">{t("activityComparison.climbs")}</p>
