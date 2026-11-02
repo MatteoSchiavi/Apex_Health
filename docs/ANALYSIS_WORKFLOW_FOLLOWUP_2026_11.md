@@ -12,6 +12,7 @@ Apex's existing tokens, typography, palette and panel geometry are retained.
 | Read a failed metric, night or sport analysis | Some failed reads replaced navigation with an error, without a local retry. | Recovery controls remain with the page's navigation and date/period controls. Available cached results stay visible with an explicit stale notice. Sleep stages and endurance evidence retry independently of their parent records. |
 | Compare sport progress over a chosen interval | Date fields could differ from the displayed results, and leaving the page discarded the applied interval. | Results identify the server's actual interval. Applied dates are in the route, survive Back/reload and follow navigation between sport pages; unfinished field edits do not change the results. Invalid linked intervals are explained. |
 | Inspect a metric from Health | The detail silently used its own default period and returning lost the search and category. | The selected period opens in the detail. Search, category and period survive the return journey and reload. Typing a search replaces its history entry rather than adding one per character. |
+| Run the actual API-backed application in development | Vite did not proxy athlete, HealthKit or API-prefixed admin/feedback requests, so SPA HTML could replace API responses. | The missing API roots are forwarded. A temporary HTTP backend verifies actual forwarding, query strings, POST/CSRF headers and frontend-only routes. |
 | Read Health on a phone | Desktop column headings remained visible despite the intended responsive rule, consuming space above the measurement. | A separate responsive wrapper hides the headings on phones and retains them on desktop. |
 | Inspect the activity behind a calculation | Activity-ID arrays and provenance references were plain numbers or technical strings. | Known activity references open the corresponding owned activity detail; raw provenance remains available for inspection. Unknown source types are not guessed. |
 | Edit comparison context | A failed refresh unmounted the editor; a newer revision could replace unfinished route/context edits or review. Changing providers discarded the current draft. | The editor and exact revision stay mounted while dirty/reviewing/saving. Newer data is identified; explicit reload replaces the draft only after a successful read. A changed revision cannot be approved from the old review. Provider changes require discarding unfinished work and stay disabled while saving. |
@@ -36,7 +37,7 @@ A fresh real-account exploratory browser is not available in this environment.
 A completed production Garmin sync, usefulness of live Coach answers, physical
 phone keyboard behavior and unaided invited-athlete journeys remain acceptance
 work. These fixes do not establish that the whole application is finished.
-No production deployment is performed as part of this review.
+Production promotion follows the release gates; the live version must be verified separately from these synthetic scenarios.
 
 Production TypeScript/build, EN/IT key parity, PWA checks and the complete UI
 suite are the validation gates for this change. Consult the pull request for
