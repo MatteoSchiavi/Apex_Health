@@ -22,19 +22,23 @@ import {
   friendlyDiscipline,
 } from "../../components/kit";
 import { Tabs } from "../../components/Tabs";
-import { localDay, shiftDay, useUnits } from "../../components/data";
+import { ReadError } from "../../components/ReadError";
+import { isCalendarDay, localDay, shiftDay, useUnits } from "../../components/data";
 export default function ActivitiesPage() {
   const { t } = useTranslation();
   const units = useUnits();
   const timezone = useUi((s) => s.me?.timezone);
-  const [params] = useSearchParams();
-  const pinned = /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date") : null;
-  const [range, setRange] = useState("90");
+  const uid = useUi((s) => s.me?.user_id);
+  const [params, setParams] = useSearchParams();
+  const requestedDate = params.get("date");
+  const pinned = requestedDate && isCalendarDay(requestedDate) ? requestedDate : null;
+  const requestedRange = params.get("days") ?? "";
+  const range = ["30", "90", "365"].includes(requestedRange) ? requestedRange : "90";
   const [disc, setDisc] = useState("all");
   const end = pinned ?? localDay(timezone),
     start = pinned ?? shiftDay(end, -Number(range) + 1);
   const query = useInfiniteQuery({
-    queryKey: ["activities", range, start, end],
+    queryKey: ["activities", uid, range, start, end],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       api.get<{
@@ -62,8 +66,9 @@ export default function ActivitiesPage() {
   const disciplines = [
     ...new Set(items.map((a) => a.discipline).filter((d): d is string => !!d)),
   ];
+  const selectedDisc = disciplines.includes(disc) ? disc : "all";
   const filtered =
-    disc === "all" ? items : items.filter((a) => a.discipline === disc);
+    selectedDisc === "all" ? items : items.filter((a) => a.discipline === selectedDisc);
   const total = query.data?.pages[0].total ?? 0;
   const distance = filtered.filter((a) => a.distance_m != null);
   const load = filtered.filter((a) => a.training_load != null);
@@ -74,10 +79,15 @@ export default function ActivitiesPage() {
         subtitle={t("design.activities_sub")}
         actions={
           <Segmented
-            value={range}
+            value={pinned ? "" : range}
             onChange={(v) => {
-              setRange(v);
               setDisc("all");
+              setParams(previous => {
+                const next = new URLSearchParams(previous);
+                next.delete("date");
+                next.set("days", v);
+                return next;
+              });
             }}
             options={[
               { value: "30", label: t("activities.30d") },
@@ -87,9 +97,18 @@ export default function ActivitiesPage() {
           />
         }
       />
+      <p role="status" className="text-[13px] text-muted">
+        {t(pinned ? "activityHistory.showing_day" : "activityHistory.showing_range", { date: pinned, start, end })}
+      </p>
+      {requestedDate && !pinned && <ErrorNote message={t("activityHistory.invalid_date")} />}
+      {query.isError && <ReadError
+        stale={!!query.data}
+        pending={query.isFetching}
+        retry={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}
+      />}
       <Tabs
         label={t("activities.all")}
-        value={disc}
+        value={selectedDisc}
         onChange={setDisc}
         options={[
           { value: "all", label: t("activities.all") },
@@ -102,7 +121,7 @@ export default function ActivitiesPage() {
       {query.isLoading ? (
         <Loading />
       ) : query.isError && !query.data ? (
-        <ErrorNote />
+        null
       ) : items.length === 0 ? (
         <Card>
           <Empty>{t("activities.empty")}</Empty>
@@ -261,7 +280,6 @@ export default function ActivitiesPage() {
               </Button>
             )}
           </div>
-          {query.isError && <ErrorNote />}
         </>
       )}
     </div>

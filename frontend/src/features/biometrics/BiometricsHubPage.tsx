@@ -1,9 +1,10 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Star } from "lucide-react";
 import { api, type MetricTrend } from "../../app/api";
+import { useUi } from "../../app/stores/ui";
+import { ReadError } from "../../components/ReadError";
 import {
   Badge,
   Card,
@@ -26,8 +27,10 @@ import { useAction, useLab, useToday } from "../lab/shared";
 function MetricRow({ metricKey, unit, range, favorite, toggle, pending }: { metricKey: string; unit: string; range: string; favorite: boolean; toggle: () => void; pending: boolean }) {
   const { t } = useTranslation();
   const units = useUnits();
+  const uid = useUi(state => state.me?.user_id);
+  const location = useLocation();
   const trend = useQuery({
-    queryKey: ["metric", metricKey, range],
+    queryKey: ["metric", uid, metricKey, range],
     queryFn: () => api.get<MetricTrend>("/metrics/" + metricKey + "?days=" + range),
   });
   const points = trend.data?.points ?? [];
@@ -38,7 +41,7 @@ function MetricRow({ metricKey, unit, range, favorite, toggle, pending }: { metr
     : metricKey.replaceAll("_", " ");
   return (
     <div className="relative">
-    <Link to={"/app/biometrics/" + metricKey} className="metric-row pr-12">
+    <Link to={"/app/biometrics/" + metricKey + "?days=" + range} state={{ metricReturnSearch: location.search }} className="metric-row pr-12">
       <div>
         <p className="text-[14px] font-medium">{label}</p>
         <p className="mt-1 text-[12px] text-muted">
@@ -82,8 +85,19 @@ function MetricRow({ metricKey, unit, range, favorite, toggle, pending }: { metr
 export default function BiometricsHubPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
-  const [search, setSearch] = useState("");
-  const [range, setRange] = useState("28");
+  const search = params.get("q") ?? "";
+  const requestedRange = params.get("days") ?? "";
+  const range = ["7", "28", "180"].includes(requestedRange) ? requestedRange : "28";
+  function updateParams(values: Record<string, string | null>, replace = false) {
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      for (const [key, value] of Object.entries(values)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      return next;
+    }, { replace });
+  }
   const catalog = useQuery({
     queryKey: ["metrics-catalog"],
     queryFn: () =>
@@ -112,14 +126,13 @@ export default function BiometricsHubPage() {
       <PageHeader
         title={t("biometrics.title")}
         subtitle={t("design.metrics_sub")}
-        actions={<Segmented value={range} onChange={setRange} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} />}
+        actions={<Segmented value={range} onChange={days => updateParams({ days })} options={[7, 28, 180].map((days) => ({ value: String(days), label: t("metricView.days" + days) }))} />}
       />
       {subgroup?.value === "estimates" && <p className="text-[13px] text-muted">{t("metricView.estimates_note")}</p>}
       <Tabs
         value={active}
         onChange={(v) => {
-          setParams({ tab: v });
-          setSearch("");
+          updateParams({ tab: v, group: null, q: null });
         }}
         label={t("design.metric_groups")}
         options={[
@@ -128,8 +141,9 @@ export default function BiometricsHubPage() {
           { value: "labs", label: t("biometrics.labs") },
         ]}
       />
-      {category && <Segmented value={subgroup!.value} onChange={group => setParams({ tab: active, group })} options={category.groups.map(g => ({ value: g.value, label: t(g.label) }))} />}
-      {(save.isError || favoritesQuery.isError) && <ErrorNote />}
+      {category && <Segmented value={subgroup!.value} onChange={group => updateParams({ tab: active, group })} options={category.groups.map(g => ({ value: g.value, label: t(g.label) }))} />}
+      {save.isError && <ErrorNote />}
+      {favoritesQuery.isError && <ReadError stale={!!favoritesQuery.data} pending={favoritesQuery.isFetching} retry={() => void favoritesQuery.refetch()} />}
       {active === "labs" ? (
         <LabsPanel />
       ) : (
@@ -141,24 +155,27 @@ export default function BiometricsHubPage() {
             </p>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => updateParams({ q: e.target.value }, true)}
+              maxLength={200}
               aria-label={t("design.find_metric")}
               placeholder={t("design.find_metric")}
               className="h-10 w-full border-b border-hairline bg-transparent text-[13px] outline-none sm:w-64"
             />
           </div>
-          {catalog.isLoading ? (
+          {catalog.isLoading || (active === "favorites" && !search && favoritesQuery.isLoading) ? (
             <Loading />
-          ) : catalog.isError ? (
-            <ErrorNote />
-          ) : (
+          ) : <>
+          {catalog.isError && <ReadError stale={!!catalog.data} pending={catalog.isFetching} retry={() => void catalog.refetch()} />}
+          {catalog.data && !(active === "favorites" && !search && favoritesQuery.isError && !favoritesQuery.data) && (
             <Card className="!px-5 !py-0 md:!px-8">
-              <div className="metric-row !py-4 text-[12px] text-muted max-md:hidden">
+              <div className="hidden border-b border-hairline md:block" data-testid="metric-list-header">
+              <div className="metric-row !py-4 text-[12px] text-muted">
                 <span>{t("design.metric")}</span>
                 <span>{t("biometrics.latest")}</span>
                 <span>{t("design.status")}</span>
                 <span>{t("biometrics.trend")} · {range}d</span>
                 <span />
+              </div>
               </div>
               {keys.map((key) => (
                 <MetricRow
@@ -177,7 +194,7 @@ export default function BiometricsHubPage() {
                 </p>
               )}
             </Card>
-          )}
+          )}</>}
           <p className="text-[12px] text-muted">{t("design.metric_note")}</p>
         </>
       )}

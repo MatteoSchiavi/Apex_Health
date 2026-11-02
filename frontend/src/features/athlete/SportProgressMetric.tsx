@@ -4,6 +4,14 @@ import { Badge, fmtDuration, fmtNum } from "../../components/kit";
 import { paceText } from "../activities/SportActivityView";
 export interface SportProgressMetric { key: string; value: unknown; unit: string; kind: string; availability: string; unavailable_reason: string | null; formula: string; formula_version: string; source_dependencies: string[]; prerequisites: string[]; limitations: string[]; quality?: Record<string, unknown> }
 const humanize = (key: string) => key.replaceAll("_", " ");
+const isActivityId = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+function ActivityEvidenceLink({ id }: { id: number }) {
+  const { t } = useTranslation();
+  return <Link className="text-link" to={`/app/activities/${id}`} aria-label={t("sportProgress.view_activity_number", { id })}>
+    {t("sportProgress.view_activity")} · {id}
+  </Link>;
+}
 
 function MetricValue({ value, field = "", unit = "" }: { value: unknown; field?: string; unit?: string }) {
   const { t } = useTranslation();
@@ -11,8 +19,8 @@ function MetricValue({ value, field = "", unit = "" }: { value: unknown; field?:
   if (typeof value === "number") return <span className="num">{field.endsWith("duration_s") || field === "valid_seconds" ? fmtDuration(value) : field.endsWith("pace_s_km") ? `${paceText(value / 60)} min/km` : field.endsWith("distance_m") ? `${fmtNum(value / 1000, 2)} km` : fmtNum(value, 2)} {unit}</span>;
   if (typeof value === "boolean") return <span>{t(value ? "athlete.yes" : "athlete.no")}</span>;
   if (typeof value === "string") return <span className="break-words">{t("sportProgress.values." + value, { defaultValue: value })}</span>;
-  if (Array.isArray(value)) return <ul className="space-y-2">{value.map((item, index) => <li key={index}><MetricValue value={item} /></li>)}</ul>;
-  if (typeof value === "object") return <dl className="space-y-2">{Object.entries(value).map(([key, entry]) => <div key={key} className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-1"><dt className="text-muted">{t("sportProgress.fields." + key, { defaultValue: humanize(key) })}</dt><dd className="min-w-0 max-w-full">{key.endsWith("activity_id") && typeof entry === "number" ? <Link className="text-link" to={`/app/activities/${entry}`}>{t("sportProgress.view_activity")}</Link> : <MetricValue value={entry} field={key} />}</dd></div>)}</dl>;
+  if (Array.isArray(value)) return <ul className="space-y-2">{value.map((item, index) => <li key={index}>{field === "activity_ids" && isActivityId(item) ? <ActivityEvidenceLink id={item} /> : <MetricValue value={item} />}</li>)}</ul>;
+  if (typeof value === "object") return <dl className="space-y-2">{Object.entries(value).map(([key, entry]) => <div key={key} className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-1"><dt className="text-muted">{t("sportProgress.fields." + key, { defaultValue: humanize(key) })}</dt><dd className="min-w-0 max-w-full">{key.endsWith("activity_id") && isActivityId(entry) ? <ActivityEvidenceLink id={entry} /> : <MetricValue value={entry} field={key} />}</dd></div>)}</dl>;
   return null;
 }
 export function MetricProvenance({ metric }: { metric: SportProgressMetric }) {
@@ -23,7 +31,11 @@ export function MetricProvenance({ metric }: { metric: SportProgressMetric }) {
     {!!metric.prerequisites.length && <div><h4 className="font-medium">{t("sportProgress.requirements")}</h4><ul className="mt-2 space-y-1">{metric.prerequisites.map(key => <li key={key}>{t("sportProgress.rules." + key, { defaultValue: t("athlete.limit_" + key, { defaultValue: humanize(key) }) })}</li>)}</ul></div>}
     {!!metric.limitations.length && <div><h4 className="font-medium">{t("sportProgress.limitations")}</h4><ul className="mt-2 space-y-1">{metric.limitations.map(key => <li key={key}>{t("sportProgress.rules." + key, { defaultValue: t("athlete.limit_" + key, { defaultValue: humanize(key) }) })}</li>)}</ul></div>}
     {metric.quality && <div><h4 className="mb-2 font-medium">{t("sportProgress.quality")}</h4><MetricValue value={metric.quality} /></div>}
-    {!!metric.source_dependencies.length && <div><h4 className="font-medium">{t("athlete.source_dependencies")}</h4><ul className="mt-2 space-y-1">{metric.source_dependencies.map(source => <li key={source} className="break-all">{source}</li>)}</ul></div>}
+    {!!metric.source_dependencies.length && <div><h4 className="font-medium">{t("athlete.source_dependencies")}</h4><ul className="mt-2 space-y-2">{metric.source_dependencies.map((source, index) => {
+      const match = source.match(/^activity:(\d+)(?::|$)/);
+      const id = match ? Number(match[1]) : null;
+      return <li key={`${source}:${index}`} className="min-w-0 space-y-1"><p className="break-all">{source}</p>{isActivityId(id) && <ActivityEvidenceLink id={id} />}</li>;
+    })}</ul></div>}
   </div></details>;
 }
 export function ProgressMetric({ metric }: { metric: SportProgressMetric }) {

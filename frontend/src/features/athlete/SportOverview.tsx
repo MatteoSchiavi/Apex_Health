@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { Badge, Button, Card, CardHeader, ErrorNote, Input, Loading, PageHeader, Segmented, StatPod, fmtDuration, fmtNum } from "../../components/kit";
-import { localDay, shiftDay } from "../../components/data";
+import { useSportRange } from "./useSportRange";
 import { EChart, useChartTheme } from "../../components/charts/EChart";
 import { ProgressMetric, MetricProvenance, type SportProgressMetric } from "./SportProgressMetric";
 interface VolumeBucket { start: string; end: string; activity_count: number; distance_m: number | null; duration_s: number | null; elevation_gain_m: number | null; observed: Record<string, number>; formula: string; formula_version: string; source_dependencies: string[]; quality: Record<string, unknown> }
@@ -27,13 +27,9 @@ function EnduranceOverview() {
   const { sport = "running" } = useParams();
   const uid = useUi(state => state.me?.user_id);
   const timezone = useUi(state => state.me?.timezone);
-  const today = localDay(timezone);
-  const [start, setStart] = useState(shiftDay(today, -83));
-  const [end, setEnd] = useState(today);
-  const [range, setRange] = useState({ start, end });
+  const { start, setStart, end, setEnd, range, applyRange, validRange, invalidRangeLink } = useSportRange(timezone);
   const [period, setPeriod] = useState("weekly");
   const validSport = sport === "running" || sport === "cycling";
-  const validRange = !!start && !!end && start <= end && (Date.parse(end) - Date.parse(start)) / 86400000 < 730;
   const query = useQuery({ queryKey: ["athlete-sport-overview", uid, sport, range.start, range.end], queryFn: () => api.get<Overview>(`/athlete/sports/${sport}/overview?start=${range.start}&end=${range.end}`), enabled: validSport });
   const data = query.data;
   if (!validSport) return <ErrorNote message={t("sportProgress.supported_sports")} />;
@@ -41,8 +37,10 @@ function EnduranceOverview() {
   const hasPower = data?.recent_activities.some(activity => activity.avg_power !== null) || data?.power_duration.some(metric => metric.value !== null);
   const densePower = data?.power_duration.some(metric => metric.value !== null);
   return <div className="space-y-6"><PageHeader title={t("sportProgress.title_" + sport)} subtitle={t("sportProgress.subtitle")} />
-    <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={() => setRange({ start, end })}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert" className="mt-3 text-[13px]">{t("sportProgress.range_error")}</p>}<p className="mt-3 text-[12px] text-muted">{t("sportProgress.timezone", { timezone: data?.range.timezone ?? timezone })}</p></Card>
-    {query.isLoading && <Loading />}{query.isError && <ErrorNote message={t("sportProgress.load_error")} />}
+    {invalidRangeLink && <ErrorNote message={t("sportProgress.invalid_range_link")} />}
+    <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={applyRange}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert" className="mt-3 text-[13px]">{t("sportProgress.range_error")}</p>}<p className="mt-3 text-[12px] text-muted">{t("sportProgress.timezone", { timezone: data?.range.timezone ?? timezone })}</p></Card>
+    {query.isLoading && <Loading />}{query.isError && <div className="space-y-3"><ErrorNote message={t(data ? "sportProgress.refresh_error" : "sportProgress.load_error")} /><Button disabled={query.isFetching} onClick={() => void query.refetch()}>{t("common.retry")}</Button></div>}
+    {data && <p role="status" className="text-[13px] text-muted">{t("sportProgress.showing_range", { start: data.range.start, end: data.range.end })}</p>}
     {data && <>
       <Card><CardHeader title={<h2>{t("sportProgress.recorded_totals")}</h2>} right={<Badge>{t("sportProgress.state_" + data.state)}</Badge>} /><div className="grid grid-cols-2 gap-5 md:grid-cols-4"><StatPod label={t("sportProgress.activities")} value={String(data.totals.activity_count)} /><StatPod label={t("activities.distance")} value={fmtNum(data.totals.distance_m === null ? null : data.totals.distance_m / 1000, 2)} unit="km" /><StatPod label={t("activities.duration")} value={fmtDuration(data.totals.duration_s)} /><StatPod label={t("activities.elevation")} value={fmtNum(data.totals.elevation_gain_m)} unit="m" /></div><p className="mt-4 text-[13px] text-muted">{t("sportProgress.missing_note")}</p>{data.state === "empty" && <p className="mt-3 text-[14px]">{t("sportProgress.empty")}</p>}{data.state === "partial" && <p role="status" className="mt-3 text-[13px]">{t("sportProgress.partial")}</p>}<details className="mt-3 text-[12px] text-muted"><summary>{t("sportProgress.method")}</summary><p className="mt-3 break-words">{data.totals.formula} · {data.totals.formula_version}</p><p>{t("sportProgress.coverage", { distance: data.totals.observed.distance, duration: data.totals.observed.duration, count: data.totals.activity_count })}</p><p className="mt-3 break-all">{data.totals.source_dependencies.join(" · ")}</p></details></Card>
       <Card><CardHeader title={<h2>{t("sportProgress.volume_history")}</h2>} /><Segmented value={period} onChange={setPeriod} options={[{ value: "weekly", label: t("sportProgress.weekly") }, { value: "monthly", label: t("sportProgress.monthly") }]} /><div className="mt-5 grid gap-6 lg:grid-cols-2"><section><h3 className="mb-3 text-[14px]">{t("activities.distance")}</h3><HistoryChart label={t("sportProgress.distance_history")} unit="km" points={volume.map(bucket => ({ label: bucket.start, value: bucket.distance_m === null ? null : bucket.distance_m / 1000 }))} bar /></section><section><h3 className="mb-3 text-[14px]">{t("activities.duration")}</h3><HistoryChart label={t("sportProgress.duration_history")} unit="h" points={volume.map(bucket => ({ label: bucket.start, value: bucket.duration_s === null ? null : bucket.duration_s / 3600 }))} bar /></section></div><div className="mt-5 grid gap-6 lg:grid-cols-2"><ProgressMetric metric={data.consistency} /><ProgressMetric metric={data.adherence} /></div></Card>
@@ -70,16 +68,14 @@ function StrengthOverview() {
   const { t } = useTranslation();
   const uid = useUi(state => state.me?.user_id);
   const timezone = useUi(state => state.me?.timezone);
-  const today = localDay(timezone);
-  const [start, setStart] = useState(shiftDay(today, -83));
-  const [end, setEnd] = useState(today);
-  const [range, setRange] = useState({ start, end });
-  const validRange = !!start && !!end && start <= end && (Date.parse(end) - Date.parse(start)) / 86400000 < 730;
+  const { start, setStart, end, setEnd, range, applyRange, validRange, invalidRangeLink } = useSportRange(timezone);
   const query = useQuery({ queryKey: ["athlete-sport-overview", uid, "strength", range.start, range.end], queryFn: () => api.get<StrengthOverviewData>(`/athlete/sports/strength/overview?start=${range.start}&end=${range.end}`) });
   const data = query.data;
   return <div className="space-y-6"><PageHeader title={t("sportProgress.title_strength", { defaultValue: t("athlete.focus_gym") })} subtitle={t("sportProgress.subtitle")} />
-    <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={() => setRange({ start, end })}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert">{t("sportProgress.range_error")}</p>}</Card>
-    {query.isLoading && <Loading />}{query.isError && <ErrorNote message={t("sportProgress.load_error")} />}
+    {invalidRangeLink && <ErrorNote message={t("sportProgress.invalid_range_link")} />}
+    <Card><div className="grid items-end gap-3 sm:grid-cols-3"><Input label={t("lab.start")} type="date" value={start} onChange={setStart} /><Input label={t("lab.end")} type="date" value={end} onChange={setEnd} /><Button disabled={!validRange || query.isFetching} onClick={applyRange}>{t("sportProgress.apply_range")}</Button></div>{!validRange && <p role="alert">{t("sportProgress.range_error")}</p>}</Card>
+    {query.isLoading && <Loading />}{query.isError && <div className="space-y-3"><ErrorNote message={t(data ? "sportProgress.refresh_error" : "sportProgress.load_error")} /><Button disabled={query.isFetching} onClick={() => void query.refetch()}>{t("common.retry")}</Button></div>}
+    {data && <p role="status" className="text-[13px] text-muted">{t("sportProgress.showing_range", { start: data.range.start, end: data.range.end })}</p>}
     {data && <><Card><CardHeader title={<h2>{t("sportProgress.goals_trends")}</h2>} right={<Badge>{t("sportProgress.state_" + data.state)}</Badge>} /><ProgressMetric metric={data.goal_context.goal_progress} /><Link className="mt-4 inline-block text-link" to="/app/settings?tab=profile">{t("sportProgress.review_goals")}</Link></Card>
       <Card><CardHeader title={<h2>{t("athlete.focus_gym")}</h2>} /><p className="mb-4 text-[13px] text-muted">{t("sportProgress.strength_note", { defaultValue: "Estimated strength from recorded sets, not a tested maximum. Compare the same exercise and equipment; technique and conditions can affect the estimate." })}</p>
         {data.state === "partial" && <p role="status">{t("sportProgress.partial")}</p>}

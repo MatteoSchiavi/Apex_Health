@@ -2530,7 +2530,11 @@
     "rules": {},
     "title_strength": "Strength overview",
     "strength_note": "Estimated strength from recorded sets, not a tested maximum. Compare the same exercise and equipment; technique and conditions can affect the estimate.",
-    "strength_estimate": "Estimated 1RM"
+    "strength_estimate": "Estimated 1RM",
+    "refresh_error": "These analyses could not be refreshed. Showing the last loaded results; retry to update them.",
+    "showing_range": "Showing results for {{start}} – {{end}}.",
+    "invalid_range_link": "The dates in this link are invalid. Showing the most recent 12 weeks; choose a valid range to continue.",
+    "view_activity_number": "View recorded activity {{id}}"
   },
   "sharing": {
     "title": "Share selected training information",
@@ -2665,7 +2669,11 @@
     "reload": "Reload current context",
     "no_provider": "This activity has no supported linked recording source for a comparison annotation.",
     "eligibility": "Comparisons require the same source, discipline, route, terrain, setting, time convention and effort intent, plus adequate continuous speed and heart-rate recordings. Outdoor weather must be compatible.",
-    "climbs": "Climb comparisons require imported verified segment identity, measured ascent and distance in metres, elapsed duration in seconds, and recorded segment weather. This form does not create or verify climb measurements."
+    "climbs": "Climb comparisons require imported verified segment identity, measured ascent and distance in metres, elapsed duration in seconds, and recorded segment weather. This form does not create or verify climb measurements.",
+    "newer_context": "Newer context is available. Your unfinished review is preserved. Reload the current context before preparing a new review.",
+    "reload_replaces": "Reloading replaces your unsaved text and review with the current saved context.",
+    "discard_provider": "Discard your unfinished context review and switch the data source?",
+    "retry_context": "Retry comparison context"
   },
   "betaCoach": {
     "actions": "Conversation actions for {{title}}",
@@ -3019,5 +3027,20 @@
     "review": {
       "discardProposalEdits": "Discard your unsaved proposal edits?"
     }
+  },
+  "readRecovery": {
+    "load_error": "These data could not be loaded. Retry or use the page controls to continue.",
+    "refresh_error": "These data could not be updated. The last loaded results remain visible; retry to refresh them.",
+    "retry_analysis": "Retry activity analysis"
+  },
+  "activityHistory": {
+    "showing_day": "Activities recorded on {{date}}.",
+    "showing_range": "Activities recorded from {{start}} to {{end}}.",
+    "invalid_date": "The requested date is invalid. Showing the selected recent period instead."
+  },
+  "sleepRecovery": {
+    "invalid_date": "This date is invalid. Return to sleep history to choose a recorded night.",
+    "timeline_unavailable": "Timeline unavailable",
+    "retry_stages": "Retry sleep stages"
   }
 }
