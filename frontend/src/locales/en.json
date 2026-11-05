@@ -3072,5 +3072,13 @@
     "loaded_items": "Loaded items: {{count}}; data incomplete",
     "loading_day": "This day is still loading. Recorded items will appear when available.",
     "unavailable_day": "The calendar data for this day are incomplete. Retry before treating it as an empty day."
+  },
+  "adminRelease": {
+    "title": "Deployed application",
+    "version": "Version",
+    "commit": "GitHub commit",
+    "refresh": "Check deployed version",
+    "stale": "The displayed version could not be refreshed. Check again to verify the current deployment.",
+    "unavailable": "The deployed version is unavailable. Try checking again."
   }
 }

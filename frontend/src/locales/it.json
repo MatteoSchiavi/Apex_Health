@@ -3072,5 +3072,13 @@
     "loaded_items": "Voci caricate: {{count}}; dati incompleti",
     "loading_day": "Questo giorno è ancora in caricamento. Le voci registrate compariranno appena disponibili.",
     "unavailable_day": "I dati del calendario per questo giorno sono incompleti. Riprova prima di considerarlo un giorno vuoto."
+  },
+  "adminRelease": {
+    "title": "Applicazione installata",
+    "version": "Versione",
+    "commit": "Commit GitHub",
+    "refresh": "Verifica versione installata",
+    "stale": "Non è stato possibile aggiornare la versione mostrata. Verifica di nuovo per controllare il rilascio attuale.",
+    "unavailable": "La versione installata non è disponibile. Riprova la verifica."
   }
 }

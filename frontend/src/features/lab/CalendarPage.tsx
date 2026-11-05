@@ -13,6 +13,7 @@ import {
   CardHeader,
   ErrorNote,
   PageHeader,
+  friendlyDiscipline,
 } from "../../components/kit";
 import { ReadError } from "../../components/ReadError";
 import type { Constraints, Event } from "./types";
@@ -90,7 +91,7 @@ export default function CalendarPage() {
       }
     }
     for (const session of monthlySessions.data?.sessions ?? []) add(session.date, { label: session.session_type, kind: "plan" });
-    for (const activity of activities.data ?? []) add(activity.local_date, { label: activity.discipline ?? t("activities.title"), href: `/app/activities/${activity.id}`, kind: "activity" });
+    for (const activity of activities.data ?? []) add(activity.local_date, { label: activity.discipline ? friendlyDiscipline(activity.discipline, t) : t("activities.title"), href: `/app/activities/${activity.id}`, kind: "activity" });
     return map;
   }, [monthlyEvents.data, monthlySessions.data, activities.data, timezone, t]);
   const save = useAction();

@@ -20,6 +20,10 @@ equipment, data-management, feedback and calendar workflows.
 - Calendar loading and failed sources are distinguished from a truly empty day.
   Failed sources can be retried; successful sync also refreshes calendar and
   equipment queries.
+- The developer administration footer reads the deployed version and full commit
+  from the uncached `/version` endpoint, links the exact GitHub commit, refreshes
+  every minute and supports an explicit check. Read failures mark cached values
+  as unverified instead of presenting them as a freshly checked deployment.
 
 Browser regressions cover English and Italian, light and dark themes, phone and
 desktop widths, delayed and failed reads/writes, draft preservation and request

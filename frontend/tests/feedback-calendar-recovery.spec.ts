@@ -16,7 +16,7 @@ for (const locale of ['en', 'it'] as const) {
     await page.goto('/app');
     await page.getByRole('button', { name: labels.feedback.button, exact: true }).click();
     const dialog = page.getByRole('dialog');
-    const message = dialog.getByLabel(labels.feedback.message, { exact: true });
+    const message = dialog.getByRole('textbox', { name: labels.feedback.message, exact: true });
     await dialog.getByRole('combobox').selectOption('idea');
     await message.fill('A useful idea for the overview');
     await dialog.getByRole('button', { name: labels.feedback.submit, exact: true }).click();
