@@ -11,6 +11,7 @@ export function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<"sent" | "error" | null>(null);
   const location = useLocation();
+  const [pagePath, setPagePath] = useState(location.pathname);
   const opener = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const [category, setCategory] = useState<Category>("bug");
@@ -25,43 +26,54 @@ export function FeedbackButton() {
 
   useEffect(() => {
     if (!open) return;
+    dialog.current?.querySelector<HTMLElement>("select")?.focus();
+    return () => opener.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (pending) dialog.current?.focus();
+    else if (document.activeElement === dialog.current) dialog.current?.querySelector<HTMLElement>('button[type="submit"]')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { e.preventDefault(); if (!pending) setOpen(false); return; }
       if (e.key !== "Tab") return;
-      const nodes = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button, input, textarea, select") ?? []);
+      const nodes = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button, input, textarea, select") ?? []).filter(node => !node.matches(":disabled") && node.getClientRects().length > 0);
+      if (!nodes.length) { e.preventDefault(); dialog.current?.focus(); return; }
       const first = nodes[0], last = nodes.at(-1);
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     };
     document.addEventListener("keydown", onKey);
-    dialog.current?.querySelector<HTMLElement>("select")?.focus();
-    return () => { document.removeEventListener("keydown", onKey); opener.current?.focus(); };
-  }, [open]);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, pending]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (pending || !message.trim()) return;
     setPending(true); setNotice(null);
     try {
-      await api.post("/api/feedback", { category, message: message.trim(), page_url: location.pathname });
-      setOpen(false); setMessage(""); setNotice("sent");
+      await api.post("/api/feedback", { category, message: message.trim(), page_url: pagePath });
+      setOpen(false); setMessage(""); setCategory("bug"); setNotice("sent");
     } catch { setNotice("error"); }
     finally { setPending(false); }
   }
 
   return <>
-    <button ref={opener} type="button" onClick={() => { setNotice(null); setOpen(true); }} className="border border-hairline px-3 py-2 text-[12px] text-muted hover:bg-surface2 hover:text-ink">{t("feedback.button")}</button>
+    <button ref={opener} type="button" onClick={() => { if (!message.trim()) setPagePath(location.pathname); setNotice(null); setOpen(true); }} className="border border-hairline px-3 py-2 text-[12px] text-muted hover:bg-surface2 hover:text-ink">{t("feedback.button")}</button>
     {notice && !open && <div role="status" className={`fixed bottom-5 right-5 z-[70] max-w-sm border bg-surface px-4 py-3 text-sm shadow-lg ${notice === "error" ? "border-alert text-alertText" : "border-hairline text-ink"}`}>{t(notice === "sent" ? "feedback.sent" : "feedback.error")}</div>}
-    {open && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="feedback-title" className="w-full max-w-lg border border-hairline bg-surface p-6 shadow-xl">
+    {open && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !pending) setOpen(false); }}>
+      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-busy={pending} aria-labelledby="feedback-title" className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto border border-hairline bg-surface p-6 shadow-xl">
         <h2 id="feedback-title" className="text-lg font-medium">{t("feedback.title")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("feedback.page", { page: location.pathname })}</p>
+        <p className="mt-1 text-sm text-muted">{t("feedback.page", { page: pagePath })}</p>
+        {pagePath !== location.pathname && <div className="mt-3 space-y-2 text-[12px] text-muted"><p>{t("feedback.draft_page")}</p><Button variant="ghost" disabled={pending} onClick={() => { setMessage(""); setCategory("bug"); setPagePath(location.pathname); setNotice(null); }}>{t("feedback.current_page")}</Button></div>}
         <p className="mt-3 text-xs leading-relaxed text-muted">{t("feedback.privacy_notice")}</p>
         <form onSubmit={submit} className="mt-5 space-y-4">
+          <fieldset disabled={pending} className="min-w-0 space-y-4 border-0 p-0">
           <label className="block text-sm">{t("feedback.category")}<select value={category} onChange={(e) => setCategory(e.target.value as Category)} className="mt-1 block w-full border border-hairline bg-surface px-3 py-2"><option value="bug">{t("feedback.bug")}</option><option value="idea">{t("feedback.idea")}</option><option value="other">{t("feedback.other")}</option></select></label>
           <label className="block text-sm">{t("feedback.message")}<textarea required minLength={1} maxLength={2000} rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className="mt-1 block w-full resize-y border border-hairline bg-surface px-3 py-2" /></label>
+          </fieldset>
           {notice === "error" && <p role="alert" className="text-sm text-alertText">{t("feedback.error")}</p>}
-          <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t("feedback.cancel")}</Button><Button type="submit" disabled={pending || !message.trim()}>{pending ? t("feedback.sending") : t("feedback.submit")}</Button></div>
+          <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>{t("feedback.cancel")}</Button><Button type="submit" disabled={pending || !message.trim()}>{pending ? t("feedback.sending") : t("feedback.submit")}</Button></div>
         </form>
       </div>
     </div>}

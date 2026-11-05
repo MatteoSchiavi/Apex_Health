@@ -1416,7 +1416,9 @@
     "sending": "Invio…",
     "sent": "Feedback salvato.",
     "error": "Impossibile salvare il feedback. Riprova.",
-    "privacy_notice": "Il feedback viene salvato per il proprietario dell’istanza. Se le notifiche Telegram dell’owner sono abilitate, nome, ID account, pagina, data e messaggio vengono inviati a Telegram. Non includere password, token o documenti medici."
+    "privacy_notice": "Il feedback viene salvato per il proprietario dell’istanza. Se le notifiche Telegram dell’owner sono abilitate, nome, ID account, pagina, data e messaggio vengono inviati a Telegram. Non includere password, token o documenti medici.",
+    "draft_page": "Questa segnalazione non completata riguarda ancora la pagina indicata sopra.",
+    "current_page": "Scarta la bozza e segnala la pagina attuale"
   },
   "setup": {
     "eyebrow": "PRIMA CONFIGURAZIONE",
@@ -3042,5 +3044,33 @@
     "invalid_date": "Questa data non è valida. Torna alla cronologia del sonno per scegliere una notte registrata.",
     "timeline_unavailable": "Andamento non disponibile",
     "retry_stages": "Riprova le fasi del sonno"
+  },
+  "gearRecovery": {
+    "retry_list": "Riprova l’elenco dell’attrezzatura",
+    "reactivate": "Riattiva attrezzatura",
+    "name_required": "Inserisci un nome per questa attrezzatura.",
+    "added": "Attrezzatura aggiunta.",
+    "retry_history": "Riprova lo storico dell’attrezzatura",
+    "retry_choices": "Riprova le opzioni del confronto",
+    "retry_comparison": "Riprova il confronto dell’attrezzatura",
+    "retry_activities": "Riprova le attività disponibili",
+    "reminders_saved": "Promemoria di manutenzione salvati.",
+    "association_saved": "Associazione dell’attrezzatura salvata.",
+    "defaults_saved": "Preferenza dell’attrezzatura predefinita salvata."
+  },
+  "dataRecovery": {
+    "annotation_saved": "Annotazione salvata per questa misura.",
+    "selected_evidence": "Dati della misura selezionata",
+    "retry_evidence": "Riprova i dati della misura",
+    "discard_annotation": "Vuoi scartare l’annotazione non salvata e cambiare la misura selezionata?",
+    "retry_coverage": "Riprova la copertura dei dati"
+  },
+  "calendarRecovery": {
+    "loading": "Caricamento di eventi, sedute pianificate e attività registrate…",
+    "retry": "Riprova i dati del calendario",
+    "partial": "Il calendario è incompleto finché tutte le fonti non sono caricate. Un giorno vuoto non indica ancora l’assenza di attività registrate.",
+    "loaded_items": "Voci caricate: {{count}}; dati incompleti",
+    "loading_day": "Questo giorno è ancora in caricamento. Le voci registrate compariranno appena disponibili.",
+    "unavailable_day": "I dati del calendario per questo giorno sono incompleti. Riprova prima di considerarlo un giorno vuoto."
   }
 }

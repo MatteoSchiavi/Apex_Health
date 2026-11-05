@@ -14,6 +14,7 @@ import {
   ErrorNote,
   PageHeader,
 } from "../../components/kit";
+import { ReadError } from "../../components/ReadError";
 import type { Constraints, Event } from "./types";
 import {
   Field,
@@ -47,6 +48,7 @@ export default function CalendarPage() {
   const { t } = useTranslation();
   const today = useToday();
   const timezone = useUi((s) => s.me?.timezone);
+  const uid = useUi((s) => s.me?.user_id);
   const [month, setMonth] = useState(() => localDay(timezone).slice(0, 7));
   const bounds = useMemo(() => monthBounds(month), [month]);
   const events = useLab<Event[]>("/events?horizon_days=365");
@@ -55,7 +57,7 @@ export default function CalendarPage() {
   const monthlySessions = useLab<{ sessions: Constraints["sessions"] }>(`/schedule/calendar?start=${bounds.start}&end=${bounds.end}`);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const activities = useQuery({
-    queryKey: ["calendar-activities", month],
+    queryKey: ["calendar-activities", uid, month],
     queryFn: async () => {
       const items: ActivityListItem[] = [];
       let offset = 0;
@@ -70,6 +72,10 @@ export default function CalendarPage() {
       return items;
     },
   });
+  const calendarQueries = [monthlyEvents, monthlySessions, activities];
+  const calendarLoading = calendarQueries.some(query => query.isLoading);
+  const calendarFailed = calendarQueries.some(query => query.isError);
+  const calendarIncomplete = calendarLoading || calendarFailed;
   const itemsByDay = useMemo(() => {
     const map = new Map<string, { label: string; href?: string; kind: string }[]>();
     const add = (day: string, item: { label: string; href?: string; kind: string }) => map.set(day, [...(map.get(day) ?? []), item]);
@@ -98,12 +104,15 @@ export default function CalendarPage() {
             <p className="text-[12px] text-muted">{t("navigation.calendar_summary")}</p>
           </div>
           <div className="flex items-center gap-1">
-            <button type="button" aria-label={t("navigation.previous_month")} onClick={() => setMonth(shiftMonth(month, -1))} className="p-2 hover:bg-surface2"><ChevronLeft size={18} /></button>
-            <button type="button" onClick={() => setMonth(localDay(timezone).slice(0, 7))} className="px-2 py-2 text-[12px] hover:bg-surface2">{t("navigation.today")}</button>
-            <button type="button" aria-label={t("navigation.next_month")} onClick={() => setMonth(shiftMonth(month, 1))} className="p-2 hover:bg-surface2"><ChevronRight size={18} /></button>
+            <button type="button" aria-label={t("navigation.previous_month")} onClick={() => setMonth(shiftMonth(month, -1))} className="flex min-h-11 min-w-11 items-center justify-center p-2 hover:bg-surface2"><ChevronLeft size={18} /></button>
+            <button type="button" onClick={() => setMonth(localDay(timezone).slice(0, 7))} className="min-h-11 px-2 py-2 text-[12px] hover:bg-surface2">{t("navigation.today")}</button>
+            <button type="button" aria-label={t("navigation.next_month")} onClick={() => setMonth(shiftMonth(month, 1))} className="flex min-h-11 min-w-11 items-center justify-center p-2 hover:bg-surface2"><ChevronRight size={18} /></button>
           </div>
         </div>
-        {(monthlyEvents.isError || monthlySessions.isError || activities.isError) && <ErrorNote />}
+        {calendarLoading && <p role="status" className="mb-4 text-[13px] text-muted">{t("calendarRecovery.loading")}</p>}
+        {calendarFailed && <ReadError label={t("calendarRecovery.retry")} stale={calendarQueries.some(query => query.data != null)}
+          pending={calendarQueries.some(query => query.isFetching)} retry={() => void Promise.allSettled(calendarQueries.filter(query => query.isError).map(query => query.refetch()))} />}
+        {calendarIncomplete && <p className="mb-4 text-[12px] text-muted">{t("calendarRecovery.partial")}</p>}
         <div className="grid grid-cols-7 gap-px bg-hairline border border-hairline" role="grid" aria-label={t("lab.calendar")}>
           <div role="row" className="contents">
             {Array.from({ length: 7 }, (_, i) => <div key={`head-${i}`} role="columnheader" className="bg-surface2 px-1 py-2 text-center text-[11px] text-muted">{new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 1 + i)))}</div>)}
@@ -115,7 +124,7 @@ export default function CalendarPage() {
             const inMonth = dayNumber > 0 && dayNumber <= bounds.days;
             const day = `${month}-${String(dayNumber).padStart(2, "0")}`;
             const entries = inMonth ? itemsByDay.get(day) ?? [] : [];
-            return <div key={index} role="gridcell" aria-label={inMonth ? `${day}, ${entries.length} ${t("navigation.calendar_items")}` : undefined}
+            return <div key={index} role="gridcell" aria-label={inMonth ? `${day}, ${calendarIncomplete ? t("calendarRecovery.loaded_items", { count: entries.length }) : `${entries.length} ${t("navigation.calendar_items")}`}` : undefined}
               className="min-h-24 min-w-0 bg-surface p-1.5 sm:min-h-28 sm:p-2">
               {inMonth && <><button type="button" aria-label={day} aria-pressed={selectedDay === day} onClick={() => setSelectedDay(day)} className={day === today ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[11px] text-canvas" : "text-[11px] text-muted hover:underline"}>{dayNumber}</button>
                 <div className="mt-1 flex flex-col gap-1">{entries.slice(0, 3).map((entry, i) => entry.href
@@ -129,7 +138,7 @@ export default function CalendarPage() {
         <div className="mt-4 flex flex-wrap gap-4 text-[11px] text-muted"><span>● {t("navigation.calendar_activity")}</span><span>● {t("navigation.calendar_plan")}</span><span>● {t("navigation.calendar_event")}</span></div>
         {selectedDay?.startsWith(month) && <div className="mt-5 border-t border-hairline pt-4" aria-live="polite">
           <h3 className="mb-3 text-[14px] font-medium">{new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${selectedDay}T12:00:00Z`))}</h3>
-          {(itemsByDay.get(selectedDay) ?? []).length === 0 ? <p className="text-[12px] text-muted">{t("navigation.no_calendar_items")}</p> :
+          {(itemsByDay.get(selectedDay) ?? []).length === 0 ? <p role={calendarIncomplete ? "status" : undefined} className="text-[12px] text-muted">{t(calendarIncomplete ? calendarLoading ? "calendarRecovery.loading_day" : "calendarRecovery.unavailable_day" : "navigation.no_calendar_items")}</p> :
             <ul className="flex flex-col gap-2">{(itemsByDay.get(selectedDay) ?? []).map((entry, index) => <li key={index} className="text-[13px]">
               <span className="mr-2 text-muted">{t(`navigation.calendar_${entry.kind}`)}</span>
               {entry.href ? <Link className="text-link" to={entry.href}>{entry.label} ↗</Link> : entry.label}

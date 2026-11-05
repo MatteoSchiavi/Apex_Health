@@ -1,4 +1,6 @@
 import { GearHistory } from "../athlete/GearHistory";
+import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -6,11 +8,14 @@ import {
   Card,
   CardHeader,
   ErrorNote,
+  Empty,
+  Loading,
   PageHeader,
   StatPod,
   fmtNum,
 } from "../../components/kit";
-import { Field, Form, num, QueryState, str, useAction, useLab } from "./shared";
+import { Field, Form, num, str, useAction, useLab } from "./shared";
+import { ReadError } from "../../components/ReadError";
 interface Gear {
   gear_id: number;
   name: string;
@@ -25,16 +30,19 @@ export default function GearPage() {
   const { t } = useTranslation();
   const q = useLab<Gear[]>("/gear");
   const save = useAction();
+  const create = useAction();
+  const qc = useQueryClient();
+  const addForm = useRef<HTMLFormElement>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={t("lab.gear")} subtitle={t("lab.gear_sub")} />
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-5">
-          <QueryState
-            loading={q.isLoading}
-            error={q.isError}
-            empty={q.data?.length === 0}
-          />
+          {q.isLoading && <Loading />}
+          {q.isError && <ReadError label={t("gearRecovery.retry_list")} stale={!!q.data} pending={q.isFetching} retry={() => void q.refetch()} />}
+          {!q.isError && q.data?.length === 0 && <Empty>{t("lab.empty")}</Empty>}
+          {save.isError && <ErrorNote message={save.error.message} />}
           {q.data?.map((g) => (
             <Card key={g.gear_id}>
               <CardHeader
@@ -80,23 +88,23 @@ export default function GearPage() {
                     save.mutate({
                       path: `/gear/${g.gear_id}/service`,
                       body: { service_type: "inspection" },
-                    })
+                    }, { onSuccess: () => void qc.invalidateQueries({ queryKey: ["gear-history"] }) })
                   }
                 >
                   {t("lab.record_service")}
                 </Button>
                 <Button
                   variant="ghost"
-                  disabled={save.isPending || !g.active}
+                  disabled={save.isPending}
                   onClick={() =>
                     save.mutate({
                       path: `/gear/${g.gear_id}`,
                       method: "patch",
-                      body: { active: false },
+                      body: { active: !g.active },
                     })
                   }
                 >
-                  {t("lab.retire")}
+                  {t(g.active ? "lab.retire" : "gearRecovery.reactivate")}
                 </Button>
               </div>
               <GearHistory id={g.gear_id} />
@@ -106,21 +114,26 @@ export default function GearPage() {
         <Card>
           <CardHeader title={t("lab.add_gear")} />
           <Form
-            pending={save.isPending}
-            error={save.error}
-            onSave={(f) =>
-              save.mutate({
+            formRef={addForm}
+            pending={create.isPending}
+            error={nameError ? new Error(nameError) : create.error}
+            onChange={() => { create.reset(); setNameError(null); }}
+            onSave={(f) => {
+              const name = str(f, "name").trim();
+              if (!name) { setNameError(t("gearRecovery.name_required")); return; }
+              setNameError(null);
+              create.mutate({
                 path: "/gear",
                 body: {
-                  name: str(f, "name"),
+                  name,
                   gear_type: str(f, "type"),
                   service_interval_hours: num(f, "hours"),
                   service_interval_km: num(f, "km"),
                 },
-              })
-            }
+              }, { onSuccess: () => addForm.current?.reset() });
+            }}
           >
-            <Field name="name" label={t("lab.title")} required />
+            <Field name="name" label={t("lab.title")} maxLength={120} required />
             <Field name="type" label={t("lab.gear_type")} value="bike">
               <option value="bike">{t("lab.gear_types.bike")}</option>
               <option value="shoes">{t("lab.gear_types.shoes")}</option>
@@ -130,16 +143,18 @@ export default function GearPage() {
               name="hours"
               label={t("lab.interval_hours")}
               type="number"
-              min={1}
+              min={0.01}
+              max={100000}
             />
             <Field
               name="km"
               label={t("lab.interval_km")}
               type="number"
-              min={1}
+              min={0.01}
+              max={1000000}
             />
           </Form>
-          {save.isError && <ErrorNote message={save.error.message} />}
+          {create.isSuccess && <p role="status" className="mt-3 text-[13px] text-muted">{t("gearRecovery.added")}</p>}
         </Card>
       </div>
     </div>
