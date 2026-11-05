@@ -14,7 +14,7 @@ export default defineConfig({
         target: "http://localhost:8000",
         changeOrigin: false,
       },
-      "^/legal/config$": {
+      "^/(legal/config|version)$": {
         target: "http://localhost:8000",
         changeOrigin: false,
       },

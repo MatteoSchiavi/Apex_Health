@@ -44,7 +44,7 @@ after(async () => {
 }, { timeout: 30_000 });
 
 for (const path of ['/athlete/profile', '/athlete/day?date=2026-11-02', '/healthkit/status', '/api/admin/usage',
-  '/metrics/resting_hr?days=7', '/sleep?limit=42', '/legal/config']) {
+  '/metrics/resting_hr?days=7', '/sleep?limit=42', '/legal/config', '/version']) {
   test(`development forwards ${path} to the API`, async () => {
     const response = await fetch(origin + path, { signal: AbortSignal.timeout(10_000) });
     assert.equal(response.status, 200);

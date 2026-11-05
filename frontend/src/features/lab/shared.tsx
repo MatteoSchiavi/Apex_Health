@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { api } from "../../app/api";
 import { useUi } from "../../app/stores/ui";
 import { Button, ErrorNote, Loading, Empty } from "../../components/kit";
@@ -50,6 +50,7 @@ export function Field({
   required = false,
   min,
   max,
+  maxLength,
   children,
 }: {
   name: string;
@@ -59,6 +60,7 @@ export function Field({
   required?: boolean;
   min?: number | string;
   max?: number | string;
+  maxLength?: number;
   children?: ReactNode;
 }) {
   return (
@@ -77,7 +79,7 @@ export function Field({
           className={inputClass}
           name={name}
           defaultValue={value}
-          maxLength={16000}
+          maxLength={maxLength ?? 16000}
           rows={3}
           required={required}
         />
@@ -91,6 +93,7 @@ export function Field({
           required={required}
           min={min}
           max={max}
+          maxLength={maxLength}
         />
       )}
     </label>
@@ -102,23 +105,30 @@ export function Form({
   pending,
   error,
   label,
+  formRef,
+  onChange,
 }: {
   children: ReactNode;
   onSave: (data: FormData) => void;
   pending?: boolean;
   error?: Error | null;
   label?: string;
+  formRef?: Ref<HTMLFormElement>;
+  onChange?: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <form
+      ref={formRef}
       className="flex flex-col gap-4"
+      onChange={onChange}
       onSubmit={(e) => {
         e.preventDefault();
+        if (pending) return;
         onSave(new FormData(e.currentTarget));
       }}
     >
-      {children}
+      <fieldset disabled={pending} className="flex min-w-0 flex-col gap-4 border-0 p-0">{children}</fieldset>
       <div>
         <Button type="submit" disabled={pending}>
           {label ?? t("lab.save")}

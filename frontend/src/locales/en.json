@@ -1416,7 +1416,9 @@
     "sending": "Sending…",
     "sent": "Feedback saved.",
     "error": "Feedback could not be saved. Please try again.",
-    "privacy_notice": "Feedback is saved for the instance owner. When owner Telegram notifications are enabled, your name, account ID, page, timestamp and message are sent to Telegram. Do not include passwords, tokens or medical documents."
+    "privacy_notice": "Feedback is saved for the instance owner. When owner Telegram notifications are enabled, your name, account ID, page, timestamp and message are sent to Telegram. Do not include passwords, tokens or medical documents.",
+    "draft_page": "This unfinished report still refers to the page shown above.",
+    "current_page": "Discard this draft and report the current page"
   },
   "setup": {
     "eyebrow": "FIRST SETUP",
@@ -3042,5 +3044,41 @@
     "invalid_date": "This date is invalid. Return to sleep history to choose a recorded night.",
     "timeline_unavailable": "Timeline unavailable",
     "retry_stages": "Retry sleep stages"
+  },
+  "gearRecovery": {
+    "retry_list": "Retry equipment list",
+    "reactivate": "Reactivate equipment",
+    "name_required": "Enter a name for this equipment.",
+    "added": "Equipment added.",
+    "retry_history": "Retry equipment history",
+    "retry_choices": "Retry comparison choices",
+    "retry_comparison": "Retry equipment comparison",
+    "retry_activities": "Retry activity choices",
+    "reminders_saved": "Service reminders saved.",
+    "association_saved": "Equipment association saved.",
+    "defaults_saved": "Default equipment preference saved."
+  },
+  "dataRecovery": {
+    "annotation_saved": "Annotation saved for this measurement.",
+    "selected_evidence": "Selected measurement evidence",
+    "retry_evidence": "Retry measurement evidence",
+    "discard_annotation": "Discard the unsaved annotation and change the selected measurement?",
+    "retry_coverage": "Retry data coverage"
+  },
+  "calendarRecovery": {
+    "loading": "Loading events, planned sessions and recorded activities…",
+    "retry": "Retry calendar data",
+    "partial": "This calendar is incomplete until all sources load. An empty day does not yet establish that no activities were recorded.",
+    "loaded_items": "Loaded items: {{count}}; data incomplete",
+    "loading_day": "This day is still loading. Recorded items will appear when available.",
+    "unavailable_day": "The calendar data for this day are incomplete. Retry before treating it as an empty day."
+  },
+  "adminRelease": {
+    "title": "Deployed application",
+    "version": "Version",
+    "commit": "GitHub commit",
+    "refresh": "Check deployed version",
+    "stale": "The displayed version could not be refreshed. Check again to verify the current deployment.",
+    "unavailable": "The deployed version is unavailable. Try checking again."
   }
 }

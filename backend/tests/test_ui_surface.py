@@ -263,7 +263,9 @@ async def test_sleep_list_and_day(client: AsyncClient, db_session):
     user = await _owner_user(db_session)
     await _seed_day(db_session, user.id)
 
-    listing = await client.get("/sleep")
+    # The fixture is deliberately historical; do not depend on today's rolling
+    # default window continuing to include a fixed September recording.
+    listing = await client.get("/sleep", params={"start": TODAY.isoformat(), "end": TODAY.isoformat()})
     assert listing.status_code == 200
     items = listing.json()["items"]
     assert len(items) == 1

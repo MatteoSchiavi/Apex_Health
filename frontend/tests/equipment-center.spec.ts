@@ -15,8 +15,8 @@ test('equipment history supports explicit links and configurable defaults',async
  await expect(page.getByText('Laces replaced',{exact:true})).toBeVisible();
  await page.getByRole('combobox',{name:'Add an activity to this equipment',exact:true}).selectOption('2');
  await page.getByRole('button',{name:'Confirm equipment association',exact:true}).click();
- expect(writes).toContain('PUT /gear/1/activities/2');
+ await expect.poll(()=>writes).toContain('PUT /gear/1/activities/2');
  await page.getByRole('combobox',{name:'Sport for this equipment',exact:true}).selectOption('1');
  await page.getByRole('button',{name:'Set as default for this sport',exact:true}).click();
- expect(writes).toContain('PUT /gear/1/defaults/1');
+ await expect.poll(()=>writes).toContain('PUT /gear/1/defaults/1');
 });
