@@ -643,7 +643,7 @@ async def index_garmin_payload(
             measured_at=measured,
             timezone=tz.key,
             fetched_at=raw.fetched_at,
-            acquisition="unofficial_adapter",
+            acquisition="official_api" if payload.get("_garmin_api") or "_personal_api_payload" in payload else "unofficial_adapter",
             raw_ingest_id=raw.id,
             metadata={
                 "feed": kind,

@@ -14,7 +14,7 @@ Modes (§6.3):
   overnight sessions that completed after the last run are re-fetched) to
   today.
 
-Every remote call is paced (§19 note: an unofficial client polled
+Every remote call is paced (§19 note: a remote provider polled
 continuously raises ban risk; pagination respects rate limits).
 """
 
@@ -58,6 +58,9 @@ class SyncReport:
     new_activities: int = 0
     streams_fetched: int = 0
     streams_failed: int = 0
+    document_feeds_failed: int = 0
+    wellness_feeds_failed: int = 0
+    wellness_retry_date: date | None = None
     wellness_days: int = 0
     raw_rows_stored: int = 0
     raw_rows_unprocessed: int = 0
@@ -207,7 +210,8 @@ def strength_links(user_id, start, end):
 
 def missing_strength_links(user_id, start, end):
     """Owned Garmin gym sessions with no successful set-feed projection yet."""
-    return strength_links(user_id, start, end).where(Activity.source_metrics["garmin"]["exercises"].astext.is_(None))
+    return strength_links(user_id, start, end).where(Activity.source_metrics["garmin"]["exercises"].astext.is_(None),
+        Activity.source_metrics["fit"]["exercises"].astext.is_(None))
 
 
 async def replay_activity_metadata(session, user_id, tz, discipline_index, start, end):
@@ -277,7 +281,40 @@ async def fetch_streams(
     for external_id in activity_ids:
         await fetch_strength_sets(session, user_id, client, external_id, delay_s, report)
         try:
-            samples = await client.get_activity_samples(int(external_id))
+            if callable(getattr(client, "get_activity_documents", None)):
+                documents, errors = await client.get_activity_documents(int(external_id))
+                for name, document in documents.items():
+                    await fetch.store_raw(session, user_id, f"api_document:{name}:{external_id}", document)
+                    report.raw_rows_stored += 1
+                report.document_feeds_failed += len(errors)
+                from app.services.evidence import scope_lock
+                await scope_lock(session, user_id, "changes")
+                activity = await session.scalar(select(Activity).join(ActivitySourceLink, ActivitySourceLink.activity_id == Activity.id).where(
+                    Activity.user_id == user_id, ActivitySourceLink.user_id == user_id,
+                    ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id))
+                if activity is not None:
+                    metrics = dict(activity.source_metrics or {})
+                    metrics[SOURCE] = {**metrics.get(SOURCE, {}), "activity_documents_checked": not errors}
+                    activity.source_metrics = metrics
+                for name, error in errors.items():
+                    note = f"Garmin API {name} unavailable ({error['error_class']}, HTTP {error['status_code']}); prior data retained."
+                    if note not in report.notes:
+                        report.notes.append(note)
+            if getattr(client, "api_activity_archives", False):
+                archive = await client.get_activity_archive(int(external_id))
+                if archive:
+                    await fetch.store_raw(session, user_id, f"api_activity_archive:{external_id}", archive)
+                    report.raw_rows_stored += 1
+                    report.streams_fetched += 1
+                    if tz is not None and discipline_index is not None:
+                        await normalize_pending(session, user_id, tz, discipline_index, report)
+                    if checkpoint:
+                        await session.commit()
+                    await _pace(delay_s)
+                    continue
+                samples = []
+            else:
+                samples = await client.get_activity_samples(int(external_id))
         except Exception as exc:
             logger.warning(
                 "garmin streams fetch failed for activity %s (error=%s)", external_id, type(exc).__name__
@@ -297,7 +334,8 @@ async def fetch_streams(
                        ActivitySourceLink.source == SOURCE, ActivitySourceLink.external_id == external_id))
             if activity is not None:
                 metrics = dict(activity.source_metrics or {})
-                metrics[SOURCE] = {**metrics.get(SOURCE, {}), "streams_state": "not_measured"}
+                metrics[SOURCE] = {**metrics.get(SOURCE, {}), "streams_state": "not_measured",
+                                   **({"original_archive_checked": True} if getattr(client, "api_activity_archives", False) else {})}
                 activity.source_metrics = metrics
             if checkpoint:
                 await session.commit()
@@ -317,7 +355,7 @@ async def fetch_streams(
 def _wellness_payload_has_content(payload_type: str, payload: Any) -> bool:
     """Decide whether a wellness payload carries REAL data for its day.
 
-    garminconnect 0.3.x answers even out-of-history days with structured
+    Historical Garmin payloads answer even out-of-history days with structured
     objects — 97-key stat dicts of flags, all-null sleep DTOs, empty arrays —
     so the naive `if not payload` emptiness test never fires and the §6.3
     backward walk can never find the history boundary. Emptiness is decided
@@ -394,7 +432,7 @@ async def fetch_wellness(
     skipped_days = 0
     day = from_day
     while True:
-        if checkpoint and backward:
+        if checkpoint and backward and day.isoformat() != getattr(client, "wellness_retry_day", None):
             already = await session.scalar(
                 select(SleepSession.id).where(
                     SleepSession.user_id == user_id,
@@ -423,14 +461,24 @@ async def fetch_wellness(
                     break
                 day = day + timedelta(days=step)
                 continue
-        payloads = {
-            fetch.PAYLOAD_SLEEP: await client.get_sleep_data(day.isoformat()),
-            fetch.PAYLOAD_HRV: await client.get_hrv_data(day.isoformat()),
-            fetch.PAYLOAD_STATS: await client.get_stats(day.isoformat()),
-            fetch.PAYLOAD_BODY_COMPOSITION: await client.get_body_composition(day.isoformat()),
-        }
+        payloads = {}
+        failed_day = False
+        feeds = [(fetch.PAYLOAD_SLEEP, client.get_sleep_data),
+                 (fetch.PAYLOAD_HRV, client.get_hrv_data),
+                 (fetch.PAYLOAD_STATS, client.get_stats),
+                 (fetch.PAYLOAD_BODY_COMPOSITION, client.get_body_composition)]
         if "stress_timeseries" not in getattr(client, "unsupported_capabilities", ()):
-            payloads[fetch.PAYLOAD_STRESS] = await client.get_stress_data(day.isoformat())
+            feeds.append((fetch.PAYLOAD_STRESS, client.get_stress_data))
+        from app.connectors.garmin.personal import GarminPersonalError
+        for payload_type, read in feeds:
+            try:
+                payloads[payload_type] = await read(day.isoformat())
+            except GarminPersonalError as error:
+                failed_day = True
+                report.wellness_feeds_failed += 1
+                note = f"Garmin API {payload_type} unavailable ({error.error_class}, HTTP {error.status_code}); prior data retained."
+                if note not in report.notes:
+                    report.notes.append(note)
         day_has_data = False
         for payload_type, payload in payloads.items():
             # 0.3.x structured-empty payloads carry no upsertable content —
@@ -448,12 +496,37 @@ async def fetch_wellness(
                 stored_type = f"{payload_type}:{day.isoformat()}"
             await fetch.store_raw(session, user_id, stored_type, payload)
             report.raw_rows_stored += 1
+        if callable(getattr(client, "get_api_documents", None)):
+            documents, errors = await client.get_api_documents(day.isoformat(), today=getattr(client, "account_today", datetime.now(UTC).astimezone(tz).date().isoformat()))
+            for name, document in documents.items():
+                await fetch.store_raw(session, user_id, f"api_document:{name}:{day.isoformat()}", document)
+                report.raw_rows_stored += 1
+            report.document_feeds_failed += len(errors)
+            for name, error in errors.items():
+                note = f"Garmin API {name} unavailable ({error['error_class']}, HTTP {error['status_code']}); prior data retained."
+                if note not in report.notes:
+                    report.notes.append(note)
         report.wellness_days += 1
 
+        if checkpoint and getattr(client, "api_activity_archives", False) and (
+            (failed_day and backward) or getattr(client, "wellness_retry_day", None) == day.isoformat()
+        ):
+            from app.services.evidence import update_feed
+            from app.models.lab import FeedState
+            await update_feed(session, user_id, SOURCE, "wellness_retry", "fetch_failed" if failed_day else "available", datetime.now(UTC))
+            retry_feed = await session.scalar(select(FeedState).where(
+                FeedState.user_id == user_id, FeedState.provider == SOURCE, FeedState.feed == "wellness_retry",
+            ))
+            retry_feed.cursor = {"date": day.isoformat()} if failed_day else {}
+            client.wellness_retry_day = day.isoformat() if failed_day else None
         if checkpoint and discipline_index is not None:
             await normalize_pending(session, user_id, tz, discipline_index, report)
             await session.commit()
 
+        if failed_day and backward:
+            report.wellness_retry_date = day
+            report.notes.append(f"Wellness history paused at {day.isoformat()} after a failed feed; retry this range explicitly.")
+            break
         if day_has_data:
             consecutive_empty = 0
         else:
@@ -461,7 +534,7 @@ async def fetch_wellness(
             if backward and consecutive_empty >= empty_gap_days:
                 report.notes.append(
                     f"backfill stopped after {consecutive_empty} empty days "
-                    f"(history boundary at {(day + timedelta(days=1)).isoformat()})"
+                    f"(application stopping heuristic at {(day + timedelta(days=1)).isoformat()}; older data may exist after a gap)"
                 )
                 break
 
@@ -545,36 +618,38 @@ async def normalize_pending(
 # ------------------------------------------------------------------ driver
 
 
-async def _external_ids_missing_streams(session: AsyncSession, user_id: int, now: datetime | None = None) -> list[str]:
+async def _external_ids_missing_streams(session: AsyncSession, user_id: int, now: datetime | None = None, *, include_originals: bool = False, include_documents: bool = False) -> list[str]:
     """Linked activities of this user that have NO stream rows — activities
     normalized by a checkpoint pass that was killed before its streams phase
     would have run. The resume re-fetches exactly these."""
+    needs_streams = (
+        or_(Activity.source_metrics[SOURCE]["streams_state"].astext.is_distinct_from("not_measured"),
+            (Activity.start_time >= (now or datetime.now(UTC)) - timedelta(days=2))
+            & (Activity.data_completeness != "manual"))
+        & ~select(ActivityStream.activity_id).where(ActivityStream.activity_id == Activity.id).exists()
+    )
+    needs_data = needs_streams
+    if include_originals:
+        # Upgrade existing JSON-only activities too: a few HR rows do not prove
+        # that recorded FIT laps, sets or other channels were ever imported.
+        needs_data = or_(needs_streams, Activity.source_metrics[SOURCE]["original_archive_checked"].astext.is_distinct_from("true"))
+    if include_documents:
+        needs_data = or_(needs_data, Activity.source_metrics[SOURCE]["activity_documents_checked"].astext.is_distinct_from("true"))
     rows = await session.execute(
-        select(ActivitySourceLink.external_id)
-        .join(Activity, Activity.id == ActivitySourceLink.activity_id)
-        .where(
-            ActivitySourceLink.source == SOURCE,
-            ActivitySourceLink.user_id == user_id,
-            Activity.user_id == user_id,
-            or_(Activity.source_metrics[SOURCE]["streams_state"].astext.is_distinct_from("not_measured"),
-                # Newly uploaded recordings may acquire streams later. Empty
-                # recent sensor sessions get a bounded eventual-data retry.
-                (Activity.start_time >= (now or datetime.now(UTC)) - timedelta(days=2))
-                & (Activity.data_completeness != "manual")),
-            ~select(ActivityStream.activity_id)
-            .where(ActivityStream.activity_id == Activity.id)
-            .exists(),
+        select(ActivitySourceLink.external_id).join(Activity, Activity.id == ActivitySourceLink.activity_id).where(
+            ActivitySourceLink.source == SOURCE, ActivitySourceLink.user_id == user_id,
+            Activity.user_id == user_id, needs_data,
         )
     )
     return [str(external_id) for external_id in rows.scalars().all()]
 
 
 async def clear_personal_api_coverage(session: AsyncSession, user_id: int) -> None:
-    """Remove Personal-only coverage restrictions when returning to Connect.
+    """Reconcile obsolete coverage restrictions after an API capability change.
 
     The coverage marker establishes ownership of these flags. Historical feed
     timestamps, cursors and details survive; no measurements or raw rows change.
-    A legacy transport must establish availability through its own fetches.
+    Newly supported feeds must establish availability through their own fetches.
     """
     from app.connectors.garmin.personal import GarminPersonalClient
     from app.models.lab import FeedState
@@ -586,7 +661,7 @@ async def clear_personal_api_coverage(session: AsyncSession, user_id: int) -> No
         return
     await session.execute(update(FeedState).where(
         FeedState.user_id == user_id, FeedState.provider == SOURCE,
-        FeedState.feed.in_(GarminPersonalClient.unsupported_capabilities),
+        FeedState.feed.in_(GarminPersonalClient.unsupported_capabilities | {"activity_streams"}),
         FeedState.availability == "not_supported",
     ).values(availability=case(
         (FeedState.latest_measurement_at.is_not(None), "stale"),
@@ -626,6 +701,8 @@ async def sync_user_garmin(
     discipline_index = dict(rows.all())
 
     local_today = now.astimezone(tz).date()
+    if getattr(client, "api_activity_archives", False):
+        client.account_today = local_today.isoformat()
     pilot_days = getattr(client, "initial_sync_days", None)
     pilot_from = local_today - timedelta(days=pilot_days - 1) if pilot_days else None
     pilot_cutoff = datetime(pilot_from.year, pilot_from.month, pilot_from.day, tzinfo=tz) if pilot_from else None
@@ -653,7 +730,8 @@ async def sync_user_garmin(
         # Activities normalized by a killed earlier pass have links but no
         # streams — the resume must fetch streams for them too, not just for
         # the activities that are new in THIS pass.
-        recovered = await _external_ids_missing_streams(session, user.id, now)
+        recovered = await _external_ids_missing_streams(session, user.id, now, include_originals=getattr(client, "api_activity_archives", False),
+            include_documents=callable(getattr(client, "get_activity_documents", None)))
         if recovered:
             report.notes.append(
                 f"resume: fetching streams for {len(recovered)} activities "
@@ -667,7 +745,20 @@ async def sync_user_garmin(
         tz=tz, discipline_index=discipline_index, checkpoint=checkpoint,
     )
 
-    if pilot_from is not None:
+    if checkpoint and getattr(client, "api_activity_archives", False):
+        from app.models.lab import FeedState
+        retry_feed = await session.scalar(select(FeedState).where(
+            FeedState.user_id == user.id, FeedState.provider == SOURCE, FeedState.feed == "wellness_retry",
+        ))
+        client.wellness_retry_day = (getattr(retry_feed, "cursor", None) or {}).get("date") if retry_feed else None
+    history_start = getattr(client, "history_start", None)
+    if backfill and history_start is not None:
+        if not isinstance(history_start, date) or history_start > local_today:
+            raise SyncError("Garmin API history start must be a calendar date no later than today")
+        await fetch_wellness(session, user.id, client, tz, from_day=history_start, to_day=local_today,
+            delay_s=page_delay_s, empty_gap_days=empty_gap_days, report=report,
+            discipline_index=discipline_index, checkpoint=checkpoint)
+    elif pilot_from is not None:
         from_day = pilot_from if backfill else max(
             pilot_from, min(local_today, integration.last_synced_at.astimezone(tz).date() - timedelta(days=1))
         )
@@ -720,7 +811,8 @@ async def sync_user_garmin(
                       "not_supported" if "activity_streams" in unsupported else
                       "fetch_failed" if report.streams_failed else "available", now)
     for capability in sorted(unsupported - {"activity_streams"}):
-        await update_feed(session, user.id, SOURCE, capability, "not_supported", now)
+        feed_name = "exercise_sets_json" if capability == "exercise_sets" and getattr(client, "api_activity_archives", False) else capability
+        await update_feed(session, user.id, SOURCE, feed_name, "not_supported", now)
     if pilot_from is not None:
         from app.models.lab import FeedState
         await update_feed(session, user.id, SOURCE, "personal_api_coverage", "available", now)
@@ -731,11 +823,11 @@ async def sync_user_garmin(
                             "through_date": local_today.isoformat(), "full_history": False,
                             "unsupported": sorted(unsupported)}
     if unsupported:
-        report.notes.append("Personal API coverage excludes: " + ", ".join(sorted(unsupported)))
+        report.notes.append("Personal API coverage excludes: " + ", ".join(sorted("exercise_sets_json (recorded FIT sets supported)" if c == "exercise_sets" and getattr(client, "api_activity_archives", False) else c for c in unsupported)))
     # A malformed historical row does not invalidate successfully fetched
     # observations or provider authentication. Keep it pending and expose
     # partial normalization separately from the successful fetch timestamp.
-    report.state = "partial" if report.raw_rows_unprocessed or report.streams_failed else "complete"
+    report.state = "partial" if report.raw_rows_unprocessed or report.streams_failed or report.document_feeds_failed or report.wellness_feeds_failed else "complete"
     from app.models.lab import FeedState
     normalization_state = "partial" if report.raw_rows_unprocessed else "complete"
     await update_feed(session, user.id, SOURCE, "normalization", normalization_state, now)
@@ -746,7 +838,8 @@ async def sync_user_garmin(
     feed.details = {"normalized_raw_rows": report.normalized_raw_rows,
                     "pending_error_count": report.raw_rows_unprocessed,
                     "state": normalization_state, "retry": "Pending raw payloads are retried on the next sync."}
-    integration.last_synced_at = now
+    if not report.wellness_feeds_failed:
+        integration.last_synced_at = now
     return report
 
 

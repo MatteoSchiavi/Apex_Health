@@ -32,9 +32,7 @@ class Settings(BaseSettings):
     fitbit_redirect_uri: str = "http://localhost:8000/integrations/fitbit/callback"
 
     # --- Garmin connector (§5, §23 Phase 1) ---
-    garmin_email: str = ""
-    garmin_password: str = ""
-    # §19 note: an unofficial client polled continuously raises ban risk —
+    # Respect Garmin API rate limits;
     # every paginated remote call is paced by this delay.
     garmin_page_delay_seconds: float = 2.0
     garmin_activity_page_size: int = 50

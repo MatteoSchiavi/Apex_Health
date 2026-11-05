@@ -2,18 +2,19 @@
 
 No SDK disk cache is used. The caller encrypts ``dump_tokens`` in the owning
 integration record. JWT claims only schedule renewal; Garmin validates access.
-The limited JSON pilot deliberately does not infer streams or individual sets
-from downloadable FIT files or aggregate exercise summaries.
+Original FIT archives are stored before parsing; aggregate exercise summaries
+are never treated as individual recorded sets.
 """
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import binascii
 import json
 import math
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -62,11 +63,12 @@ def _epoch_ms(value: Any) -> int:
 class GarminPersonalClient:
     """Account-local async client; construction performs no I/O."""
 
-    # Product pilot window, not a claim about Garmin retention.
-    initial_sync_days = 30
+    # No application-imposed 30-day history limit.
+    initial_sync_days = None
+    api_activity_archives = True
 
     unsupported_capabilities = frozenset({
-        "activity_streams", "exercise_sets", "stress_timeseries",
+        "exercise_sets", "stress_timeseries",
         "training_readiness", "training_status", "recovery_time",
     })
 
@@ -87,6 +89,7 @@ class GarminPersonalClient:
                 pass  # A damaged/expired cache is renewed using this account's key.
         self._http = http_client or httpx.AsyncClient(timeout=httpx.Timeout(20, connect=5), follow_redirects=False)
         self._auth_lock = asyncio.Lock()
+        self._profile_documents_fetched = False
 
     def dump_tokens(self) -> dict[str, Any]:
         result = {"auth_type": "personal_api_key", "api_key": self._api_key}
@@ -97,13 +100,21 @@ class GarminPersonalClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def _request(self, method: str, path: str, authorization: str, *, params=None) -> httpx.Response:
+    async def _request(self, method: str, path: str, authorization: str, *, params=None, max_bytes: int = 4 * 1024 * 1024) -> httpx.Response:
         for attempt in range(3):
             try:
-                response = await self._http.request(
+                async with self._http.stream(
                     method, BASE_URL + path, headers={"Authorization": authorization, "Accept": "*/*"},
                     params=params, follow_redirects=False,
-                )
+                ) as incoming:
+                    chunks, size = [], 0
+                    async for chunk in incoming.aiter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes:
+                            raise GarminPersonalError("Garmin API response exceeds the supported size", error_class="normalization")
+                        chunks.append(chunk)
+                    response = httpx.Response(incoming.status_code, headers={k: v for k, v in incoming.headers.items() if k.lower() not in {"content-encoding", "content-length"}},
+                                              content=b"".join(chunks), request=incoming.request)
             except httpx.TransportError as exc:
                 code = "timeout" if isinstance(exc, httpx.TimeoutException) else "transport"
                 if attempt == 2:
@@ -140,7 +151,7 @@ class GarminPersonalClient:
                 raise GarminAuthError("Garmin Personal API key or token is expired; reconnect Garmin")
             self._access_token, self._expires_at = token, expiry
 
-    async def _get(self, path: str, *, params=None, expected: type = dict, no_content: bool = False):
+    async def _get(self, path: str, *, params=None, expected: type | tuple[type, ...] = dict, no_content: bool = False):
         await self.authenticate(force=False)
         for attempt in range(2):
             response = await self._request("GET", path, f"Bearer {self._access_token}", params=params)
@@ -153,7 +164,7 @@ class GarminPersonalClient:
         if response.status_code == 403:
             raise GarminPersonalError("Garmin denied access to this data", error_class="permission", status_code=403)
         if response.status_code == 204 and no_content:
-            return expected()
+            return {} if isinstance(expected, tuple) else expected()
         if response.status_code != 200:
             raise GarminPersonalError("Garmin data request failed", status_code=response.status_code)
         try:
@@ -188,7 +199,7 @@ class GarminPersonalClient:
         return mapped
 
     async def get_sleep_data(self, local_date: str) -> dict[str, Any]:
-        original = await self._get("/sleep-service/sleep/dailySleep", params={"date": local_date})
+        original = await self._get("/sleep-service/sleep/dailySleep", params={"date": local_date}, no_content=True)
         dto = dict(original)
         for key in ("sleepStartTimestampGMT", "sleepEndTimestampGMT"):
             if dto.get(key) is not None:
@@ -199,10 +210,12 @@ class GarminPersonalClient:
         return {"dailySleepDTO": dto, "_personal_api_payload": original}
 
     async def get_hrv_data(self, local_date: str) -> dict[str, Any]:
-        return await self._get(f"/hrv-service/hrv/{local_date}", no_content=True)
+        payload = await self._get(f"/hrv-service/hrv/{local_date}", no_content=True)
+        return {**payload, "_garmin_api": True} if payload else {}
 
     async def get_stats(self, local_date: str) -> dict[str, Any]:
-        return await self._get("/usersummary-service/usersummary/daily", params={"calendarDate": local_date})
+        payload = await self._get("/usersummary-service/usersummary/daily", params={"calendarDate": local_date}, no_content=True)
+        return {**payload, "_garmin_api": True} if payload else {}
 
     async def get_body_composition(self, local_date: str) -> dict[str, Any]:
         # The live /range endpoint returns grams, despite the shared OpenAPI
@@ -211,7 +224,9 @@ class GarminPersonalClient:
         # Garmin's official SDK uses range + includeAll. The documented /all
         # route returns 400 for a valid real account. Adjacent graph-context weights are not
         # measurements for the requested day.
-        original = await self._get(f"/weight-service/weight/range/{local_date}/{local_date}", params={"includeAll": "true"})
+        original = await self._get(f"/weight-service/weight/range/{local_date}/{local_date}", params={"includeAll": "true"}, no_content=True)
+        if not original:
+            return {}
         summaries = original.get("dailyWeightSummaries")
         if not isinstance(summaries, list):
             raise GarminPersonalError("Garmin returned invalid daily weight summaries", error_class="normalization")
@@ -234,11 +249,83 @@ class GarminPersonalClient:
                 total[key] = sum(values) / len(values)
         return {"totalAverage": total, "_personal_api_payload": original, "_personal_api_weight_unit": "g"}
 
+    async def get_api_documents(self, local_date: str, *, today: str | None = None):
+        """Fetch additional read surfaces, recording optional failures explicitly.
+
+        No source document is flattened or assigned an inferred medical unit.
+        Authentication failure stops the account; missing permissions do not
+        erase already imported data from other feeds.
+        """
+        from app.connectors.garmin.documents import DAILY_DOCUMENTS, PROFILE_DOCUMENTS
+        day = date.fromisoformat(local_date).isoformat()
+        routes = dict(DAILY_DOCUMENTS)
+        if not self._profile_documents_fetched:
+            routes.update(PROFILE_DOCUMENTS)
+        documents, errors = {}, {}
+        for name, (path, params) in routes.items():
+            substitutions = {"day": day, "today": today or date.today().isoformat()}
+            path = path.format(**substitutions)
+            params = {k: v.format(**substitutions) for k, v in (params or {}).items()}
+            try:
+                value = await self._get(path, params=params, expected=(dict, list), no_content=True)
+            except GarminPersonalError as error:
+                errors[name] = {"error_class": error.error_class, "status_code": error.status_code}
+            else:
+                if value:
+                    documents[name] = {"endpoint": path, "requested_date": day, "payload": value}
+            await asyncio.sleep(0.1)
+        self._profile_documents_fetched = True
+        return documents, errors
+
+    async def get_activity_documents(self, activity_id: int):
+        documents, errors = {}, {}
+        for name, suffix in (("activity_detail", ""), ("activity_workouts", "/workouts")):
+            path = f"/activity-service/activity/{activity_id}{suffix}"
+            try:
+                payload = await self._get(path, expected=(dict, list), no_content=True)
+            except GarminPersonalError as error:
+                errors[name] = {"error_class": error.error_class, "status_code": error.status_code}
+            else:
+                if payload:
+                    documents[name] = {"endpoint": path, "activity_id": activity_id, "payload": payload}
+            await asyncio.sleep(0.1)
+        return documents, errors
+
+    async def get_activity_archive(self, activity_id: int) -> dict[str, Any]:
+        """Download the original through the same account's API bearer token.
+
+        The raw archive is returned for durable storage BEFORE FIT decoding.
+        No caller-supplied host, redirected URL or filesystem extraction is used.
+        """
+        if isinstance(activity_id, bool) or not isinstance(activity_id, int) or activity_id <= 0:
+            raise GarminPersonalError("Invalid Garmin activity identifier", error_class="normalization")
+        await self.authenticate(force=False)
+        for attempt in range(2):
+            response = await self._request("GET", f"/download-service/files/activity/{activity_id}",
+                f"Bearer {self._access_token}", max_bytes=20 * 1024 * 1024)
+            if response.status_code != 401:
+                break
+            self._access_token, self._expires_at = None, 0.0
+            if attempt:
+                raise GarminAuthError("Garmin API access was revoked; reconnect Garmin")
+            await self.authenticate(force=True)
+        if response.status_code == 204:
+            return {}
+        if response.status_code == 403:
+            raise GarminPersonalError("Garmin denied access to this original activity", error_class="permission", status_code=403)
+        if response.status_code != 200:
+            raise GarminPersonalError("Garmin original activity download failed", status_code=response.status_code)
+        content = response.content
+        if not content:
+            return {}
+        return {"activity_id": activity_id, "format": "original_zip", "sha256": hashlib.sha256(content).hexdigest(),
+                "encoding": "base64", "content": base64.b64encode(content).decode("ascii")}
+
     async def get_activity_samples(self, activity_id: int) -> list[dict[str, Any]]:
-        raise NotImplementedError("Personal API activity streams require a validated FIT mapping")
+        raise NotImplementedError("Use the raw-first Garmin API original archive ingestion path")
 
     async def get_activity_exercise_sets(self, activity_id: int) -> dict[str, Any]:
-        raise NotImplementedError("Personal API does not expose the Connect per-set feed")
+        raise NotImplementedError("Garmin API has no dedicated per-set JSON feed; original FIT may carry recorded sets")
 
     async def get_stress_data(self, local_date: str) -> dict[str, Any]:
         raise NotImplementedError("Personal API daily stress is available in get_stats; no stress time series")

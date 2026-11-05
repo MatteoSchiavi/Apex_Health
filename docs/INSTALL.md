@@ -108,8 +108,8 @@ service.
 
 - **Garmin:** the owner can connect an official Personal API key in Settings;
   see [GARMIN_PERSONAL_API.md](GARMIN_PERSONAL_API.md) for the personal-use pilot
-  and coverage limits. The legacy Garmin Connect method remains available.
-  Credentials are encrypted; its password is used only for the connection flow.
+  and coverage limits. The password method is removed; only API-key credentials are accepted.
+  API keys and access tokens are encrypted; Garmin passwords are never accepted.
 - **FIT files:** import original files from Data Health. Originals are stored
   encrypted and sample provenance is retained.
 - **AI coach:** configure an OpenAI-compatible provider using the LLM settings

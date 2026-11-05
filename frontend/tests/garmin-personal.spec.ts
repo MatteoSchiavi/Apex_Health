@@ -8,7 +8,7 @@ const legacyDevice = {
   is_main: true,
   last_synced_at: today + "T06:00:00Z",
   connected_at: today + "T00:00:00Z",
-  auth_method: "garmin_connect",
+  auth_method: "reconnect_required",
 };
 
 for (const locale of ["en", "it"] as const) {
@@ -30,10 +30,10 @@ for (const locale of ["en", "it"] as const) {
     });
 
     await page.goto("/app/settings?tab=devices");
-    const garmin = page.getByText("Garmin Connect", { exact: true }).locator("xpath=../../..");
-    await expect(garmin.getByRole("button", { name: en ? "Use Personal API" : "Usa Personal API" })).toBeVisible();
+    const garmin = page.getByText("Garmin API", { exact: true }).locator("xpath=../../..");
+    await expect(garmin.getByRole("button", { name: en ? "Reconnect Garmin API" : "Ricollega Garmin API" })).toBeVisible();
     await expect(garmin.getByRole("button", { name: en ? "Disconnect" : "Disconnetti" })).toBeVisible();
-    await garmin.getByRole("button", { name: en ? "Use Personal API" : "Usa Personal API" }).click();
+    await garmin.getByRole("button", { name: en ? "Reconnect Garmin API" : "Ricollega Garmin API" }).click();
 
     const key = page.getByLabel(en ? "Garmin Personal API key" : "Chiave Garmin Personal API");
     await key.fill("  synthetic-private-key  ");
@@ -63,8 +63,8 @@ for (const locale of ["en", "it"] as const) {
     await installApi(page, { locale, role: "friend" });
     await page.route("**/settings/devices", route => route.fulfill({ json: [legacyDevice] }));
     await page.goto("/app/settings?tab=devices");
-    await expect(page.getByText("Garmin Connect", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: en ? "Use Personal API" : "Usa Personal API" })).toHaveCount(0);
+    await expect(page.getByText("Garmin API", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: en ? "Reconnect Garmin API" : "Ricollega Garmin API" })).toHaveCount(0);
     await expect(page.getByLabel(en ? "Garmin Personal API key" : "Chiave Garmin Personal API")).toHaveCount(0);
   });
 }

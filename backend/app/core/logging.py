@@ -10,8 +10,7 @@ OPERATIONAL_ERROR_CODES = frozenset({
     'TimeoutError', 'ConnectionError', 'ValueError', 'TypeError', 'KeyError',
     'IntegrityError', 'DataError', 'ProgrammingError', 'OperationalError',
     'RuntimeError', 'NormalizationError', 'GarminAuthError',
-    'GarminConnectConnectionError', 'GarminConnectAuthenticationError',
-    'GarminConnectTooManyRequestsError', 'HTTPError', 'HTTPStatusError',
+    'GarminPersonalError', 'HTTPError', 'HTTPStatusError',
     'SoftTimeLimitExceeded', 'unknown',
 })
 OPERATIONAL_FETCH_OPERATIONS = frozenset({

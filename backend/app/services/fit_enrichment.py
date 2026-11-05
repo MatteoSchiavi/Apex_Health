@@ -1,6 +1,6 @@
 """FIT enrichment (§3b / STACK.md §2.9): what Garmin's JSON API hides.
 
-Garmin registers MORE than Connect exposes over the unofficial JSON
+Original FIT files can contain more detail than activity-summary JSON
 endpoints — per-lap splits are the classic case: the watch records every
 lap (auto or manual) with avg/max HR, power, duration, calories, but the
 activity-summary JSON only carries some sports' laps and drops the rest.

@@ -4,7 +4,7 @@ Celery beat dispatches hourly in UTC; accounts in the local 03:00 window
 recompute all 28 completed local days, including history before registration.
 Missing Garmin sleep/HRV/resting-HR feeds and missing recent strength sets use
 the existing durable, account-scoped repair outbox. Completed missing-data
-checks are remembered for seven days to bound calls to the unofficial API.
+checks are remembered for seven days to bound calls to the Garmin API.
 No measurements or minimum baseline support are fabricated. The repair worker
 recomputes the range after newly fetched data has been normalised.
 
@@ -88,7 +88,7 @@ async def queue_history_repair(user, start, end):
         for day, metric in records:
             present.setdefault(day, set()).add(metric)
         # A completed check may honestly return not-measured. Retry such older
-        # days weekly, rather than asking the unofficial API 140 times/night.
+        # days weekly, rather than asking the Garmin API 140 times/night.
         checks = (await session.scalars(select(LabJob).where(
             LabJob.user_id == user.id, LabJob.kind == "repair", LabJob.state == "completed",
             LabJob.updated_at >= datetime.now(UTC) - timedelta(days=7)))).all()

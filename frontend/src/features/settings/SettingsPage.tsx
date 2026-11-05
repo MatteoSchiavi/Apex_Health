@@ -228,111 +228,13 @@ function AppearanceSection() {
 /* ------------------------------------------------------------------ devices */
 
 const PROVIDERS: { key: string; name: string; connectable: boolean }[] = [
-  { key: "garmin", name: "Garmin Connect", connectable: true },
+  { key: "garmin", name: "Garmin API", connectable: true },
   { key: "technogym", name: "Technogym", connectable: true },
   { key: "whoop", name: "Whoop", connectable: true },
   { key: "strava", name: "Strava", connectable: true },
   { key: "oura", name: "Oura", connectable: true },
   { key: "coros", name: "COROS · MCP", connectable: true },
 ];
-
-/**
- * Garmin credentials flow — the UI answer to "how do I link my Garmin
- * account?": POST /settings/integrations/garmin/connect with the account
- * email/password (MFA step handled inline). Only the session tokens are
- * stored server-side, app-layer-encrypted; the password never leaves this
- * request. After a successful connect the full-history backfill task is
- * enqueued and the row flips to CONNECTED.
- */
-function GarminConnectForm({ onDone }: { onDone: () => void }) {
-  const { t } = useTranslation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [mfaCode, setMfaCode] = useState("");
-  const [mfaStep, setMfaStep] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const connect = useMutation({
-    mutationFn: () =>
-      api.post<{ connected: boolean; mfa_required: boolean }>(
-        "/settings/integrations/garmin/connect",
-        mfaStep ? { email, password, mfa_code: mfaCode } : { email, password },
-      ),
-    onSuccess: (res) => {
-      if (res.mfa_required) {
-        setMfaStep(true);
-        setError(null);
-        return;
-      }
-      setPassword("");
-      setMfaCode("");
-      setMfaStep(false);
-      onDone();
-    },
-    onError: (err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-  });
-
-  return (
-    <form
-      onSubmit={(e: FormEvent) => {
-        e.preventDefault();
-        connect.mutate();
-      }}
-      className="mt-2 bg-surface2 p-3"
-    >
-      <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        {t("settings.garmin_connect_hint")}
-      </p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Input
-          label={t("settings.garmin_email")}
-          value={email}
-          onChange={setEmail}
-          type="email"
-          autoComplete="off"
-          required
-        />
-        <Input
-          label={t("settings.garmin_password")}
-          value={password}
-          onChange={setPassword}
-          type="password"
-          autoComplete="off"
-          required
-        />
-        {mfaStep && (
-          <Input
-            label={t("settings.garmin_mfa")}
-            value={mfaCode}
-            onChange={setMfaCode}
-            placeholder="123456"
-            required
-          />
-        )}
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Button type="submit" disabled={connect.isPending}>
-          {connect.isPending
-            ? t("settings.connecting")
-            : mfaStep
-              ? t("settings.verify_code")
-              : t("settings.connect")}
-        </Button>
-        {mfaStep && (
-          <span className="text-[12px] text-warningText">
-            {t("settings.mfa_sent")}
-          </span>
-        )}
-      </div>
-      {error && (
-        <div className="mt-2">
-          <ErrorNote message={error} />
-        </div>
-      )}
-    </form>
-  );
-}
 
 function CorosConnectForm({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
@@ -497,7 +399,6 @@ function DevicesSection() {
 
   const byProvider = new Map((devices.data ?? []).map((d) => [d.provider, d]));
   const accounts = new Map((health.data?.accounts ?? []).map(account => [account.provider, account]));
-  const garminConnected = byProvider.get("garmin")?.status === "active";
   function caption(provider: string, device: DeviceOut) {
     const account = accounts.get(provider);
     const feeds = (health.data?.feeds ?? []).filter(feed => feed.provider === provider);
@@ -549,7 +450,9 @@ function DevicesSection() {
                         </Badge>
                       )}
                       {connected ? (
-                        <Badge tone="positive">{t("settings.connected")}</Badge>
+                        <Badge tone={key === "garmin" && d?.auth_method === "reconnect_required" ? "warning" : "positive"}>
+                          {t(key === "garmin" && d?.auth_method === "reconnect_required" ? "garminPersonal.switch" : "settings.connected")}
+                        </Badge>
                       ) : d ? (
                         <Badge tone="warning">
                           {d.status === "revoked"
@@ -560,7 +463,9 @@ function DevicesSection() {
                     </div>
                     <div className="num mt-0.5 text-[12px] text-muted">
                       {connected
-                        ? caption(key, d!)
+                        ? key === "garmin" && d?.auth_method === "reconnect_required"
+                          ? t("garminPersonal.switch")
+                          : caption(key, d!)
                         : key === "garmin"
                           ? t("settings.garmin_not_connected")
                           : t("settings.provider_setup")}
@@ -596,7 +501,8 @@ function DevicesSection() {
                           : t("settings.sync_now")}
                       </Button>
                     )}
-                    {key === "garmin" && !connected && (
+                    {key === "garmin" && !connected && !owner && <span className="text-[12px] text-muted">{t("garminPersonal.owner_only")}</span>}
+                    {key === "garmin" && !connected && owner && (
                       <Button
                         variant={garminOpen ? "ghost" : "primary"}
                         onClick={() => setGarminOpen((v) => !v)}
@@ -623,12 +529,6 @@ function DevicesSection() {
                   setSyncMessage(t(enqueued ? "garminPersonal.connected_syncing" : "garminPersonal.connected_not_queued"));
                   invalidateSyncedData(qc);
                 }} />}
-                {key === "garmin" && garminOpen && !garminConnected && (owner ? <details className="border-b border-hairline py-4 text-[13px]"><summary className="cursor-pointer">{t("garminPersonal.previous_connection")}</summary><GarminConnectForm onDone={() => { setGarminOpen(false); invalidateSyncedData(qc); }} /></details> : (
-                  <GarminConnectForm onDone={() => {
-                      setGarminOpen(false);
-                      qc.invalidateQueries({ queryKey: ["devices"] });
-                    }} />
-                ))}
                 {key === "coros" && corosOpen && !connected && <CorosConnectForm onDone={() => { setCorosOpen(false); qc.invalidateQueries({ queryKey: ["devices"] }); }} />}
               </Fragment>
             );

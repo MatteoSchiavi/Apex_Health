@@ -312,6 +312,7 @@ async def test_metrics_catalog_and_trend(client: AsyncClient, db_session):
 async def test_devices_main_device_flow(client: AsyncClient, db_session):
     await _login(client)
     user = await _owner_user(db_session)
+    user.main_integration_id = None
     g = Integration(user_id=user.id, provider="garmin")
     w = Integration(user_id=user.id, provider="whoop")
     db_session.add_all([g, w])
@@ -639,87 +640,15 @@ async def test_sleep_stages_null_when_no_raw_timeline(
     assert body["segments"] is None
 
 
-# ----------------------------------------------------------- garmin connect
+# ----------------------------------------------------------- Garmin API
 
-
-async def test_garmin_connect_mfa_then_success(
-    client: AsyncClient, db_session: AsyncSession, monkeypatch
-):
+async def test_garmin_api_rejects_password_login_without_echoing_secret(client):
     await _login(client)
-
-    from app.api import integrations as integrations_mod
-    from app.api.integrations import _MfaRequired
-
-    state = {"login_calls": 0, "codes": []}
-
-    class FakeClient:
-        def dump_tokens(self):
-            return {"di_token": "tok", "di_refresh_token": "ref"}
-
-    def fake_from_password(email, password, prompt_mfa):
-        state["login_calls"] += 1
-        code = prompt_mfa()  # raises _MfaRequired when the API got no code
-        state["codes"].append(code)
-        return FakeClient()
-
-    monkeypatch.setattr(
-        integrations_mod.LiveGarminClient,
-        "from_password",
-        staticmethod(fake_from_password),
-    )
-
-    # Step 1: no mfa code -> the login thread sees MFA required
-    resp = await client.post(
-        "/settings/integrations/garmin/connect",
-        json={"email": "a@b.c", "password": "pw"},
-        headers=csrf_headers(client),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["mfa_required"] is True
-    assert state["login_calls"] == 1
-
-    # Step 2: with mfa code -> connected, tokens stored encrypted
-    resp = await client.post(
-        "/settings/integrations/garmin/connect",
-        json={"email": "a@b.c", "password": "pw", "mfa_code": "123456"},
-        headers=csrf_headers(client),
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["connected"] is True
-    assert body["mfa_required"] is False
-    assert state["codes"] == ["123456"]
-
-    integration = (
-        await db_session.execute(
-            select(Integration).where(Integration.provider == "garmin")
-        )
-    ).scalars().first()
-    await db_session.refresh(integration)
-    assert integration is not None
-    assert integration.status == "active"
-    assert integration.credentials_encrypted is not None
-    assert integration.last_synced_at is None
-
-
-async def test_garmin_connect_bad_credentials_400(client: AsyncClient, monkeypatch):
-    await _login(client)
-    from app.api import integrations as integrations_mod
-    from app.connectors.garmin.client import GarminAuthError
-
-    def fail_login(email, password, prompt_mfa):
-        raise GarminAuthError("Garmin login failed: nope")
-
-    monkeypatch.setattr(
-        integrations_mod.LiveGarminClient, "from_password", staticmethod(fail_login)
-    )
-    resp = await client.post(
-        "/settings/integrations/garmin/connect",
-        json={"email": "a@b.c", "password": "pw"},
-        headers=csrf_headers(client),
-    )
-    assert resp.status_code == 400
-    assert "Garmin connect failed" in resp.json()["detail"]
+    response = await client.post("/settings/integrations/garmin/connect",
+        json={"email": "fixture@example.test", "password": "retired-private-password"},
+        headers=csrf_headers(client))
+    assert response.status_code == 422
+    assert "retired-private-password" not in response.text
 
 
 async def test_garmin_sync_now_requires_connection(client: AsyncClient):

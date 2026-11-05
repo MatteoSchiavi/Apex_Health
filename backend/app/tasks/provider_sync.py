@@ -68,7 +68,7 @@ async def _record_sync_outcome(provider, user_id, *, error_class=None, status="o
                 details["error_class"] = error_class
             if status in {"ok", "partial"} and error_class is None:
                 feed.last_success_at = now
-                for key in ("streams_failed", "unprocessed"):
+                for key in ("streams_failed", "unprocessed", "document_feeds_failed", "wellness_feeds_failed"):
                     value = (result or {}).get(key, 0)
                     details[key] = value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
             feed.details = details
@@ -196,9 +196,11 @@ async def _sync_account(provider: str, user_id: int) -> dict:
             code = getattr(integration, "_sync_failure_code", None) or "transport"
             raise SyncTaskError("Provider sync failed; retrying may recover it", error_class=code,
                                 failure_counted=bool(getattr(integration, "_sync_failure_code", None)))
-        return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) or getattr(report, "streams_failed", 0) else "ok",
+        return {"status": "partial" if getattr(report, "raw_rows_unprocessed", 0) or getattr(report, "streams_failed", 0) or getattr(report, "document_feeds_failed", 0) or getattr(report, "wellness_feeds_failed", 0) else "ok",
                 "mode": report.mode, "raw_stored": report.raw_rows_stored,
                 "streams_failed": getattr(report, "streams_failed", 0),
+                "document_feeds_failed": getattr(report, "document_feeds_failed", 0),
+                "wellness_feeds_failed": getattr(report, "wellness_feeds_failed", 0),
                 "unprocessed": getattr(report, "raw_rows_unprocessed", 0)}
 
 

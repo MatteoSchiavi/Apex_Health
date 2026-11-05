@@ -1,0 +1,150 @@
+{
+  "source": "https://developer.garmin.com/gc-developer-program/personal/swagger-docs/",
+  "retrieved": "2026-11-05",
+  "source_sha256": "b0458340fe48e9cf9fba177845475c4be8c47bb769852394745efe4ac75ecab4",
+  "paths": {
+    "/activity-service/activity/{activityId}": {
+      "query": []
+    },
+    "/activity-service/activity/{activityId}/workouts": {
+      "query": []
+    },
+    "/activitylist-service/activities/search/activities": {
+      "query": [
+        "start",
+        "limit",
+        "favorite",
+        "sortOrder",
+        "excludeChildren",
+        "sortBy",
+        "search",
+        "activityType",
+        "activitySubType",
+        "eventType",
+        "minDistance",
+        "maxDistance",
+        "minDuration",
+        "maxDuration",
+        "minElevation",
+        "maxElevation",
+        "startDate",
+        "endDate",
+        "upperLatitude",
+        "rightLongitude",
+        "lowerLatitude",
+        "leftLongitude",
+        "lowerMaxDepth",
+        "upperMaxDepth",
+        "decoDive",
+        "minElapsedDuration",
+        "maxElapsedDuration",
+        "minBottomTime",
+        "maxBottomTime",
+        "minAvgPower",
+        "excludedActivitySubType",
+        "requiredField"
+      ]
+    },
+    "/biometric-service/heartRateZones/v2": {
+      "query": [
+        "generateDefaults"
+      ]
+    },
+    "/download-service/files/activity/{activityId}": {
+      "query": []
+    },
+    "/fitnessage-service/fitnessage/v2/{calendarDate}": {
+      "query": [
+        "fullHistoryScan"
+      ]
+    },
+    "/goal-service/goal/user/effective/weightgoal/{startDate}/{endDate}": {
+      "query": []
+    },
+    "/hrv-service/hrv/{calendarDate}": {
+      "query": []
+    },
+    "/hrv-service/hrv/daily/{fromDate}/{toDate}": {
+      "query": []
+    },
+    "/nutrition-service/food/logs/{date}": {
+      "query": [
+        "includeGoals",
+        "includeNutrition",
+        "includeMedia",
+        "mealId"
+      ]
+    },
+    "/periodichealth-service/menstrualcycle/summary/{calendarDate}": {
+      "query": []
+    },
+    "/periodichealth-service/menstrualcycle/dayview/{calendarDate}": {
+      "query": [
+        "todayDate",
+        "reducedResponse",
+        "skipbm",
+        "includeAnalysis"
+      ]
+    },
+    "/sleep-service/sleep/dailySleep": {
+      "query": [
+        "date"
+      ]
+    },
+    "/sleep-service/sleep/dailySleepSummariesByDate": {
+      "query": [
+        "startDate",
+        "endDate"
+      ]
+    },
+    "/userprofile-service/userprofile/settings": {
+      "query": []
+    },
+    "/usersummary-service/stats/hydration/daily/{startDate}/{endDate}": {
+      "query": []
+    },
+    "/usersummary-service/stats/steps/daily/{startDate}/{endDate}": {
+      "query": []
+    },
+    "/usersummary-service/stats/stress/daily/{startDate}/{endDate}": {
+      "query": []
+    },
+    "/usersummary-service/usersummary/daily": {
+      "query": [
+        "calendarDate"
+      ]
+    },
+    "/usersummary-service/v2/dailysummaries": {
+      "query": [
+        "startDate",
+        "endDate"
+      ]
+    },
+    "/weight-service/weight/all/{startDate}/{endDate}": {
+      "query": []
+    },
+    "/weight-service/weight/range/{startDate}/{endDate}": {
+      "query": [
+        "includeAll"
+      ]
+    },
+    "/wellness-service/wellness/bodyBattery/reports/daily": {
+      "query": [
+        "startDate",
+        "endDate",
+        "chunks"
+      ]
+    },
+    "/wellness-service/wellness/daily/spo2acclimation/{calendarDate}": {
+      "query": []
+    },
+    "/wellness-service/wellness/dailyHeartRate": {
+      "query": [
+        "date"
+      ]
+    },
+    "/wellnessactivity-service/activity/summary/range/{fromDate}/{untilDate}": {
+      "query": []
+    }
+  }
+}

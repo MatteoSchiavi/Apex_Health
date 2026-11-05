@@ -228,14 +228,14 @@ async def test_rate_limit_is_shared_with_legacy_and_scoped_to_user(
     assert response.headers["Retry-After"] == "3600"
     legacy = await client.post(
         "/settings/integrations/garmin/connect", headers=csrf_headers(client),
-        json={"email": "fixture@example.test", "password": API_KEY},
+        json={"api_key": API_KEY},
     )
     assert legacy.status_code == 429
     assert len(personal_client.clients) == 3
     redis = Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
     try:
-        assert 0 < await redis.ttl(f"garmin_connect:rl:user:{accounts.owner.id}") <= 3600
-        assert await redis.get(f"garmin_connect:rl:user:{accounts.friend.id}") is None
+        assert 0 < await redis.ttl(f"garmin_api:rl:user:{accounts.owner.id}") <= 3600
+        assert await redis.get(f"garmin_api:rl:user:{accounts.friend.id}") is None
     finally:
         await redis.aclose()
 
@@ -302,7 +302,7 @@ async def test_active_sync_blocks_personal_and_legacy_connection(
         assert response.status_code == 409
         legacy = await client.post(
             "/settings/integrations/garmin/connect", headers=csrf_headers(client),
-            json={"email": "fixture@example.test", "password": API_KEY},
+            json={"api_key": API_KEY},
         )
         assert legacy.status_code == 409
         assert personal_client.clients == []
@@ -365,5 +365,5 @@ async def test_owner_legacy_connection_has_explicit_auth_method(client, db_sessi
         response = await client.get(endpoint)
         assert response.status_code == 200
         row = next(item for item in response.json() if item["provider"] == "garmin")
-        assert row["auth_method"] == "garmin_connect"
+        assert row["auth_method"] == "reconnect_required"
         assert "old-session" not in response.text

@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
     async def safe_native_validation(request, exc):
         if request.url.path.startswith("/healthkit/"):
             return JSONResponse(status_code=422, content={"detail": "Invalid HealthKit request."})
-        if request.url.path == "/settings/integrations/garmin/personal/connect":
+        if request.url.path in {"/settings/integrations/garmin/personal/connect", "/settings/integrations/garmin/connect"}:
             # Pydantic's JSON validation details include the original input,
             # including raw secrets and unknown fields. Never return them.
             return JSONResponse(status_code=422, content={"detail": "Invalid Garmin Personal API connection request."})

@@ -130,7 +130,7 @@ See [COACH_SETUP.md](COACH_SETUP.md) for current settings and verification.
 
 | Device | Connector | Auth | Notes |
 |---|---|---|---|
-| Garmin | `garminconnect` (unofficial) | credentials → token store | Bounded history/incremental sync and FIT enrichment; an official transport is a separate unimplemented approval-dependent adapter |
+| Garmin API | official Personal API via async HTTPX | account API key → encrypted token store | Owner-only normalized core feeds, original FIT projection and supplemental source documents; see [coverage](GARMIN_API_COVERAGE.md) |
 | WHOOP | Developer API v2 | OAuth2 + refresh | Source-specific records; sleep performance stays provider context, and shared units do not establish cross-provider equivalence |
 | Oura | API v2 OAuth2 | OAuth2 + refresh | Sleep, HRV and daily source-specific records; app credentials and consent required, with no live verification claimed |
 | COROS | Configured read-only MCP adapter | Per-account MCP token | Requires a real administrator-selected server/tool and provider approval; no direct COROS Open API ingestion is implemented, see COROS_MCP.md |

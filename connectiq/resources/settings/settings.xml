@@ -1,5 +1,5 @@
 <settings>
-    <!-- Apex Day — phone-side settings (Garmin Connect Mobile / Connect IQ
+    <!-- Apex Day — phone-side settings (Garmin phone app / Connect IQ
          store settings screen). List entries map 1:1 to the documented
          battery policy: 60/120/240-minute background refresh. -->
     <setting propertyKey="@Properties.server_url" title="@Strings.ServerUrlTitle" prompt="@Strings.ServerUrlPrompt">

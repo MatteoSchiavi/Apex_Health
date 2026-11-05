@@ -692,8 +692,8 @@ async def capabilities(user: User = Depends(get_current_user)):
         "canonical_runtime": "FastAPI/PostgreSQL + bundled Vite SPA",
         "harness": "apex-harness-v4",
         "garmin": {
-            "active_adapter": "unofficial_replaceable",
-            "official_program": "approval_required",
+            "active_adapter": "official_personal_api",
+            "official_program": "owner_personal_api_business_separate",
             "training_api_delivery": "not_configured",
             "file_import": "original_FIT",
         },

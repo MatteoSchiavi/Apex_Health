@@ -5,7 +5,7 @@ from typing import Literal
 from app.core.encryption import decrypt_json
 from app.models.integration import Integration
 
-GarminAuthMethod = Literal["personal_api_key", "garmin_connect"]
+GarminAuthMethod = Literal["personal_api_key", "reconnect_required"]
 
 
 def garmin_auth_method(
@@ -26,5 +26,5 @@ def garmin_auth_method(
     if credentials.get("auth_type") == "personal_api_key":
         return "personal_api_key"
     if credentials.get("di_token") or credentials.get("di_refresh_token"):
-        return "garmin_connect"
+        return "reconnect_required"
     return None

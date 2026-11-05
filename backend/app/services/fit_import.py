@@ -4,7 +4,7 @@ import io
 import math
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from app.core.encryption import encrypt_bytes
 from app.models.activity import Activity, ActivitySourceLink, ActivityStream, Discipline
@@ -264,7 +264,7 @@ async def import_original(session, user, filename, content, parsed):
 
 
 async def project_original(
-    session, activity, content, summary, records, laps, summaries, number
+    session, activity, content, summary, records, laps, summaries, number, *, fill_missing=False
 ):
     start = summary["start_time"]
     start = start.replace(tzinfo=UTC) if start.tzinfo is None else start.astimezone(UTC)
@@ -322,12 +322,20 @@ async def project_original(
         samples[offset] = row
     if samples:
         activity.data_completeness = "full"
+    written_samples = 0
     for offset in range(0, len(samples), 1000):
-        await session.execute(
-            insert(ActivityStream)
-            .values(list(samples.values())[offset : offset + 1000])
-            .on_conflict_do_nothing()
-        )
+        statement = insert(ActivityStream).values(list(samples.values())[offset : offset + 1000])
+        if fill_missing:
+            channels = ("hr", "power", "cadence", "speed", "altitude", "lat", "lon")
+            statement = statement.on_conflict_do_update(
+                index_elements=[ActivityStream.activity_id, ActivityStream.t_offset_s],
+                set_={key: func.coalesce(getattr(ActivityStream, key), getattr(statement.excluded, key)) for key in channels},
+                where=or_(*(getattr(ActivityStream, key).is_(None) & getattr(statement.excluded, key).is_not(None) for key in channels)),
+            )
+        else:
+            statement = statement.on_conflict_do_nothing()
+        result = await session.execute(statement)
+        written_samples += max(result.rowcount, 0)
     owned_laps = [
         l
         for l in laps
@@ -338,3 +346,4 @@ async def project_original(
     for i, lap in enumerate(owned_laps):
         lap["lap_index"] = i + 1
     await upsert_laps(session, activity.id, owned_laps)
+    return written_samples

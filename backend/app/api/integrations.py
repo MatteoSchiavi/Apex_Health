@@ -55,7 +55,6 @@ from app.connectors.whoop.flow import (
 )
 from app.connectors.garmin.client import (
     GarminAuthError,
-    LiveGarminClient,
 )
 from app.core.encryption import decrypt_json, encrypt_json
 from app.core.db import get_session
@@ -551,27 +550,21 @@ async def coros_oauth_callback() -> dict:
     raise HTTPException(410, "COROS OAuth has been retired; connect through the configured MCP server")
 
 
-# ------------------------------------------------- Garmin (credentials flow)
-#
-# Garmin's consumer API has no user-facing OAuth for self-registered apps —
-# the connector logs in with the account credentials once (garminconnect
-# 0.3.x native tokens) and stores ONLY the resulting session tokens,
-# app-layer-encrypted (§17). The password itself is never persisted, never
-# logged, and lives only for the duration of this request.
+# ------------------------------------------------- Garmin API key connection
 
 
-async def _limit_garmin_connect(redis: Redis, user_id: int) -> None:
-    # Shared by both Garmin connection methods. INCR + EXPIRE must be atomic:
+async def _limit_garmin_api(redis: Redis, user_id: int) -> None:
+    # Garmin API connection attempts. INCR + EXPIRE must be atomic:
     # interruption between them must not leave a permanent rate-limit key.
     attempts = await redis.eval("""
         local count = redis.call('INCR', KEYS[1])
         if count == 1 then redis.call('EXPIRE', KEYS[1], 3600) end
         return count
-    """, 1, f"garmin_connect:rl:user:{user_id}")
+    """, 1, f"garmin_api:rl:user:{user_id}")
     if int(attempts) > 3:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            "Too many Garmin connect attempts; wait an hour before retrying.",
+            "Too many Garmin API connection attempts; wait an hour before retrying.",
             headers={"Retry-After": "3600"},
         )
 
@@ -602,7 +595,8 @@ class GarminPersonalConnectIn(BaseModel):
         return value
 
 
-@router.post("/settings/integrations/garmin/personal/connect", dependencies=[Depends(require_owner)])
+@router.post("/settings/integrations/garmin/connect", dependencies=[Depends(require_owner)])
+@router.post("/settings/integrations/garmin/personal/connect", dependencies=[Depends(require_owner)], include_in_schema=False)
 async def connect_garmin_personal(
     payload: GarminPersonalConnectIn,
     user: User = Depends(get_current_user),
@@ -616,7 +610,7 @@ async def connect_garmin_personal(
     """
     from starlette.concurrency import run_in_threadpool
 
-    await _limit_garmin_connect(redis, user.id)
+    await _limit_garmin_api(redis, user.id)
     await _lock_garmin_connection(session, user.id)
     client = None
     try:
@@ -651,7 +645,7 @@ async def connect_garmin_personal(
     integration.status = "active"
     integration.consecutive_failures = 0
     # Keep the row, main device preference, imported history and sync watermark.
-    # Personal API coverage is bounded by the transport, not by resetting history.
+    # Replacing credentials never destroys previously imported history.
     record_event(session, user.id, "integration_connected", {"provider": "garmin"})
     await session.commit()
 
@@ -666,115 +660,6 @@ async def connect_garmin_personal(
         "connected": True,
         "provider": "garmin",
         "auth_method": "personal_api_key",
-        "backfill_enqueued": backfill_enqueued,
-    }
-
-
-class GarminConnectIn(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=1, max_length=1024)
-    # When the account has MFA enabled the first call returns
-    # {"mfa_required": true}; the client re-submits the same credentials plus
-    # the one-time code from the user's authenticator/email.
-    mfa_code: str | None = Field(default=None, max_length=12)
-
-
-class _MfaRequired(Exception):
-    """Internal: raised inside the (synchronous) login thread when the
-    account needs a one-time code and none was supplied."""
-
-
-@router.post("/settings/integrations/garmin/connect")
-async def connect_garmin(
-    payload: GarminConnectIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis_dependency),
-) -> dict:
-    """Link a Garmin account from the UI.
-
-    Runs the garminconnect login exchange in a worker thread (the lib is
-    synchronous). Returns `{"mfa_required": true}` when the account has MFA
-    and no code was supplied — the client then shows the code field and
-    re-posts. On success the session tokens replace any previous credential
-    blob, the integration goes active, and the per-user backfill task is
-    enqueued. Existing history and the sync watermark are preserved; a new
-    integration starts with NULL last_synced_at (§6.3).
-
-    F-11 audit: rate-limited to 3 connects/hour/user (Redis fixed window) so
-    the endpoint cannot be abused as a brute-force proxy against the user's
-    real Garmin account. The password is zeroed from local scope immediately
-    after the login thread returns. The backfill enqueue is scoped to THIS
-    user (``garmin.sync_user.s(user.id)``) — never a global fan-out.
-    """
-
-    # F-11: rate limit — 3 connect attempts per hour per USER (the user is
-    # already authenticated; keying on user_id is stronger than IP and
-    # prevents one user from burning another's quota).
-    await _limit_garmin_connect(redis, user.id)
-    await _lock_garmin_connection(session, user.id)
-
-    def _mfa_prompt() -> str:
-        if payload.mfa_code:
-            return payload.mfa_code.strip()
-        raise _MfaRequired()
-
-    try:
-        client = await asyncio.to_thread(
-            LiveGarminClient.from_password,
-            payload.email.strip(),
-            payload.password,
-            _mfa_prompt,
-        )
-    except _MfaRequired:
-        return {
-            "connected": False,
-            "mfa_required": True,
-            "note": "Account requires a one-time code — resubmit with mfa_code.",
-        }
-    except GarminAuthError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Garmin connect failed; check your credentials and try again.",
-        ) from None
-    finally:
-        # F-11: zero the password reference from request scope — Python's
-        # GC will collect it on the next pass; the local binding is gone
-        # immediately so a follow-up exception handler cannot read it.
-        payload.password = "x" * len(payload.password)
-
-    tokens = client.dump_tokens()
-    integration = await session.scalar(
-        select(Integration).where(
-            Integration.user_id == user.id, Integration.provider == "garmin"
-        )
-    )
-    if integration is None:
-        integration = Integration(user_id=user.id, provider="garmin", status="active")
-        session.add(integration)
-    integration.credentials_encrypted = encrypt_json(tokens)
-    integration.status = "active"
-    integration.consecutive_failures = 0
-    from app.connectors.garmin.sync import clear_personal_api_coverage
-    await clear_personal_api_coverage(session, user.id)
-    record_event(session, user.id, "integration_connected", {"provider": "garmin"})
-    await session.commit()
-    logger.info("garmin connect: integration %s activated for user %s", integration.id, user.id)
-
-    # F-11: enqueue the PER-USER backfill (NOT sync_all_garmin) so one user's
-    # connect does not fan out to every other user's account.
-    backfill_enqueued = True
-    try:
-        from app.tasks.garmin_sync import sync_user_garmin
-        sync_user_garmin.delay(user.id)
-    except Exception:
-        backfill_enqueued = False
-        logger.warning("garmin connect: per-user backfill enqueue failed — beat will cover")
-
-    return {
-        "connected": True,
-        "mfa_required": False,
-        "provider": "garmin",
         "backfill_enqueued": backfill_enqueued,
     }
 

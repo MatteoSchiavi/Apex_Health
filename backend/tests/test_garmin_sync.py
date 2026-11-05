@@ -597,7 +597,7 @@ async def test_new_historical_stream_samples_invalidate_owned_scores_but_replay_
     assert float((await db_session.get(DailyFeature, (user.id, day))).strain_score) == 40
 
 
-async def test_switch_to_legacy_clears_personal_flags_without_losing_source_history(db_session):
+async def test_capability_upgrade_clears_obsolete_pilot_flags_without_losing_history(db_session):
     from app.connectors.garmin.personal import GarminPersonalClient
     from app.models.lab import FeedState
 

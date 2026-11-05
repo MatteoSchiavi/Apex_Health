@@ -234,6 +234,7 @@ async def test_capability_skips_do_not_fabricate_empty_stream_records():
     report = SyncReport(user_id=4, mode="incremental")
     session = SimpleNamespace(scalar=AsyncMock(side_effect=AssertionError("unsupported must not write not_measured")))
     try:
+        client.unsupported_capabilities = client.unsupported_capabilities | {"activity_streams"}
         await fetch_streams(session, 4, client, ["12345"], 0, report)
         await fetch_strength_sets(session, 4, client, "12345", 0, report)
         assert report.streams_failed == report.streams_fetched == report.raw_rows_stored == 0
@@ -311,9 +312,9 @@ async def test_wellness_sync_uses_supported_feeds_and_keeps_daily_stress(monkeyp
     report = sync.SyncReport(user_id=9, mode="incremental")
     try:
         await sync.fetch_wellness(None, 9, client, ZoneInfo("UTC"), from_day=date(2026, 10, 24), to_day=date(2026, 10, 24), delay_s=0, empty_gap_days=1, report=report)
-        assert len(requests) == 5  # exchange + four supported daily feeds
-        assert stored == [(9, "stats:2026-10-24", {"calendarDate": "2026-10-24", "averageStressLevel": 25, "bodyBatteryMostRecentValue": 60})]
-        assert report.wellness_days == 1 and report.raw_rows_stored == 1
+        assert len(requests) == 20  # exchange + four core + 15 documented source feeds
+        assert stored[0] == (9, "stats:2026-10-24", {"calendarDate": "2026-10-24", "averageStressLevel": 25, "bodyBatteryMostRecentValue": 60, "_garmin_api": True})
+        assert report.wellness_days == 1 and report.raw_rows_stored == len(stored)
     finally:
         await client.aclose()
 
@@ -324,7 +325,7 @@ async def test_wellness_sync_uses_supported_feeds_and_keeps_daily_stress(monkeyp
     (True, datetime(2026, 10, 23, tzinfo=UTC), "2026-10-22"),
     (False, None, "2026-10-24"),
 ])
-async def test_personal_sync_is_bounded_without_changing_legacy_backfill(monkeypatch, personal, last_sync, expected_start):
+async def test_explicit_transport_window_does_not_change_unbounded_default(monkeypatch, personal, last_sync, expected_start):
     from app.connectors.garmin import sync
     now = datetime(2026, 10, 24, 12, tzinfo=UTC)
     activities, wellness = AsyncMock(return_value=[]), AsyncMock()
@@ -346,7 +347,7 @@ async def test_personal_sync_is_bounded_without_changing_legacy_backfill(monkeyp
         assert wellness.await_args.kwargs["to_day"].isoformat() == "2026-10-24"
         assert activities.await_args.kwargs["oldest_allowed"].astimezone(UTC) == datetime(2026, 9, 24, 22, tzinfo=UTC)
         assert "older history is not imported" in report.notes[0]
-        recovered.assert_not_awaited()
+        recovered.assert_awaited_once()
     else:
         assert activities.await_args.kwargs["since"] is None
         assert activities.await_args.kwargs["oldest_allowed"] is None
@@ -384,3 +385,27 @@ async def test_activity_schema_power_cadence_and_manual_aliases_keep_originals()
         assert "exerciseSets" not in result  # aggregates are not individual sets
     finally:
         await client.aclose()
+
+
+async def test_explicit_api_history_range_has_no_pilot_cutoff_and_preserves_failed_watermark(monkeypatch):
+    from datetime import date
+    from app.connectors.garmin import sync
+    now = datetime(2026, 11, 5, 23, 30, tzinfo=UTC)
+    client = SimpleNamespace(initial_sync_days=None, api_activity_archives=True, history_start=date(2024,1,1), unsupported_capabilities=GarminPersonalClient.unsupported_capabilities)
+    activities = AsyncMock(return_value=[])
+    monkeypatch.setattr(sync, "fetch_activities", activities)
+    async def fail_one_feed(*args, **kwargs):
+        assert kwargs['from_day'] == date(2024,1,1)
+        assert kwargs['to_day'] == date(2026,11,6)  # account timezone, not UTC day
+        kwargs['report'].wellness_feeds_failed += 1
+    monkeypatch.setattr(sync, 'fetch_wellness', fail_one_feed)
+    monkeypatch.setattr(sync, 'fetch_streams', AsyncMock())
+    monkeypatch.setattr(sync, 'normalize_pending', AsyncMock())
+    monkeypatch.setattr(sync, 'clear_personal_api_coverage', AsyncMock())
+    monkeypatch.setattr('app.services.evidence.update_feed', AsyncMock())
+    session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),scalar=AsyncMock(return_value=SimpleNamespace(details={},last_success_at=None)))
+    integration = SimpleNamespace(last_synced_at=None)
+    report = await sync.sync_user_garmin(session, SimpleNamespace(id=9,timezone='Europe/Rome'),integration,client,page_size=25,page_delay_s=0,empty_gap_days=10,now=now)
+    assert integration.last_synced_at is None and report.state == 'partial'
+    assert activities.await_args.kwargs['oldest_allowed'] is None
+    assert client.account_today == '2026-11-06'

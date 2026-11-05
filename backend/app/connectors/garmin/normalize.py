@@ -107,7 +107,7 @@ def _epoch_ms(value: Any, label: str) -> datetime:
 
 
 def _timestamp_flex(value: Any, label: str) -> datetime:
-    """garminconnect 0.3.x emits ISO strings ('2026-09-20T21:25:02.0') where
+    """Historical Garmin payloads use ISO strings ('2026-09-20T21:25:02.0') where
     older response shapes carried epoch milliseconds — accept both."""
     if isinstance(value, str) and value.strip():
         try:
@@ -165,6 +165,14 @@ async def normalize_raw_row(
     kind = _base_type(raw.payload_type)
     if kind == fetch.PAYLOAD_ACTIVITY_SUMMARY:
         await _upsert_activity(session, raw, payload, tz, discipline_index, stats)
+    elif kind == "api_document":
+        if not isinstance(payload, dict) or not isinstance(payload.get("payload"), (dict, list)):
+            raise NormalizationError("Garmin API source document has an invalid envelope")
+        # Intentionally archive-only: unknown semantics stay raw, not fabricated
+        # measurements. The owned raw row remains exportable and replayable.
+    elif kind == "api_activity_archive":
+        from app.connectors.garmin.original import normalize_original_archive
+        await normalize_original_archive(session, raw, stats)
     elif kind == fetch.PAYLOAD_ACTIVITY_STREAMS:
         await _upsert_streams(session, raw, payload, stats)
     elif kind == "activity_exercise_sets":

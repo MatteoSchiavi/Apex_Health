@@ -60,7 +60,7 @@ docker compose -f infra/docker-compose.yml logs -f api   # (or worker, bot)
 | `UndefinedTable` / migration error | Run `alembic upgrade head` (the API never auto-migrates). |
 | 403 on a write from curl | Send the `X-CSRF-Token` header (double-submit: value must match the `csrf_token` cookie) — the SPA does this automatically. |
 | Login blocked | 5 failed attempts / 15 min → temporary lockout; wait it out. |
-| Garmin connect rejected | Rate-limited to 3 connects/hour; re-check credentials/MFA; sync tokens refresh automatically afterwards. |
+| Garmin API key rejected | Rate-limited to 3 connection attempts/hour; replace an expired/revoked Personal API key in Settings; tokens renew from the saved key. |
 | Voice drafts stuck pending | Whisper runs on the worker — worker up + `OPENAI_API_KEY` set. |
 | Overview shows an older day | Working as designed: today is unsynced, the dashboard anchored to the most recent measured day and says so. |
 | Coach answers 429 | Daily AI budget gate — raise `DAILY_TOKEN_BUDGET_USD` or wait for the UTC reset. |

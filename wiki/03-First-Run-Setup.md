@@ -4,16 +4,19 @@
 
 ## 3.1 — Connect Garmin (the UI way)
 
-Everything happens in the app now — there are no access tokens to copy or manage by hand; they are exchanged, stored app-layer-encrypted, and refreshed automatically. The password is never persisted and is zeroed from memory after the exchange, and the connect endpoint is rate-limited (3 attempts/hour) so it can never be used as a brute-force proxy against your real account.
+Garmin uses the official Personal API for the owner's own account. In Settings →
+Devices & Services → Garmin API, paste a key created in
+[Garmin settings](https://connect.garmin.com/app/settings/personalApiToken).
+The key is verified and stored encrypted; access tokens renew automatically.
+Password/MFA login is removed. Friend accounts need separately approved Business
+API support. Existing imported data is retained when reconnecting.
 
-1. **Settings → Devices & Services → Garmin Connect → Connect.** Enter your Garmin email and password. If the account has MFA, a second inline step asks for the one-time code from your authenticator.
-2. **Let the backfill run.** Connect enqueues the full-history backfill immediately: every activity ever recorded plus wellness (sleep, biometrics) walked backwards until a sustained 10-day empty gap. It is deliberately paced (unofficial client, ban-safe speed) — 3–6 months of history is normal, multi-year histories take longer. Watch progress on the same row; the button turns into **Sync now** for incremental pulls. The beat also syncs every 6 hours.
-3. **Score the imported history now (optional).** Scores compute nightly at 03:00 user-local for the prior day. To score a fresh backfill immediately:
-
-```powershell
-docker compose -f infra/docker-compose.yml exec worker celery -A app.tasks.celery_app call `
-  features.recompute_range --args '[1, "2026-03-01", "2026-09-24"]'
-```
+The first sync pages activities and walks daily wellness backwards until the
+configured empty gap; that does not guarantee all history after long gaps. There
+is no 30-day pilot cap. See [setup, explicit history ranges and limits](../docs/GARMIN_PERSONAL_API.md)
+for owner maintenance. Check partial/pending status before assuming completeness.
+The scheduler runs incremental syncs every six hours. Original FITs supply
+recorded samples/laps/sets; supplemental responses may be archive-only.
 
 ## 3.2 — Whoop, Strava, weather
 

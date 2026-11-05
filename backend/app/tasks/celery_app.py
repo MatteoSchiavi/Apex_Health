@@ -75,7 +75,7 @@ celery_app.conf.update(
     # doesn't starve short tasks behind it. Critical for an 8 GB single-node
     # box where 2 workers each holding 4 tasks would OOM under load.
     worker_prefetch_multiplier=1,
-    # §19: Garmin sync every 6 hours — not real-time, an unofficial client
+    # §19: Garmin sync every 6 hours — not real-time, an API client
     # polled continuously raises ban risk.
     #
     # §19: nightly feature engine at 03:00 USER-LOCAL. Beat ticks hourly and
@@ -91,7 +91,7 @@ celery_app.conf.update(
             "task": "garmin.sync_all",
             "schedule": crontab(minute=0, hour="*/6"),
         },
-        # §19: Technogym sync every 6 hours — same unofficial-client pacing
+        # §19: Technogym sync every 6 hours — same Garmin API pacing
         # reasoning as Garmin. Staggered at :10 to spread engine load; still
         # every-6h per §19 (documented judgment call).
         "technogym-sync-every-6h": {
@@ -100,9 +100,8 @@ celery_app.conf.update(
         },
         # Official-API connectors (owner feature batch, 2026-09): Whoop and
         # Strava sync on the same every-6h cadence, staggered at :05/:07 so
-        # the unofficial-client Garmin poll (:00) and the feature engine
-        # never collide. Official APIs are gentler than the unofficial
-        # Garmin client, but pacing is still §19 law.
+        # the Garmin API poll (:00) and the feature engine
+        # never collide. Provider quotas still require paced polling.
         "whoop-sync-every-6h": {
             "task": "whoop.sync_all",
             "schedule": crontab(minute=5, hour="*/6"),

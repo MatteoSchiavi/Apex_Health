@@ -22,7 +22,8 @@ See [ATHLETE_SYSTEM.md](docs/ATHLETE_SYSTEM.md) for the optional multi-priority 
 
 ## What it does
 
-- Imports Garmin data and original FIT files; supports source-aware manual,
+- Imports Garmin data through the official Garmin API (owner Personal API key),
+  including original activity FIT archives; supports source-aware manual,
   CSV, Apple Health ZIP and laboratory observations. The repository also
   contains a native HealthKit bridge source project and pairing API; Xcode,
   Apple signing, device installation and live synchronization still need a
@@ -128,7 +129,7 @@ legal notices alone do not establish legal compliance or medical-device status.
 backend/       FastAPI application, data model, migrations, workers and tests
 frontend/      React/Vite web application and browser tests
 infra/         production Docker Compose configuration
-connectiq/     optional Garmin Connect IQ companion
+connectiq/     optional Garmin watch companion (Connect IQ)
 docs/          installation, architecture, security and product contracts
 scripts/       local PostgreSQL/Redis helpers
 wiki/          user-facing operating notes
@@ -172,6 +173,15 @@ npm run build
 For the backend test suite, use disposable PostgreSQL and Redis instances.
 The suite intentionally resets its configured database; see the test section
 in [docs/INSTALL.md](docs/INSTALL.md).
+
+## Garmin API
+
+Password login and the former third-party client are removed. Connect an owner
+Personal API key in Settings; credentials are stored encrypted. Activity summaries,
+sleep, HRV, daily biometrics and weight are normalized; original activity archives
+provide recorded samples, laps and strength sets. Additional API feeds are retained
+as source documents, with explicit coverage limits. See [setup](docs/GARMIN_PERSONAL_API.md)
+and the [official endpoint inventory](docs/GARMIN_API_COVERAGE.md).
 
 ## Integration boundaries
 

@@ -162,7 +162,7 @@ async def _run(ident):
                     )
                 client = await asyncio.to_thread(build_live_client, credentials)
                 if params.get("repair_strength", True):
-                    from app.connectors.garmin.sync import fetch_strength_sets, strength_links, missing_strength_links, normalize_pending
+                    from app.connectors.garmin.sync import fetch_strength_sets, fetch_streams, strength_links, missing_strength_links, normalize_pending
 
                     async with sessionmaker() as session:
                         # A user-requested full repair also refreshes previously
@@ -170,8 +170,12 @@ async def _run(ident):
                         candidates = missing_strength_links if params.get("days") is not None else strength_links
                         ids = (await session.scalars(candidates(user_id, start, end).limit(100))).all()
                         report = SyncReport(user_id=user_id, mode="repair")
-                        for external_id in ids:
-                            await fetch_strength_sets(session, user_id, client, external_id, 1, report)
+                        if getattr(client, "api_activity_archives", False):
+                            await fetch_streams(session, user_id, client, list(ids), 1, report,
+                                                tz=tz, discipline_index=index, checkpoint=True)
+                        else:
+                            for external_id in ids:
+                                await fetch_strength_sets(session, user_id, client, external_id, 1, report)
                         await normalize_pending(session, user_id, tz, index, report)
                         await session.commit()
                 for offset in range(cursor, (end - start).days + 1):
@@ -219,6 +223,8 @@ async def _run(ident):
                             "completed": offset + 1,
                             "total": (end - start).days + 1,
                             "unprocessed": report.raw_rows_unprocessed,
+                            "document_feeds_failed": report.document_feeds_failed,
+                            "wellness_feeds_failed": report.wellness_feeds_failed,
                         }
                         await session.commit()
             finally:
@@ -315,8 +321,8 @@ def execute(ident):
         from app.connectors.garmin.client import GarminAuthError
 
         auth_required = isinstance(exc, GarminAuthError) or type(exc).__name__ in {
-            "GarminConnectAuthenticationError",
-            "GarminMFARequired",
+            "GarminAuthError",
+
         }
 
         async def fail():

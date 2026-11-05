@@ -1,6 +1,6 @@
 # Garmin fixtures — the ONLY thing connector tests talk to (§0, §16.7, §20)
 
-Synthetic payloads shaped exactly like the `garminconnect` endpoint responses
+Synthetic historical Garmin payloads used to verify replay compatibility, plus the official API path/query contract
 the connector consumes. They are the recorded contract: if the real API drifts,
 the parser breaks against the live account, the raw row stays unprocessed, and
 the fix is re-validated against this corpus — never against a real account from

@@ -116,7 +116,7 @@ class ActivityStream(Base):
 class ActivityLap(Base):
     """Per-lap splits parsed from FIT files (migration 0007).
 
-    Garmin Connect's JSON API carries lap summaries only for some sports and
+    The Garmin API carries lap summaries only for some sports and
     inconsistently; the FIT file is authoritative. Keyed
     (activity_id, lap_index) — the enrichment pass upserts idempotently.
     """
