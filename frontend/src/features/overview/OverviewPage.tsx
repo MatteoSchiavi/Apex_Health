@@ -1,3 +1,5 @@
+import { TodayCheckin } from "./TodayCheckin";
+import { TodaySync } from "./TodaySync";
 import { YourDay } from "../athlete/YourDay";
 import type { AthleteDay } from "../athlete/types";
 import { useQuery } from "@tanstack/react-query";
@@ -205,7 +207,7 @@ export default function OverviewPage() {
     staleTime: 60_000,
   });
   const [setupHidden, setSetupHidden] = useState(() => {
-    try { return localStorage.getItem("apex.setup-checklist.dismissed") === "1"; } catch { return false; }
+    try { return localStorage.getItem(`apex.setup-checklist.dismissed.${me?.user_id}`) === "1"; } catch { return false; }
   });
   const [params, setParams] = useSearchParams();
   const date = params.get("date");
@@ -249,7 +251,7 @@ export default function OverviewPage() {
   const profileReady = setupProfile.data?.planning_context
     ? setupProfile.data.planning_context.profile_state === "ready"
     : !!setupProfile.data?.training_focus.length;
-  const setupComplete = [connectedSources > 0, profileReady, recordedNights >= 14];
+  const setupComplete = [connectedSources > 0, profileReady];
   const stageParts = o?.sleep ? [
     { key: "deep", value: o.sleep.stages.deep_s ?? 0, color: "var(--c-stage-deep)" },
     { key: "rem", value: o.sleep.stages.rem_s ?? 0, color: "var(--c-stage-rem)" },
@@ -266,6 +268,8 @@ export default function OverviewPage() {
         {date && <button onClick={() => setParams({})} className="text-link min-h-11 px-2 text-[12px]">{t("common.today")}</button>}
       </nav>
     </header>
+    {!date && <TodayCheckin />}
+    {!date && setupDevices.data?.some(d => d.provider === "garmin" && d.status === "active") && <TodaySync />}
     {o && !o.anchor_is_today && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning px-4 py-3 text-[13px]"><span>{t("overview.history_notice", { date: o.date })}</span><Badge tone="warning">{t("design.history")}</Badge></div>}
     {o && !!o.alerts.length && <div role="status">{[...o.alerts].sort((a, b) => (({ critical: 0, high: 1, error: 1, warning: 2, low: 3, info: 4 } as Record<string, number>)[a.severity] ?? 5) - (({ critical: 0, high: 1, error: 1, warning: 2, low: 3, info: 4 } as Record<string, number>)[b.severity] ?? 5)).slice(0, 1).map((alert, index) => <div key={index} className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning bg-surface px-4 py-3 text-[13px]">
       <p className="min-w-0 flex-1">{alert.type === "sync_failure" ? t("v01Navigation.sync_attention") : alert.message}</p>
@@ -301,14 +305,22 @@ export default function OverviewPage() {
         </>}
       </aside>
     </div>
+    {!!o?.provider_signals?.length && <section className="grid gap-3 sm:grid-cols-3" aria-label={t("todaySignals.title")} data-testid="today-provider-signals">
+      {o.provider_signals.map(signal => <Card key={signal.metric} className="!p-4 sm:!p-5">
+        <p className="text-[13px] text-ink2">{t("todaySignals." + signal.metric)}</p>
+        <p className="num my-2 text-[28px] font-medium tracking-[-.045em]">{fmtNum(signal.metric === "hydration" ? units.metric("hydration", signal.value) : signal.value)} <span className="text-[12px] font-normal text-muted">{signal.metric === "hydration" ? units.metricUnit("hydration", "ml") : signal.unit}</span></p>
+        <p className="text-[12px] text-muted">{t("todaySignals." + signal.metric + "_note")}</p>
+        <p className="mt-2 text-[11px] text-muted">Garmin · {signal.date} · {t("todaySignals.synced")} {new Date(signal.fetched_at).toLocaleTimeString(i18n.language, { timeZone: me?.timezone, hour: "2-digit", minute: "2-digit" })}</p>
+      </Card>)}
+    </section>}
     {!setupHidden && !setupComplete.every(Boolean) && <details className="focus-card px-4 sm:px-5" data-testid="overview-setup">
       <summary className="flex min-h-14 cursor-pointer list-none flex-wrap items-center justify-between gap-2 py-3 text-[13px]"><span className="font-medium">{t("redesign.overview.setup_support")}</span><span className="text-muted">{t("redesign.overview.setup_count", { count: setupComplete.filter(Boolean).length })} <ChevronRight size={14} className="ml-1 inline" aria-hidden="true" /></span></summary>
       <div className="border-t border-hairline pb-4 pt-3">
-        <div className="flex items-start justify-between gap-4"><div><h2 className="text-[15px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[12px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem("apex.setup-checklist.dismissed", "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
+        <div className="flex items-start justify-between gap-4"><div><h2 className="text-[15px] font-medium">{t("setup.title")}</h2><p className="mt-1 text-[12px] text-muted">{t("setup.body")}</p></div><button type="button" className="min-h-11 min-w-11 text-muted hover:text-ink" aria-label={t("setup.dismiss")} onClick={() => { try { localStorage.setItem(`apex.setup-checklist.dismissed.${me?.user_id}`, "1"); } catch { /* Dismiss for this visit when storage is unavailable. */ } setSetupHidden(true); }}>×</button></div>
         <ul className="mt-3 grid gap-3 text-[13px] sm:grid-cols-3">{[
           { done: setupComplete[0], label: t("setup.connect"), to: "/app/settings?tab=devices", state: setupDevices.isLoading ? t("setup.checking") : setupComplete[0] ? t("setup.connected", { count: connectedSources }) : t("setup.not_connected") },
           { done: setupComplete[1], label: t("setup.profile"), to: "/app/settings?tab=profile", state: setupProfile.isPending ? t("setup.checking") : setupComplete[1] ? t("setup.profile_ready") : t("setup.profile_missing") },
-          { done: setupComplete[2], label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
+          { done: recordedNights >= 14, label: t("setup.baseline"), to: "/app/sleep", state: setupSleep.isLoading ? t("setup.checking") : t("setup.baseline_count", { count: recordedNights }) },
         ].map((item) => <li key={item.label}><Link to={item.to} className="flex min-h-11 items-center gap-3 rounded-control border border-hairline px-3 py-2 hover:bg-surface2"><span aria-hidden="true" className={item.done ? "text-positiveText" : "text-faint"}>{item.done ? "✓" : "○"}</span><span className="min-w-0"><span className="block font-medium text-ink">{item.label}</span><span className="block text-[12px] text-muted">{item.state}</span></span><ArrowRight size={14} className="ml-auto shrink-0" /></Link></li>)}</ul>
       </div>
     </details>}

@@ -144,14 +144,7 @@ celery_app.conf.update(
             "task": "budget.daily_check",
             "schedule": crontab(minute=45, hour=23),
         },
-        # §19 Phase 5 reports: hourly dispatch, tasks select users by LOCAL
-        # wall clock — daily summary at :45 inside the 03:00-03:59 window
-        # (after feature engine + gear), weekly Monday 06:00, monthly 1st
-        # 06:00. Weekly/monthly ride the powerful tier (§9.2).
-        "daily-summary-hourly-dispatch": {
-            "task": "reports.daily_summary",
-            "schedule": crontab(minute=45),
-        },
+        # Periodic reports retain their separate user-local schedule.
         "weekly-report-hourly-dispatch": {
             "task": "reports.weekly",
             "schedule": crontab(minute=0),

@@ -24,7 +24,7 @@ for (const locale of ["en", "it"] as const) {
     await page.goto("/app/settings?tab=profile");
     const running = page.getByRole("checkbox", { name: en ? "Running" : "Corsa", exact: true });
     await running.check();
-    await page.getByRole("button", { name: en ? "Complete later" : "Completa più avanti", exact: true }).click();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     const notes = page.locator("textarea[maxlength='8000']");
     await notes.fill("My saved training context.");
     const save = page.getByRole("button", { name: en ? "Save athlete context" : "Salva il contesto sportivo", exact: true });
@@ -61,6 +61,7 @@ for (const profileState of ["incomplete", "ready"] as const) {
       } });
     });
     await page.goto("/app");
+    if (profileState === "ready") { await expect(page.getByTestId("overview-setup")).toHaveCount(0); return; }
     await page.getByTestId("overview-setup").locator("summary").click();
     const profile = page.locator('a[href="/app/settings?tab=profile"]').filter({ hasText: "Complete your profile" });
     await expect(profile).toContainText(profileState === "ready" ? "Profile details available" : "Add your training focus, goal, or context");
@@ -74,7 +75,7 @@ test("deletion waits for confirmation and server success, and a failed attempt p
   const { writes } = await installApi(page);
   await page.goto("/app/settings?tab=profile");
   await page.getByRole("checkbox", { name: "Running", exact: true }).check();
-  await page.getByRole("button", { name: "Complete later", exact: true }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   const notes = page.locator("textarea[maxlength='8000']");
   await notes.fill("Saved context.");
   await page.getByRole("button", { name: "Save athlete context", exact: true }).click();

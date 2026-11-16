@@ -26,3 +26,5 @@ Use [setup and data handling](GARMIN_PERSONAL_API.md) and the
 The [October reopening decision](GARMIN_API_REOPENING_2026_10.md) and
 [October acceptance](PERSONAL_API_ACCEPTANCE_2026_10.md) are historical records,
 not evidence that this expanded revision has been tested on a live account.
+
+See the [Today and setup audit](APEX_WORKFLOW_GARMIN_AUDIT.md) for the shortened setup, native power metrics, daily wellness cards and on-open AI check-ins.

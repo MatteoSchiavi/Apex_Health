@@ -25,7 +25,7 @@ def test_cycling_constant_power_work_np_if_tss_vi_decoupling():
     assert result["power_hr_decoupling"]["value"] == pytest.approx(10)
     assert result["tss_style"]["unit"] == "Apex TSS-style"
     for metric in result.values():
-        assert metric["formula_version"] == "apex-cycling-v2"
+        assert metric["formula_version"] == "apex-cycling-v3"
 
 
 def test_np_fourth_power_rolling_average_reference():
@@ -87,3 +87,17 @@ def test_recorded_power_timestamp_and_range_quality_never_filled():
         assert not power_segments(broken, 3600)[1]
     assert not power_segments([Row(t_offset_s=i, power=float('nan')) for i in range(3601)], 3600)[1]
     assert not power_segments([Row(t_offset_s=i, power=6000) for i in range(3601)], 3600)[1]
+
+
+def test_official_summary_metrics_work_without_streams_or_local_ftp():
+    activity = Row(id=2, duration_s=3600, distance_m=30000, elevation_gain_m=300,
+        avg_power=200, local_date=DAY, source_metrics={"garmin": {
+            "normalized_power": 225, "intensity_factor": .75, "training_stress_score": 56.25,
+            "hr_zones": [{"name": "1", "duration_s": 600}, {"name": "2", "duration_s": 3000}]}})
+    result = {row['key']: row for row in cycling_metrics(activity, [], [], activity_day=DAY)}
+    for key, value in [('normalized_power',225),('intensity_factor',.75),('tss_style',56.25)]:
+        assert result[key]['value'] == value and result[key]['kind'] == 'recorded'
+        assert 'source_metrics.garmin' in result[key]['source_dependencies'][0]
+    assert result['tss_style']['unit'] == 'Garmin TSS'
+    assert result['hr_zone_time']['value'][1]['duration_s'] == 3000
+    assert result['variability_index']['value'] is None

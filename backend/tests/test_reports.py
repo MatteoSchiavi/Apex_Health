@@ -147,9 +147,9 @@ async def test_daily_summary_task_dispatch(db_session):
     await _seed_user_and_data(db_session, owner)
     # 03:45 Rome on 2025-03-10 → summarizes the prior local day 2025-03-09
     result = await _dispatch_daily(now_iso="2025-03-10T02:45:00+00:00")
-    assert result[str(owner)].startswith("daily:2025-03-09")
+    assert result == {"status": "on_open_only"}
     rows = (await db_session.scalars(select(AiReport))).all()
-    assert len(rows) == 1 and rows[0].model_used is None
+    assert rows == []
 
 
 async def test_weekly_report_powerful_tier_and_audit(db_session, monkeypatch):

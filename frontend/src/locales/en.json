@@ -1427,7 +1427,7 @@
     "profile": "Complete your profile",
     "profile_ready": "Profile details available",
     "profile_missing": "Add your training focus, goal, or context",
-    "baseline": "Build a sleep baseline",
+    "baseline": "Sleep baseline · builds automatically",
     "baseline_count": "{{count}}/14 recorded nights in the last 28 days"
   },
   "metricEducation": {
@@ -2930,7 +2930,7 @@
       "date_navigation": "Review a day",
       "daily_evidence": "Daily evidence",
       "setup_support": "Finish your setup",
-      "setup_count": "{{count}} of 3 complete",
+      "setup_count": "{{count}} of 2 complete",
       "health_history": "Health trends and history",
       "sleep_stages": "Sleep stages",
       "health_unavailable": "Health data is unavailable. Your day is still available.",
@@ -3074,5 +3074,29 @@
     "refresh": "Check deployed version",
     "stale": "The displayed version could not be refreshed. Check again to verify the current deployment.",
     "unavailable": "The deployed version is unavailable. Try checking again."
+  },
+  "quickSetup": {
+    "intro": "Start in 2–3 minutes: choose your sports, a goal and your weekly time. Save once; everything else is optional.",
+    "advanced": "Advanced Settings"
+  },
+  "todayCheckin": {
+    "title": "Your daily check-in",
+    "morning": "Morning",
+    "afternoon": "Afternoon / evening",
+    "loading": "Preparing your check-in…",
+    "ai_disabled": "AI check-ins are optional. Enable AI access and consent in your profile to receive them.",
+    "no_data": "No eligible data for the past week yet. Sync your device to build your check-in.",
+    "unavailable": "No check-in available for this visit. Your daily actions are ready below.",
+    "preferences": "AI preferences"
+  },
+  "todaySignals": {
+    "title": "Recovery and daily habits",
+    "body_battery": "Body Battery",
+    "body_battery_note": "Garmin’s energy estimate. Consider it alongside sleep and how you feel before choosing intensity.",
+    "stress": "Daily stress",
+    "stress_note": "Garmin’s daily average. Make room for a quiet break when stress is building.",
+    "hydration": "Logged hydration",
+    "hydration_note": "Recorded intake only. Check your diary before deciding whether to drink more.",
+    "synced": "synced"
   }
 }

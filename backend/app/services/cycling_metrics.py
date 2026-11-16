@@ -4,7 +4,7 @@ from app.services.endurance_metrics import (metric, positive, running_metrics, m
     paired_intervals, half_means, steady_effort, MIN_DRIFT_MOVING_S)
 from app.services.activity_presentation import recorded_zones
 
-VERSION = "apex-cycling-v2"
+VERSION = "apex-cycling-v3"
 FTP_MAX_AGE_DAYS = 90
 NP_WINDOW_S = 30
 NP_MIN_CONTINUOUS_S = 300
@@ -87,7 +87,10 @@ def cycling_metrics(activity, streams, laps, *, context=None, activity_day=None,
             row["unit"] = "rpm"
     moving, moving_dep = moving_time(activity)
     segments, valid_power, seconds = dense_power(activity, streams)
-    np = normalized_power(segments) if valid_power else None
+    provider = (activity.source_metrics or {}).get("garmin") or {}
+    recorded_np = positive(provider.get("normalized_power")) or positive(getattr(activity, "np_power", None))
+    np = recorded_np if recorded_np is not None else normalized_power(segments) if valid_power else None
+    np_deps = [aid+":source_metrics.garmin.normalized_power" if positive(provider.get("normalized_power")) else aid+":np_power"] if recorded_np is not None else [stream_dep+":power"]
     average = positive(activity.avg_power, zero=True)
     average_dep = aid+":avg_power"
     if valid_power:
@@ -97,22 +100,28 @@ def cycling_metrics(activity, streams, laps, *, context=None, activity_day=None,
     out.append(metric("mechanical_work", work, "kJ", "average_power_watts × recorded_moving_seconds / 1000",
         [average_dep] + ([moving_dep] if moving_dep else []), version=VERSION,
         reason="missing_power_or_reliable_moving_time", limitations=["mechanical_work_not_metabolic_calories", "provider_power_averaging_convention"]))
-    out.append(metric("normalized_power", np, "W", "fourth_root(mean(30_second_rolling_mean_power^4))",
-        [stream_dep+":power"], version=VERSION, reason="requires_dense_continuous_power_stream",
-        limitations=["apex_calculation_not_provider_value", "descriptive_not_prediction"],
-        prerequisites=["1Hz_recorded_power", "95_percent_power_coverage", "5min_continuous_segment", "30s_windows_without_gap_interpolation"]))
+    out.append(metric("normalized_power", np, "W", "Garmin recorded normalized power" if recorded_np is not None else "fourth_root(mean(30_second_rolling_mean_power^4))",
+        np_deps, version=VERSION, recorded=recorded_np is not None, reason="requires_dense_continuous_power_stream",
+        limitations=["provider_algorithm" if recorded_np is not None else "apex_calculation_not_provider_value"]))
     ftp, ftp_reason, measured = confirmed_ftp(context, activity_day or activity.local_date)
     ftp_deps = [f"athlete_profile:{profile_revision}:ftp:{measured}"] if measured else []
-    intensity = np / ftp if np is not None and ftp else None
-    out.append(metric("intensity_factor", intensity, "ratio", "Apex_normalized_power / confirmed_FTP",
-        [stream_dep+":power"]+ftp_deps, version=VERSION, reason=ftp_reason or "missing_normalized_power",
-        limitations=["explicit_ftp_not_estimated", "ftp_90_day_max_age", "descriptive_not_threshold_prediction"]))
+    recorded_if = positive(provider.get("intensity_factor"), zero=True)
+    intensity = recorded_if if recorded_if is not None else np / ftp if np is not None and ftp else None
+    out.append(metric("intensity_factor", intensity, "ratio", "Garmin recorded intensity factor" if recorded_if is not None else "normalized_power / confirmed_FTP",
+        [aid+":source_metrics.garmin.intensity_factor"] if recorded_if is not None else np_deps+ftp_deps,
+        version=VERSION, recorded=recorded_if is not None, reason=ftp_reason or "missing_normalized_power",
+        limitations=["provider_ftp_definition" if recorded_if is not None else "explicit_ftp_not_estimated"]))
     duration = positive(activity.duration_s)
-    tss = duration * np * intensity / (ftp * 3600) * 100 if duration and np is not None and intensity is not None and ftp else None
-    out.append(metric("tss_style", tss, "Apex TSS-style", "(recorded_seconds × Apex_NP × IF) / (confirmed_FTP × 3600) × 100",
-        [aid+":duration_s", stream_dep+":power"]+ftp_deps, version=VERSION, reason=ftp_reason or "missing_normalized_power_or_duration",
-        limitations=["apex_calculation_not_provider_value", "separate_load_scale", "explicit_ftp_not_estimated"]))
-    out.append(metric("variability_index", np / average if np is not None and average and valid_power else None, "ratio", "Apex_NP / same_stream_average_power",
+    recorded_tss = positive(provider.get("training_stress_score"), zero=True)
+    # A provider IF can use a different FTP. Local TSS always uses local IF.
+    local_if = np / ftp if np is not None and ftp else None
+    tss = recorded_tss if recorded_tss is not None else duration * np * local_if / (ftp * 3600) * 100 if duration and local_if is not None else None
+    out.append(metric("tss_style", tss, "Garmin TSS" if recorded_tss is not None else "Apex TSS-style",
+        "Garmin recorded training stress score" if recorded_tss is not None else "(recorded_seconds × NP × local_IF) / (confirmed_FTP × 3600) × 100",
+        [aid+":source_metrics.garmin.training_stress_score"] if recorded_tss is not None else [aid+":duration_s"]+np_deps+ftp_deps,
+        version=VERSION, recorded=recorded_tss is not None, reason=ftp_reason or "missing_normalized_power_or_duration",
+        limitations=["separate_load_scale", "provider_ftp_definition" if recorded_tss is not None else "explicit_ftp_not_estimated"]))
+    out.append(metric("variability_index", np / average if recorded_np is None and np is not None and average and valid_power else None, "ratio", "Apex_NP / same_stream_average_power",
         [stream_dep+":power"], version=VERSION, reason="missing_compatible_np_average_power",
         limitations=["same_recorded_stream_only", "descriptive_not_prediction"]))
     paired, longest = paired_intervals(streams, first="power", second="hr", allow_zero_first=True)

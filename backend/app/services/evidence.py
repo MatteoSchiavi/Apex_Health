@@ -495,7 +495,7 @@ async def index_garmin_payload(
     """Verified, explicit mapping only; unknown keys remain in the raw store."""
     if raw.source != "garmin" or not isinstance(raw.raw_json, dict):
         return
-    from app.connectors.garmin.normalize import _epoch_ms, _timestamp_flex
+    from app.connectors.garmin.normalize import _epoch_ms, _timestamp_flex, _num
     from app.connectors.validation import (
         valid_stress_level,
         valid_body_battery,
@@ -580,6 +580,7 @@ async def index_garmin_payload(
                 measured,
             ),
             ("spo2", valid_spo2_pct(payload.get("averageSpo2")), measured),
+            ("hydration", hydration if (hydration := _num(payload.get("hydrationValueInML"))) is not None and hydration >= 0 else None, measured),
         ]
     elif kind == "body_composition" and ":" in raw.payload_type:
         measured = datetime.combine(

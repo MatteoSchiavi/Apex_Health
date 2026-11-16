@@ -43,3 +43,7 @@ The app is multi-user with strict server-side isolation: a friend's session can 
 1. **Mint an invite.** As owner: Settings → Invites → create (7-day expiry by default). The code is shown once.
 2. **Friend redeems.** Send the code over a channel you trust. Your friend opens `/join` on your public URL (see [Remote access](06-Remote-Access.md)), picks name/email/password, and is in — one step, no admin work.
 **Next:** [Daily usage →](04-Daily-Usage.md)
+
+## Short setup and daily actions
+
+In Settings → Profile, choose your sports, optional goal and weekly time, then save once. The complete configuration is under Advanced Settings. Sleep baselines build automatically. Today offers Sync now, recorded wellness signals and an optional on-open AI check-in capped to morning and afternoon.

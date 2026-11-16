@@ -390,6 +390,7 @@ def _wellness_payload_has_content(payload_type: str, payload: Any) -> bool:
                 "averageStressLevel",
                 "bodyBatteryMostRecentValue",
                 "averageSpo2",
+                "hydrationValueInML",
             )
         )
     if payload_type == fetch.PAYLOAD_BODY_COMPOSITION:

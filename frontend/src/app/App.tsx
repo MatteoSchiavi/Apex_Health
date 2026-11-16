@@ -50,6 +50,7 @@ const LegalPage = lazy(() => import("../features/legal/LegalPage"));
 const AdminPage = lazy(() => import("../features/admin/AdminPage"));
 
 import { queryClient } from "./query";
+import { useAppCheckin } from "./useAppCheckin";
 import { Button, ErrorNote, Loading } from "../components/kit";
 import { useTranslation } from "react-i18next";
 
@@ -101,10 +102,19 @@ function Protected({ children }: { children: ReactNode }) {
   );
 }
 
+// Mounted once for the application lifetime, so navigating between pages does
+// not count as another open (or cause a generation when noon passes).
+function AppOpenCheckin() {
+  const userId = useUi(s => s.me?.user_id);
+  useAppCheckin(userId, true);
+  return null;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <AppOpenCheckin />
         <Routes>
           <Route path="/" element={<WelcomePage />} />
           <Route path="/login" element={<Login />} />

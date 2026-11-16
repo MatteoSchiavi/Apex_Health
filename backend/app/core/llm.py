@@ -72,6 +72,7 @@ class LLMClient(Protocol):
         system: str | None = None,
         tier: str = "cheap",
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int = 4096,
     ) -> LLMResponse: ...
 
 
@@ -140,6 +141,7 @@ class LiveGLMClient:
         system: str | None = None,
         tier: str = "cheap",
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         if tier not in self._models:
             raise LLMError(f"unknown tier {tier!r} (expected one of {sorted(self._models)})")
@@ -152,7 +154,7 @@ class LiveGLMClient:
         if system:
             payload_messages.append({"role": "system", "content": system})
         payload_messages.extend(messages)
-        payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages, "max_tokens": 4096}
+        payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages, "max_tokens": max(1, min(max_tokens, 4096))}
         if self._models[tier].startswith("deepseek-"):
             # Thinking defaults to enabled on current DeepSeek models; keep
             # ordinary lookups fast, with an explicit operator opt-in.

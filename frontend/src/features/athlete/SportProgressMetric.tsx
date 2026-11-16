@@ -41,7 +41,7 @@ export function MetricProvenance({ metric }: { metric: SportProgressMetric }) {
 export function ProgressMetric({ metric }: { metric: SportProgressMetric }) {
   const { t, i18n } = useTranslation();
   const bestPower = metric.key.match(/^best_power_(\d+)s$/);
-  const title = bestPower ? t("sportProgress.best_power", { duration: fmtDuration(Number(bestPower[1])) }) : t("sportProgress.metrics." + metric.key, { defaultValue: t("athlete.metric_" + metric.key, { defaultValue: humanize(metric.key) }) });
+  const title = metric.key === "tss_style" && metric.kind === "recorded" ? "Garmin TSS" : bestPower ? t("sportProgress.best_power", { duration: fmtDuration(Number(bestPower[1])) }) : t("sportProgress.metrics." + metric.key, { defaultValue: t("athlete.metric_" + metric.key, { defaultValue: humanize(metric.key) }) });
   const reasonKey = "sportProgress.reasons." + metric.unavailable_reason;
   const reason = metric.unavailable_reason && i18n.exists(reasonKey) ? t(reasonKey) : metric.unavailable_reason ? t("sportProgress.unavailable") : null;
   return <section className="min-w-0 border-t border-hairline pt-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="text-[14px] font-medium">{title}</h3><Badge>{t(metric.value == null ? "sportProgress.not_available" : metric.kind === "recorded" ? "athlete.recorded" : "athlete.calculated")}</Badge></div>

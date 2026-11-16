@@ -6,8 +6,7 @@ for (const locale of ["en", "it"] as const) {
     const { writes } = await installApi(page, { locale, aiConsent: false });
     await page.goto("/app/settings?tab=profile");
     await page.getByLabel(locale === "en" ? "Cycling" : "Ciclismo", { exact: true }).check();
-    await page.getByRole("button", { name: locale === "en" ? "Complete later" : "Completa più avanti", exact: true }).click();
-    await page.locator("summary").filter({ hasText: locale === "en" ? "Optional details" : "Dettagli facoltativi" }).click();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     await page.getByRole("combobox", {name:locale === "en" ? "Goal measurement" : "Misura dell’obiettivo", exact: true}).selectOption("best_power_w");
     const save = page.getByRole("button", { name: locale === "en" ? "Save athlete context" : "Salva il contesto sportivo", exact: true });
     await expect(save).toBeDisabled();

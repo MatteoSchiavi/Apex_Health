@@ -148,7 +148,10 @@ async def test_restricted_origin_denied_before_snapshot_and_tools(db_session):
     )
     assert [r.id for r in rows] == [manual.id]
     snapshot = await _build_snapshot(db_session, 1, NOW)
-    assert "999" not in json.dumps(snapshot, default=str)
+    serialized = json.dumps(snapshot, default=str)
+    # A revision digest can contain the digits 999 without exposing a value.
+    assert '"value": 999' not in serialized
+    assert f"observation:{secret.id}:1" not in serialized
     assert "strava" not in json.dumps(snapshot["coverage"]["metrics"], default=str)
     from app.agent.tools import ToolContext
 

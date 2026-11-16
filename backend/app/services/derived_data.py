@@ -20,6 +20,8 @@ async def clear_derived_health_data(session, user_id):
     provider records remain available for recomputation.
     """
     params = {"owner": user_id}
+    # Erase health content, retain the consumed quota to prevent regeneration.
+    await session.execute(text("UPDATE today_checkins SET content=NULL, source_revision=NULL, source_ids='[]', status='unavailable' WHERE user_id=:owner"), params)
     await session.execute(text("DELETE FROM embeddings WHERE source_table='ai_reports' AND source_id IN (SELECT id FROM ai_reports WHERE user_id=:owner)"), params)
     for table in ("analysis_results", "ai_reports", "daily_features", "discipline_features", "weekly_rollups", "monthly_rollups", "decision_records", "lab_notifications"):
         await session.execute(text(f"DELETE FROM {table} WHERE user_id=:owner"), params)

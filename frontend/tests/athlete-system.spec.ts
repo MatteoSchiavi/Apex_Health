@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { installApi, today } from "./fixtures";
 
 async function openAvailability(page: Page, locale: "en" | "it" = "en") {
-  await page.getByRole("button", { name: locale === "en" ? "Complete later" : "Completa più avanti", exact: true }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   await page.locator("summary").filter({ hasText: locale === "en" ? "Usual availability" : "Disponibilità abituale" }).click();
 }
 
@@ -30,6 +30,7 @@ for (const locale of ["en", "it"] as const) {
     expect((body.context as Record<string, unknown>).availability).toEqual([0, 1, 2, 3, 4].map(day => ({ day, start: "18:00", end: "20:00" })));
     expect(writes.some(w => /plan-drafts|confirm/.test(w.path))).toBe(false);
     await page.reload();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     await expect(page.locator("textarea[maxlength='8000']")).toHaveValue("Running and strength around work.");
     await expect(page.getByLabel(locale === "en" ? "Running" : "Corsa", { exact: true })).toBeChecked();
     await page.locator("summary").filter({ hasText: locale === "en" ? "Usual availability" : "Disponibilità abituale" }).click();
@@ -101,7 +102,7 @@ for (const status of [503, 409]) {
       return route.fallback();
     });
     await page.goto("/app/settings?tab=profile");
-    await page.getByRole("button", { name: "Complete later", exact: true }).click();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     const notes = page.locator("textarea[maxlength='8000']");
     await notes.fill("Keep my draft after an error.");
     await page.getByRole("button", { name: "Save athlete context", exact: true }).click();
@@ -130,7 +131,7 @@ test("profile saving waits for server confirmation and survives a failed account
     return route.fallback();
   });
   await page.goto("/app/settings?tab=profile");
-  await page.getByRole("button", { name: "Complete later", exact: true }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   const notes = page.locator("textarea[maxlength='8000']");
   await notes.fill("A server-confirmed biography.");
   await page.route("**/me", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
@@ -147,7 +148,7 @@ test("dirty profile guards links and settings tabs, retains browser-back drafts 
   await installApi(page);
   await page.goto("/app");
   await page.locator('a[href="/app/settings"]').first().click();
-  await page.getByRole("button", { name: "Complete later", exact: true }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   await page.getByRole("button", { name: "Save athlete context", exact: true }).click();
   await expect(page.getByText("Athlete context saved.", { exact: false })).toBeVisible();
   const notes = page.locator("textarea[maxlength='8000']");
@@ -196,17 +197,13 @@ test("onboarding has one primary save action and keeps all advanced details opti
   await page.goto("/app/settings?tab=profile");
   await page.getByLabel("Running", { exact: true }).check();
   await page.getByLabel("Gym", { exact: true }).check();
-  for (let step = 0; step < 5; step++) {
-    await expect(page.getByRole("button", { name: "Save athlete context", exact: true })).toHaveCount(0);
-    const save = page.getByRole("button", { name: step === 4 ? "Save these first details" : "Save and continue", exact: true });
-    await expect(save).toHaveCount(1);
-    await save.click();
-    await expect.poll(() => writes.filter(w => w.path === "/athlete/profile").length).toBe(step + 1);
-    await expect(page.getByRole("button", { name: "Saving athlete context…", exact: true })).toHaveCount(0);
-  }
-  await expect(page.getByRole("button", { name: "Save athlete context", exact: true })).toBeVisible();
+  await expect(page.getByTestId("advanced-settings")).not.toHaveAttribute("open");
+  const save = page.getByRole("button", { name: "Save athlete context", exact: true });
+  await expect(save).toHaveCount(1);
+  await save.click();
+  await expect.poll(() => writes.filter(w => w.path === "/athlete/profile").length).toBe(1);
   const saves = writes.filter(w => w.path === "/athlete/profile");
-  expect(saves.map(w => w.body.expected_revision)).toEqual([0, 1, 2, 3, 4]);
+  expect(saves[0].body.expected_revision).toBe(0);
   expect((saves.at(-1)!.body.context as Record<string, unknown>).onboarding_step).toBe(5);
 });
 
@@ -214,8 +211,7 @@ test("confirmed FTP survives context saves and deletion clears prior save feedba
   const { writes } = await installApi(page);
   await page.goto("/app/settings?tab=profile");
   await page.getByLabel("Cycling", { exact: true }).check();
-  await page.getByRole("button", { name: "Complete later", exact: true }).click();
-  await page.locator("summary").filter({ hasText: "Optional details" }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   await page.getByLabel("FTP (watts)", { exact: true }).fill("250");
   await page.getByLabel("FTP measurement date", { exact: true }).fill(today);
   await page.getByRole("checkbox", { name: "I confirm this dated FTP value.", exact: true }).check();
@@ -244,7 +240,7 @@ for (const locale of ["en", "it"] as const) for (const theme of ["light", "dark"
     await page.getByLabel(locale === "en" ? "Cycling" : "Ciclismo", { exact: true }).check();
     await page.getByLabel(locale === "en" ? "Gym" : "Palestra", { exact: true }).check();
     await page.getByRole("button", { name: locale === "en" ? "Move up" : "Sposta in alto", exact: true }).last().click();
-    await page.getByRole("button", { name: locale === "en" ? "Complete later" : "Completa più avanti", exact: true }).click();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     const notes = page.locator("textarea[maxlength='8000']");
     await notes.fill("I train around a variable schedule.");
     await page.getByRole("button", { name: locale === "en" ? "Save athlete context" : "Salva il contesto sportivo", exact: true }).click();
@@ -358,7 +354,7 @@ for (const priorities of [[], ["Running"], ["Running", "Gym"], ["Cycling", "Runn
     const { writes } = await installApi(page, { aiConsent:false });
     await page.goto("/app/settings?tab=profile");
     for (const priority of priorities) await page.getByRole("checkbox",{name:priority,exact:true}).check();
-    await page.getByRole("button",{name:"Complete later",exact:true}).click();
+    await page.getByTestId("advanced-settings").locator("summary").first().click();
     await page.getByRole("button",{name:"Save athlete context",exact:true}).click();
     await expect.poll(()=>writes.filter(w=>w.path==="/athlete/profile").length).toBe(1);
     expect(writes.find(w=>w.path==="/athlete/profile")?.body.training_focus).toEqual(priorities.map(p=>p.toLowerCase()));

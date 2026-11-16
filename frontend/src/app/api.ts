@@ -136,6 +136,7 @@ export interface ActivityCard {
 }
 
 export interface Overview {
+  provider_signals?: { metric: string; value: number; unit: string; origin: string; date: string; fetched_at: string }[];
   date: string;
   anchor_is_today: boolean;
   readiness: ScoreBlock;

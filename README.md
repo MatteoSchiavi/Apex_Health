@@ -137,6 +137,8 @@ wiki/          user-facing operating notes
 
 ## Product contracts
 
+- [Streamlined setup, Garmin cutover and Today check-in audit](docs/APEX_WORKFLOW_GARMIN_AUDIT.md)
+
 - [Installation and local hosting](docs/INSTALL.md)
 - [Automatic home-server updates and recovery](docs/AUTO_UPDATES.md)
 - [Owner administration, feedback and Telegram](docs/OWNER_ADMIN.md)

@@ -59,6 +59,7 @@ class ScoreBlock(BaseModel):
 
 
 class OverviewOut(BaseModel):
+    provider_signals: list[dict[str, Any]] = Field(default_factory=list)
     date: str
     # False when the anchor day itself has nothing recorded and the endpoint
     # fell back to the most recent day that does (fresh-connect reality:

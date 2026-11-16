@@ -4,8 +4,8 @@ Hourly-dispatch pattern (same as the feature engine / gear accumulation):
 beat ticks on the hour/half-hour in UTC, each task computes only for users
 whose LOCAL wall clock matches the §19 cadence —
 
-- daily summary: :45 inside the 03:00-03:59 local window, summarizing the
-  freshly computed prior local day (templated, no LLM — see reports/daily.py)
+- daily check-ins: on foreground app open only (reports/checkin.py).
+  The old daily task remains a compatibility no-op for queued messages.
 - weekly AI report: Monday 06:00 local, last Mon..Sun (§19, powerful tier)
 - monthly AI report: 1st of month 06:00 local, previous calendar month
 
@@ -22,14 +22,12 @@ from sqlalchemy import select, or_
 from app.core.config import get_settings
 from app.core.db import sessionmaker
 from app.models.user import User, AuthCredential
-from app.reports.daily import upsert_daily_report
 from app.reports.periodic import upsert_periodic_report
 from app.tasks.celery_app import celery_app
 from app.tasks.runtime import run_async
 
 logger = logging.getLogger("tasks.reports")
 
-DAILY_LOCAL_HOUR = 3
 REPORT_LOCAL_HOUR = 6
 
 
@@ -73,24 +71,9 @@ async def _users_at(
 
 
 async def _dispatch_daily(now_iso: str | None = None) -> dict:
-    now = _now_of(now_iso)
-    results: dict[str, str] = {}
-    async with sessionmaker() as session:
-        targets = await _users_at(session, now, hour=DAILY_LOCAL_HOUR)
-    for user, local_now in targets:
-        target_day = local_now.date() - timedelta(days=1)  # the just-computed local day
-        try:
-            row = await upsert_daily_report(sessionmaker, user, target_day)
-            results[str(user.id)] = (
-                f"daily:{row.period_start.isoformat() if row else 'skipped'}"
-            )
-        except ValueError:
-            results[str(user.id)] = "no-data"
-        except Exception:
-            # §21: one user's failure must not starve the others.
-            logger.exception("daily summary failed for user %s", user.id)
-            results[str(user.id)] = "failed"
-    return results
+    # Compatibility no-op for messages queued by an older beat deployment.
+    # Daily check-ins are generated exclusively by POST /dashboard/check-in.
+    return {"status": "on_open_only"}
 
 
 def _period_for(report_type: str, local_now: datetime) -> tuple[date, date]:

@@ -28,6 +28,7 @@ start date.
 
 import logging
 from dataclasses import dataclass, field
+from math import isfinite
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -130,10 +131,11 @@ def _parse_gmt_datetime(value: Any, label: str) -> datetime:
 
 
 def _num(value: Any) -> float | None:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     try:
-        return float(value)
+        parsed = float(value)
+        return parsed if isfinite(parsed) else None
     except (TypeError, ValueError):
         return None
 
@@ -256,7 +258,7 @@ async def _upsert_activity(
         avg_hr=_int_or_none(payload.get("averageHR")),
         max_hr=_int_or_none(payload.get("maxHR")),
         avg_power=_num(payload.get("averagePower")),
-        np_power=_num(payload.get("normalizedPower")),
+        np_power=_num(payload.get("normalizedPower")) if (_num(payload.get("normalizedPower")) or 0) > 0 else None,
         calories=_int_or_none(payload.get("calories")),
         training_load=_num(payload.get("activityTrainingLoad")),
         data_completeness=completeness,
@@ -338,6 +340,18 @@ async def _upsert_activity(
     source_metrics = dict(activity.source_metrics or {})
     garmin_metrics = dict(source_metrics.get("garmin") or {})
     garmin_metrics["type_key"] = type_key
+    # Summary fields remain useful when no sample stream is available.
+    for upstream, canonical in (("normalizedPower", "normalized_power"),
+                                ("intensityFactor", "intensity_factor"),
+                                ("trainingStressScore", "training_stress_score")):
+        value = _num(payload.get(upstream))
+        if value is not None and value > 0:
+            garmin_metrics[canonical] = value
+    for prefix, metric, count in (("hrTimeInZone_", "hr", 5), ("powerTimeInZone_", "power", 7)):
+        zones = [{"name": str(i), "duration_s": value} for i in range(1, count + 1)
+                 if (value := _num(payload.get(prefix + str(i)))) is not None and value >= 0]
+        if zones and any(zone["duration_s"] > 0 for zone in zones):
+            garmin_metrics[metric + "_zones"] = zones
     if (recorded_load := _num(payload.get("activityTrainingLoad"))) is not None:
         garmin_metrics["training_load"] = recorded_load
         garmin_metrics["training_load_method"] = "garmin_activity_training_load"
@@ -704,6 +718,7 @@ async def _upsert_biometrics(
             steps=_int_or_none(payload.get("totalSteps")),
             floors=_int_or_none(payload.get("floorsAscended")),
             spo2_avg=valid_spo2_pct(payload.get("averageSpo2")),
+            hydration_ml=_num(payload.get("hydrationValueInML")) if _num(payload.get("hydrationValueInML")) is not None and _num(payload.get("hydrationValueInML")) >= 0 else None,
         )
     else:  # body composition — weight is reported in grams upstream
         total = payload.get("totalAverage") or {}

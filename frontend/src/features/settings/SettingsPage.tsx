@@ -529,6 +529,7 @@ function DevicesSection() {
                   setSyncMessage(t(enqueued ? "garminPersonal.connected_syncing" : "garminPersonal.connected_not_queued"));
                   invalidateSyncedData(qc);
                 }} />}
+                {key === "garmin" && garminOpen && !owner && <p className="py-4 text-[13px] text-muted">{t("garminPersonal.owner_only")}</p>}
                 {key === "coros" && corosOpen && !connected && <CorosConnectForm onDone={() => { setCorosOpen(false); qc.invalidateQueries({ queryKey: ["devices"] }); }} />}
               </Fragment>
             );

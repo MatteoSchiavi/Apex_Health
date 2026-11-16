@@ -13,6 +13,7 @@ import { ReadError } from "../../components/ReadError";
 import { AvailabilityEditor, availabilityError, type AvailabilityEntry } from "./AvailabilityEditor";
 import type { AthleteContext, AthleteProfile, Focus, SportContext } from "./types";
 
+const advancedDisclosures = new Map<number, boolean>();
 const FOCUSES: Focus[] = ["gym", "running", "cycling"];
 const numeric = (value: string) => value === "" ? undefined : Number(value);
 interface ProfileDraft {
@@ -32,6 +33,7 @@ export function AthleteProfilePanel() {
   const { t, i18n } = useTranslation();
   const uid = useUi(s => s.me?.user_id);
   const qc = useQueryClient();
+  const [advancedOpen, setAdvancedOpen] = useState(() => uid != null && advancedDisclosures.get(uid) === true);
   const profile = useQuery({ queryKey: ["athlete-profile", uid], queryFn: () => api.get<AthleteProfile>("/athlete/profile") });
   const [focuses, setFocuses] = useState<Focus[]>([]);
   const [context, setContext] = useState<AthleteContext>({});
@@ -144,7 +146,6 @@ export function AthleteProfilePanel() {
     <div className="flex flex-wrap gap-4">{FOCUSES.map(f => <label className="flex min-h-11 items-center gap-2 text-[14px]" key={f}><input type="checkbox" checked={focuses.includes(f)} onChange={e => { setFocuses(old => e.target.checked ? [...old, f] : old.filter(x => x !== f)); }} />{t("athlete.focus_" + f)}</label>)}</div>
     <ol className="mt-3 space-y-2">{focuses.map((f, index) => <li className="flex items-center gap-3 text-[13px]" key={f}><span>{index+1}. {t("athlete.focus_" + f)}</span>
       {index > 0 && <Button variant="ghost" onClick={() => { setFocuses(old => { const copy = [...old]; [copy[index-1], copy[index]] = [copy[index], copy[index-1]]; return copy; }); }}>{t("athlete.move_up")}</Button>}</li>)}</ol>
-    <FocusAllocationEditor focuses={focuses} context={context} onChange={patch=>setContext(c=>({...c,...patch}))} />
   </div>;
   const goalFields = <Input label={t("athlete.main_goal")} value={context.main_goal ?? ""} onChange={v => edit("main_goal", v)} />;
   const timeFields = <div className="grid gap-3 sm:grid-cols-2"><Input label={t("athlete.weekly_hours")} type="number" min={0} max={168} step={0.25} value={context.weekly_time_budget_min == null ? "" : String(context.weekly_time_budget_min / 60)} onChange={v => edit("weekly_time_budget_min", v === "" ? undefined : Math.round(Number(v)*60))} /><Select label={t("athlete.rest_day")} value={context.preferred_rest_day == null ? "" : String(context.preferred_rest_day)} onChange={v => edit("preferred_rest_day", numeric(v))} options={dayOptions} /></div>;
@@ -154,14 +155,18 @@ export function AthleteProfilePanel() {
   return <div ref={root} className="flex flex-col gap-6">
     {profile.isError && <ReadError stale pending={profile.isFetching} retry={() => void profile.refetch()} />}
     <Card><CardHeader title={t("athlete.profile_title")} right={save.isSuccess && !unsaved && <Badge tone="positive">{t("settings.saved")}</Badge>} />
-      <p className="mb-5 text-[13px] text-muted">{t("athlete.progressive_note")}</p>
+      <p className="mb-5 text-[13px] text-muted">{t("quickSetup.intro")}</p>
       <fieldset disabled={save.isPending || remove.isPending || reloading}>
-      {step < 5 ? <section aria-label={t("athlete.onboarding")}>
-        <p className="eyebrow">{t("athlete.step", { count: step+1 })}</p><h3 className="my-4 text-[18px] font-medium">{t("athlete.question_" + step)}</h3>
-        {[priorityFields, goalFields, timeFields, availabilityFields, planFields][step]}
-        <div className="mt-5"><Button variant="ghost" disabled={pendingWindow} onClick={() => setStep(5)}>{t("athlete.complete_later")}</Button></div>
-      </section> : <div className="space-y-5"><section><h3 className="mb-3 text-[15px] font-medium">{t("athlete.section_focus")}</h3>{priorityFields}</section><section><h3 className="mb-3 text-[15px] font-medium">{t("athlete.section_goals")}</h3>{goalFields}</section><details><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.availability")}</summary><div className="mt-4 space-y-4">{timeFields}{availabilityFields}</div></details><details><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.existing_plan")}</summary><div className="mt-4">{planFields}</div></details></div>}
-      <details className="mt-6 border-t border-hairline pt-5"><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.optional_details")}</summary>
+      <section aria-label={t("athlete.onboarding")} className="space-y-5">
+        <section><h3 className="mb-3 text-[15px] font-medium">{t("athlete.section_focus")}</h3>{priorityFields}</section>
+        {goalFields}{timeFields}
+      </section>
+      <details open={advancedOpen} onToggle={event => { const open = event.currentTarget.open; setAdvancedOpen(open); if (uid != null) advancedDisclosures.set(uid, open); }} className="mt-6 border-t border-hairline pt-5" data-testid="advanced-settings"><summary className="cursor-pointer py-2 text-[14px] font-medium">{t("quickSetup.advanced")}</summary>
+        <div className="mt-4 space-y-5">
+          <FocusAllocationEditor focuses={focuses} context={context} onChange={patch=>setContext(c=>({...c,...patch}))} />
+          <details><summary className="cursor-pointer text-[14px] font-medium">{t("athlete.availability")}</summary><div className="mt-4">{availabilityFields}</div></details>
+          {planFields}
+        </div>
         <p className="mt-3 text-[13px] text-muted">{t("athlete.advanced_optional_note")}</p>
         <div className="mt-5 space-y-6">{focuses.map(f => { const sport = context.focuses?.[f] ?? {}; return <section key={f}><h3 className="mb-3 text-[15px] font-medium">{t("athlete.focus_"+f)}</h3><div className="grid gap-3 sm:grid-cols-2">
           <Select label={t("athlete.level")} value={sport.level ?? ""} onChange={v => sportEdit(f, "level", v || undefined)} options={[{ value: "", label: t("design.not_specified") }, ...["new", "beginner", "intermediate", "experienced"].map(value => ({ value, label: t("athlete.level_"+value) }))]} />
@@ -186,14 +191,14 @@ export function AthleteProfilePanel() {
           <Input label={t("athlete.restrictions")} value={context.self_declared_restrictions ?? ""} onChange={v => edit("self_declared_restrictions", v)} /><p className="text-[12px] text-muted">{t("athlete.restrictions_note")}</p>
           <Link className="text-link" to="/app/settings?tab=notifications">{t("athlete.notification_preferences")}</Link>
         </div>
-      </details>
       <h3 className="mt-6 text-[15px] font-medium">{t("athlete.section_about")}</h3>
       <label className="mt-3 flex flex-col gap-2 text-[13px]"><span>{t("athlete.open_context")}</span><textarea className="min-h-28 w-full border border-hairline bg-transparent px-3 py-2 focus:border-ink" maxLength={8000} value={context.athlete_notes ?? ""} onChange={e => edit("athlete_notes", e.target.value)} /></label>
       <p className="mt-2 text-[12px] text-muted">{t("athlete.context_privacy")}</p>
+      </details>
       </fieldset>
       {seasonsInvalid && <p role="alert" className="mt-3 text-[13px] text-alertText">{t("athlete.season_invalid")}</p>}
       <p role={save.isError ? "alert" : "status"} className="mt-4 text-[13px] text-muted">{t(status)}</p>
-      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || reloading || reviewDelete || invalidProfile} onClick={() => save.mutate(step < 5 ? step + 1 : step)}>{t(save.isPending ? "athlete.saving_profile" : step < 5 ? step === 4 ? "athlete.finish" : "athlete.save_continue" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a>{!reviewDelete && <Button variant="ghost" disabled={remove.isPending || save.isPending || reloading} onClick={() => { remove.reset(); setReviewDelete(true); }}>{t("athlete.delete_context")}</Button>}{save.isError && <Button variant="ghost" disabled={reviewDelete || reloading || save.isPending || remove.isPending} onClick={() => void reloadProfile()}>{t("athlete.reload")}</Button>}</div>
+      <div className="mt-5 flex flex-wrap gap-3"><Button disabled={save.isPending || remove.isPending || reloading || reviewDelete || invalidProfile} onClick={() => save.mutate(5)}>{t(save.isPending ? "athlete.saving_profile" : "athlete.save_profile")}</Button><a className="text-link self-center" href="/lab/export/account.json">{t("athlete.export_context")}</a>{!reviewDelete && <Button variant="ghost" disabled={remove.isPending || save.isPending || reloading} onClick={() => { remove.reset(); setReviewDelete(true); }}>{t("athlete.delete_context")}</Button>}{save.isError && <Button variant="ghost" disabled={reviewDelete || reloading || save.isPending || remove.isPending} onClick={() => void reloadProfile()}>{t("athlete.reload")}</Button>}</div>
       {reviewDelete && <section aria-labelledby={deleteTitleId} className="mt-4 border border-hairline p-4">
         <h3 id={deleteTitleId} className="text-[15px] font-medium">{t("athlete.delete_context_title")}</h3>
         <p className="mt-2 text-[13px] text-muted">{t("athlete.delete_context_body")}</p>

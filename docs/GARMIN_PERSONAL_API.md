@@ -94,3 +94,5 @@ Mocked HTTP, public-contract and synthetic FIT tests verify implementation behav
 The [October acceptance record](PERSONAL_API_ACCEPTANCE_2026_10.md) covers an older
 30-day revision only. These new changes require a separate authorized real-account
 sync and comparison on the intended deployment before claiming complete delivery.
+
+See the [Today and setup audit](APEX_WORKFLOW_GARMIN_AUDIT.md) for the shortened setup, native power metrics, daily wellness cards and on-open AI check-ins.

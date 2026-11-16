@@ -1427,7 +1427,7 @@
     "profile": "Completa il profilo",
     "profile_ready": "Dati del profilo disponibili",
     "profile_missing": "Aggiungi il tuo sport, obiettivo o contesto",
-    "baseline": "Crea una baseline del sonno",
+    "baseline": "Baseline del sonno · si forma automaticamente",
     "baseline_count": "{{count}}/14 notti registrate negli ultimi 28 giorni"
   },
   "metricEducation": {
@@ -2930,7 +2930,7 @@
       "date_navigation": "Esplora i giorni",
       "daily_evidence": "Dati del giorno",
       "setup_support": "Completa la configurazione",
-      "setup_count": "{{count}} di 3 completati",
+      "setup_count": "{{count}} di 2 completati",
       "health_history": "Andamenti e cronologia della salute",
       "sleep_stages": "Fasi del sonno",
       "health_unavailable": "I dati sulla salute non sono disponibili. Il tuo giorno resta disponibile.",
@@ -3074,5 +3074,29 @@
     "refresh": "Verifica versione installata",
     "stale": "Non è stato possibile aggiornare la versione mostrata. Verifica di nuovo per controllare il rilascio attuale.",
     "unavailable": "La versione installata non è disponibile. Riprova la verifica."
+  },
+  "quickSetup": {
+    "intro": "Inizia in 2–3 minuti: scegli sport, obiettivo e tempo settimanale. Salva una volta; tutto il resto è facoltativo.",
+    "advanced": "Impostazioni avanzate"
+  },
+  "todayCheckin": {
+    "title": "Il tuo riepilogo quotidiano",
+    "morning": "Mattina",
+    "afternoon": "Pomeriggio / sera",
+    "loading": "Preparazione del riepilogo…",
+    "ai_disabled": "I riepiloghi AI sono facoltativi. Per riceverli, abilita accesso AI e consenso nel profilo.",
+    "no_data": "Nessun dato idoneo per l’ultima settimana. Sincronizza il dispositivo per preparare il riepilogo.",
+    "unavailable": "Riepilogo non disponibile per questa visita. Le azioni quotidiane sono pronte qui sotto.",
+    "preferences": "Preferenze AI"
+  },
+  "todaySignals": {
+    "title": "Recupero e abitudini quotidiane",
+    "body_battery": "Body Battery",
+    "body_battery_note": "Stima dell’energia Garmin. Valutala insieme al sonno e a come ti senti prima di scegliere l’intensità.",
+    "stress": "Stress giornaliero",
+    "stress_note": "Media giornaliera Garmin. Prevedi una pausa tranquilla quando lo stress aumenta.",
+    "hydration": "Idratazione registrata",
+    "hydration_note": "Solo l’apporto registrato. Controlla il diario prima di decidere se bere di più.",
+    "synced": "sincronizzato alle"
   }
 }

@@ -352,6 +352,11 @@ async def export_account(
             "session_id IN (SELECT id FROM ai_chat_sessions WHERE user_id=:owner)",
         ),
         (
+            "today_checkins",
+            "local_date,slot,timezone,status,content,generated_at",
+            "user_id=:owner",
+        ),
+        (
             "ai_reports",
             "id,report_type,period_start,period_end,generated_at,content_md,model_used",
             "user_id=:owner",

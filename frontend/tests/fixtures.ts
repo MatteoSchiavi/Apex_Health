@@ -296,7 +296,8 @@ export async function installApi(
         ? (req.postDataJSON() ?? {})
         : {};
       writes.push({ path, body });
-      if (path === "/athlete/profile") { athleteProfile = req.method()==="DELETE" ? { training_focus: [], context: {}, revision: athleteProfile.revision+1 } : { training_focus: body.training_focus as string[], context: body.context as Record<string, unknown>, revision: athleteProfile.revision+1 }; data = athleteProfile; }
+      if (path === "/dashboard/check-in") data = {status: "ai_disabled", lines: [], date: today};
+      else if (path === "/athlete/profile") { athleteProfile = req.method()==="DELETE" ? { training_focus: [], context: {}, revision: athleteProfile.revision+1 } : { training_focus: body.training_focus as string[], context: body.context as Record<string, unknown>, revision: athleteProfile.revision+1 }; data = athleteProfile; }
       else if (path === "/athlete/ai/consent") { aiConsent = Boolean(body.active); data = aiState(); }
       else if (path.startsWith("/athlete/")) data = { ...body, id: 1, revision: 1 };
       else if (path === "/lab/entries" && (body.entry as { kind?: string })?.kind === "metric_favorites") {

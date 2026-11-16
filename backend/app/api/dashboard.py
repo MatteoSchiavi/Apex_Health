@@ -293,7 +293,20 @@ async def dashboard_overview(
         round(night.total_sleep_s / 3600, 2) if night and night.total_sleep_s else None
     )
 
+    # Read the recorded wellness values directly, without requiring the nightly
+    # feature engine or interpreting missing values as zero.
+    provider_rows = (await session.scalars(select(Observation).where(
+        Observation.user_id == user.id, Observation.origin == "garmin",
+        Observation.current.is_(True), Observation.availability == "available",
+        Observation.local_date == anchor, Observation.metric.in_(["body_battery", "stress", "hydration"]),
+    ).order_by(Observation.measured_at, Observation.id))).all()
+    provider_latest = {row.metric: row for row in provider_rows}
+    provider_signals = [{"metric": key, "value": row.value.get("value"), "unit": row.unit,
+        "origin": row.origin, "date": str(row.local_date), "fetched_at": row.fetched_at.isoformat()}
+        for key, row in provider_latest.items() if row.value.get("value") is not None]
+
     return OverviewOut(
+        provider_signals=provider_signals,
         date=anchor.isoformat(),
         anchor_is_today=anchor_is_today,
         readiness=_score("readiness_score"),
@@ -383,3 +396,11 @@ async def activity_calendar(
             for day in (start + timedelta(days=i) for i in range(364))
         ],
     }
+
+
+@router.post("/check-in")
+async def app_open_checkin(user: User = Depends(get_current_user)):
+    """An authenticated foreground app open is the only generation trigger."""
+    from app.core.db import sessionmaker
+    from app.reports.checkin import open_checkin
+    return await open_checkin(sessionmaker, user.id)

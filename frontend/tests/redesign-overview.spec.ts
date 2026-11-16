@@ -35,7 +35,7 @@ for (const width of [1440, 390]) for (const [locale, theme] of [['en', 'dark'], 
     await expect(page.getByTestId('overview-history')).not.toHaveAttribute('open', '');
     await expect(page.locator('#training-load')).toHaveCount(0);
     await expect(page.getByTestId('today-recent-context').locator('a[href^="/app/activities/"]')).toHaveCount(3);
-    await expect(page.getByTestId('overview-setup').locator('summary')).toContainText(locale === 'en' ? /\d of 3 complete/ : /\d di 3 completati/);
+    await expect(page.getByTestId('overview-setup')).toHaveCount(0);
     expect(dayReads).toBe(1);
     expect(writes.filter(write => /protection|association|checkin|\/lab\//.test(write.path))).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -81,7 +81,7 @@ test('setup stays in a compact strip and its steps and dismissal are keyboard ac
   await page.goto('/app');
   const setup = page.getByTestId('overview-setup');
   await expect(setup).not.toHaveAttribute('open', '');
-  await expect(setup.locator('summary')).toContainText('0 of 3 complete');
+  await expect(setup.locator('summary')).toContainText('0 of 2 complete');
   await expect(setup.getByRole('link')).toHaveCount(0); // Hidden links are excluded from the accessible tree.
   await setup.locator('summary').focus();
   await setup.locator('summary').press('Enter');

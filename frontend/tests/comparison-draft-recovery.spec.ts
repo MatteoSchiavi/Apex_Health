@@ -43,7 +43,7 @@ for (const locale of ['en', 'it'] as const) {
     await expect(route).toHaveAttribute('data-original-editor', 'true');
     await page.getByRole('button', { name: en ? 'Reload current context' : 'Ricarica il contesto attuale', exact: true }).click();
     await expect(route).toHaveValue('Saved on another device');
-    expect(writes).toEqual([]);
+    expect(writes.filter(write => write.path !== "/dashboard/check-in")).toEqual([]);
   });
 
   test(`switching comparison source requires discarding the current draft (${locale})`, async ({ page }) => {
@@ -64,7 +64,7 @@ for (const locale of ['en', 'it'] as const) {
     await source.selectOption('strava');
     await expect(source).toHaveValue('strava');
     await expect(route).toHaveValue('');
-    expect(writes).toEqual([]);
+    expect(writes.filter(write => write.path !== "/dashboard/check-in")).toEqual([]);
   });
 }
 
@@ -75,7 +75,7 @@ test('profile refresh failure and retry preserve the same unsaved editor', async
   await page.route('**/athlete/profile', route => fail
     ? route.fulfill({ status: 503, json: { detail: 'Temporary profile failure' } }) : route.fallback());
   await page.goto('/app/settings?tab=profile');
-  await page.getByRole('button', { name: 'Complete later', exact: true }).click();
+  await page.getByTestId("advanced-settings").locator("summary").first().click();
   const notes = page.locator("textarea[maxlength='8000']");
   await notes.fill('Keep this athlete context while the connection recovers.');
   await notes.evaluate(element => element.setAttribute('data-original-editor', 'true'));
@@ -90,5 +90,5 @@ test('profile refresh failure and retry preserve the same unsaved editor', async
   await expect(error).toHaveCount(0);
   await expect(notes).toHaveAttribute('data-original-editor', 'true');
   await expect(notes).toHaveValue('Keep this athlete context while the connection recovers.');
-  expect(writes).toEqual([]);
+  expect(writes.filter(write => write.path !== "/dashboard/check-in")).toEqual([]);
 });

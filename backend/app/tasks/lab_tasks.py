@@ -320,10 +320,7 @@ def execute(ident):
     except Exception as exc:
         from app.connectors.garmin.client import GarminAuthError
 
-        auth_required = isinstance(exc, GarminAuthError) or type(exc).__name__ in {
-            "GarminAuthError",
-
-        }
+        auth_required = isinstance(exc, GarminAuthError)
 
         async def fail():
             async with sessionmaker() as session:
