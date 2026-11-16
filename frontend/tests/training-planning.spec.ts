@@ -124,7 +124,12 @@ test("Italian planning remains readable and accessible on a phone", async ({ pag
 test("a saved plan auto-selection and planning links retain the selected day without inferring workout dates", async ({ page }) => {
   await legacyPlanApi(page, { count: 1 });
   const writes: string[] = [];
-  page.on("request", request => { if (!["GET", "HEAD"].includes(request.method())) writes.push(request.url()); });
+  const checkins: string[] = [];
+  page.on("request", request => {
+    if (["GET", "HEAD"].includes(request.method())) return;
+    if (new URL(request.url()).pathname === "/dashboard/check-in" && request.method() === "POST") checkins.push(request.url());
+    else writes.push(request.url());
+  });
   await page.goto("/app/training?tab=planning&date=2024-03-05");
   await expect(page).toHaveURL(/\/app\/training\?tab=planning&date=2024-03-05#document-4$/);
   const review = page.getByRole("link", { name: "Continue plan review", exact: true });
@@ -139,5 +144,6 @@ test("a saved plan auto-selection and planning links retain the selected day wit
   await expect(page.getByLabel("Start date", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("End date", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Date (optional for a draft)", { exact: true })).toHaveValue("");
+  expect(checkins).toHaveLength(1);
   expect(writes).toEqual([]);
 });

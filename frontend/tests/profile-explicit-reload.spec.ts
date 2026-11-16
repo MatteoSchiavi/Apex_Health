@@ -22,6 +22,7 @@ test('explicit profile reload cannot treat cached data after a failed read as su
   await page.goto('/app/settings?tab=profile');
   const notes = page.locator("textarea[maxlength='8000']");
   await expect(notes).toHaveValue('Original saved context');
+  await page.getByTestId('advanced-settings').locator('summary').first().click();
   await notes.fill('Keep my unsaved correction');
   await notes.evaluate(element => element.setAttribute('data-original-editor', 'true'));
   const save = page.getByRole('button', { name: 'Save athlete context', exact: true });

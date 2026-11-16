@@ -46,8 +46,11 @@ for (const locale of ["en", "it"] as const) for (const theme of ["light", "dark"
 }
 
 test("historical day does not display today's AI summary as historical evidence", async ({page}) => {
-  await installApi(page);
+  const { writes, checkins } = await installApi(page);
   await page.goto("/app?date=2026-10-01");
   await expect(page.getByTestId("today-workspace")).toBeVisible();
   await expect(page.getByTestId("today-checkin")).toHaveCount(0);
+  await expect.poll(() => checkins.length).toBe(1);
+  expect(checkins[0]).toEqual({path:"/dashboard/check-in", body:{}});
+  expect(writes).toEqual([]);
 });

@@ -275,6 +275,9 @@ export async function installApi(
   };
   let favoriteMetrics: string[] = [];
   const writes: { path: string; body: Record<string, unknown> }[] = [];
+  // App-open generation has its own ledger. Navigation tests still assert
+  // that no profile, feedback, plan or other domain mutation was submitted.
+  const checkins: { path: string; body: Record<string, unknown> }[] = [];
   await page.route("**/*", async (route) => {
     const req = route.request(),
       url = new URL(req.url()),
@@ -295,7 +298,8 @@ export async function installApi(
       const body = req.headers()["content-type"]?.includes("application/json")
         ? (req.postDataJSON() ?? {})
         : {};
-      writes.push({ path, body });
+      if (path === "/dashboard/check-in" && req.method() === "POST") checkins.push({ path, body });
+      else writes.push({ path, body });
       if (path === "/dashboard/check-in") data = {status: "ai_disabled", lines: [], date: today};
       else if (path === "/athlete/profile") { athleteProfile = req.method()==="DELETE" ? { training_focus: [], context: {}, revision: athleteProfile.revision+1 } : { training_focus: body.training_focus as string[], context: body.context as Record<string, unknown>, revision: athleteProfile.revision+1 }; data = athleteProfile; }
       else if (path === "/athlete/ai/consent") { aiConsent = Boolean(body.active); data = aiState(); }
@@ -653,5 +657,5 @@ export async function installApi(
     else return route.fulfill({ status: 404, json: { detail: "Not found" } });
     return route.fulfill({ status: 200, json: data });
   });
-  return { writes };
+  return { writes, checkins };
 }

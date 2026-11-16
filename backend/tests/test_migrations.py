@@ -47,6 +47,8 @@ EXPECTED_TABLES = {
     # ai layer
     "ai_reports", "ai_chat_sessions", "ai_chat_messages", "agent_tool_calls",
     "embeddings", "token_usage",
+    # Migration 0031: durable per-account morning/afternoon check-in quota.
+    "today_checkins",
     # watch, legacy integration history & alerts
     "watch_sync_log", "telegram_messages", "alerts",
     # weather
