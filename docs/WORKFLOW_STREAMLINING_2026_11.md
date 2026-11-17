@@ -47,3 +47,4 @@ New simulations cover English/Italian, light/dark, phone/desktop, existing draft
 - Deterministic Coach evaluations: **26/26 passed**.
 - Locale parity and production build passed; service-worker **5/5**, development proxy **11/11**, updater **81/81**.
 - The GitHub workflow on the pushed commit repeats the full suites and release validation against the final tree.
+- Release CI exposed an interrupted HTTP/2 transfer fetching PostgreSQL's signing key. The image build now uses HTTPS over HTTP/1.1 with bounded retries and timeouts for that download; the updated command successfully fetched the public key locally.
