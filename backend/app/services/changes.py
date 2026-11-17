@@ -311,6 +311,8 @@ async def apply(session, user_id, ident, payload_hash, *, now=None):
                 setattr(
                     item, key, date.fromisoformat(value) if key == "date" else value
                 )
+        plan = await session.get(TrainingPlan, item.training_plan_id)
+        plan.revision += 1
     elif row.kind == "journal_create":
         from datetime import date
 
@@ -429,6 +431,8 @@ async def undo(session, user_id, ident):
                 setattr(
                     item, key, date.fromisoformat(value) if key == "date" else value
                 )
+        plan = await session.get(TrainingPlan, item.training_plan_id)
+        plan.revision += 1
     elif row.kind == "journal_create":
         entry = await session.scalar(
             select(JournalEntry)

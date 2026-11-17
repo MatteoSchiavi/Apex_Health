@@ -108,3 +108,21 @@ test('a failed plan read offers recovery without implying that the existing plan
   await expect(recovery).toHaveCount(0);
   expect(fixture.writes).toEqual([]);
 });
+
+for (const current of [false,true]) test(`guided workout uses only current approved instructions; pending review does not replace them (${current})`,async({page})=>{
+  const fixture=await installApi(page,{empty:true});
+  const step={id:'approved',kind:'easy',duration_s:1200,distance_m:null,target:null,description:'Approved easy block',exercise:null,sets:null,reps:null,load_kg:null,repetitions:1,steps:[]};
+  const approved={title:'Approved workout',objective:'',steps:[step]};
+  await page.route('**/athlete/planned-sessions/8/workout',route=>route.fulfill({json:{planned_session_id:8,plan_revision:2,protected:false,editable:true,edit_block_reason:null,instructions_current:current,workout:{id:1,revision:1,payload_hash:'a'.repeat(64),source:'manual',structure:approved,duration_total_s:1200},pending_draft:{id:2,plan_revision:2,workout_revision:1,payload_hash:'b'.repeat(64),structure:{...approved,title:'Unapproved proposed workout',steps:[{...step,id:'proposed',description:'Unapproved block'}]},duration_total_s:1200},session:{date:today,discipline:'running',session_type:'Easy run',duration_min:20,description:''},education:[]}}));
+  await page.goto('/app/workouts/8');
+  if (!current) {
+    await expect(page.getByText(/Your workout target changed after these instructions were approved/)).toBeVisible();
+    await expect(page.getByRole('button',{name:'Start workout',exact:true})).toHaveCount(0);
+  } else {
+    await page.getByRole('button',{name:'Start workout',exact:true}).click();
+    const guide=page.locator('.panel').filter({has:page.getByRole('heading',{name:'Follow approved instructions',exact:true})});
+    await expect(guide).toContainText('Approved easy block');
+    await expect(guide).not.toContainText('Unapproved block');
+  }
+  expect(fixture.writes).toEqual([]);
+});

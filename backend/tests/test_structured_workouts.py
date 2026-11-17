@@ -120,3 +120,33 @@ async def test_journal_preserves_omitted_new_fields_and_clears_skipped_quality(c
     assert skipped.status_code==200,skipped.text
     assert skipped.json()['workout_quality'] is None
     assert skipped.json()['fatigue']==7
+
+
+async def test_coach_duration_adjustment_invalidates_old_draft_and_requires_instruction_review(client,db_session):
+    from app.schemas.changes import ProposeIn
+    from app.services.changes import propose,apply,undo
+    plan,item=await setup(client,db_session)
+    first=(await draft(client,plan,item)).json()
+    assert (await approve(client,first)).status_code==200
+    await db_session.refresh(plan)
+    pending=(await draft(client,plan,item,revision=1)).json()
+    before_revision=plan.revision
+    spec=ProposeIn.model_validate({'change':{'kind':'session_patch','target_id':item.id,'target_duration_min':20},'reason':'Reduce upcoming volume'})
+    change=await propose(db_session,1,spec)
+    await apply(db_session,1,change['id'],change['payload_hash']);await db_session.commit()
+    assert plan.revision==before_revision+1
+    assert (await approve(client,pending)).status_code==409
+    details=(await client.get(f'/athlete/planned-sessions/{item.id}/workout')).json()
+    assert details['instructions_current'] is False and details['pending_draft'] is None
+    assert details['session']['duration_min']==20
+    assert details['workout']['duration_total_s']==1620  # Not silently rescaled.
+    await undo(db_session,1,change['id']);await db_session.commit()
+    assert plan.revision==before_revision+2
+    assert (await client.get(f'/athlete/planned-sessions/{item.id}/workout')).json()['instructions_current'] is True
+    # A new explicit adjustment followed by reviewed instructions resolves it.
+    change=await propose(db_session,1,spec)
+    await apply(db_session,1,change['id'],change['payload_hash']);await db_session.commit()
+    reviewed=(await draft(client,plan,item,blocks=[{'id':'easy','kind':'easy','duration_s':1200}],revision=1)).json()
+    assert (await approve(client,reviewed)).status_code==200
+    details=(await client.get(f'/athlete/planned-sessions/{item.id}/workout')).json()
+    assert details['instructions_current'] is True and details['workout']['duration_total_s']==1200

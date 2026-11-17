@@ -3125,6 +3125,8 @@
     "next": "Next step",
     "finish": "Review and record result",
     "stop": "Close workout guide",
-    "guide_note": "Follow the approved instructions at your own pace. Progress here does not log or complete your workout."
+    "guide_note": "Follow the approved instructions at your own pace. Progress here does not log or complete your workout.",
+    "approved_guide": "Follow approved instructions",
+    "instructions_changed": "Your workout target changed after these instructions were approved. Review and approve updated blocks before using the workout guide."
   }
 }

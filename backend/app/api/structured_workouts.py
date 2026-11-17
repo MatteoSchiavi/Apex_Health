@@ -28,6 +28,7 @@ async def workout(ident:int,user:User=Depends(get_current_user),session:AsyncSes
         .order_by(StructuredWorkoutVersion.revision.desc()).limit(20))).all()
     return {'planned_session_id':ident,'plan_revision':plan.revision,'protected':planned.protected or plan.protected,
         'editable':reason is None,'edit_block_reason':reason,
+        'instructions_current':await service.instructions_current(session,user.id,planned,version),
         'pending_draft':service.draft_out(pending) if pending else None,
         'history':[service.receipt(row) for row in history],
         'workout':service.receipt(version) if version else None,

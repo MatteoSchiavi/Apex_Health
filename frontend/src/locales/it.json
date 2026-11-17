@@ -3125,6 +3125,8 @@
     "next": "Blocco successivo",
     "finish": "Rivedi e registra esito",
     "stop": "Chiudi guida allenamento",
-    "guide_note": "Segui le istruzioni approvate al tuo ritmo. Avanzare qui non registra né completa l’allenamento."
+    "guide_note": "Segui le istruzioni approvate al tuo ritmo. Avanzare qui non registra né completa l’allenamento.",
+    "approved_guide": "Segui le istruzioni approvate",
+    "instructions_changed": "L’obiettivo dell’allenamento è cambiato dopo l’approvazione di queste istruzioni. Rivedi e approva i blocchi aggiornati prima di usare la guida."
   }
 }

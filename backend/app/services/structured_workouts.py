@@ -230,3 +230,16 @@ def education(structure,locale):
 
     visit(structure.steps)
     return rows
+
+
+async def instructions_current(session, user_id, workout, version):
+    """Session adjustments do not implicitly approve edits to immutable blocks."""
+    if version is None:
+        return True
+    from app.models.lab import ChangeDraft
+    patches = (await session.scalars(select(ChangeDraft).where(
+        ChangeDraft.user_id == user_id, ChangeDraft.kind == 'session_patch',
+        ChangeDraft.status == 'applied_locally', ChangeDraft.approved_at > version.created_at,
+        ChangeDraft.after['target_id'].astext == str(workout.id)))).all()
+    return not any(any(patch.before.get(key) != patch.after.get(key)
+        for key in ('target_duration_min', 'session_type', 'description')) for patch in patches)
