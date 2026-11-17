@@ -477,13 +477,13 @@ async def test_preview_enforces_availability_and_pain_before_approval(db_session
     from app.schemas.changes import SessionPatch
 
     plan = TrainingPlan(
-        user_id=1, created_by="manual", week_start=NOW.date(), status="confirmed"
+        user_id=1, created_by="manual", week_start=datetime.now(UTC).date()+timedelta(days=1), status="confirmed"
     )
     db_session.add(plan)
     await db_session.flush()
     session = PlannedSession(
         training_plan_id=plan.id,
-        date=NOW.date(),
+        date=datetime.now(UTC).date()+timedelta(days=1),
         session_type="intervals",
         target_duration_min=60,
         description="Quality session",
@@ -491,7 +491,7 @@ async def test_preview_enforces_availability_and_pain_before_approval(db_session
     db_session.add(session)
     db_session.add(
         AthleteEntry(
-            user_id=1, kind="availability", date=NOW.date(), payload={"minutes": 30}
+            user_id=1, kind="availability", date=datetime.now(UTC).date()+timedelta(days=1), payload={"minutes": 30}
         )
     )
     await db_session.flush()
@@ -505,7 +505,7 @@ async def test_preview_enforces_availability_and_pain_before_approval(db_session
         )
     db_session.add(
         AthleteEntry(
-            user_id=1, kind="daily_checkin", date=NOW.date(), payload={"pain": True}
+            user_id=1, kind="daily_checkin", date=datetime.now(UTC).date()+timedelta(days=1), payload={"pain": True}
         )
     )
     await db_session.flush()

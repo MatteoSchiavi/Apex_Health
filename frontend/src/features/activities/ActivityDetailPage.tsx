@@ -298,6 +298,13 @@ function ActivityDetailWorkspace({ id, uid }: { id: string; uid: number | undefi
   const [tab, setTab] = useState("session");
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const listState = location.state?.activityList;
+  const returnParams = new URLSearchParams();
+  if (listState?.userId === uid && typeof listState.search === "string") {
+    const source = new URLSearchParams(listState.search);
+    for (const key of ["date", "days", "sport"]) { const value = source.get(key); if (value) returnParams.set(key, value); }
+  }
+  const returnToList = "/app/activities" + (returnParams.size ? "?" + returnParams : "");
   const feedbackRequested = searchParams.get("feedback") === "1";
   const validId = /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0;
   useEffect(() => { if (feedbackRequested) setTab("session"); }, [feedbackRequested, id, location.key]);
@@ -318,7 +325,7 @@ function ActivityDetailWorkspace({ id, uid }: { id: string; uid: number | undefi
     <ErrorNote message={t("workflowReview.activity.load_error")} />
     <div className="mt-4 flex flex-wrap items-center gap-4 text-[13px]">
       {validId && <Button variant="ghost" disabled={detail.isFetching} onClick={() => void detail.refetch()}>{t("common.retry")}</Button>}
-      <Link className="text-link inline-flex min-h-11 items-center" to="/app/activities">{t("activities.all")}</Link>
+      <Link className="text-link inline-flex min-h-11 items-center" to={returnToList}>{t("activities.all")}</Link>
     </div>
   </Card>;
   const a = detail.data;
@@ -333,7 +340,7 @@ function ActivityDetailWorkspace({ id, uid }: { id: string; uid: number | undefi
   const code = weatherNum("weather_code");
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/app/activities" className="text-link text-muted">
+      <Link to={returnToList} className="text-link text-muted">
         <ArrowLeft size={16} />
         {t("activities.all")}
       </Link>
@@ -348,7 +355,7 @@ function ActivityDetailWorkspace({ id, uid }: { id: string; uid: number | undefi
           minute: "2-digit",
           timeZone: timezone,
         })}
-        actions={<div className="flex flex-wrap items-center gap-3"><Badge>{a.data_completeness}</Badge>{["running","cycling","strength"].includes(kind) && <Link className="text-link text-[13px]" to={`/app/sports/${kind}`}>{t("betaNavigation.sport_progress")}</Link>}</div>}
+        actions={<div className="flex flex-wrap items-center gap-3"><Link className="text-link inline-flex min-h-11 items-center text-[13px]" to="/app/coach" state={{coachContext:{userId:uid,date:localDay(timezone,new Date(a.start_time)),activityId:a.id}}}>{t("workflowFlow.analyse_activity")} ↗</Link><Badge>{a.data_completeness}</Badge>{["running","cycling","strength"].includes(kind) && <Link className="text-link text-[13px]" to={`/app/sports/${kind}`}>{t("betaNavigation.sport_progress")}</Link>}</div>}
       />
       {detail.isError && <div key="activity-refresh-error" className="flex flex-wrap items-center gap-3 border-l-2 border-warning bg-surface px-4 py-3 text-[13px]" data-testid="activity-refresh-error">
         <p role="status" className="min-w-0 flex-1">{t("workflowReview.activity.refresh_error")}</p>

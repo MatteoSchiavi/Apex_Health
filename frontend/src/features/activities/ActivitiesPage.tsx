@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -34,7 +34,8 @@ export default function ActivitiesPage() {
   const pinned = requestedDate && isCalendarDay(requestedDate) ? requestedDate : null;
   const requestedRange = params.get("days") ?? "";
   const range = ["30", "90", "365"].includes(requestedRange) ? requestedRange : "90";
-  const [disc, setDisc] = useState("all");
+  const disc = params.get("sport") ?? "all";
+  const setDisc = (sport: string) => setParams(current => { const next = new URLSearchParams(current); if (sport === "all") next.delete("sport"); else next.set("sport",sport); return next; });
   const end = pinned ?? localDay(timezone),
     start = pinned ?? shiftDay(end, -Number(range) + 1);
   const query = useInfiniteQuery({
@@ -81,10 +82,10 @@ export default function ActivitiesPage() {
           <Segmented
             value={pinned ? "" : range}
             onChange={(v) => {
-              setDisc("all");
               setParams(previous => {
                 const next = new URLSearchParams(previous);
                 next.delete("date");
+                next.delete("sport");
                 next.set("days", v);
                 return next;
               });
@@ -189,6 +190,7 @@ export default function ActivitiesPage() {
                         <Link
                           className="flex items-center gap-4"
                           to={"/app/activities/" + a.id}
+                          state={{activityList:{userId:uid,search:params.toString()}}}
                         >
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-surface2">
                             <SportIcon discipline={a.discipline} size={18} />
@@ -249,6 +251,7 @@ export default function ActivitiesPage() {
                       <td>
                         <Link
                           to={"/app/activities/" + a.id}
+                          state={{activityList:{userId:uid,search:params.toString()}}}
                           aria-label={t("design.open_session", {
                             name: friendlyDiscipline(a.discipline ?? a.source_activity_type, t),
                           })}

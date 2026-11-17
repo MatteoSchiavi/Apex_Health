@@ -110,7 +110,7 @@ async def enforce_session_constraints(session, user_id, after, *, additional_wee
             ActivityPlanLink.user_id == user_id, ActivityPlanLink.planned_session_id == after["target_id"]))
         finished = await session.scalar(select(SessionCheckin.id).where(
             SessionCheckin.user_id == user_id, SessionCheckin.planned_session_id == after["target_id"],
-            SessionCheckin.status.in_(("completed", "skipped"))))
+            SessionCheckin.status.in_(("completed", "partial", "skipped"))))
         if recorded or finished:
             raise EvidenceError("CONFLICT", "Completed or skipped sessions remain historical records; propose an upcoming session instead")
     windows = context["availability_windows"]

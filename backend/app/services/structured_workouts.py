@@ -112,14 +112,14 @@ async def edit_block_reason(session,user_id,workout,plan):
     user = await session.get(User,user_id)
     if workout.date < datetime.now(ZoneInfo(user.timezone)).date():
         return 'past'
-    if workout.protected or plan.protected:
-        return 'protected'
     recorded = await session.scalar(select(ActivityPlanLink.activity_id).where(
         ActivityPlanLink.user_id==user_id,ActivityPlanLink.planned_session_id==workout.id))
     finished = await session.scalar(select(SessionCheckin.id).where(SessionCheckin.user_id==user_id,
-        SessionCheckin.planned_session_id==workout.id,SessionCheckin.status.in_(('completed','skipped'))))
+        SessionCheckin.planned_session_id==workout.id,SessionCheckin.status.in_(('completed','partial','skipped'))))
     if recorded or finished:
         return 'recorded' if recorded else 'completed_or_skipped'
+    if workout.protected or plan.protected:
+        return 'protected'
     return None
 
 

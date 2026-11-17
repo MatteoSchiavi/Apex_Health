@@ -38,7 +38,7 @@ function PlanDocumentReview({ document: doc }: { document: Doc }) {
     expected_document_revision: doc.revision, use_ai: useAi, ...(useAi ? {} : { structure: editing }),
   }), onSuccess: next => { setShownDraft(next); setEditing(null); setReviewedHash(null); void qc.invalidateQueries({ queryKey: ["plan-drafts"] }); void qc.invalidateQueries({ queryKey: ["athlete-ai"] }); } });
   const confirm = useMutation({ mutationFn: (draft: PlanDraft) => api.post<{ draft: PlanDraft }>(`/lab/plan-drafts/${draft.id}/confirm`, { payload_hash: draft.payload_hash, ambiguities_reviewed: reviewedHash === draft.payload_hash }), onSuccess: next => {
-    setShownDraft(next.draft); ["plan-drafts", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "lab", "athlete-profile", "athlete-templates", "me"].forEach(key => void qc.invalidateQueries({ queryKey: [key] }));
+    setShownDraft(next.draft); ["active-plans", "plan-drafts", "athlete-day", "athlete-sport-overview", "structured-workout", "endurance", "lab", "athlete-profile", "athlete-templates", "me"].forEach(key => void qc.invalidateQueries({ queryKey: [key] }));
   } });
   const dirty = !!editing && JSON.stringify(editing) !== editBaseline;
   useEffect(() => {

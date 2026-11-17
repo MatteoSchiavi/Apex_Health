@@ -3087,7 +3087,8 @@
     "ai_disabled": "AI check-ins are optional. Enable AI access and consent in your profile to receive them.",
     "no_data": "No eligible data for the past week yet. Sync your device to build your check-in.",
     "unavailable": "No check-in available for this visit. Your daily actions are ready below.",
-    "preferences": "AI preferences"
+    "preferences": "AI preferences",
+    "recorded": "Recorded data · AI summary unavailable"
   },
   "todaySignals": {
     "title": "Recovery and daily habits",
@@ -3098,5 +3099,32 @@
     "hydration": "Logged hydration",
     "hydration_note": "Recorded intake only. Check your diary before deciding whether to drink more.",
     "synced": "synced"
+  },
+  "workflowFlow": {
+    "current_plan": "Current plan",
+    "adapt_note": "Keep your plan. Ask Coach to review recent performance and propose changes to upcoming workouts for your approval.",
+    "adjust_loads": "Adjust upcoming loads",
+    "no_editable": "No editable upcoming workouts in this view. Completed workouts and protected sessions stay unchanged.",
+    "next_sessions": "Next 14 days",
+    "no_sessions": "No workouts scheduled in this window.",
+    "plan_load_error": "Your current plan could not be loaded. Retry before starting a new plan.",
+    "block_past": "History",
+    "block_protected": "Protected",
+    "block_recorded": "Activity recorded",
+    "block_completed_or_skipped": "Result recorded",
+    "analyse_activity": "Analyse with Coach",
+    "return_plan": "Return to plan",
+    "return_activity": "Return to activity",
+    "coach_plan_title": "Adjust plan #{{id}} · {{date}}",
+    "coach_plan_prompt": "Review my existing plan #{{id}} as of {{date}} and adjust upcoming loads based on my recent comparable performance, recorded workout results and RPE. Read my current plan, constraints and recent evidence first. Keep the plan structure and goals; do not create a replacement plan. Preserve past, completed, partially completed, skipped, recorded and protected workouts. Propose specific changes only to upcoming editable sessions in this plan, using planning_preview and changes_propose for my explicit approval. Explain each change and any missing evidence; do not invent performance or load scores. If there is insufficient evidence, ask for the missing information or recommend keeping the plan.",
+    "coach_activity_title": "Review activity #{{id}} · {{date}}",
+    "coach_activity_prompt": "Analyse my recorded activity #{{id}} on {{date}} using its available metrics, splits, planned workout and my recorded feedback. Compare only with relevant similar activities and explain missing data. Tell me what went well, what to improve and one practical next step. Cite checked evidence for measurements. Do not change my plan unless I explicitly ask for a proposal.",
+    "follow": "Start workout",
+    "step": "Step {{current}} of {{total}}",
+    "previous": "Previous step",
+    "next": "Next step",
+    "finish": "Review and record result",
+    "stop": "Close workout guide",
+    "guide_note": "Follow the approved instructions at your own pace. Progress here does not log or complete your workout."
   }
 }

@@ -3,6 +3,8 @@ export type CoachContext = {
   userId: number;
   date: string;
   plannedSessionId?: number;
+  planId?: number;
+  activityId?: number;
 };
 
 function positiveId(value: unknown): value is number {
@@ -18,10 +20,13 @@ export function validatedCoachContext(state: unknown, userId: number): CoachCont
     typeof context.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(context.date) || context.date.startsWith("0000")) return null;
   const date = new Date(context.date + "T12:00:00Z");
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== context.date) return null;
-  if (context.plannedSessionId !== undefined && !positiveId(context.plannedSessionId)) return null;
+  const ids = ["plannedSessionId", "planId", "activityId"] as const;
+  if (ids.some(key => context[key] !== undefined && !positiveId(context[key])) || ids.filter(key => context[key] !== undefined).length > 1) return null;
   return {
     userId: context.userId,
     date: context.date,
-    ...(context.plannedSessionId !== undefined ? { plannedSessionId: context.plannedSessionId } : {}),
+    ...(context.planId !== undefined ? { planId: context.planId as number } : {}),
+    ...(context.activityId !== undefined ? { activityId: context.activityId as number } : {}),
+    ...(context.plannedSessionId !== undefined ? { plannedSessionId: context.plannedSessionId as number } : {}),
   };
 }

@@ -131,3 +131,11 @@ async def consent_update(payload: ConsentUpdate, user: User = Depends(get_curren
 async def disciplines(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     rows = (await session.scalars(select(Discipline).order_by(Discipline.name))).all()
     return [{"name": r.name, "category": r.category} for r in rows]
+
+
+@router.get("/plans")
+async def plans(date: date | None = None, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    from zoneinfo import ZoneInfo
+    from app.services.plan_workspace import plan_workspace
+    day = date or datetime.now(ZoneInfo(user.timezone)).date()
+    return await plan_workspace(session, user, day)

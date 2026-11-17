@@ -4,6 +4,8 @@ import { api } from "./api";
 
 export interface AppCheckin {
   status: "ready" | "ai_disabled" | "no_data" | "unavailable";
+  mode?: "ai" | "recorded";
+  reason?: string;
   date?: string;
   slot?: "morning" | "afternoon";
   generated_at?: string;

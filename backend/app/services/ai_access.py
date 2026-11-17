@@ -85,7 +85,7 @@ async def budget_state(session, user_id, now=None):
         or (limit_usd > 0 and used_usd >= Decimal(str(limit_usd)))}
 
 
-async def reserve(session, user_id, category, tier, input_bytes, now=None):
+async def reserve(session, user_id, category, tier, input_bytes, now=None, *, output_tokens=4096):
     if category not in CATEGORY_LIMITS:
         raise EvidenceError("INVALID_ARGUMENTS", "Unknown AI budget category")
     now = now or datetime.now(UTC)
@@ -93,8 +93,9 @@ async def reserve(session, user_id, category, tier, input_bytes, now=None):
     await require_access(session, user_id, category, tier)
     state = await budget_state(session, user_id, now)
     # UTF-8 bytes bound the input tokens conservatively; LiveGLMClient caps output.
-    tokens = input_bytes + 4096
-    cost = Decimal(input_bytes * 1.4 + 4096 * 5) / Decimal(1000000)
+    output_tokens = max(1, min(int(output_tokens), 4096))
+    tokens = input_bytes + output_tokens
+    cost = Decimal(input_bytes * 1.4 + output_tokens * 5) / Decimal(1000000)
     category_state = state["categories"][category]
     if (state["used_tokens"] + tokens > state["limit_tokens"]
         or category_state["used_tokens"] + tokens > category_state["limit_tokens"]
@@ -111,7 +112,7 @@ async def guarded_complete(sessionmaker, llm, user_id, category, **kwargs):
     tier = kwargs.get("tier", "cheap")
     size = len(json.dumps(kwargs, ensure_ascii=False, default=str).encode())
     async with sessionmaker() as session:
-        ident = await reserve(session, user_id, category, tier, size)
+        ident = await reserve(session, user_id, category, tier, size, output_tokens=kwargs.get("max_tokens", 4096))
         await session.commit()
     try:
         async with sessionmaker() as session:

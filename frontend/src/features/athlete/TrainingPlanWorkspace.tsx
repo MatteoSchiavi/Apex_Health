@@ -1,3 +1,5 @@
+import { localDay } from "../../components/data";
+import { ActivePlans, useActivePlans } from "./ActivePlans";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -24,6 +26,10 @@ export function TrainingPlanWorkspace() {
   const location = useLocation();
   const selectedDate = new URLSearchParams(location.search).get("date");
   const navigate = useNavigate();
+  const timezone = useUi(s => s.me?.timezone);
+  const date = selectedDate ?? localDay(timezone);
+  const active = useActivePlans(uid, date);
+  const hasActive = !!active.data?.plans.length;
   const documents = useQuery({ queryKey: ["lab", uid, "/lab/documents"], queryFn: () => api.get<Doc[]>("/lab/documents") });
   const drafts = useQuery({ queryKey: ["plan-drafts", uid], queryFn: () => api.get<PlanDraft[]>("/lab/plan-drafts") });
   const imports = useQuery({ queryKey: ["athlete-imports", uid], queryFn: () => api.get<AthleteImport[]>("/lab/athlete-imports") });
@@ -48,18 +54,19 @@ export function TrainingPlanWorkspace() {
   const template = templates.data?.find(item => item.id === Number(selectedTemplate));
   const hasPlans = !!planDocs.length || !!templates.data?.length;
   useEffect(() => {
-    if (location.hash || loading || failed || !hasPlans) return;
+    if (location.hash || loading || failed || active.isLoading || active.isError || hasActive || !hasPlans) return;
     const draft = drafts.data?.find(item => item.status === "draft" && (planDocs.some(doc => doc.id === item.document_id) || templates.data?.some(row => row.id === item.template_id)));
     const anchor = draft?.template_id ? `template-${draft.template_id}` : draft?.document_id ? `document-${draft.document_id}` : planDocs.length ? `document-${planDocs[0].id}` : `template-${templates.data![0].id}`;
     navigate(planUrl(anchor, selectedDate), { replace: true });
-  }, [location.hash, selectedDate, loading, failed, hasPlans, drafts.data, planDocs, templates.data, navigate]);
-  const importing = location.hash === "#import" || (!hasPlans && !location.hash);
+  }, [location.hash, selectedDate, loading, failed, active.isLoading, active.isError, hasActive, hasPlans, drafts.data, planDocs, templates.data, navigate]);
+  const importing = location.hash === "#import" || (!hasPlans && !hasActive && active.isSuccess && !location.hash);
   const unknownSelection = !!location.hash && !importing && !selectedDoc && !template;
   return <div className="space-y-6">
+    <ActivePlans uid={uid} date={date} query={active} />
     <Card>
       <CardHeader title={<h2>{t("v01Plan.title")}</h2>} right={<Link className="text-link text-[13px]" to={planUrl("import", selectedDate)}>{t("v01Plan.import_plan")}</Link>} />
-      <p className="max-w-2xl text-[14px] text-muted">{t("v01Plan.intro")}</p>
-      <ol className="mt-5 grid gap-3 text-[13px] sm:grid-cols-3">{["step_import", "step_dates", "step_activate"].map((key, index) => <li key={key} className="flex gap-2"><span className="font-medium text-ink">{index + 1}.</span><span>{t(`v01Plan.${key}`)}</span></li>)}</ol>
+      {!hasActive && <p className="max-w-2xl text-[14px] text-muted">{t("v01Plan.intro")}</p>}
+      {!hasActive && <ol className="mt-5 grid gap-3 text-[13px] sm:grid-cols-3">{["step_import", "step_dates", "step_activate"].map((key, index) => <li key={key} className="flex gap-2"><span className="font-medium text-ink">{index + 1}.</span><span>{t(`v01Plan.${key}`)}</span></li>)}</ol>}
     </Card>
     {failed && <Card><p role="alert" className="text-[13px]">{t(available ? "workflowReview.plan.refresh_error" : "v01Plan.load_error")}</p><Button className="mt-4" variant="ghost" disabled={retrying} onClick={retryFailed}>{t("common.retry")}</Button></Card>}
     {!available && loading && <Loading />}

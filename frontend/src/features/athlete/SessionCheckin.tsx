@@ -28,7 +28,7 @@ export function SessionCheckin({ activityId, plannedSessionId, checkin, defaultO
     rpe:submitted.status==="skipped"?null:number(submitted.rpe),pain:submitted.pain===""?null:submitted.pain==="yes",felt_unwell:submitted.unwell===""?null:submitted.unwell==="yes",
     fatigue:number(submitted.fatigue),soreness:number(submitted.soreness),workout_quality:submitted.status==="skipped"?null:number(submitted.workout_quality),
     note:submitted.note,modification_reason:submitted.modification_reason,terrain_notes:submitted.terrain_notes,
-  }),onSuccess:receipt=>{const next=formOf(receipt);setForm(next);setSaved(JSON.stringify(next));setRevision(receipt.revision);for(const key of ["athlete-day","endurance","lab","athlete-sport-overview","structured-workout"])qc.invalidateQueries({queryKey:[key]});}});
+  }),onSuccess:receipt=>{const next=formOf(receipt);setForm(next);setSaved(JSON.stringify(next));setRevision(receipt.revision);for(const key of ["active-plans","athlete-day","endurance","lab","athlete-sport-overview","structured-workout"])qc.invalidateQueries({queryKey:[key]});}});
   const [review,setReview]=useState<{current:Checkin|null;target:Target;day:AthleteDay;queryKey:QueryKey}|null>(null);
   const refresh=useMutation({mutationFn:async()=>{
     const entry=qc.getQueriesData<AthleteDay>({queryKey:["athlete-day",uid],type:"active"}).find(([,day])=>

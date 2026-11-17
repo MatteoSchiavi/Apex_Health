@@ -73,6 +73,7 @@ class LLMClient(Protocol):
         tier: str = "cheap",
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
+        thinking: bool | None = None,
     ) -> LLMResponse: ...
 
 
@@ -142,6 +143,7 @@ class LiveGLMClient:
         tier: str = "cheap",
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
+        thinking: bool | None = None,
     ) -> LLMResponse:
         if tier not in self._models:
             raise LLMError(f"unknown tier {tier!r} (expected one of {sorted(self._models)})")
@@ -158,7 +160,11 @@ class LiveGLMClient:
         if self._models[tier].startswith("deepseek-"):
             # Thinking defaults to enabled on current DeepSeek models; keep
             # ordinary lookups fast, with an explicit operator opt-in.
-            payload["thinking"] = {"type": "enabled" if self._deepseek_thinking else "disabled"}
+            payload["thinking"] = {"type": "enabled" if (self._deepseek_thinking if thinking is None else thinking) else "disabled"}
+        elif thinking is not None and self._models[tier].startswith(("glm-4.5", "glm-4.6", "glm-4.7")):
+            # Short readouts need their small output budget for the answer.
+            # Only emit the vendor extension for models that support it.
+            payload["thinking"] = {"type": "enabled" if thinking else "disabled"}
         if tools:
             payload["tools"] = tools
         try:

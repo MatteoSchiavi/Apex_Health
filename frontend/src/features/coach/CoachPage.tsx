@@ -1,3 +1,4 @@
+import { useActivePlans } from "../athlete/ActivePlans";
 import { AiConsentPanel, useAiState } from "../athlete/AiConsentPanel";
 import { referencedProposalLinks } from "./proposalLinks";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
@@ -83,16 +84,24 @@ function CoachWorkspace({ uid }: { uid: number }) {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const context = validatedCoachContext(location.state, uid);
-  const contextKey = context ? `${uid}:${context.date}:${context.plannedSessionId ?? "day"}` : null;
+  const contextKey = context ? `${uid}:${context.date}:${context.planId !== undefined ? "plan-"+context.planId : context.activityId !== undefined ? "activity-"+context.activityId : context.plannedSessionId ?? "day"}` : null;
   const contextState = context ? { coachContext: context } : null;
   const day = useQuery({
     queryKey: ["athlete-day", uid, context?.date],
     queryFn: () => api.get<AthleteDay>("/athlete/day?date=" + context!.date),
-    enabled: context != null,
+    enabled: context != null && context.planId === undefined,
     retry: false,
   });
-  const contextReady = context != null && !day.isError && !day.isFetching && day.data?.date === context.date &&
-    (context.plannedSessionId === undefined || (Array.isArray(day.data.sessions) && day.data.sessions.some(session => session.id === context.plannedSessionId)));
+  const plans = useActivePlans(uid, context?.date ?? "", context?.planId !== undefined);
+  const selectedPlan = plans.data?.date === context?.date ? plans.data?.plans.find(plan => plan.id === context?.planId) : undefined;
+  const contextReady = context != null && (context.planId !== undefined
+    ? !plans.isError && !plans.isFetching && !!selectedPlan?.can_adapt
+    : !day.isError && !day.isFetching && day.data?.date === context.date &&
+      (context.plannedSessionId === undefined || day.data.sessions?.some(session => session.id === context.plannedSessionId)) &&
+      (context.activityId === undefined || day.data.activities?.some(activity => activity.id === context.activityId)));
+  const contextFetching = context?.planId !== undefined ? plans.isFetching : day.isFetching;
+  const contextKind = context?.planId !== undefined ? "plan" : context?.activityId !== undefined ? "activity" : context?.plannedSessionId !== undefined ? "workout" : "day";
+  const contextId = context?.planId ?? context?.activityId ?? context?.plannedSessionId;
   const [replaceContextKey, setReplaceContextKey] = useState<string | null>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
@@ -213,8 +222,8 @@ function CoachWorkspace({ uid }: { uid: number }) {
   }
   function prepareQuestion() {
     if (!context || !contextReady || send.isPending || remove.isPending) return;
-    setDraft(t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_prompt" : "dailyFlow.coach_workout_prompt", {
-      date: context.date, id: context.plannedSessionId,
+    setDraft(t(contextKind === "plan" || contextKind === "activity" ? `workflowFlow.coach_${contextKind}_prompt` : `dailyFlow.coach_${contextKind}_prompt`, {
+      date: context.date, id: contextId,
     }));
     setActiveId(null);
     send.reset();
@@ -250,15 +259,15 @@ function CoachWorkspace({ uid }: { uid: number }) {
         <p className="mt-2 text-[12px] text-muted">{t("redesign.coach.subtitle")}</p>
       </header>
       {context && <Card className="space-y-3 border-l-2 border-l-ink">
-        <h2 className="text-[15px] font-medium">{t(context.plannedSessionId === undefined ? "dailyFlow.coach_day_title" : "dailyFlow.coach_workout_title", { date: context.date, id: context.plannedSessionId })}</h2>
+        <h2 className="text-[15px] font-medium">{t(contextKind === "plan" || contextKind === "activity" ? `workflowFlow.coach_${contextKind}_title` : `dailyFlow.coach_${contextKind}_title`, { date: context.date, id: contextId })}</h2>
         {contextReady && context.plannedSessionId !== undefined && (() => {
           const workout = day.data!.sessions.find(session => session.id === context.plannedSessionId)!;
           return <p className="break-words text-[14px]">{workout.session_type || friendlyDiscipline(workout.discipline, t)}</p>;
         })()}
         <p className="max-w-2xl text-[13px] leading-relaxed text-muted">{t("dailyFlow.coach_context_note")}</p>
-        {day.isFetching ? <p role="status" className="text-[13px] text-muted">{t("dailyFlow.coach_context_loading")}</p> : !contextReady && <div className="space-y-2">
+        {contextFetching ? <p role="status" className="text-[13px] text-muted">{t("dailyFlow.coach_context_loading")}</p> : !contextReady && <div className="space-y-2">
           <p role="status" className="text-[13px] text-muted">{t("dailyFlow.coach_context_unavailable")}</p>
-          <Button variant="ghost" onClick={() => void day.refetch()}>{t("dailyFlow.coach_context_retry")}</Button>
+          <Button variant="ghost" onClick={() => { if (context.planId !== undefined) void plans.refetch(); else void day.refetch(); }}>{t("dailyFlow.coach_context_retry")}</Button>
         </div>}
         {replaceContextKey === contextKey ? <div className="space-y-3">
           <p className="text-[13px]">{t("dailyFlow.replace_question_note")}</p>
@@ -273,6 +282,8 @@ function CoachWorkspace({ uid }: { uid: number }) {
         }}>{t("dailyFlow.review_question")}</Button>}
         <div className="flex flex-wrap gap-4 text-[13px]">
           <Link className="text-link inline-flex min-h-11 items-center" to={`/app?date=${context.date}`}>{t("dailyFlow.return_day")}</Link>
+          {context.planId !== undefined && <Link className="text-link inline-flex min-h-11 items-center" to="/app/training?tab=planning">{t("workflowFlow.return_plan")}</Link>}
+          {context.activityId !== undefined && <Link className="text-link inline-flex min-h-11 items-center" to={`/app/activities/${context.activityId}`}>{t("workflowFlow.return_activity")}</Link>}
           {context.plannedSessionId !== undefined && <Link className="text-link inline-flex min-h-11 items-center" to={`/app/workouts/${context.plannedSessionId}`}>{t("dailyFlow.return_workout")}</Link>}
         </div>
       </Card>}

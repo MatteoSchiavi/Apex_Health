@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.models.coach import UserContextDoc
 from app.models.journal import JournalEntry
 from app.models.lab import ChangeAudit, ChangeDraft, Observation
+from app.models.user import User
 from app.models.training import PlannedSession, TrainingPlan
 from app.models.activity import Discipline
 from app.schemas.changes import CHANGE_ADAPTER, ProposeIn
@@ -89,6 +90,14 @@ async def _preview(session, user_id, change):
         plan = await session.get(TrainingPlan, row.training_plan_id)
         if row.protected or plan.protected:
             raise EvidenceError("PROTECTED_SESSION", "Protected workout: discuss alternatives or explicitly remove protection before proposing edits")
+        from app.services.structured_workouts import edit_block_reason
+        blocked = await edit_block_reason(session, user_id, row, plan)
+        if blocked:
+            raise EvidenceError("CONFLICT", "Historical or recorded workouts cannot be changed; choose an upcoming session")
+        from zoneinfo import ZoneInfo
+        user = await session.get(User, user_id)
+        if plan.superseded_on and plan.superseded_on <= datetime.now(ZoneInfo(user.timezone)).date():
+            raise EvidenceError("CONFLICT", "This plan has been superseded; choose a current plan")
         before = {
             "target_id": row.id,
             "date": str(row.date),

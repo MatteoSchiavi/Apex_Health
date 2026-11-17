@@ -13,9 +13,10 @@ export function TodayCheckin() {
   return <section data-testid="today-checkin" aria-label={t("todayCheckin.title")}><Card>
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
       <h2 className="focus-kicker">{t("todayCheckin.title")}</h2>
-      {current?.generated_at && <span className="text-[12px] text-muted">{t("todayCheckin." + current.slot)} · {new Date(current.generated_at).toLocaleTimeString(i18n.language, { timeZone: me?.timezone, hour: "2-digit", minute: "2-digit" })}</span>}
+      {current?.mode === "recorded" && current.lines.length > 0 && <span className="text-[12px] text-muted">{t("todayCheckin.recorded")}</span>}
+      {current?.mode !== "recorded" && current?.status === "ready" && current?.generated_at && <span className="text-[12px] text-muted">{t("todayCheckin." + current.slot)} · {new Date(current.generated_at).toLocaleTimeString(i18n.language, { timeZone: me?.timezone, hour: "2-digit", minute: "2-digit" })}</span>}
     </div>
-    {current?.status === "ready" && current.lines.length ? <p className="line-clamp-3 whitespace-pre-line text-[14px] leading-6" data-testid="checkin-lines">{current.lines.slice(0, 3).join("\n")}</p>
+    {current?.lines.length ? <div className="text-[14px] leading-6" data-testid="checkin-lines">{current.lines.slice(0, 3).map((line, index) => <p key={index} className="truncate" title={line}>{line}</p>)}</div>
       : <p className="text-[13px] text-muted">{t(isFetching ? "todayCheckin.loading" : isError ? "todayCheckin.unavailable" : "todayCheckin." + (current?.status ?? "unavailable"))}{current?.status === "ai_disabled" && <> <Link className="text-link" to="/app/settings?tab=profile">{t("todayCheckin.preferences")} →</Link></>}</p>}
   </Card></section>;
 }

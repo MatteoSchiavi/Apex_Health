@@ -3087,7 +3087,8 @@
     "ai_disabled": "I riepiloghi AI sono facoltativi. Per riceverli, abilita accesso AI e consenso nel profilo.",
     "no_data": "Nessun dato idoneo per l’ultima settimana. Sincronizza il dispositivo per preparare il riepilogo.",
     "unavailable": "Riepilogo non disponibile per questa visita. Le azioni quotidiane sono pronte qui sotto.",
-    "preferences": "Preferenze AI"
+    "preferences": "Preferenze AI",
+    "recorded": "Dati registrati · riepilogo IA non disponibile"
   },
   "todaySignals": {
     "title": "Recupero e abitudini quotidiane",
@@ -3098,5 +3099,32 @@
     "hydration": "Idratazione registrata",
     "hydration_note": "Solo l’apporto registrato. Controlla il diario prima di decidere se bere di più.",
     "synced": "sincronizzato alle"
+  },
+  "workflowFlow": {
+    "current_plan": "Piano attuale",
+    "adapt_note": "Mantieni il tuo piano. Chiedi al Coach di valutare le prestazioni recenti e proporre modifiche ai prossimi allenamenti da approvare.",
+    "adjust_loads": "Adatta i prossimi carichi",
+    "no_editable": "Nessun allenamento futuro modificabile in questa vista. Risultati registrati e sedute protette restano invariati.",
+    "next_sessions": "Prossimi 14 giorni",
+    "no_sessions": "Nessun allenamento previsto in questo intervallo.",
+    "plan_load_error": "Impossibile caricare il piano attuale. Riprova prima di iniziare un nuovo piano.",
+    "block_past": "Storico",
+    "block_protected": "Protetto",
+    "block_recorded": "Attività registrata",
+    "block_completed_or_skipped": "Esito registrato",
+    "analyse_activity": "Analizza con il Coach",
+    "return_plan": "Torna al piano",
+    "return_activity": "Torna all’attività",
+    "coach_plan_title": "Adatta il piano #{{id}} · {{date}}",
+    "coach_plan_prompt": "Rivedi il mio piano esistente #{{id}} al {{date}} e adatta i prossimi carichi in base alle prestazioni recenti comparabili, agli esiti registrati e all’RPE. Leggi prima il piano, i vincoli e i dati recenti. Mantieni struttura e obiettivi; non creare un piano sostitutivo. Conserva gli allenamenti passati, completati, parzialmente completati, saltati, registrati e protetti. Proponi modifiche specifiche solo alle sedute future modificabili di questo piano, usando planning_preview e changes_propose per la mia approvazione esplicita. Motiva ogni modifica e segnala i dati mancanti; non inventare prestazioni o punteggi di carico. Se i dati non bastano, chiedi le informazioni mancanti o consiglia di mantenere il piano.",
+    "coach_activity_title": "Rivedi l’attività #{{id}} · {{date}}",
+    "coach_activity_prompt": "Analizza la mia attività registrata #{{id}} del {{date}} usando metriche disponibili, intervalli, allenamento pianificato e feedback registrati. Confrontala solo con attività simili pertinenti e segnala i dati mancanti. Dimmi cosa è andato bene, cosa migliorare e un prossimo passo pratico. Cita dati verificati per le misure. Non modificare il piano senza una mia richiesta esplicita di proposta.",
+    "follow": "Inizia allenamento",
+    "step": "Blocco {{current}} di {{total}}",
+    "previous": "Blocco precedente",
+    "next": "Blocco successivo",
+    "finish": "Rivedi e registra esito",
+    "stop": "Chiudi guida allenamento",
+    "guide_note": "Segui le istruzioni approvate al tuo ritmo. Avanzare qui non registra né completa l’allenamento."
   }
 }

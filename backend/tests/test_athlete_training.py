@@ -157,7 +157,7 @@ async def test_multiple_sessions_other_sports_and_recorded_links(client, db_sess
 
 
 async def test_protected_session_engine_and_exact_adaptation_approval_undo(db_session):
-    day = datetime(2026, 10, 9).date()
+    day = datetime.now(ZoneInfo('Europe/Rome')).date()+timedelta(days=1)
     plan, items = await make_plan(db_session, day, protected=True)
     spec = ProposeIn.model_validate({"change": {"kind": "session_patch", "target_id": items[0].id, "target_duration_min": 20}, "reason": "Shorter schedule"})
     with pytest.raises(EvidenceError, match="Protected"):
@@ -176,7 +176,7 @@ async def test_protected_session_engine_and_exact_adaptation_approval_undo(db_se
 
 async def test_profile_time_budget_rest_day_and_life_illness_constraints(client, db_session):
     await authenticate(client)
-    day = datetime(2026, 10, 9).date()
+    day = datetime.now(ZoneInfo('Europe/Rome')).date()+timedelta(days=1)
     _, items = await make_plan(db_session, day)
     db_session.add(AthleteProfile(user_id=1, training_focus=["running", "gym"], context={"weekly_time_budget_min": 10}))
     await db_session.commit()
@@ -253,7 +253,7 @@ async def test_ownership_on_documents_associations_checkins_and_endurance(client
 
 async def test_skipped_modified_and_unplanned_history_stays_explicit(client, db_session):
     await authenticate(client)
-    day=datetime(2026,10,9).date();_,items=await make_plan(db_session,day,("running","road_cycling"))
+    day=datetime.now(ZoneInfo("Europe/Rome")).date()+timedelta(days=1);_,items=await make_plan(db_session,day,("running","road_cycling"))
     spec=ProposeIn.model_validate({"change":{"kind":"session_patch","target_id":items[0].id,"target_duration_min":20},"reason":"Time constraint"})
     draft=await propose(db_session,1,spec);await apply(db_session,1,draft['id'],draft['payload_hash']);await db_session.commit()
     response=await client.put("/athlete/checkins",headers=csrf_headers(client),json={"planned_session_id":items[1].id,"status":"skipped"})

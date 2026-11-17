@@ -157,3 +157,28 @@ async def test_claim_correction_is_bounded_and_never_weakens_validation(db_sessi
         assert result.grounding['verified_claims'][0]['value'] == 52
     else:
         assert not result.grounding.get('verified_claims')
+
+
+@pytest.mark.parametrize('model', ['glm-4.7-flash', 'deepseek-flash', 'other-provider-model'])
+async def test_checkin_output_budget_goes_to_answer_without_changing_other_calls(model):
+    seen = []
+    def respond(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200,json={'choices':[{'message':{'content':'Checked reply'}}]})
+    client=LiveGLMClient('fixture-key','https://fixture.invalid',model,model,deepseek_thinking=True)
+    await client._client.aclose()
+    client._client=httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    try:
+        await client.complete(messages=[{'role':'user','content':'Short check-in'}],max_tokens=650,thinking=False)
+        await client.complete(messages=[{'role':'user','content':'Ordinary chat'}])
+    finally:
+        await client.aclose()
+    assert seen[0]['max_tokens']==650
+    if model.startswith(('glm-', 'deepseek-')):
+        assert seen[0]['thinking']=={'type':'disabled'}
+    else:
+        assert 'thinking' not in seen[0]
+    if model.startswith('deepseek-'):
+        assert seen[1]['thinking']=={'type':'enabled'}
+    else:
+        assert 'thinking' not in seen[1]
