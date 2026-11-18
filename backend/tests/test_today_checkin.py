@@ -50,7 +50,7 @@ async def test_concurrent_opens_one_call_per_slot_and_no_catchup(checkin_data, d
     afternoon = await open_checkin(sessionmaker, 1, now=now.replace(hour=17), llm=llm)
     assert afternoon['status'] == 'ready' and len(calls) == 2
     await open_checkin(sessionmaker, 1, now=now.replace(hour=20), llm=llm)
-    assert len(calls) == 2 and calls[0]['tier'] == 'cheap' and calls[0]['max_tokens'] == 650
+    assert len(calls) == 2 and calls[0]['tier'] == 'cheap' and calls[0]['max_tokens'] == 1024 and calls[0]['json_output'] is True
     assert await db_session.scalar(text('SELECT count(*) FROM today_checkins')) == 2
     assert await db_session.scalar(text("SELECT count(*) FROM token_usage WHERE call_type='today_checkin'")) == 2
 
@@ -63,7 +63,7 @@ async def test_timeout_consumes_slot_without_retry(checkin_data, db_session):
     llm = SimpleNamespace(complete=failing)
     result = await open_checkin(sessionmaker, 1, now=now, llm=llm)
     assert result['status'] == 'ready' and result['mode'] == 'recorded' and len(result['lines']) == 3
-    assert result['reason'] == 'provider' and 'private' not in str(result)
+    assert result['reason'] == 'provider_timeout' and 'private' not in str(result)
     await open_checkin(sessionmaker, 1, now=now, llm=llm)
     assert len(calls) == 1
 
@@ -168,9 +168,118 @@ def test_recorded_fallback_uses_comparable_units_origins_and_sparse_coverage():
 
 
 async def test_short_checkin_reserves_its_actual_output_limit(checkin_data, db_session):
-    now, llm, _ = checkin_data
+    now, llm, calls = checkin_data
     await open_checkin(sessionmaker,1,now=now,llm=llm)
     reservation=(await db_session.execute(text('SELECT reserved_tokens, actual_tokens FROM ai_budget_reservations WHERE user_id=1'))).one()
-    # Full input bytes still reserved conservatively, but only 650 output tokens.
-    assert 650 < reservation.reserved_tokens < 4096
+    # Reserve the bounded JSON envelope, rather than the default 4096 output tokens.
+    expected_input = len(json.dumps(calls[0], ensure_ascii=False, default=str).encode())
+    assert reservation.reserved_tokens == expected_input + 1024
     assert reservation.actual_tokens == 350
+
+
+async def test_numeric_json_summary_uses_issued_examples_in_one_call(checkin_data, db_session):
+    now, _, calls = checkin_data
+    for metric,value,unit in [('resting_hr',48,'bpm'),('body_battery',55,'/100')]:
+        await record_observation(db_session,user_id=1,metric=metric,value=value,unit=unit,origin='garmin',
+            source_record_id='synthetic-today-'+metric,measured_at=now,fetched_at=now,timezone='Europe/Rome')
+    await db_session.commit()
+    async def numeric(**kwargs):
+        calls.append(kwargs)
+        pack=json.loads(kwargs['messages'][0]['content'])
+        claims=[c for c in pack['claim_examples'] if c['metric'] in {'resting_hr','body_battery'}]
+        assert len(claims)==2 and all(c['evidence_id'].startswith('observation:') and 'value' in c for c in claims)
+        assert kwargs['json_output'] is True and kwargs['thinking'] is False
+        return LLMResponse(content=json.dumps({'answer':"Today: resting HR 48 bpm; Body Battery 55.\nThe week's coverage is sparse.\nReview today's workout and record how it felt.", 'claims':claims,'limitations':[]}),model='fixture',tokens_in=600,tokens_out=200)
+    result=await open_checkin(sessionmaker,1,now=now,llm=SimpleNamespace(complete=numeric))
+    assert result['mode']=='ai' and len(result['lines'])==3 and '48 bpm' in result['lines'][0]
+    saved=await open_checkin(sessionmaker,1,now=now,llm=SimpleNamespace(complete=numeric),generate=False)
+    assert saved['mode']=='ai' and saved['lines']==result['lines'] and len(calls)==1
+
+
+async def test_invalid_response_reports_safe_validation_code_and_attempt_time(checkin_data):
+    now,_,calls=checkin_data
+    async def mismatched(**kwargs):
+        calls.append(kwargs)
+        return LLMResponse(content=json.dumps({'answer':'Resting HR 99 bpm','claims':[]}),model='fixture',tokens_in=20,tokens_out=20)
+    llm=SimpleNamespace(complete=mismatched)
+    result=await open_checkin(sessionmaker,1,now=now,llm=llm)
+    cached=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+    assert result['reason']==cached['reason']=='grounding'
+    assert result['detail']==cached['detail']=='UNCITED_NUMERIC_TEXT'
+    assert result['attempted_at'] and cached['attempted_at'] and len(calls)==1
+
+
+async def test_read_only_check_never_creates_claim_or_invokes_provider(checkin_data,db_session,client):
+    now,llm,calls=checkin_data
+    assert (await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False))['reason']=='not_generated'
+    from tests.test_athlete_training import authenticate
+    await authenticate(client)
+    response=await client.get('/dashboard/check-in')
+    assert response.status_code==200 and response.json()['reason']=='not_generated'
+    assert calls==[] and await db_session.scalar(text('SELECT count(*) FROM today_checkins'))==0
+    assert await db_session.scalar(text('SELECT count(*) FROM ai_budget_reservations'))==0
+
+
+async def test_pending_visit_can_read_completed_summary_without_another_call(checkin_data):
+    now,original,calls=checkin_data
+    started,release=asyncio.Event(),asyncio.Event()
+    async def held(**kwargs):
+        started.set();await release.wait();return await original.complete(**kwargs)
+    llm=SimpleNamespace(complete=held)
+    task=asyncio.create_task(open_checkin(sessionmaker,1,now=now,llm=llm))
+    await asyncio.wait_for(started.wait(),timeout=5)
+    try:
+        pending=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+        assert pending['reason']=='pending' and pending['attempted_at']
+    finally:
+        release.set()
+    await task
+    saved=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+    assert saved['mode']=='ai' and len(calls)==1
+
+
+async def test_truncated_json_is_distinct_from_measurement_validation_failure(checkin_data):
+    now,_,calls=checkin_data
+    async def truncated(**kwargs):
+        calls.append(kwargs)
+        return LLMResponse(content='{"answer":"PRIVATE INCOMPLETE',model='fixture',tokens_in=10,tokens_out=1024,finish_reason='length')
+    llm=SimpleNamespace(complete=truncated)
+    first=await open_checkin(sessionmaker,1,now=now,llm=llm)
+    cached=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+    assert first['reason']==cached['reason']=='output_limit' and len(calls)==1
+    assert 'PRIVATE' not in str(first) and 'PRIVATE' not in str(cached)
+
+
+@pytest.mark.parametrize('code',['provider_auth','provider_rate_limit','provider_request','provider_timeout'])
+async def test_provider_error_reasons_are_safe_and_cached(checkin_data,code):
+    from app.core.llm import LLMError
+    now,_,calls=checkin_data
+    async def failed(**kwargs):
+        calls.append(kwargs);raise LLMError('PRIVATE ERROR BODY',code=code)
+    llm=SimpleNamespace(complete=failed)
+    first=await open_checkin(sessionmaker,1,now=now,llm=llm)
+    cached=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+    assert first['reason']==cached['reason']==code and len(calls)==1
+    assert 'PRIVATE' not in str(first) and 'PRIVATE' not in str(cached)
+
+
+async def test_old_pending_slot_is_reported_as_interrupted_without_retry(checkin_data,db_session):
+    now,llm,calls=checkin_data
+    await open_checkin(sessionmaker,1,now=now,llm=llm)
+    await db_session.execute(text("UPDATE today_checkins SET status='pending',content=NULL,generated_at=:at"),{'at':now-timedelta(seconds=91)})
+    await db_session.commit()
+    result=await open_checkin(sessionmaker,1,now=now,llm=llm,generate=False)
+    assert result['reason']=='interrupted' and len(calls)==1
+
+
+def test_native_score_denominator_is_normalized_without_weakening_measurement_checks():
+    from app.reports.checkin import checked_answer
+    evidence={'body_battery':[{'id':'observation:10:1','metric':'body_battery','value':55,'unit':'/100'}]}
+    claim={'evidence_id':'observation:10:1','metric':'body_battery','value':55}
+    content=json.dumps({'answer':'Body Battery 55/100.\nCoverage is sparse.\nReview the workout.','claims':[claim]})
+    text,detail=checked_answer(content,evidence,'en')
+    assert detail is None and text.startswith('Body Battery 55.')
+    for answer,claims in [('Body Battery 99/100.',[claim]),('Body Battery 55/10.',[claim]),('Body Battery 55/100.',[]),('Resting HR 55/100 bpm.',[claim])]:
+        assert checked_answer(json.dumps({'answer':answer,'claims':claims}),evidence,'en')[0] is None
+    wrong_unit={'body_battery':[{**evidence['body_battery'][0],'unit':'ms'}]}
+    assert checked_answer(content,wrong_unit,'en')[0] is None

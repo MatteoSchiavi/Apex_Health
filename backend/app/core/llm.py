@@ -51,6 +51,7 @@ class LLMResponse:
     cached_tokens: int = 0
     tool_calls: list[ToolCallRequest] | None = None
     reasoning_content: str | None = None
+    finish_reason: str | None = None
 
     @property
     def wants_tools(self) -> bool:
@@ -58,7 +59,9 @@ class LLMResponse:
 
 
 class LLMError(Exception):
-    pass
+    def __init__(self, message, *, code="provider"):
+        super().__init__(message)
+        self.code = code
 
 
 class LLMUnavailableError(LLMError):
@@ -74,6 +77,7 @@ class LLMClient(Protocol):
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
         thinking: bool | None = None,
+        json_output: bool = False,
     ) -> LLMResponse: ...
 
 
@@ -144,6 +148,7 @@ class LiveGLMClient:
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
         thinking: bool | None = None,
+        json_output: bool = False,
     ) -> LLMResponse:
         if tier not in self._models:
             raise LLMError(f"unknown tier {tier!r} (expected one of {sorted(self._models)})")
@@ -157,6 +162,8 @@ class LiveGLMClient:
             payload_messages.append({"role": "system", "content": system})
         payload_messages.extend(messages)
         payload: dict[str, Any] = {"model": self._models[tier], "messages": payload_messages, "max_tokens": max(1, min(max_tokens, 4096))}
+        if json_output:
+            payload["response_format"] = {"type": "json_object"}
         if self._models[tier].startswith("deepseek-"):
             # Thinking defaults to enabled on current DeepSeek models; keep
             # ordinary lookups fast, with an explicit operator opt-in.
@@ -175,6 +182,11 @@ class LiveGLMClient:
             )
             resp.raise_for_status()
             body = resp.json()
+        except httpx.HTTPStatusError as exc:
+            code = {400: "provider_request", 401: "provider_auth", 403: "provider_auth", 404: "provider_configuration", 429: "provider_rate_limit"}.get(exc.response.status_code, "provider")
+            raise LLMError(f"LLM completion failed ({tier})", code=code) from None
+        except httpx.TimeoutException:
+            raise LLMError(f"LLM completion failed ({tier})", code="provider_timeout") from None
         except (httpx.HTTPError, ValueError):
             raise LLMError(f"LLM completion failed ({tier})") from None
         return parse_completion(body, fallback_model=self._models[tier])
@@ -260,6 +272,7 @@ def parse_completion(body: dict[str, Any], fallback_model: str) -> LLMResponse:
         cached_tokens=cached,
         tool_calls=tool_calls,
         reasoning_content=message.get("reasoning_content") if isinstance(message.get("reasoning_content"), str) else None,
+        finish_reason=choices[0].get("finish_reason") if isinstance(choices[0].get("finish_reason"), str) and choices[0].get("finish_reason") in {"stop", "length", "tool_calls", "content_filter"} else None,
     )
 
 

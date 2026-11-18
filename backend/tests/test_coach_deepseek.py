@@ -182,3 +182,30 @@ async def test_checkin_output_budget_goes_to_answer_without_changing_other_calls
         assert seen[1]['thinking']=={'type':'enabled'}
     else:
         assert 'thinking' not in seen[1]
+
+
+async def test_checkin_json_mode_and_output_limit_are_explicit_and_chat_is_unchanged():
+    seen=[]
+    def respond(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{}'},'finish_reason':'length'}]})
+    client=LiveGLMClient('fixture-key','https://fixture.invalid','glm-4.7-flash','glm-4.7-flash')
+    await client._client.aclose();client._client=httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    try:
+        reply=await client.complete(messages=[{'role':'user','content':'Return JSON'}],max_tokens=1024,json_output=True,thinking=False)
+        await client.complete(messages=[{'role':'user','content':'Ordinary chat'}])
+    finally: await client.aclose()
+    assert seen[0]['response_format']=={'type':'json_object'} and seen[0]['max_tokens']==1024
+    assert 'response_format' not in seen[1] and reply.finish_reason=='length'
+
+
+@pytest.mark.parametrize(('status','code'),[(400,'provider_request'),(401,'provider_auth'),(403,'provider_auth'),(404,'provider_configuration'),(429,'provider_rate_limit'),(503,'provider')])
+async def test_provider_http_failure_exposes_only_a_fixed_safe_code(status,code):
+    from app.core.llm import LLMError
+    client=LiveGLMClient('fixture-key','https://fixture.invalid','glm-4.7-flash','glm-4.7-flash')
+    await client._client.aclose()
+    client._client=httpx.AsyncClient(transport=httpx.MockTransport(lambda request:httpx.Response(status,json={'error':'PRIVATE PROVIDER BODY'})))
+    try:
+        with pytest.raises(LLMError) as exc: await client.complete(messages=[{'role':'user','content':'Fixture'}])
+    finally: await client.aclose()
+    assert exc.value.code==code and 'PRIVATE' not in str(exc.value) and 'fixture-key' not in str(exc.value)

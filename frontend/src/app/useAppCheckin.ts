@@ -6,6 +6,8 @@ export interface AppCheckin {
   status: "ready" | "ai_disabled" | "no_data" | "unavailable";
   mode?: "ai" | "recorded";
   reason?: string;
+  detail?: string;
+  attempted_at?: string;
   date?: string;
   slot?: "morning" | "afternoon";
   generated_at?: string;

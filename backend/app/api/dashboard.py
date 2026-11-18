@@ -404,3 +404,11 @@ async def app_open_checkin(user: User = Depends(get_current_user)):
     from app.core.db import sessionmaker
     from app.reports.checkin import open_checkin
     return await open_checkin(sessionmaker, user.id)
+
+
+@router.get("/check-in")
+async def saved_app_checkin(user: User = Depends(get_current_user)):
+    """Read a saved slot or recorded data. Never reserve or invoke AI."""
+    from app.core.db import sessionmaker
+    from app.reports.checkin import open_checkin
+    return await open_checkin(sessionmaker, user.id, generate=False)
